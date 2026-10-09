@@ -86,7 +86,7 @@ jobs:
       - name: Prepare Inno Setup compiler
         shell: pwsh
         run: ./tools/ensure-inno.ps1
-      - name: Package EXE and ZIPs with complete Skills
+      - name: Package EXE and ZIPs and verify static VC runtime imports
         shell: pwsh
         run: ./tools/package.ps1 -All -InstallerFormat Exe
       - uses: actions/upload-artifact@v7.0.1

@@ -6,6 +6,13 @@ Current version: **0.20.2**. Features and fixes by release.
 
 Exit the app before upgrading a portable installation and preserve its `data` folder. See the [portable guide](docs/portable.md) (Chinese).
 
+## Unreleased
+
+### fix
+
+- Statically link the VC++ runtime in Windows x64 builds so the installer preflight executable does not require preinstalled VCRUNTIME DLLs or block silent installation with a missing-DLL dialog.
+- Check GUI, CLI and desktop DLL runtime imports before packaging to prevent external VC++ runtime dependencies from reappearing in EXE, MSI, MSIX or ZIP payloads.
+
 ## 0.20.2 · 2026-10-05
 
 ### fix

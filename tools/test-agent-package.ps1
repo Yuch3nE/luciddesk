@@ -2,6 +2,9 @@
 param([Parameter(Mandatory)][string]$Directory)
 $ErrorActionPreference = 'Stop'
 $Directory = (Resolve-Path -LiteralPath $Directory).Path
+# Inspect imports before executing the CLI; a missing CRT can otherwise open a
+# loader error dialog even when the installer or command is running silently.
+& (Join-Path $PSScriptRoot 'test-runtime-dependencies.ps1') -Directory $Directory
 $build = Get-Content -LiteralPath (Join-Path $Directory 'build.json') -Raw | ConvertFrom-Json
 $required = @('luciddesk-cli.exe', 'cli.md', 'protocol.schema.json', 'skills/luciddesk-control/SKILL.md')
 foreach ($file in $required) {

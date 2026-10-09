@@ -2,3 +2,8 @@
 # Transactions, foreign keys, backup, threading and API checks remain enabled.
 [env]
 LIBSQLITE3_FLAGS = "-USQLITE_ENABLE_FTS3 -USQLITE_ENABLE_FTS3_PARENTHESIS -USQLITE_ENABLE_FTS5 -USQLITE_ENABLE_RTREE -USQLITE_ENABLE_DBSTAT_VTAB -USQLITE_ENABLE_LOAD_EXTENSION -DSQLITE_OMIT_LOAD_EXTENSION"
+
+# The installer runs the GUI executable from a temporary directory before install.
+# All distributed binaries must start without a preinstalled VC++ Redistributable.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

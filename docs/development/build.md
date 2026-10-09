@@ -215,6 +215,12 @@ CI Release 包含 EXE、普通 ZIP、便携 ZIP 及各自的 SHA256，共六个�
 
 ## WinGet 分发
 
+Windows x64 MSVC 构建通过 `.cargo/config.toml` 的 `target-feature=+crt-static` 静态链接 C 运行库，覆盖 GUI、CLI 和 Explorer DLL（包括 bundled SQLite）。安装前检查从临时目录直接启动 GUI，不能依赖已安装目录中的 DLL 或用户预装的 VC++ Redistributable。
+
+`test-agent-package.ps1` 在执行 CLI 前调用 `test-runtime-dependencies.ps1`，用 MSVC `dumpbin /DEPENDENTS` 检查三个二进制的普通及延迟加载导入；若仍依赖 VCRUNTIME、MSVCP 等可再分发运行库，打包立即失败。EXE、MSI、MSIX 和 ZIP 共用此入口，CI 打包也执行检查。环境中的 `RUSTFLAGS` 覆盖可能使静态链接配置失效，因此以最终 PE 导入检查为准。系统自带的 Windows DLL 不受此限制。
+
+此检查验证直接导入依赖，不替代干净 Windows 的首次安装、升级、卸载和桌面组件运行验收。已发布的 0.20.1 仍使用动态运行库，WinGet 清单必须保留其 VC++ 依赖；源代码修复不会改变旧附件，不得覆盖已发布版本的 EXE。
+
 清单与验收记录位于 [installer/winget](../../installer/winget/README.md)。它引用正式 Release 中的 Inno Setup EXE；本仓库 CI 继续仅发布 EXE 与两种 ZIP，不生成 MSI，也不自动向 WinGet 提交版本。先发布不可变的正式 EXE，再核对版本、下载地址、SHA256、安装范围和静默安装行为，最后提交清单。
 
 仓库中的 0.20.1 清单是该版本的历史提交记录，应用升级到 0.20.2 时不能直接改写旧目录或填入尚未构建的哈希。正式包已验证当前用户同版本静默覆盖安装；跨版本升级与卸载由隔离测试包验证，不能替代干净系统或历史正式版本的完整验收。
