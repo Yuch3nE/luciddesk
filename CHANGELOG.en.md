@@ -2,16 +2,29 @@
 
 [简体中文](CHANGELOG.md) · English
 
-Current version: **0.20.3**. Features and fixes by release.
+Current version: **0.20.4**. Features and fixes by release.
 
 Exit the app before upgrading a portable installation and preserve its `data` folder. See the [portable guide](docs/portable.md) (Chinese).
 
-## Unreleased
+## 0.20.4 · 2026-10-10
 
 ### feat
 
-- Add Align icons to grid: disable it for free positioning, overlapping icons, group dragging, persistence and CLI content fitting.
-- Allow disabling Auto arrange icons for manual grid placement in desktop panels, preserving empty cells and supporting drag swaps without shifting other icons when content changes. Integrate persistence, scrolling, selection and CLI layout calculations.
+- Add Align icons to grid: disable it to freely position and overlap icons. Group dragging preserves relative positions, and icon positions are restored after restarting.
+- Disable Auto arrange icons to keep empty cells and swap icons by dragging, without moving other icons when items are added, removed or refreshed.
+- Add Align icons to grid and Auto arrange icons defaults for newly created desktop panels only. Auto arrange enables grid alignment; disabling alignment also disables auto arrange.
+- Support one-time desktop panel sorting by name, type, modified date or size, reversing direction when the same field is selected again. Add horizontal scrolling for manually positioned icons.
+- Extend the CLI and Skill with layout modes, sorting fields and icon positioning workflows, preserving empty cells and free coordinates during layout preview, fitting and application.
+
+### fix
+
+- Restore the panel context menu when right-clicking the title bar.
+- Fix panel resizing and icon wrapping in manual layouts, and improve positioning and content fitting at different display scaling levels.
+
+### perf
+
+- Reduce computation and memory overhead when scrolling, resizing and sorting panels.
+- Reduce the size of the distributed application binaries.
 
 ## 0.20.3 · 2026-10-09
 

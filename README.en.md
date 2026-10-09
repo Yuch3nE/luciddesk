@@ -12,7 +12,7 @@ Desktop panels · Folder panels · Everything search · Spacebar preview · Agen
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Build CI](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml/badge.svg)](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml)
-[![Version](https://img.shields.io/badge/version-0.20.3-087EA4?style=flat-square)](CHANGELOG.en.md)
+[![Version](https://img.shields.io/badge/version-0.20.4-087EA4?style=flat-square)](CHANGELOG.en.md)
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square)](#compatibility)
 [![Architecture](https://img.shields.io/badge/arch-x64-475569?style=flat-square)](docs/portable.md)
 
@@ -46,7 +46,7 @@ Click a screenshot to view the original. These show dark Acrylic; the appearance
 
 | Feature | What you can do |
 | --- | --- |
-| Desktop panels | Organize files, folders and shortcuts without moving the original files; sort names in ascending or descending order |
+| Desktop panels | Group files, folders and shortcuts; use compact arrangement, manual grids with empty cells or free positioning, and sort by name, type, modified date or size |
 | Panel tabs | Switch between panels, reorder tabs, merge them or detach them into separate windows |
 | Folder panels | Browse directories, sort by name, type, date or size, and follow file changes automatically |
 | File search | Find local files through Everything and open files or their locations |
@@ -56,6 +56,8 @@ Click a screenshot to view the original. These show dark Acrylic; the appearance
 | Backup & restore | Save and restore settings and layouts; automatic backups skip unchanged content |
 
 Panels can move, resize, collapse, auto-hide, snap to edges, lock, or stay on top. Customize fonts, rounded corners, colors and background materials. Folder and search panels remain independent of panel tabs.
+
+Use the desktop panel context menu to toggle Auto arrange icons and Align icons to grid. Disable auto arrange to keep empty cells, or disable grid alignment for free positioning; adding or removing items preserves the positions of other icons. Sorting runs once, and selecting the same field again reverses its direction. Settings → Panel layout → Icon arrangement controls defaults for new panels only. Agents can also use the CLI and companion Skill to change layout modes, position icons and preview changes.
 
 **Desktop panels do not move your files.** Dragging icons into a panel changes how they are organized on the desktop. Drag them back to remove them from the panel; closing a panel does not delete the original files. File menu commands such as delete, rename and cut, along with dropping or pasting into folder panels, operate on real files.
 

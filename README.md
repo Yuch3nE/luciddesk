@@ -12,7 +12,7 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Build CI](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml/badge.svg)](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml)
-[![版本](https://img.shields.io/badge/version-0.20.3-087EA4?style=flat-square)](CHANGELOG.md)
+[![版本](https://img.shields.io/badge/version-0.20.4-087EA4?style=flat-square)](CHANGELOG.md)
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square)](#系统与兼容性)
 [![架构](https://img.shields.io/badge/arch-x64-475569?style=flat-square)](docs/portable.md)
 
@@ -46,7 +46,7 @@ LucidDesk 是使用 Rust 开发的 Windows 桌面整理工具。把零散图标�
 
 | 功能 | 你可以做什么 |
 | --- | --- |
-| 桌面面板 | 将文件、文件夹和快捷方式拖入面板，按工作、学习或工具分类；支持按名称升序或降序整理 |
+| 桌面面板 | 将文件、文件夹和快捷方式拖入面板；支持紧凑排列、保留空位的手动网格和自由坐标，按名称、类型、修改时间或大小排序 |
 | 面板标签 | 把多个桌面面板放进一个窗口，按需切换、排序、合并或分离 |
 | 文件夹面板 | 在桌面浏览常用目录，按名称、类型、时间或大小排序，文件变化后自动刷新 |
 | 文件搜索 | 通过 Everything 查找本机文件，直接打开或定位所在文件夹 |
@@ -56,6 +56,8 @@ LucidDesk 是使用 Rust 开发的 Windows 桌面整理工具。把零散图标�
 | 备份与恢复 | 保存设置和布局，按需恢复；自动备份跳过未变化的内容 |
 
 面板可以移动、缩放、折叠、自动收起，也可以吸附边缘、锁定或置顶。支持调整字体、圆角与颜色，选择纯色、亚克力或云母材质。文件夹与搜索面板独立显示，不参与面板标签合并。
+
+普通面板右键菜单可切换“自动排列图标”和“对齐到网格”：关闭自动排列后允许保留空位，关闭网格对齐后可以自由放置图标；增删内容时保留其他图标的位置。排序只执行一次，再次选择同一排序字段切换升降序。“设置 → 面板布局 → 图标排列”可调整默认选项（仅影响新建面板）。Agent 也能通过 CLI 与配套 Skill 调整排列模式、定位图标并预览改动。
 
 **面板不会搬动你的文件。** 将图标拖入面板只改变桌面上的收纳方式；拖回桌面即可移出，关闭面板也不会删除原文件。文件菜单中的删除、重命名和剪切，以及文件夹面板中的拖入、粘贴，会操作真实文件。
 
