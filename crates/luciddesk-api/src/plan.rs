@@ -28,6 +28,8 @@ pub enum Operation {
     Sort {
         pane_id: String,
         #[serde(default)]
+        sort_column: FolderColumn,
+        #[serde(default)]
         descending: bool,
     },
     #[serde(rename = "startup.set")]
@@ -151,6 +153,10 @@ pub enum Operation {
     #[serde(rename = "pane.update")]
     Update {
         pane_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "optional")]
+        auto_compact: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "optional")]
+        align_icons_to_grid: Option<bool>,
         #[serde(
             default,
             skip_serializing_if = "Option::is_none",
@@ -203,6 +209,19 @@ pub enum Operation {
         pane_id: String,
         item_ids: Vec<String>,
     },
+    #[serde(rename = "item.position")]
+    Position {
+        pane_id: String,
+        item_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "optional")]
+        column: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "optional")]
+        row: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "optional")]
+        x: Option<f32>,
+        #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "optional")]
+        y: Option<f32>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -213,6 +232,7 @@ pub enum FolderColumn {
     Type,
     Size,
 }
+impl Default for FolderColumn { fn default() -> Self { Self::Name } }
 
 /// JSON scalar settings preserve types and reject null, arrays and objects.
 #[derive(Clone, Debug, Serialize, Deserialize)]

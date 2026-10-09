@@ -168,5 +168,12 @@
     "op": "pane.sort",
     "pane_id": "1",
     "descending": true
+  },
+  {
+    "op": "item.position",
+    "pane_id": "1",
+    "item_id": "item-1",
+    "column": 2,
+    "row": 3
   }
 ]

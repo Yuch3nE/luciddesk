@@ -30,6 +30,7 @@ struct Receipt {
 }
 #[derive(Default)]
 pub(super) struct Plans {
+    metadata: super::sort_metadata::Cache,
     pending: VecDeque<Prepared>,
     receipts: VecDeque<Receipt>,
 }
@@ -158,6 +159,7 @@ fn prepare(
     monitors: &[luciddesk_window::MonitorDescriptor],
     folder_content: &super::content_layout::FolderSnapshots,
     observed: &super::geometry::LayoutObservation,
+    metadata: Option<&HashMap<String, ItemDetails>>,
 ) -> Result<Prepared, (String, String)> {
     if plan.protocol_version != 1 {
         return Err(("PROTOCOL_MISMATCH".into(), "plan protocol must be 1".into()));
@@ -311,6 +313,8 @@ fn prepare(
             }
             Operation::Update {
                 pane_id,
+                auto_compact,
+                align_icons_to_grid,
                 title,
                 locked,
                 auto_hide,
@@ -325,6 +329,7 @@ fn prepare(
                     return Err(invalid("search panel window options are controlled separately"));
                 }
                 if title.is_none()
+                    && auto_compact.is_none() && align_icons_to_grid.is_none()
                     && locked.is_none()
                     && auto_hide.is_none()
                     && collapsed.is_none()
@@ -337,6 +342,20 @@ fn prepare(
                         "PANE_LOCKED".into(),
                         "explicitly unlock the panel first".into(),
                     ));
+                }
+                if auto_compact.is_some() || align_icons_to_grid.is_some() {
+                    if !panel.supports_tabs() { return Err(invalid("arrangement options require a desktop pane")); }
+                    if *auto_compact == Some(true) && *align_icons_to_grid == Some(false) {
+                        return Err(invalid("auto_compact=true requires grid alignment"));
+                    }
+                    if *locked == Some(false) { next.panel_mut(target).unwrap().set_locked(false); }
+                    if let Some(compact) = auto_compact {
+                        if *compact == next.panel(target).unwrap().fixed_grid() { fixed_grid::toggle(&mut next, target).map_err(invalid)?; }
+                    }
+                    if let Some(aligned) = align_icons_to_grid {
+                        if *aligned == next.panel(target).unwrap().free_layout() { free_layout::toggle(&mut next, target).map_err(invalid)?; }
+                    }
+                    membership = true;
                 }
                 if let Some(title) = title {
                     if title.trim().is_empty() || title.chars().count() > 256 {
@@ -430,10 +449,44 @@ fn prepare(
                     order(&mut next, pane, &items);
                 }
             }
-            Operation::Sort { pane_id, descending } => {
+            Operation::Sort { pane_id, descending, sort_column } => {
                 let target = id(pane_id)?;
                 editable(&next, target)?;
-                membership |= super::super::sorting::apply(&mut next, target, *descending).map_err(invalid)?;
+                if *sort_column == luciddesk_api::FolderColumn::Name {
+                    membership |= super::super::sorting::apply(&mut next, target, *descending).map_err(invalid)?;
+                } else {
+                    let metadata = metadata.ok_or_else(|| invalid("sort metadata is not ready"))?;
+                    let mut items: Vec<_> = ordered_desktop_items(&next, target).iter().map(|item| {
+                        let details = metadata.get(&item.identity().persistent_key()).cloned().ok_or_else(|| invalid("sort metadata missing for an item"))?;
+                        Ok(Item { identity: item.identity().clone(), label: item.display_name().to_owned(), image: None, details })
+                    }).collect::<Result<_, (String, String)>>()?;
+                    let column = match sort_column { luciddesk_api::FolderColumn::Type => 1, luciddesk_api::FolderColumn::Modified => 2, _ => 3 };
+                    folder::sort_items(&mut items, (column, *descending));
+                    let ranks = items.iter().enumerate().map(|(i, item)| (item.identity.persistent_key(), i)).collect();
+                    membership |= super::super::sorting::apply_order(&mut next, target, false, Some(&ranks)).map_err(invalid)?;
+                }
+            }
+            Operation::Position { pane_id, item_id, column, row, x, y } => {
+                let target = id(pane_id)?;
+                editable(&next, target)?;
+                let panel = next.panel(target).unwrap();
+                if !panel.fixed_grid() { return Err(invalid("disable auto_compact before positioning items")); }
+                let key = keys(&next, std::slice::from_ref(item_id), ids)?.remove(0);
+                let item = next.desktop_items().iter().find(|i| i.identity().persistent_key() == key).unwrap();
+                if !matches!(item.placement(), DesktopPlacement::Pane { pane_id, .. } if *pane_id == target) { return Err(invalid("item must already belong to the target pane")); }
+                let identity = item.identity().clone();
+                if panel.free_layout() {
+                    let (Some(x), Some(y), None, None) = (x, y, column, row) else { return Err(invalid("free layout requires x/y only, in content-relative DIP")); };
+                    if !x.is_finite() || !y.is_finite() || !(0.0..=1_000_000.0).contains(x) || !(0.0..=1_000_000.0).contains(y) { return Err(invalid("coordinates must be finite and within 0..1000000 DIP")); }
+                    next.desktop_item_mut(&identity).unwrap().set_pane_position(Some(luciddesk_core::PointDip::new(*x, *y)));
+                } else {
+                    let (Some(column), Some(row), None, None) = (column, row, x, y) else { return Err(invalid("grid layout requires column/row only")); };
+                    if *column > 10000 || *row > 10000 { return Err(invalid("grid coordinates must be within 0..10000")); }
+                    let position = GridPosition::new(*column, *row);
+                    if next.desktop_items().iter().any(|i| i.identity() != &identity && i.placement() == &(DesktopPlacement::Pane { pane_id: target, position })) { return Err(invalid("target cell is occupied; other icons will not be moved")); }
+                    next.desktop_item_mut(&identity).unwrap().set_placement(DesktopPlacement::Pane { pane_id: target, position });
+                }
+                membership = true;
             }
             Operation::Reorder { pane_id, item_ids } => {
                 membership = true;
@@ -580,9 +633,22 @@ impl Plans {
         if request.command == "plan.preview" {
             let plan = request.plan.as_ref().unwrap();
             if plan.base != *context {
+                self.metadata.remove(&request.request_id);
                 return fail("CONFLICT", "workspace changed; query and preview again");
             }
-            match prepare(&state.workspace, &state.store, plan, ids, monitors, &super::content_layout::snapshots(state), &super::geometry::observe_layout(state)) {
+            let metadata = match self.metadata.prepare(&state.workspace, plan, &request.request_id, ids) {
+                Ok(metadata) => metadata,
+                Err((code, message)) => {
+                    let mut response = fail(code, &message);
+                    if code == "SORT_METADATA_PENDING" {
+                        response.data = Some(json!({"pending_preview":{"request_id":request.request_id,"plan":plan}}));
+                    }
+                    return response;
+                }
+            };
+            let prepared = prepare(&state.workspace, &state.store, plan, ids, monitors, &super::content_layout::snapshots(state), &super::geometry::observe_layout(state), metadata);
+            self.metadata.remove(&request.request_id);
+            match prepared {
                 Err((code, message)) => fail(&code, &message),
                 Ok(plan) => {
                     let response = Response::success(
@@ -682,6 +748,105 @@ impl Plans {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn arrangement_and_position_preview_preserve_others_and_reject_ambiguous_input() {
+        let mut state = super::super::super::tests::test_state();
+        let mut snapshot = Snapshot::new();
+        snapshot.respond(&mut state, &request("workspace.get"));
+        let item = state.workspace.desktop_items()[0].identity().clone();
+        let token = snapshot.item_ids[&item.persistent_key()].clone();
+        let original = state.workspace.clone();
+        let writes = state.store.change_count();
+        let p = preview(&mut snapshot, &mut state, json!([
+            {"op":"pane.update","pane_id":"1","auto_compact":false},
+            {"op":"item.position","pane_id":"1","item_id":token,"column":8,"row":7}
+        ]));
+        assert!(p.ok, "{p:?}");
+        assert_eq!(state.workspace, original);
+        assert_eq!(state.store.change_count(), writes);
+        let next = snapshot.plans.pending.back().unwrap().next.clone();
+        assert_eq!(next.desktop_item(&item).unwrap().placement(), &DesktopPlacement::Pane { pane_id: PanelId::new(1), position: GridPosition::new(8, 7) });
+        state.workspace = next;
+        state.store.save_workspace(&state.workspace).unwrap();
+        let same = preview(&mut snapshot, &mut state, json!([{"op":"item.position","pane_id":"1","item_id":token,"column":8,"row":7}]));
+        assert_eq!(same.data.as_ref().unwrap()["changed"], false);
+        let writes = state.store.change_count();
+        let commit = apply(&same);
+        assert!(snapshot.respond(&mut state, &commit).ok);
+        assert!(snapshot.respond(&mut state, &commit).ok);
+        assert_eq!(state.store.change_count(), writes);
+        let free = preview(&mut snapshot, &mut state, json!([
+            {"op":"pane.update","pane_id":"1","align_icons_to_grid":false},
+            {"op":"item.position","pane_id":"1","item_id":token,"x":350.5,"y":90.25}
+        ]));
+        assert!(free.ok, "{free:?}");
+        let next = &snapshot.plans.pending.back().unwrap().next;
+        assert_eq!(next.desktop_item(&item).unwrap().pane_position(), Some(luciddesk_core::PointDip::new(350.5,90.25)));
+        for invalid in [
+            json!({"op":"pane.update","pane_id":"1","auto_compact":true,"align_icons_to_grid":false}),
+            json!({"op":"item.position","pane_id":"1","item_id":token,"x":1,"y":2}),
+            json!({"op":"item.position","pane_id":"1","item_id":token,"column":1,"row":0}),
+            json!({"op":"item.position","pane_id":"2","item_id":token,"column":1,"row":0}),
+            json!({"op":"item.position","pane_id":"1","item_id":token,"column":10001,"row":0}),
+        ] { assert!(!preview(&mut snapshot, &mut state, json!([invalid])).ok); }
+    }
+
+    #[test]
+    fn metadata_sort_preview_uses_file_properties_without_writing() {
+        let _sta = crate::pane::test_support::apartment();
+        let root = tempfile::tempdir().unwrap();
+        let mut state = super::super::super::tests::test_state();
+        let mut items = Vec::new();
+        for (index, (name, size)) in [("Large.lnk",100), ("Small.txt",2), ("Medium.txt",10)].into_iter().enumerate() {
+            let path = root.path().join(name);
+            std::fs::write(&path, vec![0; size]).unwrap();
+            let mut item = luciddesk_core::DesktopItem::new(ShellIdentity::FileSystem {path, volume_id:None, file_id:None}, name);
+            item.set_placement(DesktopPlacement::Pane { pane_id:PanelId::new(1), position:GridPosition::new(index as u32,0) });
+            items.push(item);
+        }
+        state.workspace.reconcile_desktop_items(items);
+        let mut snapshot = Snapshot::new();
+        let base = snapshot.respond(&mut state, &request("workspace.get")).context.unwrap();
+        let mut req = request("plan.preview");
+        req.plan = Some(serde_json::from_value(json!({"protocol_version":1,"base":base,"operations":[{"op":"pane.sort","pane_id":"1","sort_column":"size"}]})).unwrap());
+        let writes = state.store.change_count();
+        let original = state.workspace.clone();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let response = snapshot.respond(&mut state, &req);
+            if response.ok { break; }
+            assert_eq!(response.error.unwrap().code, "SORT_METADATA_PENDING");
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let next = &snapshot.plans.pending.back().unwrap().next;
+        assert_eq!(ordered_desktop_items(next, PanelId::new(1)).iter().map(|i|i.display_name()).collect::<Vec<_>>(), ["Small.txt","Medium.txt","Large.lnk"]);
+        assert_eq!(state.workspace, original);
+        assert_eq!(state.store.change_count(), writes);
+    }
+
+    #[test]
+    fn all_metadata_columns_have_explicit_stable_directions() {
+        let mut state = super::super::super::tests::test_state();
+        let mut snapshot = Snapshot::new();
+        let base = snapshot.respond(&mut state, &request("workspace.get")).context.unwrap();
+        let metadata: HashMap<_, _> = state.workspace.desktop_items().iter().map(|item| {
+            let rank = match item.display_name() { "A" => 3, "B" => 1, _ => 2 };
+            (item.identity().persistent_key(), ItemDetails { kind: rank.to_string(), size: Some(rank),
+                modified_time: Some(std::time::UNIX_EPOCH + Duration::from_secs(rank)), ..Default::default() })
+        }).collect();
+        for column in ["type", "size", "modified"] {
+            for descending in [false, true] {
+                let plan = serde_json::from_value(json!({"protocol_version":1,"base":base,
+                    "operations":[{"op":"pane.sort","pane_id":"1","sort_column":column,"descending":descending}]})).unwrap();
+                let prepared = prepare(&state.workspace, &state.store, &plan, &snapshot.item_ids,
+                    &luciddesk_window::enumerate_monitors(), &super::content_layout::snapshots(&state),
+                    &super::geometry::observe_layout(&state), Some(&metadata)).unwrap();
+                let actual: Vec<_> = ordered_desktop_items(&prepared.next, PanelId::new(1)).iter().map(|i| i.display_name().to_owned()).collect();
+                assert_eq!(actual, if descending { ["A","C","B"] } else { ["B","C","A"] }, "{column}, descending={descending}");
+            }
+        }
+    }
     use super::*;
     fn request(command: &str) -> Request {
         serde_json::from_value(
@@ -1313,7 +1478,7 @@ mod tests {
         let data = snapshot.respond(&mut state, &request("workspace.get"));
         let items = &data.data.as_ref().unwrap()["items"];
         let plan:Plan=serde_json::from_value(json!({"protocol_version":1,"base":data.context,"operations":[{"op":"pane.create","ref":"new","title":"new"},{"op":"item.assign","pane_ref":"new","item_ids":[items[0]["id"]]}]})).unwrap();
-        let prepared = prepare(&state.workspace, &state.store, &plan, &snapshot.item_ids, &luciddesk_window::enumerate_monitors(), &super::content_layout::snapshots(&state), &super::geometry::observe_layout(&state)).unwrap();
+        let prepared = prepare(&state.workspace, &state.store, &plan, &snapshot.item_ids, &luciddesk_window::enumerate_monitors(), &super::content_layout::snapshots(&state), &super::geometry::observe_layout(&state), None).unwrap();
         assert_eq!(
             prepared.next.desktop_items()[2],
             original.desktop_items()[2]

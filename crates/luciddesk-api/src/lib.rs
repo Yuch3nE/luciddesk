@@ -39,6 +39,7 @@ pub const OPERATIONS: &[&str] = &[
     "item.assign",
     "item.release",
     "item.reorder",
+    "item.position",
     "settings.update",
     "tab.merge",
     "tab.select",

@@ -10,6 +10,12 @@ pub(super) fn flag(flag: &str) -> Option<&'static str> {
     Some(match flag {
         "--target" => "target_pane_id",
         "--descending" => "descending",
+        "--sort-column" => "sort_column",
+        "--auto-compact" => "auto_compact",
+        "--align-icons-to-grid" => "align_icons_to_grid",
+        "--item-id" => "item_id",
+        "--column" => "column",
+        "--row" => "row",
         "--side" => "side",
         "--align" => "align",
         "--max-rows" => "max_rows",
@@ -37,6 +43,7 @@ pub(super) fn flag(flag: &str) -> Option<&'static str> {
 pub(super) fn value(flag_name: &str, raw: &str) -> Result<(String, Value), String> {
     let key = flag(flag_name).ok_or("unknown shortcut option")?;
     let value = match key {
+        "column" | "row" => json!(raw.parse::<u32>().map_err(|_| format!("{flag_name} expects a nonnegative integer"))?),
         "max_rows" => json!(
             raw.parse::<u32>()
                 .ok()
@@ -49,7 +56,7 @@ pub(super) fn value(flag_name: &str, raw: &str) -> Result<(String, Value), Strin
                 .filter(|n| (1..=64).contains(n))
                 .ok_or("--icon-columns expects 1..64")?
         ),
-        "descending" | "locked" | "auto_hide" | "collapsed" | "always_on_top" | "list_view" | "enabled" => json!(
+        "auto_compact" | "align_icons_to_grid" | "descending" | "locked" | "auto_hide" | "collapsed" | "always_on_top" | "list_view" | "enabled" => json!(
             raw.parse::<bool>()
                 .map_err(|_| format!("{flag_name} expects true or false"))?
         ),
@@ -132,7 +139,7 @@ fn execute(
         return if options.request.command == "plan.apply" {
             submit(&options.request, options.timeout, &mut call)
         } else {
-            call(&options.request, options.timeout)
+            preview_call(&options.request, options.timeout, &mut call)
         };
     };
     let mut query = options.request.clone();
@@ -162,7 +169,7 @@ fn execute(
         base: context,
         operations: vec![operation.clone()],
     });
-    let prepared = call(&preview, options.timeout);
+    let prepared = preview_call(&preview, options.timeout, &mut call);
     if !prepared.ok || options.dry_run {
         return prepared;
     }
@@ -185,6 +192,18 @@ fn execute(
 }
 
 // Direct and shortcut submissions share the same replay contract, even on timeout.
+fn preview_call(request: &Request, timeout: Duration, call: &mut impl FnMut(&Request, Duration) -> Response) -> Response {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        let response = call(request, remaining);
+        if request.command != "plan.preview" || !response.error.as_ref().is_some_and(|e| e.code == "SORT_METADATA_PENDING") || remaining <= Duration::from_millis(50) {
+            return response;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
 fn submit(
     request: &Request,
     timeout: Duration,
@@ -213,6 +232,41 @@ fn submit(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn arrangement_sort_and_position_flags_are_typed() {
+        assert!(matches!(parse_words(&["pane","update","--id","1","--auto-compact","false","--align-icons-to-grid","false"]).operation,
+            Some(Operation::Update { auto_compact: Some(false), align_icons_to_grid: Some(false), .. })));
+        assert!(matches!(parse_words(&["pane","sort","--id","1","--sort-column","size"]).operation,
+            Some(Operation::Sort { sort_column: luciddesk_api::FolderColumn::Size, descending: false, .. })));
+        assert!(matches!(parse_words(&["item","position","--pane","1","--item-id","abc","--column","2","--row","3"]).operation,
+            Some(Operation::Position { column: Some(2), row: Some(3), .. })));
+        for words in ["pane sort --id 1 --sort-column unknown", "pane update --id 1 --auto-compact yes", "item position --pane 1 --item-id abc --column -1 --row 0"] {
+            assert!(parse(words.split_whitespace().map(OsString::from).collect()).is_err());
+        }
+    }
+
+    #[test]
+    fn pending_metadata_retries_only_the_same_pure_preview() {
+        let mut req = parse_words(&["workspace", "get"]).request;
+        req.command = "plan.preview".into();
+        let mut calls = 0;
+        let result = preview_call(&req, Duration::from_secs(1), &mut |request, _| {
+            assert_eq!(request.request_id, req.request_id);
+            assert_eq!(request.command, "plan.preview");
+            calls += 1;
+            if calls == 1 { Response::failure(&request.request_id, "SORT_METADATA_PENDING", "pending") }
+            else { Response::success(&request.request_id, json!({}), json!({"plan_token":"ready"})) }
+        });
+        assert!(result.ok);
+        assert_eq!(calls, 2);
+        let mut calls = 0;
+        let result = preview_call(&req, Duration::ZERO, &mut |request, _| {
+            calls += 1;
+            Response::failure(&request.request_id, "SORT_METADATA_PENDING", "pending")
+        });
+        assert!(!result.ok);
+        assert_eq!(calls, 1);
+    }
     fn parse_words(words: &[&str]) -> Options {
         parse(words.iter().map(OsString::from).collect()).unwrap()
     }

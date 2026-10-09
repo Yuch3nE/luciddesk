@@ -397,6 +397,12 @@
                   },
                   "always_on_top": {
                     "type": "boolean"
+                  },
+                  "auto_compact": {
+                    "type": "boolean"
+                  },
+                  "align_icons_to_grid": {
+                    "type": "boolean"
                   }
                 },
                 "minProperties": 3
@@ -1078,8 +1084,102 @@
                   "descending": {
                     "type": "boolean",
                     "default": false
+                  },
+                  "sort_column": {
+                    "type": "string",
+                    "enum": [
+                      "name",
+                      "modified",
+                      "type",
+                      "size"
+                    ],
+                    "default": "name"
                   }
                 }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "op",
+                  "pane_id",
+                  "item_id"
+                ],
+                "properties": {
+                  "op": {
+                    "const": "item.position"
+                  },
+                  "pane_id": {
+                    "type": "string",
+                    "pattern": "^[1-9][0-9]*$"
+                  },
+                  "item_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "column": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10000
+                  },
+                  "row": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10000
+                  },
+                  "x": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1000000
+                  },
+                  "y": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1000000
+                  }
+                },
+                "oneOf": [
+                  {
+                    "required": [
+                      "column",
+                      "row"
+                    ],
+                    "not": {
+                      "anyOf": [
+                        {
+                          "required": [
+                            "x"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "y"
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "required": [
+                      "x",
+                      "y"
+                    ],
+                    "not": {
+                      "anyOf": [
+                        {
+                          "required": [
+                            "column"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "row"
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                ]
               }
             ]
           }

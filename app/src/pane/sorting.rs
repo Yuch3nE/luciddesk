@@ -5,7 +5,7 @@ pub(super) fn apply(workspace: &mut Workspace, id: PanelId, descending: bool) ->
     apply_order(workspace, id, descending, None)
 }
 
-fn apply_order(workspace: &mut Workspace, id: PanelId, descending: bool, ranks: Option<&HashMap<String, usize>>) -> Result<bool, String> {
+pub(super) fn apply_order(workspace: &mut Workspace, id: PanelId, descending: bool, ranks: Option<&HashMap<String, usize>>) -> Result<bool, String> {
     let panel = workspace.panel(id).ok_or("panel does not exist")?;
     if !panel.supports_tabs() { return Err("only desktop panels support name sorting".into()); }
     if panel.locked() { return Err("panel is locked".into()); }
@@ -187,7 +187,7 @@ pub(super) fn finish_move(state: &mut PaneApp, before: Workspace, source: PanelI
     Ok(())
 }
 
-fn file_details(identity: &ShellIdentity) -> ItemDetails {
+pub(super) fn file_details(identity: &ShellIdentity) -> ItemDetails {
     let ShellIdentity::FileSystem { path, .. } = identity else { return ItemDetails::default(); };
     let Ok(metadata) = std::fs::symlink_metadata(path) else { return ItemDetails::default(); };
     let mut details = ItemDetails {

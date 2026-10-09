@@ -48,6 +48,10 @@ pub(super) fn attach(response: &mut Response, request: &Request, timeout: Durati
     let inspect = || args(request, timeout, &["workspace", "get"]);
     let step = if let Some(error) = error {
         match error {
+            "SORT_METADATA_PENDING" => json!({"action":"wait_and_preview", "automatic_retry":false,
+                "args":args(request, timeout, &["plan","preview","--input","-","--request-id",&response.request_id]),
+                "stdin_json":data.and_then(|d|d.pointer("/pending_preview/plan")),
+                "note":"Preview only; no commit occurred. Retry within a deadline using the same plan and request ID."}),
             "TIMEOUT" | "TRANSPORT_ERROR"
                 if request.command == "plan.apply"
                     || data.is_some_and(|data| data.get("recovery").is_some()) =>
@@ -94,6 +98,23 @@ mod tests {
 
     fn options(command: &str) -> crate::Options {
         crate::parse(command.split_whitespace().map(OsString::from).collect()).unwrap()
+    }
+
+    #[test]
+    fn pending_sort_continuation_preserves_preview_id_and_plan() {
+        let options = options("pane sort --id 1 --sort-column size --dry-run");
+        let plan = json!({"protocol_version":1,"base":{"instance_id":"app","state_version":"1","inventory_version":"1","topology_token":"1"},
+            "operations":[{"op":"pane.sort","pane_id":"1","sort_column":"size"}]});
+        let mut response = Response::failure("metadata-preview", "SORT_METADATA_PENDING", "pending");
+        response.data = Some(json!({"pending_preview":{"request_id":"metadata-preview","plan":plan}}));
+        attach(&mut response, &options.request, options.timeout);
+        let step = &response.data.as_ref().unwrap()["next_step"];
+        assert_eq!(step["action"], "wait_and_preview");
+        assert_eq!(step["stdin_json"], plan);
+        let args: Vec<_> = step["args"].as_array().unwrap().iter().map(|v|v.as_str().unwrap()).collect();
+        assert!(args.windows(2).any(|p|p == ["--request-id", "metadata-preview"]));
+        assert_eq!(&args[..2], ["plan", "preview"]);
+        assert_eq!(step["automatic_retry"], false);
     }
 
     #[test]
