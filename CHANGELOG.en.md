@@ -2,11 +2,11 @@
 
 [简体中文](CHANGELOG.md) · English
 
-Current version: **0.20.2**. Features and fixes by release.
+Current version: **0.20.3**. Features and fixes by release.
 
 Exit the app before upgrading a portable installation and preserve its `data` folder. See the [portable guide](docs/portable.md) (Chinese).
 
-## Unreleased
+## 0.20.3 · 2026-10-09
 
 ### fix
 
