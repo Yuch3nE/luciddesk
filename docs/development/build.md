@@ -25,6 +25,8 @@ $env:LUCIDDESK_DATA_DIR = Join-Path $PWD 'target\dev-data'
 
 默认 feature 集为空，应用使用 `FilterSession` 与独立 Shell 菜单。诊断功能按需启用，发布包使用默认功能集。
 
+Release 在工作区 `Cargo.toml` 中统一启用 Thin LTO 和 `codegen-units = 1`，本地、安装包与 CI 共用，优化级别仍为默认的 3。此配置减少发布二进制体积，但会增加优化与链接时间；Debug 配置不受影响。PDB 是独立调试符号，不随安装包分发，不能将其大小计入 EXE。
+
 运行验证后移除临时环境变量：
 
 ```powershell
