@@ -232,7 +232,7 @@ mod padding_tests {
     #[test]
     #[ignore = "Read-only diagnostic for the reported Downloads executable"]
     fn reported_executable_has_visible_icon() {
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let pixels = load(&ShellIdentity::FileSystem {
             path: std::path::PathBuf::from(r"C:\Users\Yuchen\Downloads\Fences6_setup.exe"),
             volume_id: None, file_id: None,
@@ -245,7 +245,7 @@ mod padding_tests {
     #[test]
     #[ignore = "Read-only icon diagnostic; set LUCIDDESK_TEST_FOLDER and LUCIDDESK_ICON_OUTPUT"]
     fn downloads_icons_preserve_transparency_and_fill_the_canvas() {
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let root = std::path::PathBuf::from(std::env::var_os("LUCIDDESK_TEST_FOLDER").unwrap());
         let output = std::path::PathBuf::from(std::env::var_os("LUCIDDESK_ICON_OUTPUT").unwrap());
         std::fs::create_dir_all(&output).unwrap();
@@ -286,7 +286,7 @@ mod padding_tests {
 
     #[test]
     fn recycle_states_have_distinct_high_resolution_pixels() {
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let empty = recycle_state_icon(false, 128).unwrap();
         let full = recycle_state_icon(true, 128).unwrap();
         assert_eq!((empty.width, empty.height), (128, 128));

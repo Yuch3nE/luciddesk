@@ -791,7 +791,7 @@ mod tests {
 
     #[test]
     fn tabs_share_one_window_keep_selection_and_release_only_closed_membership() {
-        let _apartment = ShellApartment::initialize_sta().unwrap();
+        let _apartment = crate::pane::test_support::apartment();
         let state = Rc::new(RefCell::new(super::super::tests::test_state()));
         state
             .borrow_mut()

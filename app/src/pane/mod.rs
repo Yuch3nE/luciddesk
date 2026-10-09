@@ -615,6 +615,8 @@ fn transfer_many(
 mod tests;
 
 
+#[cfg(test)]
+pub(crate) mod test_support;
 fn load_log_level(store: &WorkspaceStore) -> Result<(), String> {
     let value = store.preference("log_level").map_err(|e| e.to_string())?.unwrap_or_else(|| "error".into());
     luciddesk_diagnostics::set_level(luciddesk_diagnostics::Level::parse(&value));

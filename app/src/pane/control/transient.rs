@@ -158,7 +158,7 @@ mod tests {
     use super::*;
     #[test]
     fn navigation_and_search_are_transient_and_search_generation_is_observable() {
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let root = tempfile::tempdir().unwrap();
         let child = root.path().join("child");
         std::fs::create_dir(&child).unwrap();

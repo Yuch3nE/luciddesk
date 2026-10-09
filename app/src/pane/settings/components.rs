@@ -614,7 +614,7 @@ mod cache_tests {
     use super::*;
     #[test]
     fn dropping_settings_painter_releases_text_metrics_and_capacity() {
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let painter = super::super::Painter::new().unwrap();
         measured_text("Settings cache lifetime", 14.0, 300.0);
         assert!(METRICS.with(|cache| !cache.borrow().is_empty()));

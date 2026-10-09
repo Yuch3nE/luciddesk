@@ -195,7 +195,7 @@ mod tests {
     use super::*;
     #[test]
     fn motions_share_clock_and_release_engine_when_settled() {
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let now = Instant::now();
         let mut a = Motion::settled(0.0, now);
         let mut b = Motion::settled(1.0, now);
@@ -218,7 +218,7 @@ mod tests {
 
     #[test]
     fn animation_manager_fade_handles_midpoint_delays_and_disabled_animation() {
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let fade = Fade::new(Duration::from_millis(120)).unwrap();
         assert_eq!(fade.sample(Duration::ZERO).unwrap(), 0.0);
         assert!(fade.sample(Duration::from_millis(60)).unwrap() > 0.5);
@@ -228,7 +228,7 @@ mod tests {
     }
     #[test]
     fn interrupted_fold_reverses_without_a_position_jump() {
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let started = Instant::now();
         let duration = Duration::from_millis(200);
         let fold = Fold::new(400.0, 38.0, 1.0, 0.0, started, duration);

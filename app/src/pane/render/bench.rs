@@ -7,7 +7,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::*;
 #[test]
 #[ignore = "Manual GPU benchmark; timings are not CI assertions"]
 fn warm_pane_draw_latency() {
-    let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _sta = crate::pane::test_support::apartment();
     let _graphics = crate::pane::native_graphics::GraphicsLifetime;
     let device = crate::pane::native_graphics::gpu_device().unwrap();
     let surface = crate::pane::canvas::Offscreen::new(&device, 640, 480).unwrap();
@@ -41,7 +41,7 @@ fn warm_pane_draw_latency() {
 #[test]
 #[ignore = "Shows four GPU windows; run alone on an interactive desktop"]
 fn multi_window_render_latency() {
-    let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _sta = crate::pane::test_support::apartment();
     let start = Instant::now();
     let mut windows = Vec::new();
     let mut surfaces = Vec::new();

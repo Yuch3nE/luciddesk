@@ -2,7 +2,7 @@
 #[ignore = "Activates real windows; run alone in an interactive desktop session"]
 fn editor_click_raises_search_among_panes_but_hotkey_stays_on_desktop() {
     use super::*;
-    let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _sta = crate::pane::test_support::apartment();
     let state = Rc::new(RefCell::new(super::super::tests::test_state()));
     super::super::handle(&state, luciddesk_core::PanelId::new(0), Event::EnableSearch).unwrap();
     let hwnd = state.borrow().views[0].window.hwnd().cast();
@@ -215,7 +215,7 @@ fn full_path_tooltip_updates_and_releases_native_window() {
 
 #[test]
 fn clear_button_keeps_fixed_input_and_ime_escape_is_not_intercepted() {
-    let _apartment = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _apartment = crate::pane::test_support::apartment();
     let app = Rc::new(RefCell::new(super::super::tests::test_state()));
     super::super::handle(&app, luciddesk_core::PanelId::new(0), Event::EnableSearch).unwrap();
     let hwnd = app.borrow().views[0].window.hwnd().cast();
@@ -308,7 +308,7 @@ fn keyboard_range_extension_keeps_disjoint_selection_and_ctrl_only_focus() {
 }
 #[test]
 fn input_colors_survive_owner_callback_reentry() {
-    let _apartment = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _apartment = crate::pane::test_support::apartment();
     const REENTER: u32 = WM_APP + 121;
     let owner = windows_window::Window::new("Search color regression")
         .on_message(|raw, msg, wp, _| {
@@ -347,7 +347,7 @@ fn input_colors_survive_owner_callback_reentry() {
 #[test]
 #[ignore = "requires Everything and an interactive desktop"]
 fn live_compact_query_and_clear() {
-    let _apartment = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _apartment = crate::pane::test_support::apartment();
     let app = Rc::new(RefCell::new(super::super::tests::test_state()));
     app.borrow_mut().workspace.set_appearance(
         luciddesk_core::PanelTheme::Dark,
@@ -458,7 +458,7 @@ fn live_compact_query_and_clear() {
 
 #[test]
 fn compact_render_keeps_rows_and_border_inside_the_pane() {
-    let _apartment = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _apartment = crate::pane::test_support::apartment();
     let app = Rc::new(RefCell::new(super::super::tests::test_state()));
     app.borrow_mut().workspace.set_appearance(
         luciddesk_core::PanelTheme::Dark,
@@ -499,7 +499,9 @@ fn compact_render_keeps_rows_and_border_inside_the_pane() {
     }
     resize(hwnd, &mut state);
     let mut drawing = Drawing::new(hwnd).unwrap();
-    drawing.paint(hwnd, &model, &state).unwrap();
+    // Present rotates this flip-model swap chain. Capture after rasterization,
+    // before submitting it; buffer zero after Present belongs to the next frame.
+    assert!(drawing.draw_frame(hwnd, &model, &state).unwrap());
     let pixels = drawing.surface.readback().unwrap();
     let mut r = RECT::default();
     unsafe {
@@ -511,6 +513,19 @@ fn compact_render_keeps_rows_and_border_inside_the_pane() {
             .chunks_exact(4)
             .any(|p| p[0] > 180 && p[1] > 180 && p[2] > 180 && p[3] > 200)
     );
+    // Both result names must appear in their own rows, not merely in a status
+    // label or the input's separately drawn native EDIT window.
+    let dpi = scale(hwnd);
+    for row in 0..2 {
+        let top = ((TOP + ROW_INSET + row as f32 * ROW + 2.0) * dpi).floor() as usize;
+        let bottom = ((TOP + ROW_INSET + row as f32 * ROW + 24.0) * dpi).ceil() as usize;
+        let left = (46.0 * dpi).floor() as usize;
+        let right = (r.right as f32 - 18.0 * dpi).floor() as usize;
+        assert!((top..bottom).any(|y| (left..right).any(|x| {
+            let p = &pixels[(y * r.right as usize + x) * 4..][..4];
+            p[0] > 180 && p[1] > 180 && p[2] > 180 && p[3] > 200
+        })), "missing text in result row {row}");
+    }
     if let Some(dir) = std::env::var_os("LUCIDDESK_RENDER_OUTPUT") {
         let dir = std::path::PathBuf::from(dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -556,7 +571,7 @@ fn compact_render_keeps_rows_and_border_inside_the_pane() {
                     state.hovered = Some(1);
                 }
                 resize(hwnd, &mut state);
-                drawing.paint(hwnd, &model, &state).unwrap();
+                assert!(drawing.draw_frame(hwnd, &model, &state).unwrap());
                 let pixels = drawing.surface.readback().unwrap();
                 unsafe {
                     GetClientRect(hwnd, &raw mut r);

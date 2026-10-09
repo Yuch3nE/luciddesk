@@ -139,7 +139,7 @@ mod tests {
 
     #[test]
     fn repeated_show_and_move_preserve_visible_surface_opacity() {
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let window = windows_window::Window::new("Visibility regression")
             .size(96, 64).style(WS_POPUP)
             .ex_style(WS_EX_TOOLWINDOW | WS_EX_NOREDIRECTIONBITMAP)

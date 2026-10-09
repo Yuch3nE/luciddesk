@@ -226,7 +226,7 @@ mod tests {
     fn marquee_window_messages_commit_cancel_and_ignore_mapped_folders() {
         use std::{cell::RefCell, rc::Rc};
         use windows_sys::Win32::UI::WindowsAndMessaging::*;
-        let _apartment = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _apartment = crate::pane::test_support::apartment();
         let model = Rc::new(RefCell::new(model()));
         let pane = super::super::window::create(
             RectDip {

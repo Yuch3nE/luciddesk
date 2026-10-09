@@ -15,7 +15,7 @@ fn solid_defaults_follow_theme_until_a_color_is_saved() {
 
 #[test]
 fn changing_font_releases_app_before_editor_destruction() {
-    let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _sta = crate::pane::test_support::apartment();
     let state = Rc::new(RefCell::new(super::super::tests::test_state()));
     create_view(&state, PanelId::new(1)).unwrap();
     let mut cancelled = 0;
@@ -376,7 +376,7 @@ fn switch_thumb_stays_centered_with_equal_end_insets() {
 #[test]
 fn switch_motion_reverses_continuously_and_respects_disabled_animation() {
     let now = std::time::Instant::now();
-    let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _sta = crate::pane::test_support::apartment();
     let mut motion = ToggleMotion::settled(0.0, now);
     assert_eq!(motion.retarget(1.0, now, true), 0.0);
     let halfway = now + std::time::Duration::from_millis(80);
@@ -424,7 +424,7 @@ fn custom_frame_keeps_caption_buttons_and_resize_edges_separate() {
 }
 #[test]
 fn settings_layout_and_rendering_at_multiple_scales() {
-    let _apartment = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _apartment = crate::pane::test_support::apartment();
     let painter = Painter::new().unwrap();
     let export_snapshots = std::env::var_os("LUCIDDESK_TEST_EXPORT_SNAPSHOTS").is_some();
     {
@@ -894,7 +894,7 @@ fn color_channel_titles_align_with_slider_centers() {
 
 #[test]
 fn material_choices_reach_the_preview_with_their_strength() {
-    let _apartment = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _apartment = crate::pane::test_support::apartment();
     let painter = Painter::new().unwrap();
     let device = windows_canvas::GpuDevice::new_warp().unwrap();
     for dark in [false, true] {
@@ -975,7 +975,7 @@ fn material_choices_reach_the_preview_with_their_strength() {
 
 #[test]
 fn corner_slider_drags_to_both_limits_and_saves() {
-    let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _sta = crate::pane::test_support::apartment();
     let state = Rc::new(RefCell::new(super::super::tests::test_state()));
     state.borrow_mut().workspace.set_appearance(PanelTheme::Dark, Backdrop::Mica);
     show(&state, PanelId::new(1)).unwrap();
@@ -1126,7 +1126,7 @@ pub(in crate::pane) fn solid_settings_edit_preview_save_and_remember_style() {
 
 #[test]
 fn all_languages_layout_and_render_without_control_overflow() {
-    let _apartment = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _apartment = crate::pane::test_support::apartment();
     let device = windows_canvas::GpuDevice::new_warp().unwrap();
     for locale in 0..7 {
         crate::i18n::with_locale(locale, || {
@@ -1253,7 +1253,7 @@ fn font_list_scroll_keeps_search_and_current_font_fixed() {
 #[test]
 #[ignore = "Native composition window; run alone to isolate STA graphics lifetime"]
 fn native_font_search_tracks_window_and_handles_clear_and_page_leave() {
-    let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _sta = crate::pane::test_support::apartment();
     let state = Rc::new(RefCell::new(super::super::tests::test_state()));
     show(&state, PanelId::new(1)).unwrap();
     let hwnd = state.borrow().settings.as_ref().unwrap().hwnd().cast();

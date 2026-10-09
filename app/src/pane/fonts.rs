@@ -284,7 +284,7 @@ mod tests {
     }
     #[test]
     fn font_switch_updates_live_layout_persists_and_missing_fonts_fall_back() {
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         struct Restore(String);
         impl Drop for Restore {
             fn drop(&mut self) {

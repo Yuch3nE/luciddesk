@@ -849,7 +849,7 @@ mod tests {
 
     #[test]
     fn settings_icon_upload_is_reused_and_released_when_not_visible() {
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let device = windows_canvas::GpuDevice::new_warp().unwrap();
         let first = super::super::super::canvas::Offscreen::new(&device, 800, 600).unwrap();
         let second = super::super::super::canvas::Offscreen::new(&device, 800, 600).unwrap();

@@ -508,7 +508,7 @@ pub(super) fn supervisor(state: &Rc<RefCell<PaneApp>>) -> Result<windows_window:
 mod tests {
     #[test]
     fn saved_language_notifies_open_windows_without_restart() {
-        let _apartment = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _apartment = crate::pane::test_support::apartment();
         crate::i18n::with_locale(0, || {
             let state = Rc::new(RefCell::new(super::super::tests::test_state()));
             let observed = Rc::new(std::cell::Cell::new(false));
@@ -634,7 +634,7 @@ mod tests {
 
     #[test]
     fn suspended_desktop_preserves_membership_and_independent_panes() {
-        let _sta = ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let state = Rc::new(RefCell::new(super::super::tests::test_state()));
         create_view(&state, PanelId::new(1)).unwrap();
         handle(

@@ -129,7 +129,7 @@ mod tests {
 
     #[test]
     fn hides_badge_and_caption_then_restores_source_description() {
-        let _apartment = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _apartment = crate::pane::test_support::apartment();
         let data: IDataObject = unsafe { SHCreateDataObject(None, None, None).unwrap() };
         let mut original = DROPDESCRIPTION {
             r#type: DROPIMAGE_LINK,

@@ -18,7 +18,7 @@ mod tests {
 
     #[test]
     fn deferred_search_frame_keeps_pending_redraw_until_it_is_painted() {
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let window = windows_window::Window::new("Search frame retry").size(320, 200)
             .style(WS_POPUP).ex_style(WS_EX_NOREDIRECTIONBITMAP).create().unwrap();
         let hwnd = window.hwnd().cast();
@@ -67,6 +67,19 @@ impl Drawing {
         })
     }
     pub(super) fn paint(
+        &mut self,
+        hwnd: HWND,
+        model: &GroupModel,
+        state: &Search,
+    ) -> Result<bool, String> {
+        if !self.draw_frame(hwnd, model, state)? { return Ok(false); }
+        self.surface.end_frame().map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+
+    /// Rasterize without presenting so pixel tests can inspect the completed
+    /// back buffer before DXGI rotates it to the next frame.
+    pub(super) fn draw_frame(
         &mut self,
         hwnd: HWND,
         model: &GroupModel,
@@ -328,7 +341,6 @@ impl Drawing {
             target.finish()
         })
         .map_err(|e| e.to_string())?;
-        self.surface.end_frame().map_err(|e| e.to_string())?;
         Ok(true)
     }
 }

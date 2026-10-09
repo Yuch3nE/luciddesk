@@ -67,7 +67,7 @@ mod tests {
 
     #[test]
     fn failed_resources_are_dropped_and_retries_stop_until_external_redraw() {
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let window = windows_window::Window::new("Recovery test").size(96, 64)
             .style(WS_POPUP).create().unwrap();
         let hwnd = window.hwnd().cast();
@@ -93,7 +93,7 @@ mod tests {
 
     #[test]
     fn early_callback_preserves_wakeup_and_deferred_frames_do_not_reset_recovery() {
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let window = windows_window::Window::new("Recovery wakeup test").size(96, 64)
             .style(WS_POPUP).create().unwrap();
         let hwnd = window.hwnd().cast();

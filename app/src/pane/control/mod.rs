@@ -431,7 +431,7 @@ mod integration_tests {
     use super::*;
     #[test]
     fn committed_tab_selection_reuses_window_and_detach_restores_cached_content() {
-        let _sta=luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta=crate::pane::test_support::apartment();
         let app=super::super::tests::test_state();
         let state=Rc::new(RefCell::new(app));
         create_view(&state,PanelId::new(1)).unwrap();
@@ -460,7 +460,7 @@ mod integration_tests {
 
     #[test]
     fn presentation_removes_windows_without_resetting_transient_collapse() {
-        let _sta=luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta=crate::pane::test_support::apartment();
         let mut app=super::super::tests::test_state();
         app.workspace.panel_mut(PanelId::new(1)).unwrap().set_auto_hide(true);
         let state=Rc::new(RefCell::new(app));create_view(&state,PanelId::new(1)).unwrap();
@@ -479,7 +479,7 @@ mod integration_tests {
 
     #[test]
     fn pipe_query_runs_on_ui_thread_without_persistence() {
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let mut app = super::super::tests::test_state();
         app.store.save_workspace(&app.workspace).unwrap();
         let before = app.store.change_count();

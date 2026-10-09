@@ -44,7 +44,7 @@ mod search_lifecycle_tests {
     use super::*;
     #[test]
     fn failed_enable_save_releases_state_before_removing_window() {
-        let _apartment = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _apartment = crate::pane::test_support::apartment();
         let state = Rc::new(RefCell::new(crate::pane::tests::test_state()));
         let id = PanelId::new(1);
         let result = enable_search_view_with(&state, id, create_view, |_| {
@@ -57,7 +57,7 @@ mod search_lifecycle_tests {
     }
     #[test]
     fn failed_search_window_can_be_enabled_again() {
-        let _apartment = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _apartment = crate::pane::test_support::apartment();
         let state = Rc::new(RefCell::new(crate::pane::tests::test_state()));
         state.borrow_mut().workspace.set_appearance(
             luciddesk_core::PanelTheme::Dark,

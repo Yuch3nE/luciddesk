@@ -130,7 +130,7 @@ mod tests {
 
     #[test]
     fn legacy_host_entry_accepts_a_native_window() {
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let window = windows_window::Window::new("Host backdrop compatibility")
             .size(96, 64)
             .style(windows_sys::Win32::UI::WindowsAndMessaging::WS_POPUP)

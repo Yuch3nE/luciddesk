@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn new_item_is_selected_after_scan_and_stale_navigation_is_ignored() {
-    let _sta = ShellApartment::initialize_sta().unwrap();
+    let _sta = crate::pane::test_support::apartment();
     let root = tempfile::tempdir().unwrap();
     let id = PanelId::new(1);
     let state = Rc::new(RefCell::new(super::super::tests::test_state()));

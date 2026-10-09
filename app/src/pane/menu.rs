@@ -609,7 +609,7 @@ mod tests {
             unsafe { EnumThreadWindows(GetCurrentThreadId(), Some(visit), (&raw mut pair) as isize); }
             pair.1
         }
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         for keyboard in [false, true] {
             let stage = Rc::new(Cell::new(0));
             let observed = Rc::clone(&stage);
@@ -674,7 +674,7 @@ mod tests {
     #[test]
     #[ignore = "Opens a real menu; run in an interactive desktop session"]
     fn owner_menu_button_dismisses_without_rearming() {
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let clicks = Rc::new(Cell::new(0));
         let pulses = Rc::new(Cell::new(0));
         let topmost = Rc::new(Cell::new(false));
@@ -776,7 +776,7 @@ mod tests {
                 EnumThreadWindows(GetCurrentThreadId(), Some(close), 0);
             }
         }
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let owner = windows_window::Window::new("Menu lifecycle fixture")
             .style(WS_POPUP)
             .size(320, 240)

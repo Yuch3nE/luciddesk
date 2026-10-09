@@ -42,7 +42,7 @@ mod tests {
 
     #[test]
     fn palette_reuses_brushes_recolors_pixels_and_rebuilds_for_a_new_context() {
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let device = windows_canvas::GpuDevice::new_warp().unwrap();
         let first = canvas::Offscreen::new(&device, 4, 4).unwrap();
         let second = canvas::Offscreen::new(&device, 4, 4).unwrap();

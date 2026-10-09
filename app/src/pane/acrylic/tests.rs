@@ -3,7 +3,7 @@ use luciddesk_core::Backdrop;
 
 #[test]
 fn diagnostic_bypass_never_enables_host_or_wallpaper_backdrops() {
-    let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _sta = crate::pane::test_support::apartment();
     let window = windows_window::Window::new("Backdrop isolation")
         .size(96, 64)
         .style(windows_sys::Win32::UI::WindowsAndMessaging::WS_POPUP)
@@ -37,7 +37,7 @@ fn diagnostic_bypass_never_enables_host_or_wallpaper_backdrops() {
 
 #[test]
 fn missing_wallpaper_uses_acrylic_then_opaque_color_without_hiding_content() {
-    let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _sta = crate::pane::test_support::apartment();
     let window = windows_window::Window::new("Material fallback regression")
         .size(96, 64)
         .style(windows_sys::Win32::UI::WindowsAndMessaging::WS_POPUP)

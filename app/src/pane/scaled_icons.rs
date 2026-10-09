@@ -113,7 +113,7 @@ mod tests {
 
     #[test]
     fn repeated_sizes_reuse_exact_pixels_and_changed_sources_do_not() {
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let mut source = pixels(128);
         assert!(Arc::ptr_eq(&source, &resample(&source, 128, 128).unwrap()));
         let first = resample(&source, 48, 48).unwrap();

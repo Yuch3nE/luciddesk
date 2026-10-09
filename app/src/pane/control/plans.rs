@@ -720,7 +720,7 @@ mod tests {
     }
     #[test]
     fn folder_refresh_is_transient_and_invalidates_prepared_fit() {
-        let _sta=luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta=crate::pane::test_support::apartment();
         let root=tempfile::tempdir().unwrap();std::fs::write(root.path().join("one.txt"),"fixture").unwrap();
         let mut app=super::super::super::tests::test_state();
         app.workspace.panel_mut(PanelId::new(1)).unwrap().set_folder(Some(root.path().into()));
@@ -766,7 +766,7 @@ mod tests {
 
     #[test]
     fn snap_rejects_auto_hidden_windows_and_stale_native_preview() {
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let state = Rc::new(RefCell::new(super::super::super::tests::test_state()));
         create_view(&state, PanelId::new(1)).unwrap();
         let model = state.borrow().views[0].model.clone();
@@ -786,7 +786,7 @@ mod tests {
 
     #[test]
     fn auto_hide_interactions_preserve_preview_context_and_do_not_write() {
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let state = Rc::new(RefCell::new(super::super::super::tests::test_state()));
         let id = PanelId::new(1);
         create_view(&state, id).unwrap();

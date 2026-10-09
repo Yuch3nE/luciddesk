@@ -19,7 +19,7 @@ mod tests {
     use super::*;
     #[test]
     fn divider_setting_round_trips_and_changes_rendering_without_layout_changes() {
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         struct Restore(bool);
         impl Drop for Restore { fn drop(&mut self) { ENABLED.store(self.0, Ordering::Relaxed); } }
         let _restore = Restore(enabled());

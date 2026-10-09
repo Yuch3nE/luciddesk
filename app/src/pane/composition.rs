@@ -362,6 +362,8 @@ impl Surface {
         Ok(())
     }
 
+    /// Read the current back buffer after drawing, before end_frame/Present.
+    /// After Present, buffer zero may be the next frame rather than the one drawn.
     #[cfg(test)]
     pub fn readback(&self) -> Result<Vec<u8>> {
         unsafe {
@@ -425,7 +427,7 @@ pub(super) mod animation_tests {
     #[test]
     fn system_policy_changes_invalidate_cached_material_and_restore_effects() {
         use windows_sys::Win32::UI::WindowsAndMessaging::*;
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let window = windows_window::Window::new("System material fallback")
             .size(96, 64).style(WS_POPUP).ex_style(WS_EX_NOREDIRECTIONBITMAP)
             .create().unwrap();
@@ -452,7 +454,7 @@ pub(super) mod animation_tests {
     #[test]
     fn pane_surface_uses_requested_composition_tree() {
         use windows_sys::Win32::UI::WindowsAndMessaging::*;
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let window = windows_window::Window::new("Pane composition isolation")
             .size(240, 160).style(WS_POPUP).ex_style(WS_EX_NOREDIRECTIONBITMAP)
             .create().unwrap();
@@ -471,7 +473,7 @@ pub(super) mod animation_tests {
     #[test]
     fn flyout_material_and_content_share_the_rounded_clip() {
         use windows_sys::Win32::UI::WindowsAndMessaging::*;
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let window = windows_window::Window::new("Rounded flyout regression")
             .size(240, 160).style(WS_POPUP).ex_style(WS_EX_NOREDIRECTIONBITMAP)
             .create().unwrap();
@@ -494,7 +496,7 @@ pub(super) mod animation_tests {
 
     pub(crate) fn settings_content_survives_material_changes_and_resize() {
         use windows_sys::Win32::UI::WindowsAndMessaging::*;
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let window = windows_window::Window::new("Settings composition regression")
             .size(240, 160)
             .style(WS_POPUP)
@@ -573,7 +575,7 @@ pub(super) mod animation_tests {
     #[test]
     fn warp_surface_draws_resizes_and_defers_without_losing_the_wakeup() {
         use windows_sys::Win32::UI::WindowsAndMessaging::*;
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let window = windows_window::Window::new("WARP rendering regression")
             .size(96, 64)
             .style(WS_POPUP)
@@ -635,7 +637,7 @@ pub(super) mod animation_tests {
 
     #[test]
     fn fade_applies_to_native_material_and_finishes_after_a_delayed_tick() {
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let window = windows_window::Window::new("Fade integration")
             .size(240, 160)
             .style(windows_sys::Win32::UI::WindowsAndMessaging::WS_POPUP)

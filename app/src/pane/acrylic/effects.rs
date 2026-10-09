@@ -238,7 +238,7 @@ mod tests {
                 .unwrap()
                 .0 as usize
         });
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         for dark in [false, true] {
             let (base, tint) = mica_palette(dark, false);
             let (alt_base, alt) = mica_palette(dark, true);

@@ -244,7 +244,7 @@ mod tests {
     }
     #[test]
     fn drop_commits_only_after_shell_helper_cleanup() {
-        let _apartment = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _apartment = crate::pane::test_support::apartment();
         for accepted in [true, false] {
             let events = Rc::new(RefCell::new(Vec::new()));
             let observed = events.clone();
@@ -275,7 +275,7 @@ mod tests {
 
     #[test]
     fn drag_image_helper_receives_screen_coordinates_and_full_lifecycle() {
-        let _apartment = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _apartment = crate::pane::test_support::apartment();
         let events = Rc::new(RefCell::new(Vec::new()));
         let target: IDropTarget = Target {
             effect: DROPEFFECT_LINK,

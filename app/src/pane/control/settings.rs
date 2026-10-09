@@ -191,7 +191,7 @@ mod tests {
     use super::*;
     #[test]
     fn settings_refresh_keeps_windows_and_transient_collapse_without_extra_writes() {
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("workspace.db");
         let mut app = super::super::super::tests::test_state();

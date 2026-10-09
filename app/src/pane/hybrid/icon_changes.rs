@@ -193,7 +193,7 @@ mod tests {
     }
     #[test]
     fn copied_shell_notification_refreshes_only_its_namespace_item() {
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let recycle = "::{645FF040-5081-101B-9F08-00AA002F954E}";
         let computer = "::{20D04FE0-3AEA-1069-A2D8-08002B30309D}";
         let wide: Vec<_> = recycle.encode_utf16().chain(Some(0)).collect();

@@ -325,7 +325,7 @@ mod dpi_tests {
 
     #[test]
     fn fractional_dpi_preserves_free_icon_hit_and_scrollbar_geometry() {
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let _sta = crate::pane::test_support::apartment();
         let state = crate::pane::tests::test_state();
         let mut model = crate::pane::create_model(&state, luciddesk_core::PanelId::new(1)).unwrap();
         model.fixed_grid = true;

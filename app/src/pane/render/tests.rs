@@ -1,7 +1,7 @@
 #[test]
 fn title_ellipsis_stays_stable_when_width_jitters_at_last_character() {
     use windows::Win32::Graphics::DirectWrite::{DWRITE_LINE_METRICS, IDWriteTextLayout};
-    let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _sta = crate::pane::test_support::apartment();
     let trimmed = |title: &windows_canvas::TextLayout| {
         let native: IDWriteTextLayout =
             super::super::native_graphics::native_interface(title.raw()).unwrap();
@@ -51,7 +51,7 @@ fn title_ellipsis_stays_stable_when_width_jitters_at_last_character() {
 #[test]
 fn title_trimming_does_not_reverse_while_shrinking() {
     use windows::Win32::Graphics::DirectWrite::{DWRITE_LINE_METRICS, IDWriteTextLayout};
-    let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _sta = crate::pane::test_support::apartment();
     let mut renderer = Renderer::new().unwrap();
     for scale in [1.0, 1.25, 1.5, 2.0] {
         for text in ["新建分组", "Project 项目文件夹与资料", "tinyMediaManager"] {
@@ -91,7 +91,7 @@ fn title_trimming_does_not_reverse_while_shrinking() {
 }
 #[test]
 fn list_view_columns_render_and_share_scrolled_hit_geometry() {
-    let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _sta = crate::pane::test_support::apartment();
     let mut model = sample_model();
     model.folder = Some(std::path::PathBuf::from(r"C:\Documents"));
     assert!(!model.header_button_enabled(2));
@@ -165,7 +165,7 @@ fn list_view_columns_render_and_share_scrolled_hit_geometry() {
 }
 #[test]
 fn desktop_list_renders_full_width_names_and_row_drag_preview() {
-    let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _sta = crate::pane::test_support::apartment();
     let mut model = sample_model();
     model.list_view = true;
     model.items[0].label = "普通分组中较长的文件名称 — desktop document.txt".into();
@@ -191,7 +191,7 @@ fn desktop_list_renders_full_width_names_and_row_drag_preview() {
 
 #[test]
 fn grid_scale_changes_icon_and_text_size_together() {
-    let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _sta = crate::pane::test_support::apartment();
     let mut model = sample_model();
     let mut renderer = Renderer::new().unwrap();
     for dpi_scale in [1.0, 1.25, 1.5, 2.0] {
@@ -217,7 +217,7 @@ use super::*;
 
 #[test]
 fn icon_pixels_remain_sharp_at_fractional_dpi_and_invalidate_size_cache() {
-    let _apartment = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _apartment = crate::pane::test_support::apartment();
     let mut model = sample_model();
     let mut data = vec![0; 48 * 48 * 4];
     for y in 4..44usize {
@@ -263,7 +263,7 @@ fn icon_pixels_remain_sharp_at_fractional_dpi_and_invalidate_size_cache() {
 
 #[test]
 fn canvas_flyout_retains_transparency_and_hover_after_resize() {
-    let _apartment = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _apartment = crate::pane::test_support::apartment();
     let mut renderer = Renderer::new().unwrap();
     let entries = [super::super::menu::Entry {
         id: 1,
@@ -302,7 +302,7 @@ use std::sync::Arc;
 
 #[test]
 fn tab_strip_renders_at_supported_dpi_and_widths() {
-    let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _sta = crate::pane::test_support::apartment();
     let mut model = sample_model();
     model.tabs = ["工作", "项目资料", "下载与归档"].into_iter().enumerate()
         .map(|(at, title)| (luciddesk_core::PanelId::new(at as u64 + 1), title.into())).collect();
@@ -351,7 +351,7 @@ fn tab_strip_renders_at_supported_dpi_and_widths() {
 
 #[test]
 fn placeholders_render_without_textures_then_yield_to_loaded_icons() {
-    let _apartment = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _apartment = crate::pane::test_support::apartment();
     for dark in [false, true] {
         let mut model = sample_model();
         model.dark = dark;
@@ -411,7 +411,7 @@ fn sample_model() -> GroupModel {
 
 #[test]
 fn pane_border_and_corners_can_be_disabled_independently() {
-    let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _sta = crate::pane::test_support::apartment();
     let mut renderer = Renderer::new().unwrap();
     let mut model = sample_model();
     model.items.clear();
@@ -431,7 +431,7 @@ fn pane_border_and_corners_can_be_disabled_independently() {
 
 #[test]
 fn item_hit_stops_at_visible_highlight_across_dpi_and_scroll() {
-    let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _sta = crate::pane::test_support::apartment();
     let mut model = sample_model();
 
     model.items.push(sample_model().items.remove(0));
@@ -474,7 +474,7 @@ fn item_hit_stops_at_visible_highlight_across_dpi_and_scroll() {
 
 #[test]
 fn light_and_dark_text_contrast_without_changing_icon_pixels() {
-    let _apartment = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _apartment = crate::pane::test_support::apartment();
     let mut model = sample_model();
     model.native_material = false;
     let mut renderer = Renderer::new().unwrap();
@@ -496,7 +496,7 @@ fn light_and_dark_text_contrast_without_changing_icon_pixels() {
 
 #[test]
 fn transparent_panel_protection_preserves_icons_and_rounded_edges() {
-    let _apartment = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _apartment = crate::pane::test_support::apartment();
     let mut model = sample_model();
     model.options.text_protection = true;
     model.backdrop = luciddesk_core::Backdrop::Solid {
@@ -528,7 +528,7 @@ fn transparent_panel_protection_preserves_icons_and_rounded_edges() {
 
 #[test]
 fn background_alpha_does_not_dim_icons_at_multiple_scales() {
-    let _apartment = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _apartment = crate::pane::test_support::apartment();
     let mut model = sample_model();
     let mut renderer = Renderer::new().unwrap();
     for scale in [1.0, 1.5, 2.0] {
@@ -567,7 +567,7 @@ fn background_alpha_does_not_dim_icons_at_multiple_scales() {
 
 #[test]
 fn viewport_layout_matches_full_measurement_across_sizes_and_scroll_positions() {
-    let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _sta = crate::pane::test_support::apartment();
     let mut model = sample_model();
     let template = model.items[0].clone();
     for count in [1, 37, 257] {
@@ -606,7 +606,7 @@ fn viewport_layout_matches_full_measurement_across_sizes_and_scroll_positions() 
 
 #[test]
 fn selection_backgrounds_release_old_sizes_and_deselected_textures() {
-    let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _sta = crate::pane::test_support::apartment();
     let mut model = sample_model();
     model.list_view = true;
     model.selection.insert(0);
@@ -632,7 +632,7 @@ fn same_size_upload_borrows_original_pixel_buffer() {
 
 #[test]
 fn identical_visible_icons_share_one_gpu_upload_and_changed_pixels_replace_it() {
-    let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _sta = crate::pane::test_support::apartment();
     let mut model = sample_model();
     let template = model.items[0].clone();
     model.items = (0..8).map(|index| Item {
@@ -657,7 +657,7 @@ fn identical_visible_icons_share_one_gpu_upload_and_changed_pixels_replace_it() 
 
 #[test]
 fn scrolling_releases_offscreen_icon_textures() {
-    let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _sta = crate::pane::test_support::apartment();
     let mut model = sample_model();
     let image = model.items[0].image.clone();
     model.items = (0..1000)
@@ -698,7 +698,7 @@ fn scrolling_releases_offscreen_icon_textures() {
 
 #[test]
 fn gpu_frames_preserve_colors_alpha_and_cached_images_across_resize() {
-    let _apartment = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let _apartment = crate::pane::test_support::apartment();
     let model = sample_model();
     // Exercise the actual swap-chain path, including buffer rotation and resize.
     // The test window stays hidden and never takes over Explorer.
