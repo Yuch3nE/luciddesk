@@ -25,7 +25,7 @@ On an uncertain mutation, query the original receipt via `next_step` or `recover
 
 | Task | Reference |
 | --- | --- |
-| Group/sort icons, fit/snap/arrange panes, tabs or geometry | [Desktop and layout](references/desktop-layout.md) |
+| Group/sort/position icons, choose arrangement mode, fit/snap panes or manage tabs | [Desktop and layout](references/desktop-layout.md) |
 | Map/navigate/fit a folder or query search results | [Folders and search](references/folder-search.md) |
 | Batch plans, pending/failed effects or uncertain submissions | [Plans and recovery](references/plans-and-recovery.md) |
 | Settings, fonts or login startup | [Settings and startup](references/settings-startup.md) |

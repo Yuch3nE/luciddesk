@@ -49,6 +49,7 @@ On timeout or transport failure after submission, query first. Exact replay is o
 | `INVALID_REQUEST` | Fix input using command help/schema. |
 | `CAPABILITY_UNAVAILABLE` | Inspect relevant loading/backend state; folders/search may work without desktop integration. |
 | `BUSY` | Bounded delay/deadline; retain mutation identity. |
+| `SORT_METADATA_PENDING` | Pure preview is still reading file properties; nothing was saved. The CLI polls within its timeout. If still pending, use the returned `pending_preview` with the same preview request ID; do not query an apply receipt or claim a commit. |
 | `NOT_FOUND`, `PANE_LOCKED` | Re-query targets or resolve lock within task scope. |
 | `PERSISTENCE_ERROR` | Report failure and inspect state before another plan. |
 

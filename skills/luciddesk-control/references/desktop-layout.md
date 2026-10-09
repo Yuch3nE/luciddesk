@@ -29,6 +29,11 @@ Mutation examples preview only. Apply the reviewed token using `next_step.args` 
 | Fit and place below pane 2, left-aligned | `pane snap --id 1 --target 2 --side bottom --align start --icon-columns 6 --dry-run --json` | Source size, shared gap, unchanged anchor |
 | Keep size and place beside a pane | Same `pane snap`, omit `--icon-columns` | Source DIP size and relative position |
 | Natural name order | `pane sort --id 1 --dry-run --json` | Items sorted by placement row/column; use `--descending true` to reverse |
+| Newest modified files first | `pane sort --id 1 --sort-column modified --descending true --dry-run --json` | Same one-time order; arrangement mode retained |
+| Preserve gaps and existing positions | `pane update --id 1 --auto-compact false --dry-run --json` | `auto_compact=false`, grid alignment retained |
+| Place one grid icon | `item position --pane 1 --item-id ITEM_A --column 2 --row 3 --dry-run --json` | Exact `placement.column/row`; empty target cell required |
+| Enable free positions | `pane update --id 1 --align-icons-to-grid false --dry-run --json` | `align_icons_to_grid=false`, `auto_compact=false` |
+| Place one free icon | `item position --pane 1 --item-id ITEM_A --x 180.5 --y 90 --dry-run --json` | `placement.position_dip`; coordinates are content-relative DIP |
 | Rename | `pane update --id 1 --title Work --dry-run --json` | Title, unchanged membership |
 | Assign selected icons | `item assign --pane 1 --ids ITEM_A,ITEM_B --dry-run --json` | Destination membership and presentation completion |
 | Return icons to desktop | `item release --ids ITEM_A,ITEM_B --dry-run --json` | Desktop placement; real files unchanged |
@@ -57,6 +62,16 @@ Use `window_bounds_px` for visual verification and physical gaps; `geometry` is 
 ## Membership and tabs
 
 IDs are authoritative. `item.reorder` needs the complete current item-ID array; verify order by `placement.row`, then `placement.column`, not response array order. Name sorting is a one-time natural order change, only for the named pane, with no auto-sort rule. Folder sorting uses `folder.update`. An already satisfied sort/fit is a no-op.
+
+## Sorting and precise icon layout
+
+Check `capabilities.pane_sort_columns`, `pane_arrangement` and `item_position` before using these extensions on an older app. `pane.sort` accepts `sort_column=name|modified|type|size`; every field defaults to ascending, so request `descending:true` explicitly for newest-first dates. Repeating the same command does not toggle direction. Metadata sorting uses each shortcut file's own properties, not its target. It reads in a worker during preview; apply uses the prepared order, not a fresh filesystem scan.
+
+`auto_compact` means continuous packing, not automatic sorting. Enabling it also aligns to the grid. Disabling alignment disables compact packing; re-enabling alignment snaps to nearby free cells without enabling compact packing. Reject the conflicting pair `auto_compact:true, align_icons_to_grid:false`. Omitted fields preserve state. Arrangement fields affect the named desktop pane, not every tab.
+
+For “keep these icons in specific places”: query membership and mode, turn off compact packing, then use `item.position` for each selected icon. These operations can share a plan. Grid coordinates are nonnegative integers up to 10000; occupied cells are rejected rather than swapping/moving unrelated icons. Free coordinates are content-relative DIP in 0..1000000 and may overlap. Use exactly one complete pair (`column/row` or `x/y`) matching the mode. Assign cross-pane items first; positioning alone never transfers membership. For a grid swap, use an empty temporary cell in the same plan.
+
+Sort/reorder explicitly compact the arrangement using the current visible column count; do not use them to refresh icons or to preserve holes. `fit` includes all occupied positions and may exceed the requested columns. An explicit width reduction preserves positions and allows horizontal scrolling; horizontal scroll is transient and is not an icon coordinate. Verify free placement using `position_dip`, not response order or fallback grid coordinates.
 
 Assignment/release requires desktop integration; receipts can stay pending while images load or Explorer confirms visibility. Inspect `status.desktop_sync_status`; an open native menu can defer synchronization. Removing a nonempty desktop pane requires `release_items:true`; releasing/removing never moves or deletes real files.
 

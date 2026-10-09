@@ -337,7 +337,7 @@ luciddesk-cli pane snap --id 7 --target 4 --side bottom --align start --dry-run 
 
 取消勾选普通面板菜单中的“自动排列图标”即可进入手动网格排列模式，`pane get/list` 与 `content_layout` 返回 `fixed_icon_positions`（为 true 表示自动排列图标已关闭）。此时 item.assign 填空位、item.release 留空位，pane.fit/snap/arrange 保留坐标和空行，并将实际宽度至少保留到最右侧已占用列；请求的 icon_columns 可能因此被提高。主动 pane.sort 和 item.reorder 会重新紧凑排列，不能用它们作为无副作用的刷新。取消“对齐到网格”后为自由排列，`align_icons_to_grid=false`；图标查询的 `placement.position_dip` 返回相对面板内容区的坐标（若为空则按 column/row 推算）。CLI 适配尺寸会包含自由位置的实际内容范围，不移动图标；自由内容的宽度不再向上取整到整列，请求的 icon_columns 仍作为宽度下限。
 
-排序只改变指定普通面板内部顺序，不改变文件、面板位置或其他标签页，不扫描文件元数据，也不启用持续自动排序。锁定面板须先解锁；文件夹使用 folder.update 排序。复用 preview/apply、冲突保护及回执，顺序与布局均已满足时不写数据库。任意自定义顺序继续使用 `item reorder --pane ID --input FILE`，文件为完整当前成员 ID 数组；查询后按 placement.row/column 核对顺序。
+排序只改变指定普通面板内部顺序，不改变文件、面板位置或其他标签页，也不启用持续自动排序。名称排序不扫描文件元数据；其他字段在预览期间由后台线程读取，提交沿用预览时确定的顺序。锁定面板须先解锁；文件夹使用 folder.update 排序。复用 preview/apply、冲突保护及回执，顺序与布局均已满足时不写数据库。任意自定义顺序继续使用 `item reorder --pane ID --input FILE`，文件为完整当前成员 ID 数组；查询后按 placement.row/column 核对顺序。
 
 ## CLI 控制开关与 Skill 安装
 
@@ -348,3 +348,21 @@ luciddesk-cli pane snap --id 7 --target 4 --side bottom --align start --dry-run 
 普通面板查询还返回 `auto_compact`，表示是否开启“自动排列图标”（连续排列并消除空位）。
 
 手动排列时，显式调整面板宽度允许小于图标内容宽度，图标位置保持不变；窗口通过横向滚动访问超出内容。`pane.fit` 仍按完整内容范围适配宽度；`pane.sort` 和 `item.reorder` 按当前可见列数重新排列，保持手动/自由模式。滚动位置不写入数据库。
+
+### 排列模式与图标定位
+
+`pane sort` 增加 `--sort-column name|modified|type|size`，默认仍为名称升序。所有字段都使用明确方向；日期最近优先请传 `--descending true`，重复调用不切换方向。元数据后台读取期间协议返回 `SORT_METADATA_PENDING`，CLI 在 `--timeout-ms` 范围内轮询同一预览。超时仍待处理时返回 `pending_preview` 和带 `stdin_json` 的下一步；此时没有提交，不应查询提交回执。文件属性缺失和同值比较使用与 GUI 相同的后备规则。
+
+`pane update` 新增 `--auto-compact true|false` 和 `--align-icons-to-grid true|false`（仅普通面板）。开启自动排列同时开启网格对齐；关闭对齐同时关闭自动排列；重新开启对齐不强制紧凑。显式传入 `auto_compact=true` 与 `align_icons_to_grid=false` 会被拒绝。这两个字段只改变指定面板，标签组其他成员保持原模式。
+
+```powershell
+luciddesk-cli pane sort --id 1 --sort-column modified --descending true --dry-run --json
+luciddesk-cli pane update --id 1 --auto-compact false --dry-run --json
+luciddesk-cli item position --pane 1 --item-id ITEM_A --column 2 --row 3 --dry-run --json
+luciddesk-cli pane update --id 1 --align-icons-to-grid false --dry-run --json
+luciddesk-cli item position --pane 1 --item-id ITEM_A --x 180.5 --y 90 --dry-run --json
+```
+
+上述命令各自仅预览；先提交排列模式变更，再定位，或组合为同一计划。`item.position` 必须指定 `pane_id`、`item_id`，以及与当前模式一致的一组坐标：网格用 `column/row`（0..10000 的整数），自由排列用 `x/y`（内容区相对 DIP，0..1000000）。必须先关闭自动排列；图标须已属于该面板，跨面板先 `item.assign`。网格占用格返回错误，不隐式交换或挤动其他图标；自由排列允许重叠。网格交换可在同一计划中经一个空格中转。
+
+读取 `capabilities.pane_sort_columns`、`pane_arrangement`、`item_position` 确认运行中应用支持扩展；协议版本保持 1，旧请求语义不变。预览、冲突保护、幂等回执及无变化不写库沿用统一计划逻辑。
