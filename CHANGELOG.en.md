@@ -6,6 +6,13 @@ Current version: **0.20.3**. Features and fixes by release.
 
 Exit the app before upgrading a portable installation and preserve its `data` folder. See the [portable guide](docs/portable.md) (Chinese).
 
+## Unreleased
+
+### feat
+
+- Add Align icons to grid: disable it for free positioning, overlapping icons, group dragging, persistence and CLI content fitting.
+- Allow disabling Auto arrange icons for manual grid placement in desktop panels, preserving empty cells and supporting drag swaps without shifting other icons when content changes. Integrate persistence, scrolling, selection and CLI layout calculations.
+
 ## 0.20.3 · 2026-10-09
 
 ### fix

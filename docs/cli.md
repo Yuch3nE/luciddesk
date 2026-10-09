@@ -335,7 +335,9 @@ luciddesk-cli pane snap --id 7 --target 4 --side bottom --align start --dry-run 
 
 `pane sort --id ID --dry-run --json` 按显示名称自然升序预览，例如“文件2”在“文件10”之前；`--descending true` 为降序。对应操作为 `{"op":"pane.sort","pane_id":"ID","descending":false}`，方向默认为升序。同名项使用稳定身份消除歧义。
 
-排序只改变指定普通面板内部顺序，不改变文件、面板位置或其他标签页，不扫描文件元数据，也不启用持续自动排序。锁定面板须先解锁；文件夹使用 folder.update 排序。复用 preview/apply、冲突保护及回执，顺序已满足时不写数据库。任意自定义顺序继续使用 `item reorder --pane ID --input FILE`，文件为完整当前成员 ID 数组；查询后按 placement.row/column 核对顺序。
+取消勾选普通面板菜单中的“自动排列图标”即可进入手动网格排列模式，`pane get/list` 与 `content_layout` 返回 `fixed_icon_positions`（为 true 表示自动排列已关闭）。此时 item.assign 填空位、item.release 留空位，pane.fit/snap/arrange 保留坐标和空行，并将实际宽度至少保留到最右侧已占用列；请求的 icon_columns 可能因此被提高。主动 pane.sort 和 item.reorder 会重新紧凑排列，不能用它们作为无副作用的刷新。取消“将图标与网格对齐”后为自由排列，`align_icons_to_grid=false`；图标查询的 `placement.position_dip` 返回相对面板内容区的坐标（若为空则按 column/row 推算）。CLI 适配尺寸会包含自由位置的实际内容范围，不移动图标；自由内容的宽度不再向上取整到整列，请求的 icon_columns 仍作为宽度下限。
+
+排序只改变指定普通面板内部顺序，不改变文件、面板位置或其他标签页，不扫描文件元数据，也不启用持续自动排序。锁定面板须先解锁；文件夹使用 folder.update 排序。复用 preview/apply、冲突保护及回执，顺序与布局均已满足时不写数据库。任意自定义顺序继续使用 `item reorder --pane ID --input FILE`，文件为完整当前成员 ID 数组；查询后按 placement.row/column 核对顺序。
 
 ## CLI 控制开关与 Skill 安装
 
