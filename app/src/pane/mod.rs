@@ -22,6 +22,7 @@ mod tabs;
 mod sorting;
 mod fixed_grid;
 mod free_layout;
+mod layout_defaults;
 
 // Window interaction.
 mod window;

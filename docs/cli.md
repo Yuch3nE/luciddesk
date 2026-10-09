@@ -86,6 +86,8 @@ CLI 主要面向 Agent。调用时应始终显式传 `--json`，按 JSON 字段�
 
 ## 整理计划：查询 → 预览 → 应用
 
+`pane.create` 继承“设置 → 面板布局”中的新建普通面板排列默认值。已有面板不受默认值变化影响；需要固定行为的 Agent 应在计划中显式设置 `auto_compact`／`align_icons_to_grid`，覆盖创建时继承的默认值。
+
 所有写入通过 `plan preview` / `plan apply` 执行。计划包含协议版本、查询返回的完整 `context` 和有序操作列表。支持：
 
 | op | 参数 | 行为 |

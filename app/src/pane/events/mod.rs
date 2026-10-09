@@ -21,6 +21,7 @@ pub(super) fn handle(
             ("pane_title_emoji_color", "true"),
             ("pane_compact_menu", "true"),
             ("pane_header_divider", "true"),
+            ("desktop_panel_layout", "compact"),
         ]).map_err(|e| e.to_string())?;
         title_emoji::load(&s.store)?;
         compact_menu::load(&s.store)?;

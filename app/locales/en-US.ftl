@@ -1252,3 +1252,7 @@ ui-auto-arrange-icons = Auto arrange icons
 ui-align-icons-to-grid = Align to grid
 
 ui-sort-by = Sort by
+
+desktop-default-align-description = Turn off to place icons freely and disable auto arrange. (New panels only)
+desktop-default-arrange-description = Pack icons without gaps and enable grid alignment. (New panels only)
+ui-icon-arrangement = Icon arrangement

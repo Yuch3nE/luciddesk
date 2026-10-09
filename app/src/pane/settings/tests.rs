@@ -1,6 +1,22 @@
 use super::*;
 
 #[test]
+fn desktop_layout_defaults_show_both_toggles_and_their_linked_actions() {
+    for mode in [layout_defaults::Mode::Compact, layout_defaults::Mode::Grid, layout_defaults::Mode::Free] {
+        let mut body = scene(900.0, 600.0, 1, false,
+            (PanelTheme::Dark, Backdrop::Acrylic), luciddesk_core::PaneOptions::default());
+        layout::desktop_defaults(&mut body, 900.0, mode);
+        let controls: Vec<_> = body.controls.iter().filter(|c| matches!(c.action, Action::LayoutDefaults(_))).collect();
+        assert_eq!(controls.len(), 2);
+        assert!(controls.iter().all(|c| c.enabled));
+        assert_eq!(controls[0].selected, mode != layout_defaults::Mode::Free);
+        assert_eq!(controls[1].selected, mode == layout_defaults::Mode::Compact);
+        assert!(matches!(controls[0].action, Action::LayoutDefaults(next) if next == mode.toggle_align()));
+        assert!(matches!(controls[1].action, Action::LayoutDefaults(next) if next == mode.toggle_auto_arrange()));
+    }
+}
+
+#[test]
 fn solid_defaults_follow_theme_until_a_color_is_saved() {
     let dir = tempfile::tempdir().unwrap();
     let store = luciddesk_storage::WorkspaceStore::open(&dir.path().join("workspace.db")).unwrap();

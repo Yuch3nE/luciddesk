@@ -193,6 +193,9 @@ pub(super) fn create(state: &Rc<RefCell<PaneApp>>, event: Event) -> Result<bool,
             panel.set_search(true);
             panel.set_title(crate::i18n::text("ui-everything-search").to_string());
         }
+        if panel.supports_tabs() {
+            layout_defaults::Mode::load(&s.store)?.apply(&mut panel);
+        }
         s.workspace.add_panel(panel).map_err(|e| e.to_string())?;
         if s.workspace.appearance().is_none() {
             s.workspace

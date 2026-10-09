@@ -1252,3 +1252,7 @@ ui-auto-arrange-icons = 아이콘 자동 정렬
 ui-align-icons-to-grid = 격자에 맞춤
 
 ui-sort-by = 정렬 기준
+
+desktop-default-align-description = 끄면 자유롭게 배치할 수 있으며 자동 정렬도 꺼집니다. (새 패널에만 적용)
+desktop-default-arrange-description = 아이콘을 빈틈없이 배치하고 격자에 맞춥니다. (새 패널에만 적용)
+ui-icon-arrangement = 아이콘 배치

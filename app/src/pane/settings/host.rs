@@ -33,6 +33,7 @@ pub(in crate::pane) fn show(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result
     };
     let mut options = state.borrow().workspace.pane_options();
     let mut folder_defaults = folder::Defaults::load(&state.borrow().store)?;
+    let mut layout_defaults = layout_defaults::Mode::load(&state.borrow().store)?;
     let mut folder_entry_mode = folder::EntryMode::load(&state.borrow().store)?;
     let (mut show_panels_enabled, mut show_panels_shortcut, mut chosen_language) = {
         let owner = state.borrow();
@@ -400,6 +401,9 @@ pub(in crate::pane) fn show(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result
                 let defaults=folder::Defaults::load(&state.store).unwrap_or_default();
                 snapshot_changed |= defaults != folder_defaults;
                 folder_defaults=defaults;
+                let defaults = layout_defaults::Mode::load(&state.store).unwrap_or_default();
+                snapshot_changed |= defaults != layout_defaults;
+                layout_defaults = defaults;
                 let mode = folder::EntryMode::load(&state.store).unwrap_or_default();
                 snapshot_changed |= mode != folder_entry_mode;
                 folder_entry_mode = mode;
@@ -458,7 +462,10 @@ pub(in crate::pane) fn show(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result
                     layout::language(&mut body, w, &chosen_language);
                 }
                 if page == 13 { layout::general(&mut body, w, startup.status(), startup.busy(), cli_enabled, skill_prompt_copied); }
-                if page == 1 { layout::show_panels_shortcut(&mut body, w, show_panels_enabled, show_panels_shortcut); }
+                if page == 1 {
+                    layout::desktop_defaults(&mut body, w, layout_defaults);
+                    layout::show_panels_shortcut(&mut body, w, show_panels_enabled, show_panels_shortcut);
+                }
                 if page == 11 { layout::fonts_status(&mut body, w, &font_choices, if !fonts_loaded { Some("font-loading") } else if font_load_failed { Some("font-load-failed") } else { None }); }
                 if page == 8 { layout::folder_defaults(&mut body, w, folder_defaults, folder_entry_mode); }
                 if matches!(page,6|9|10) {
@@ -896,6 +903,7 @@ pub(in crate::pane) fn show(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result
                     scroll_offset: &mut scroll_offset,
                     folder_entry_mode: &mut folder_entry_mode,
                     folder_defaults: &mut folder_defaults,
+                    layout_defaults: &mut layout_defaults,
                     style_input: &mut style_input,
                     startup: &mut startup,
                     diagnostics_copied: &mut diagnostics_copied,

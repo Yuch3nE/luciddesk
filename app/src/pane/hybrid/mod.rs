@@ -122,6 +122,7 @@ pub fn run(path: &Path, title: Option<String>) -> Result<(), String> {
             display_layout::new_pane(&workspace, false),
         );
         pane.set_backdrop(luciddesk_core::Backdrop::Acrylic);
+        layout_defaults::Mode::load(&store)?.apply(&mut pane);
         workspace.add_panel(pane).map_err(|e| e.to_string())?;
     } else if let Some(title) = title.filter(|_| !workspace.panels().is_empty()) {
         let id = workspace.panels()[0].id();

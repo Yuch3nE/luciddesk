@@ -186,6 +186,8 @@ pub(super) fn add(
         panel.set_folder(folder);
         if panel.folder().is_some() {
             folder::Defaults::load(&s.store)?.apply(&s.store, &mut panel)?;
+        } else {
+            layout_defaults::Mode::load(&s.store)?.apply(&mut panel);
         }
         let previous = s.workspace.clone();
         s.workspace.add_panel(panel).map_err(|e| e.to_string())?;

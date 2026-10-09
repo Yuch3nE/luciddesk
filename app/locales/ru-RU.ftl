@@ -1252,3 +1252,7 @@ ui-auto-arrange-icons = Автоматически упорядочивать з
 ui-align-icons-to-grid = Выровнять по сетке
 
 ui-sort-by = Сортировать по
+
+desktop-default-align-description = Отключение разрешает свободное размещение и отключает авторасстановку. (Только для новых панелей)
+desktop-default-arrange-description = Расставлять значки без промежутков и выравнивать по сетке. (Только для новых панелей)
+ui-icon-arrangement = Расположение значков

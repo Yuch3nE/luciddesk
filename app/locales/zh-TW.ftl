@@ -1252,3 +1252,7 @@ ui-auto-arrange-icons = 自動排列圖示
 ui-align-icons-to-grid = 對齊至格線
 
 ui-sort-by = 排序方式
+
+desktop-default-align-description = 關閉後可自由放置圖示，並關閉自動排列（僅影響新建面板）
+desktop-default-arrange-description = 自動緊密排列圖示，並開啟網格對齊（僅影響新建面板）
+ui-icon-arrangement = 圖示排列

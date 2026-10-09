@@ -307,6 +307,8 @@ fn prepare(
                     let defaults=folder::Defaults::load(store).map_err(invalid)?;
                     panel.set_list_view(defaults.list);
                     folders.insert(panel.id(), luciddesk_storage::FolderPreferences { visible_columns:defaults.columns,..Default::default() });
+                } else {
+                    layout_defaults::Mode::load(store).map_err(invalid)?.apply(&mut panel);
                 }
                 next.add_panel(panel).map_err(|e| invalid(e.to_string()))?;
                 refs.insert(reference.clone(), number.to_string());
@@ -748,6 +750,31 @@ impl Plans {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn create_preview_copies_layout_defaults_and_explicit_updates_override_them() {
+        let mut state = super::super::super::tests::test_state();
+        let mut snapshot = Snapshot::new();
+        layout_defaults::Mode::Free.save(&state.store).unwrap();
+        snapshot.respond(&mut state, &request("workspace.get"));
+        let original = state.workspace.clone();
+        let writes = state.store.change_count();
+        let response = preview(&mut snapshot, &mut state, json!([
+            {"op":"pane.create","ref":"new","title":"Free"}
+        ]));
+        assert!(response.ok, "{response:?}");
+        assert!(snapshot.plans.pending.back().unwrap().next.panels().last().unwrap().free_layout());
+        assert_eq!(state.workspace, original);
+        assert_eq!(state.store.change_count(), writes);
+        let next_id = (state.workspace.panels().iter().map(|p| p.id().get()).max().unwrap() + 1).to_string();
+        let response = preview(&mut snapshot, &mut state, json!([
+            {"op":"pane.create","ref":"new","title":"Compact"},
+            {"op":"pane.update","pane_id":next_id,"auto_compact":true}
+        ]));
+        assert!(response.ok, "{response:?}");
+        let panel = snapshot.plans.pending.back().unwrap().next.panels().last().unwrap();
+        assert!(!panel.fixed_grid());
+        assert!(!panel.free_layout());
+    }
     #[test]
     fn arrangement_and_position_preview_preserve_others_and_reject_ambiguous_input() {
         let mut state = super::super::super::tests::test_state();

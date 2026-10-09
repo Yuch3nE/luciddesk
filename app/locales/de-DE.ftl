@@ -1252,3 +1252,7 @@ ui-auto-arrange-icons = Symbole automatisch anordnen
 ui-align-icons-to-grid = Am Raster ausrichten
 
 ui-sort-by = Sortieren nach
+
+desktop-default-align-description = Ausschalten erlaubt freie Symbolpositionen und deaktiviert die automatische Anordnung. (Nur für neue Panels)
+desktop-default-arrange-description = Symbole lückenlos anordnen und am Raster ausrichten. (Nur für neue Panels)
+ui-icon-arrangement = Symbolanordnung

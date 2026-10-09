@@ -1252,3 +1252,7 @@ ui-auto-arrange-icons = アイコンの自動整列
 ui-align-icons-to-grid = グリッドに合わせる
 
 ui-sort-by = 並べ替え
+
+desktop-default-align-description = オフにすると自由に配置でき、自動整列もオフになります（新しいパネルにのみ適用）
+desktop-default-arrange-description = アイコンを隙間なく並べ、グリッドに合わせます（新しいパネルにのみ適用）
+ui-icon-arrangement = アイコンの配置

@@ -20,6 +20,7 @@ pub(super) struct Context<'a> {
     pub scroll_offset: &'a mut f32,
     pub folder_entry_mode: &'a mut folder::EntryMode,
     pub folder_defaults: &'a mut folder::Defaults,
+    pub layout_defaults: &'a mut layout_defaults::Mode,
     pub style_input: &'a mut Option<(bool, String)>,
     pub startup: &'a mut crate::startup::Controller,
     pub diagnostics_copied: &'a mut bool,
@@ -160,6 +161,16 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
             match saved {
                 Ok(()) => {
                     *context.folder_entry_mode = *value;
+                    invalidate = true;
+                }
+                Err(error) => window::error(&error),
+            }
+        }
+        Action::LayoutDefaults(value) => {
+            let saved = value.save(&state.borrow().store);
+            match saved {
+                Ok(()) => {
+                    *context.layout_defaults = *value;
                     invalidate = true;
                 }
                 Err(error) => window::error(&error),

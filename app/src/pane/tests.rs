@@ -2,6 +2,28 @@ use super::search::everything_settings;
 use super::*;
 
 #[test]
+fn new_panes_and_tabs_copy_layout_defaults_without_changing_existing_panes() {
+    let _apartment = crate::pane::test_support::apartment();
+    let state = Rc::new(RefCell::new(test_state()));
+    let existing = state.borrow().workspace.panels().to_vec();
+    layout_defaults::Mode::Free.save(&state.borrow().store).unwrap();
+    handle(&state, PanelId::new(1), Event::New).unwrap();
+    let new_id = state.borrow().workspace.panels().last().unwrap().id();
+    assert!(state.borrow().workspace.panel(new_id).unwrap().free_layout());
+    layout_defaults::Mode::Grid.save(&state.borrow().store).unwrap();
+    tabs::add(&state, new_id, None).unwrap();
+    let owner = state.borrow();
+    let tab = owner.workspace.panels().last().unwrap();
+    assert!(tab.fixed_grid());
+    assert!(!tab.free_layout());
+    assert!(owner.workspace.panel(new_id).unwrap().free_layout());
+    for panel in existing { assert_eq!(owner.workspace.panel(panel.id()), Some(&panel)); }
+    let saved = owner.store.load_workspace().unwrap();
+    assert_eq!(saved.panel(new_id), owner.workspace.panel(new_id));
+    assert_eq!(saved.panel(tab.id()), Some(tab));
+}
+
+#[test]
 fn menu_sort_saves_once_and_preserves_other_panes() {
     let _sta = crate::pane::test_support::apartment();
     let state = Rc::new(RefCell::new(test_state()));

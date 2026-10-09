@@ -749,6 +749,20 @@ pub(super) fn language(s: &mut Scene, width: f32, selected: &str) {
 }
 
 
+pub(super) fn desktop_defaults(s: &mut Scene, width: f32, mode: layout_defaults::Mode) {
+    let bottom = s.cards.iter().map(|r| r.bottom)
+        .chain(s.controls.iter().filter(|c| c.bounds.left >= Tokens::content_x()).map(|c| c.bounds.bottom))
+        .fold(120.0_f32, f32::max);
+    let mut form = SettingsForm::continuation(s, width, bottom + 24.0);
+    form.section(crate::i18n::text("ui-icon-arrangement"));
+    form.toggle(crate::i18n::text("ui-align-icons-to-grid"),
+        crate::i18n::text("desktop-default-align-description"), mode != layout_defaults::Mode::Free,
+        Action::LayoutDefaults(mode.toggle_align()));
+    form.toggle(crate::i18n::text("ui-auto-arrange-icons"),
+        crate::i18n::text("desktop-default-arrange-description"), mode == layout_defaults::Mode::Compact,
+        Action::LayoutDefaults(mode.toggle_auto_arrange()));
+}
+
 pub(super) fn show_panels_shortcut(s: &mut Scene, width: f32, enabled: bool, shortcut: search_hotkey::Shortcut) {
     // Append below the existing panel-layout controls, retaining normal page scrolling.
     let bottom = s.cards.iter().map(|r| r.bottom)

@@ -56,6 +56,7 @@ enum Action {
     Font(String),
     FontSearch,
     FolderDefaults(folder::Defaults),
+    LayoutDefaults(layout_defaults::Mode),
     FolderEntryMode(folder::EntryMode),
     BackupPolicy(u8),
     BackupRecord(std::path::PathBuf),
