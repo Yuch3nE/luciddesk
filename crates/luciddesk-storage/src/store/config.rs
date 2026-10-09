@@ -1,6 +1,6 @@
 //! Editable global preferences. The application preference API is adapted to named TOML fields.
 use super::{StoreError, WorkspaceStore};
-use std::{cell::RefCell, collections::BTreeMap, io::Write};
+use std::{cell::RefCell, collections::BTreeMap, io::Write, sync::LazyLock};
 use std::{
     fmt,
     path::{Path, PathBuf},
@@ -74,6 +74,8 @@ shortcut = "Space"
 peek_path = ""
 quicklook_path = ""
 "##;
+
+static DEFAULT_DOCUMENT: LazyLock<DocumentMut> = LazyLock::new(|| DEFAULTS.parse().unwrap());
 
 fn error(message: impl Into<String>) -> StoreError {
     StoreError::InvalidData(message.into())
@@ -187,7 +189,7 @@ fn shortcut_label(key: &str, bits: &str) -> Result<String, StoreError> {
 }
 
 pub(super) fn decode(doc: &DocumentMut) -> Result<BTreeMap<String, String>, StoreError> {
-    let defaults: DocumentMut = DEFAULTS.parse().unwrap();
+    let defaults = &*DEFAULT_DOCUMENT;
     if get(doc, &["config_version"]).and_then(Item::as_integer) != Some(1) {
         return Err(error("unsupported config_version (expected 1)"));
     }
@@ -208,9 +210,9 @@ pub(super) fn decode(doc: &DocumentMut) -> Result<BTreeMap<String, String>, Stor
             return Err(error(format!("{} must be a table", path.join("."))));
         }
     }
-    let s = |p: &[&str]| string(doc, &defaults, p);
-    let b = |p: &[&str]| boolean(doc, &defaults, p);
-    let n = |p: &[&str], max| number(doc, &defaults, p, max);
+    let s = |p: &[&str]| string(doc, defaults, p);
+    let b = |p: &[&str]| boolean(doc, defaults, p);
+    let n = |p: &[&str], max| number(doc, defaults, p, max);
     for path in [
         &["search", "everything_path"][..],
         &["preview", "peek_path"],
@@ -292,7 +294,7 @@ pub(super) fn decode(doc: &DocumentMut) -> Result<BTreeMap<String, String>, Stor
             b(&["panel_defaults", "border"])?,
             b(&["panel_defaults", "snap"])?,
             b(&["panel_defaults", "text_protection"])?,
-            grid_dimension(doc, &defaults, "grid_scale", luciddesk_core::PaneOptions::GRID_SCALE_RANGE)?
+            grid_dimension(doc, defaults, "grid_scale", luciddesk_core::PaneOptions::GRID_SCALE_RANGE)?
         ),
     );
     map.insert(
@@ -517,7 +519,7 @@ fn settings(doc: &DocumentMut) -> BTreeMap<String, SettingValue> {
             }
         }
     }
-    let defaults: DocumentMut = DEFAULTS.parse().unwrap();
+    let defaults = &*DEFAULT_DOCUMENT;
     let mut result = BTreeMap::new();
     visit(doc, defaults.as_table(), "", &mut result);
     if get(doc, &["appearance", "solid", "color"]).is_none() {
@@ -528,6 +530,7 @@ fn settings(doc: &DocumentMut) -> BTreeMap<String, SettingValue> {
     }
     result
 }
+// Callers validate the completed document through decode (preview) or commit (save).
 fn patch_settings(doc: &DocumentMut, updates: &BTreeMap<String, SettingValue>) -> Result<DocumentMut, StoreError> {
     let current = settings(doc);
     let mut next = doc.clone();
@@ -544,7 +547,6 @@ fn patch_settings(doc: &DocumentMut, updates: &BTreeMap<String, SettingValue>) -
             set(&mut next, &parts, proposed.item());
         }
     }
-    decode(&next)?;
     Ok(next)
 }
 
@@ -626,7 +628,9 @@ impl WorkspaceStore {
     /// Rejects unknown fields, wrong types and invalid values.
     pub fn preview_settings(&self, updates: &BTreeMap<String, SettingValue>) -> Result<BTreeMap<String, SettingValue>, StoreError> {
         let config = self.config.as_ref().ok_or_else(|| error("application configuration unavailable"))?;
-        Ok(settings(&patch_settings(&config.borrow().doc, updates)?))
+        let next = patch_settings(&config.borrow().doc, updates)?;
+        decode(&next)?;
+        Ok(settings(&next))
     }
     /// Saves a validated patch with one atomic replacement and at most one notification.
     /// Same-value patches do not write. Callers must apply the resulting settings to live UI state.
@@ -654,7 +658,7 @@ impl WorkspaceStore {
         let config = match std::fs::read_to_string(path) {
             Ok(source) => ConfigFile::parse(path.to_owned(), source)?,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                let mut defaults: DocumentMut = DEFAULTS.parse().unwrap();
+                let mut defaults = DEFAULT_DOCUMENT.clone();
                 defaults["appearance"]["solid"].as_table_mut().unwrap().remove("color");
                 let config = ConfigFile::parse(path.to_owned(), defaults.to_string())?;
                 // Never overwrite a file created by another process while creating the initial config.
