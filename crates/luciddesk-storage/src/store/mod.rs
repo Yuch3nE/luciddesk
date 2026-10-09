@@ -229,6 +229,8 @@ impl WorkspaceStore {
             panel.set_auto_hide(hide);
             panel.set_search(kind == "search");
             if kind == "desktop" {
+                panel.set_fixed_grid(self.preference(&format!("panel_fixed_grid:{}", panel.id().get()))?.as_deref() == Some("1"));
+                panel.set_free_layout(self.preference(&format!("panel_free_layout:{}", panel.id().get()))?.as_deref() == Some("1"));
                 panel.set_list_view(self.preference(&format!("panel_desktop_list:{}", panel.id().get()))?.as_deref() == Some("1"));
             }
             if kind == "folder" {
@@ -407,6 +409,18 @@ impl WorkspaceStore {
             } else {
                 transaction.prepare_cached("DELETE FROM metadata WHERE key=?1")?.execute( [&key])?;
             }
+            let key = format!("panel_fixed_grid:{}", panel.id().get());
+            if panel.fixed_grid() {
+                transaction.prepare_cached("INSERT INTO metadata(key,value) VALUES (?1,'1') ON CONFLICT(key) DO UPDATE SET value='1' WHERE value != '1'")?.execute([&key])?;
+            } else {
+                transaction.prepare_cached("DELETE FROM metadata WHERE key=?1")?.execute([&key])?;
+            }
+            let key = format!("panel_free_layout:{}", panel.id().get());
+            if panel.free_layout() {
+                transaction.prepare_cached("INSERT INTO metadata(key,value) VALUES (?1,'1') ON CONFLICT(key) DO UPDATE SET value='1' WHERE value != '1'")?.execute([&key])?;
+            } else {
+                transaction.prepare_cached("DELETE FROM metadata WHERE key=?1")?.execute([&key])?;
+            }
             insert_panel(&transaction, panel, workspace.appearance())?;
         }
         folder_view::absorb(&transaction)?;
@@ -422,8 +436,10 @@ impl WorkspaceStore {
             if !live_panels.contains(&id) {
                 transaction.prepare_cached("DELETE FROM panels WHERE id=?1")?.execute( [id])?;
                 transaction.prepare_cached(
-                    "DELETE FROM metadata WHERE key IN (?1,?2,?3)",
+                    "DELETE FROM metadata WHERE key IN (?1,?2,?3,?4,?5)",
                 )?.execute(params![
+                    format!("panel_fixed_grid:{id}"),
+                    format!("panel_free_layout:{id}"),
                     format!("panel_desktop_list:{id}"),
                     format!("panel_folder_columns:{id}"),
                     format!("panel_folder_visible_columns:{id}"),

@@ -16,6 +16,8 @@ enum PanelSource {
 pub struct Panel {
     source: PanelSource,
     list_view: bool,
+    fixed_grid: bool,
+    free_layout: bool,
     theme: PanelTheme,
     always_on_top: bool,
     auto_hide: bool,
@@ -35,6 +37,8 @@ impl Panel {
             id,
             source: PanelSource::Desktop,
             list_view: false,
+            fixed_grid: false,
+            free_layout: false,
             title: title.into(),
             rect: RectDip::new(rect.x, rect.y, rect.width, rect.height),
             collapsed: false,
@@ -68,6 +72,8 @@ impl Panel {
                 if self.folder().is_none() {
                     self.list_view = true;
                 }
+                self.fixed_grid = false;
+                self.free_layout = false;
                 self.source = PanelSource::Folder(path);
             },
             None if matches!(self.source, PanelSource::Folder(_)) => {
@@ -92,6 +98,8 @@ impl Panel {
     /// Disabling search returns to desktop content without changing a folder pane.
     pub fn set_search(&mut self, enabled: bool) {
         if enabled {
+            self.fixed_grid = false;
+            self.free_layout = false;
             self.source = PanelSource::Search;
             self.list_view = false;
             self.collapsed = false;
@@ -100,6 +108,13 @@ impl Panel {
             self.source = PanelSource::Desktop;
         }
     }
+
+    /// Preserve ordinary pane icon cells, including empty cells.
+    #[must_use]
+    pub const fn fixed_grid(&self) -> bool { self.supports_tabs() && self.fixed_grid }
+    pub const fn free_layout(&self) -> bool { self.fixed_grid() && self.free_layout }
+    pub const fn set_free_layout(&mut self, enabled: bool) { self.free_layout = enabled; }
+    pub const fn set_fixed_grid(&mut self, enabled: bool) { self.fixed_grid = enabled; if !enabled { self.free_layout = false; } }
 
     /// Whether desktop or folder items use rows instead of an icon grid.
     #[must_use]

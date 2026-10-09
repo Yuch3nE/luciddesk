@@ -73,8 +73,8 @@ pub(super) fn insert_desktop_items(
                 DesktopPlacement::Pane { pane_id, position } => (
                     "pane",
                     None,
-                    None,
-                    None,
+                    item.pane_position().map(|p| f64::from(p.x)),
+                    item.pane_position().map(|p| f64::from(p.y)),
                     Some(i64::try_from(pane_id.get()).map_err(|_| {
                         StoreError::InvalidData("pane id exceeds SQLite range".into())
                     })?),
@@ -165,6 +165,13 @@ impl PersistedDesktopItem {
         };
         let mut item = DesktopItem::new(identity, self.display_name);
         item.set_placement(placement);
+        if self.placement_kind == "pane" {
+            match (self.x, self.y) {
+                (Some(x), Some(y)) if x.is_finite() && y.is_finite() && x >= 0.0 && y >= 0.0 => item.set_pane_position(Some(PointDip::new(x, y))),
+                (None, None) => {},
+                _ => return Err(StoreError::InvalidData("invalid pane coordinates".into())),
+            }
+        }
         Ok(item)
     }
 }

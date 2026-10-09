@@ -27,6 +27,7 @@ pub struct DesktopItem {
     identity: ShellIdentity,
     display_name: String,
     placement: DesktopPlacement,
+    pane_position: Option<PointDip>,
 }
 
 impl DesktopItem {
@@ -36,6 +37,7 @@ impl DesktopItem {
             identity,
             display_name: display_name.into(),
             placement: DesktopPlacement::default(),
+            pane_position: None,
         }
     }
 
@@ -54,11 +56,19 @@ impl DesktopItem {
         &self.placement
     }
 
+    pub const fn pane_position(&self) -> Option<PointDip> { self.pane_position }
+
+    pub fn set_pane_position(&mut self, position: Option<PointDip>) {
+        self.pane_position = position.filter(|p| matches!(self.placement, DesktopPlacement::Pane { .. })
+            && p.x.is_finite() && p.y.is_finite() && p.x >= 0.0 && p.y >= 0.0);
+    }
+
     pub fn set_display_name(&mut self, display_name: impl Into<String>) {
         self.display_name = display_name.into();
     }
 
     pub fn set_placement(&mut self, placement: DesktopPlacement) {
         self.placement = placement;
+        self.pane_position = None;
     }
 }

@@ -104,6 +104,7 @@ impl Workspace {
                     .find(|existing| existing.identity().equivalent_to(incoming.identity()))
                 {
                     incoming.set_placement(existing.placement().clone());
+                    incoming.set_pane_position(existing.pane_position());
                 }
                 incoming
             })

@@ -15,6 +15,7 @@ pub(super) fn validate_and_upgrade(connection: &Connection) -> Result<(), StoreE
             .collect::<String>()
             .to_ascii_lowercase()
     };
+    let mut desktop_upgrade = None;
     let mut folder_upgrade = None;
     let mut layout_index = None;
     let mut folder_view = None;
@@ -29,6 +30,11 @@ pub(super) fn validate_and_upgrade(connection: &Connection) -> Result<(), StoreE
         let actual = actual.as_deref().map(normalize);
         let normalized_expected = normalize(&expected);
         if actual.as_deref() == Some(normalized_expected.as_str()) {
+            continue;
+        }
+        if name == "desktop_items" && actual.as_deref() == Some(normalized_expected.replace(
+            "((xisnullandyisnull)or(xisnotnullandyisnotnullandx>=0andy>=0))", "xisnullandyisnull").as_str()) {
+            desktop_upgrade = Some(expected);
             continue;
         }
         if name == "panel_folder_view" && actual.is_none() {
@@ -52,6 +58,13 @@ pub(super) fn validate_and_upgrade(connection: &Connection) -> Result<(), StoreE
     }
     // Apply known upgrades only after validating every table and index.
     // Keep existing mappings and sort settings in the same transaction.
+    if let Some(create) = desktop_upgrade {
+        transaction.execute_batch("ALTER TABLE desktop_items RENAME TO desktop_items_before_free_layout;")?;
+        transaction.execute_batch(&create)?;
+        transaction.execute_batch("INSERT INTO desktop_items SELECT * FROM desktop_items_before_free_layout;
+            DROP TABLE desktop_items_before_free_layout;
+            CREATE INDEX desktop_items_pane ON desktop_items(pane_id);")?;
+    }
     if let Some(create) = folder_upgrade {
         transaction.execute_batch(
             "ALTER TABLE panel_folder_settings RENAME TO panel_folder_settings_before_size;",
@@ -107,7 +120,7 @@ CREATE TABLE desktop_items (
     pane_id INTEGER REFERENCES panels(id) DEFERRABLE INITIALLY DEFERRED,
     grid_column INTEGER, grid_row INTEGER,
     CHECK((placement_kind='free' AND monitor_id IS NOT NULL AND x IS NOT NULL AND y IS NOT NULL AND pane_id IS NULL AND grid_column IS NULL AND grid_row IS NULL)
-       OR (placement_kind='pane' AND pane_id IS NOT NULL AND grid_column>=0 AND grid_column IS NOT NULL AND grid_row>=0 AND grid_row IS NOT NULL AND monitor_id IS NULL AND x IS NULL AND y IS NULL))
+       OR (placement_kind='pane' AND pane_id IS NOT NULL AND grid_column>=0 AND grid_column IS NOT NULL AND grid_row>=0 AND grid_row IS NOT NULL AND monitor_id IS NULL AND ((x IS NULL AND y IS NULL) OR (x IS NOT NULL AND y IS NOT NULL AND x>=0 AND y>=0))))
 );
 CREATE INDEX desktop_items_pane ON desktop_items(pane_id);
 CREATE TABLE monitor_layouts (
@@ -133,4 +146,22 @@ pub(super) fn parse_sort(raw: &str) -> Result<(i64, &str), StoreError> {
         ));
     }
     Ok((column, direction))
+}
+
+#[cfg(test)]
+mod free_layout_tests {
+    use super::*;
+    #[test]
+    fn upgrades_old_item_constraint_without_losing_positions_or_index() {
+        let connection=Connection::open_in_memory().unwrap();
+        let old=SCHEMA.replace("((x IS NULL AND y IS NULL) OR (x IS NOT NULL AND y IS NOT NULL AND x>=0 AND y>=0))", "x IS NULL AND y IS NULL");
+        assert_ne!(old,SCHEMA);
+        connection.execute_batch(&old).unwrap();
+        connection.execute_batch("INSERT INTO desktop_items(identity_key,identity_kind,identity_value,display_name,placement_kind,monitor_id,x,y) VALUES ('sample','namespace','sample','sample','free','primary',10,20);").unwrap();
+        validate_and_upgrade(&connection).unwrap();
+        let position:(f32,f32)=connection.query_row("SELECT x,y FROM desktop_items WHERE identity_key='sample'",[],|r|Ok((r.get(0)?,r.get(1)?))).unwrap();
+        assert_eq!(position,(10.0,20.0));
+        assert_eq!(connection.query_row("SELECT count(*) FROM sqlite_schema WHERE name='desktop_items_pane'",[],|r|r.get::<_,i64>(0)).unwrap(),1);
+        let before=connection.total_changes();validate_and_upgrade(&connection).unwrap();assert_eq!(connection.total_changes(),before);
+    }
 }
