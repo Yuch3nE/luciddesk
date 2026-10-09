@@ -12,6 +12,8 @@
 | 实际桌面操作 | 选择、拖放、菜单、层级和可见恢复 | 不同系统、DPI、Shell 扩展组合 |
 | 安装包生命周期 | 部署、加载位置、升级、卸载与数据保留 | 不同分发渠道和真实新版本替换 |
 
+应用内的原生 UI 单元测试使用 `pane::test_support::apartment()`，并在窗口、模型和渲染器之前声明其返回的 guard。测试进程保留一个 MTA usage 引用，防止不同测试 STA 之间 COM 完全退出、卸载 `Windows.UI.dll` 后，WinRT 激活工厂缓存仍访问旧虚函数表。每个测试仍运行于 STA，guard 先释放线程图形缓存再退出 OLE；不会改动正式程序。实际最终 COM/进程退出测试继续在独立子进程中使用原始 guard，不受该保活机制遮蔽。
+
 原生 COM、图形、菜单和窗口测试需要合适的 Windows 会话。按说明串行或独立进程执行，避免共享桌面、焦点及 STA 生命周期互相影响。单线程测试只能降低干扰，不能让交互测试适用于无桌面的 CI 会话。
 
 ## 按改动选择检查
@@ -25,6 +27,8 @@
 | 设置与多语言 | Fluent 参数、字体覆盖、热切换状态、长文本与输入 | [设置组件](settings-components.md)、[多语言](localization.md) |
 | 托盘 | 延迟分派、菜单、图标重建及正常退出 | [运行时托盘](tray.md) |
 | 打包与安装 | 同次构建、标记、快捷方式、更新、卸载及数据 | 下文包验收矩阵 |
+
+交换链像素测试必须在完成绘制后、`end_frame` / `Present` 前调用 `readback`。Flip-model 交换链提交后，0 号缓冲区可能已切换到下一帧，不能把它当作刚刚提交的画面。搜索面板通过 `Drawing::draw_frame` 提供提交前的测试入口，正式绘制仍使用 `paint` 完成绘制和提交。
 
 文档修改通常核对源码、命令和本地链接即可；涉及行为的修改按风险补充测试。测试过滤器必须确认实际命中测试，退出码为零但执行零项不能算行为验证。`--ignored` 只运行被忽略的测试，不能替代默认测试集。
 
@@ -44,6 +48,27 @@ python tools/check-locales.py
 这些命令不包含默认忽略的交互测试。图形、托盘和 Shell 探针的专用命令见各专题文档；生成绑定变更还需执行生成器的 `--check`。受限桌面、文件占用或工具链缺失造成的失败应记录具体错误，不直接归类为代码回归，也不能视为通过。
 
 当前 Build CI 的检查是本地验收的子集：包含框选纯逻辑、拖动图像透明度及 WARP 彩色 emoji 与 Canvas 离屏测试；框选窗口消息和其他依赖交互桌面的场景仍需本地验收。CI 不自动生成 MSIX。判断某次 CI 的覆盖范围应核对对应提交的工作流和日志。
+
+### 面板性能优化回归
+
+以下测试验证优化前后的行为约束，不使用耗时阈值判断通过，也不等同于性能基准或全项目覆盖率证明。
+
+| 测试入口 | 覆盖内容 |
+| --- | --- |
+| `pane::model::performance_tests` | 滚动及真实图片替换复用缓存；改名、增删、重排、坐标、图标大小、网格缩放和排列模式变化后，热缓存与冷测量一致；字体缓存失效；空面板与越界滚动；稀疏网格八个调整方向、负坐标、100%/125%/150%/200% DPI 下按需行测量与完整行测量一致 |
+| `pane::label::cache_tests` | 相同输入复用原生文字布局；文字、字体、字号、缩放、宽度、DPI、行数区分缓存；容量上限、替换和最近使用淘汰 |
+| `pane::sorting::tests` | 读取前和读取中取消、正常完成及空集合；快照顺序无关但成员变化可检测；已提交的内容或面板变化立即取消任务并释放结果通道；迟到结果不写入；正常排序与重复点击 |
+| `pane::render::tests::horizontal_scroll_keeps_preloaded_texture_and_reveals_its_pixels` | WARP 下固定网格/自由排列、多 DPI；横向隐藏仍预加载、滚动不重复上传、进入视口显示真实图片、滚回后像素恢复 |
+| `pane::render::tests::scrolling_releases_offscreen_icon_textures` | 纵向滚动后纹理不持续累积，滚回后重新显示 |
+
+先运行定向回归，再串行运行应用完整默认测试集，以发现共享字体、COM 和图形缓存状态的跨用例影响：
+
+```powershell
+cargo test -p luciddesk --locked --offline --bin luciddesk -- 'pane::model::performance_tests::' 'pane::sorting::tests::' 'pane::label::cache_tests::' 'horizontal_scroll_keeps' --test-threads=1
+cargo test -p luciddesk --locked --offline --bin luciddesk -- --test-threads=1
+```
+
+纹理上传计数仅在 `cfg(test)` 中启用；不进入正式构建。取消测试验证停止后续读取，不声称能打断已经阻塞的系统文件调用。混合 DPI 跨屏、真实驱动及网络文件系统阻塞仍需实机验收。
 
 ## 实机验收流程
 

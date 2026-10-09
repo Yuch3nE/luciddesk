@@ -335,7 +335,7 @@ luciddesk-cli pane snap --id 7 --target 4 --side bottom --align start --dry-run 
 
 `pane sort --id ID --dry-run --json` 按显示名称自然升序预览，例如“文件2”在“文件10”之前；`--descending true` 为降序。对应操作为 `{"op":"pane.sort","pane_id":"ID","descending":false}`，方向默认为升序。同名项使用稳定身份消除歧义。
 
-取消勾选普通面板菜单中的“自动排列图标”即可进入手动网格排列模式，`pane get/list` 与 `content_layout` 返回 `fixed_icon_positions`（为 true 表示自动排列已关闭）。此时 item.assign 填空位、item.release 留空位，pane.fit/snap/arrange 保留坐标和空行，并将实际宽度至少保留到最右侧已占用列；请求的 icon_columns 可能因此被提高。主动 pane.sort 和 item.reorder 会重新紧凑排列，不能用它们作为无副作用的刷新。取消“将图标与网格对齐”后为自由排列，`align_icons_to_grid=false`；图标查询的 `placement.position_dip` 返回相对面板内容区的坐标（若为空则按 column/row 推算）。CLI 适配尺寸会包含自由位置的实际内容范围，不移动图标；自由内容的宽度不再向上取整到整列，请求的 icon_columns 仍作为宽度下限。
+取消勾选普通面板菜单中的“自动排列图标”即可进入手动网格排列模式，`pane get/list` 与 `content_layout` 返回 `fixed_icon_positions`（为 true 表示自动排列图标已关闭）。此时 item.assign 填空位、item.release 留空位，pane.fit/snap/arrange 保留坐标和空行，并将实际宽度至少保留到最右侧已占用列；请求的 icon_columns 可能因此被提高。主动 pane.sort 和 item.reorder 会重新紧凑排列，不能用它们作为无副作用的刷新。取消“对齐到网格”后为自由排列，`align_icons_to_grid=false`；图标查询的 `placement.position_dip` 返回相对面板内容区的坐标（若为空则按 column/row 推算）。CLI 适配尺寸会包含自由位置的实际内容范围，不移动图标；自由内容的宽度不再向上取整到整列，请求的 icon_columns 仍作为宽度下限。
 
 排序只改变指定普通面板内部顺序，不改变文件、面板位置或其他标签页，不扫描文件元数据，也不启用持续自动排序。锁定面板须先解锁；文件夹使用 folder.update 排序。复用 preview/apply、冲突保护及回执，顺序与布局均已满足时不写数据库。任意自定义顺序继续使用 `item reorder --pane ID --input FILE`，文件为完整当前成员 ID 数组；查询后按 placement.row/column 核对顺序。
 
@@ -344,3 +344,7 @@ luciddesk-cli pane snap --id 7 --target 4 --side bottom --align start --dry-run 
 “设置 → 常规 → Agent 与 CLI”提供“允许 CLI 控制”开关，默认开启，保存为 `config.toml` 的 `[cli].enabled`。关闭后立即拒绝所有在线查询、计划预览和提交，返回 `ACCESS_DENIED`（退出码 9）；管道保留以返回明确的禁用提示。已经提交的操作不会因此回滚。重新启用请使用设置界面；离线 `help`、`schema`、`skill show` 不受影响。
 
 同一区域可复制 SKILL 安装提示词，包含安装目录中的 `skills/luciddesk-control/` 绝对路径。Agent 根据自身环境确定技能安装位置，直接复制整个目录（含 `SKILL.md` 和 `references/`），核对文件内容后报告路径与数量。不调用 CLI 导出 JSON，不通过文本重定向重新生成文件，从而避免编码和长输出截断问题。源目录缺失时应报告，不自动下载其他版本。复制按钮只复制提示词，不自动安装、不修改桌面。
+
+普通面板查询还返回 `auto_compact`，表示是否开启“自动排列图标”（连续排列并消除空位）。
+
+手动排列时，显式调整面板宽度允许小于图标内容宽度，图标位置保持不变；窗口通过横向滚动访问超出内容。`pane.fit` 仍按完整内容范围适配宽度；`pane.sort` 和 `item.reorder` 按当前可见列数重新排列，保持手动/自由模式。滚动位置不写入数据库。
