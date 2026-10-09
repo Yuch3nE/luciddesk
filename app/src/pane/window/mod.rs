@@ -477,6 +477,13 @@ where
                     event(Event::Refresh);
                     Some(0)
                 }
+                WM_NCRBUTTONDOWN if wparam == HTCAPTION as usize => Some(0),
+                WM_NCRBUTTONUP if wparam == HTCAPTION as usize => {
+                    // Caption messages already carry screen coordinates. Use the
+                    // same deferred menu as client right-clicks, not a system menu.
+                    unsafe { PostMessageW(hwnd, WM_CONTEXTMENU, hwnd as usize, lparam); }
+                    Some(0)
+                }
                 WM_RBUTTONUP => {
                     let mut p = point(lparam);
                     unsafe {

@@ -1843,6 +1843,47 @@ fn reconciliation_preserves_groups_and_appends_new_items_after_existing_order() 
 }
 
 #[test]
+fn header_right_click_routes_client_and_caption_messages_to_one_context_menu() {
+    use windows_sys::Win32::UI::WindowsAndMessaging::*;
+    let _apartment = crate::pane::test_support::apartment();
+    let packed = |p: POINT| (usize::from(p.x as u16) | (usize::from(p.y as u16) << 16)).cast_signed();
+    for folder in [false, true] {
+        for locked in [false, true] {
+            for collapsed in [false, true] {
+                let mut data = test_model("Header menu");
+                data.locked = locked;
+                data.collapsed = collapsed;
+                if folder { data.folder = Some(std::env::temp_dir()); }
+                let model = Rc::new(RefCell::new(data));
+                let pane = window::create(RectDip::new(40.0, 40.0, 300.0, 200.0), model, |_| false).unwrap();
+                let hwnd = pane.hwnd().cast();
+                unsafe {
+                    SetWindowPos(hwnd, std::ptr::null_mut(), -320, 90, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOZORDER);
+                    let dpi = windows_sys::Win32::UI::HiDpi::GetDpiForWindow(hwnd).max(96) as f32 / 96.0;
+                    let client_point = POINT { x: (100.0 * dpi) as i32, y: (20.0 * dpi) as i32 };
+                    let mut screen_point = client_point;
+                    windows_sys::Win32::Graphics::Gdi::ClientToScreen(hwnd, &raw mut screen_point);
+                    let hit = SendMessageW(hwnd, WM_NCHITTEST, 0, packed(screen_point));
+                    assert_eq!(hit, if locked { HTCLIENT } else { HTCAPTION } as isize);
+                    let mut message = MSG::default();
+                    if locked {
+                        SendMessageW(hwnd, WM_RBUTTONUP, 0, packed(client_point));
+                    } else {
+                        SendMessageW(hwnd, WM_NCRBUTTONDOWN, HTCAPTION as usize, packed(screen_point));
+                        assert_eq!(PeekMessageW(&raw mut message, hwnd, WM_CONTEXTMENU, WM_CONTEXTMENU, PM_REMOVE), 0);
+                        SendMessageW(hwnd, WM_NCRBUTTONUP, HTCAPTION as usize, packed(screen_point));
+                    }
+                    assert_ne!(PeekMessageW(&raw mut message, hwnd, WM_CONTEXTMENU, WM_CONTEXTMENU, PM_REMOVE), 0);
+                    assert_eq!(message.wParam, hwnd as usize);
+                    assert_eq!(message.lParam, packed(screen_point), "menu must keep signed screen coordinates");
+                    assert_eq!(PeekMessageW(&raw mut message, hwnd, WM_CONTEXTMENU, WM_CONTEXTMENU, PM_REMOVE), 0, "right-click must open only one menu");
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn multiselection_preserves_anchor_toggle_and_file_identity_on_refresh() {
     let mut model = test_model("Sizing test");
     model.items = (0..8)
