@@ -51,6 +51,8 @@ python tools/check-locales.py
 
 ### 面板性能优化回归
 
+CI 的 `tools/test-control-ci.py` 将排列默认值、固定网格、自由排列、控制布局、延迟任务、排序、行测量和文字缓存测试逐例放入独立进程执行，限制单例 60 秒，避免原生 UI 状态相互影响。每个筛选组必须命中测试，忽略或零用例不能视为通过；筛选逻辑另有 Python 单元测试。可用 `python tools/test-control-ci.py --offline` 在本地复现，添加 `--release` 使用 Release 测试配置。
+
 以下测试验证优化前后的行为约束，不使用耗时阈值判断通过，也不等同于性能基准或全项目覆盖率证明。
 
 | 测试入口 | 覆盖内容 |

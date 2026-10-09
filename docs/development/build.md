@@ -145,6 +145,10 @@ MSIX 从普通生产包生成，不使用便携包作为输入；包身份、签
 
 ## 自动检查
 
+Build CI 在恢复 Cargo 缓存后统一执行 `cargo fetch --locked --target x86_64-pc-windows-msvc`，后续 Rust 检查、测试与生产打包均离线执行。元数据任务单独验证 CLI JSON Schema、发布清单、多语言与测试筛选规则；Schema 验证依赖固定在 `tools/requirements-ci.txt`，安装到临时虚拟环境，不进入应用或安装包。
+
+同一非标签引用的新运行会取消旧工作流；标签构建不会自动取消。任务和关键步骤设置超时，Release 摘要列出主程序、CLI 和桌面 DLL 的体积，Actions 构建附件保留 14 天。发布仍只生成 EXE、普通 ZIP、便携 ZIP 及校验文件。
+
 先执行与修改相关的检查，再按风险补充 Windows 实机验证。以下命令不包含默认跳过的交互测试：
 
 ```powershell

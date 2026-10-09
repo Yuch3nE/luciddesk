@@ -13,21 +13,38 @@ FILTERS = (
     "pane::control::content_layout::tests::",
     "pane::control::geometry::tests::",
     "pane::window::scheduling::tests::",
+    "pane::layout_defaults::tests::",
+    "pane::settings::tests::desktop_layout_defaults_",
+    "pane::sorting::tests::",
+    "pane::model::performance_tests::",
+    "pane::label::cache_tests::",
 )
+
+
+def select_tests(listing, filters=FILTERS):
+    tests = [line.removesuffix(": test") for line in listing.splitlines()
+             if line.endswith(": test") and line.startswith(filters)]
+    for prefix in filters:
+        if not any(name.startswith(prefix) for name in tests):
+            raise RuntimeError(f"No tests found for {prefix}")
+    return tests
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--target-dir")
     parser.add_argument("--offline", action="store_true")
+    parser.add_argument("--release", action="store_true")
     args = parser.parse_args()
     command = ["cargo", "test", "-p", "luciddesk", "--bin", "luciddesk",
-               "--locked", "--no-run", "--message-format=json"]
+               "--locked", "--no-run", "--message-format=json-render-diagnostics"]
     if args.target_dir:
         command += ["--target-dir", args.target_dir]
     if args.offline:
         command.append("--offline")
-    build = subprocess.run(command, cwd=ROOT, stdout=subprocess.PIPE, text=True, check=True)
+    if args.release:
+        command.append("--release")
+    build = subprocess.run(command, cwd=ROOT, stdout=subprocess.PIPE, text=True, check=True, timeout=900)
     executables = []
     for line in build.stdout.splitlines():
         artifact = json.loads(line)
@@ -40,11 +57,7 @@ def main():
         raise RuntimeError(f"Expected one app test binary, found {executables}")
     executable = executables[0]
     listing = subprocess.check_output([executable, "--list"], cwd=ROOT, text=True, timeout=30)
-    tests = [line.removesuffix(": test") for line in listing.splitlines()
-             if line.endswith(": test") and line.startswith(FILTERS)]
-    for prefix in FILTERS:
-        if not any(name.startswith(prefix) for name in tests):
-            raise RuntimeError(f"No tests found for {prefix}")
+    tests = select_tests(listing)
     failed = []
     for name in tests:
         try:

@@ -1,0 +1,2 @@
+# Validation only; not part of the application or installer payload.
+jsonschema==4.26.0
