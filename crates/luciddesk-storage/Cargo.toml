@@ -9,7 +9,7 @@ license.workspace = true
 luciddesk-core.workspace = true
 rusqlite.workspace = true
 tempfile = "3"
-toml_edit = "0.25.15"
+toml_edit = "0.25.17"
 
 [lints]
 workspace = true
