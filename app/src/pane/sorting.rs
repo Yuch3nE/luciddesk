@@ -29,7 +29,14 @@ pub(super) fn apply(workspace: &mut Workspace, id: PanelId, descending: bool) ->
     });
     // The desired order is unchanged exactly when it is also ordered by the
     // existing grid positions (identity breaks ties). Preserve sparse grids on no-op.
-    if entries.windows(2).all(|pair| {
+    let fixed = panel.fixed_grid();
+    let columns = fixed_grid::columns(workspace, id);
+    let free = workspace.panel(id).is_some_and(Panel::free_layout);
+    let metrics = free_layout::grid(workspace);
+    if (!fixed || entries.iter().enumerate().all(|(at, e)| {
+        let p = fixed_grid::position(at, columns);
+        e.position == (p.row, p.column) && (!free || workspace.desktop_items()[e.index].pane_position() == Some(luciddesk_core::PointDip::new(p.column as f32 * metrics.cell_width, p.row as f32 * metrics.cell_height)))
+    })) && entries.windows(2).all(|pair| {
         (pair[0].position, &pair[0].key) <= (pair[1].position, &pair[1].key)
     }) {
         return Ok(false);
@@ -38,9 +45,7 @@ pub(super) fn apply(workspace: &mut Workspace, id: PanelId, descending: bool) ->
     // desktop identity again and scanning unrelated panes to apply the result.
     let items = workspace.desktop_items_mut();
     for (at, entry) in entries.into_iter().enumerate() {
-        items[entry.index].set_placement(DesktopPlacement::Pane {
-            pane_id: id, position: GridPosition::new(at as u32, 0),
-        });
+        fixed_grid::set_position(&mut items[entry.index], id, if fixed { fixed_grid::position(at, columns) } else { GridPosition::new(at as u32, 0) }, free, metrics);
     }
     Ok(true)
 }

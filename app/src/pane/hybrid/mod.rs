@@ -477,16 +477,22 @@ pub(super) fn register_drop(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result
                 }
                 let old = s.workspace.clone();
                 normalize_pane_orders(&mut s);
-                let mut at = items_for(&s, id).len();
-                for identity in keys {
-                    s.workspace
-                        .desktop_item_mut(&identity)
-                        .unwrap()
-                        .set_placement(DesktopPlacement::Pane {
-                            pane_id: id,
-                            position: GridPosition::new(at as u32, 0),
-                        });
-                    at += 1;
+                if s.workspace.panel(id).is_some_and(Panel::fixed_grid) {
+                    let keys: Vec<_> = keys.iter().filter(|key| !matches!(s.workspace.desktop_item(key).unwrap().placement(), DesktopPlacement::Pane { pane_id, .. } if *pane_id == id))
+                        .map(ShellIdentity::persistent_key).collect();
+                    fixed_grid::place(&mut s.workspace, id, &keys, GridPosition::new(0, 0));
+                } else {
+                    let mut at = items_for(&s, id).len();
+                    for identity in keys {
+                        s.workspace
+                            .desktop_item_mut(&identity)
+                            .unwrap()
+                            .set_placement(DesktopPlacement::Pane {
+                                pane_id: id,
+                                position: GridPosition::new(at as u32, 0),
+                            });
+                        at += 1;
+                    }
                 }
                 if let Err(error) = save_placement(&mut s) {
                     s.workspace = old;

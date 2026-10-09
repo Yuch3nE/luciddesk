@@ -184,6 +184,18 @@ pub(super) fn apply(
                 }
             }
         }
+        Event::ToggleGridAlignment => {
+            let previous = s.workspace.clone();
+            free_layout::toggle(&mut s.workspace, id)?;
+            if let Err(error) = save(&mut s) { s.workspace = previous; return Err(error); }
+            refresh_views(&mut s);
+        }
+        Event::ToggleFixedGrid => {
+            let previous = s.workspace.clone();
+            fixed_grid::toggle(&mut s.workspace, id)?;
+            if let Err(error) = save(&mut s) { s.workspace = previous; return Err(error); }
+            refresh_views(&mut s);
+        }
         Event::SortPane(target, descending) => {
             let previous = s.workspace.clone();
             if sorting::apply(&mut s.workspace, target, descending)? {
@@ -277,7 +289,7 @@ pub(super) fn apply(
             }
             show_collapsed(&s, id, collapsed);
         }
-        Event::Drop { index, point } => {
+        Event::Drop { index, point, offset } => {
             let source = items_for(&s, id);
             let Some(_) = source.get(index) else {
                 return Ok(false);
@@ -295,50 +307,38 @@ pub(super) fn apply(
                     }
                 })
                 .unwrap_or_else(|| vec![index]);
+            let target_window = unsafe { WindowFromPoint(point) };
             let target = s.views.iter().rev().find_map(|view| {
                 if s.workspace.panel(view.id).is_some_and(Panel::is_search) {
                     return None;
                 }
                 let hwnd = view.window.hwnd().cast();
-                if unsafe { WindowFromPoint(point) } != hwnd {
+                if target_window != hwnd {
                     return None;
                 }
                 if unsafe { IsWindow(hwnd) } == 0 {
                     return None;
                 }
+                let model = view.model.borrow();
+                if model.collapsed { return None; }
+                let mut local = point;
                 let mut bounds = RECT::default();
                 unsafe {
-                    GetWindowRect(hwnd, &raw mut bounds);
+                    if ScreenToClient(hwnd, &raw mut local) == 0
+                        || windows_sys::Win32::UI::WindowsAndMessaging::GetClientRect(hwnd, &raw mut bounds) == 0 { return None; }
                 }
-                if point.x < bounds.left
-                    || point.x >= bounds.right
-                    || point.y < bounds.top
-                    || point.y >= bounds.bottom
-                    || view.model.borrow().collapsed
-                {
-                    return None;
-                }
-                let mut local = point;
-                unsafe {
-                    ScreenToClient(hwnd, &raw mut local);
-                }
-                let scale = unsafe { GetDpiForWindow(hwnd) } as f32 / 96.0;
-                let model = view.model.borrow();
+                if local.x < bounds.left || local.x >= bounds.right
+                    || local.y < bounds.top || local.y >= bounds.bottom { return None; }
+                let scale = unsafe { GetDpiForWindow(hwnd) }.max(96) as f32 / 96.0;
+                let (x, y) = (local.x as f32 / scale, local.y as f32 / scale);
                 let grid = model.grid(
                     (bounds.right - bounds.left) as f32 / scale,
                     (bounds.bottom - bounds.top) as f32 / scale,
                 );
-                let at = grid
-                    .hit(
-                        local.x as f32 / scale,
-                        local.y as f32 / scale,
-                        model.scroll,
-                        model.items.len(),
-                    )
-                    .unwrap_or(model.items.len());
-                Some((view.id, at))
+                let (at, free) = model.drop_destination(grid, x, y, offset);
+                Some((view.id, at, free))
             });
-            if let Some((target, at)) = target {
+            if let Some((target, at, free)) = target {
                 if let Some(path) = s.folders.get(&target).map(|source| source.path.clone()) {
                     let identities: Vec<_> = indices
                         .iter()
@@ -369,7 +369,15 @@ pub(super) fn apply(
                 if s.workspace.panel(id).is_some_and(|p| p.folder().is_some()) {
                     return Ok(false);
                 }
-                transfer_many(&mut s, id, &indices, target, at)?;
+                if let Some(destination) = free {
+                    let previous = s.workspace.clone();
+                    let keys: Vec<_> = indices.iter().filter_map(|i| source.get(*i)).map(|i| i.identity.persistent_key()).collect();
+                    free_layout::move_items(&mut s.workspace, id, target, &keys, &source[index].identity.persistent_key(), destination)?;
+                    if target != id && !s.workspace.panel(id).is_some_and(Panel::fixed_grid) {
+                        let remaining = items_for(&s, id); set_order(&mut s.workspace, id, &remaining);
+                    }
+                    if let Err(error) = save(&mut s) { s.workspace = previous; return Err(error); }
+                } else { transfer_many(&mut s, id, &indices, target, at)?; }
                 for view in &s.views {
                     view.model.borrow_mut().clear_selection();
                 }

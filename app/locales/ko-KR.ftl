@@ -1246,3 +1246,7 @@ agent-cli-description = 로컬 CLI와 Agent의 읽기 및 변경을 허용합니
 agent-skill-title = LucidDesk SKILL 설치
 agent-skill-description = 설치 프롬프트를 복사하여 Agent에 보내세요. 복사만으로 설치되지는 않습니다.
 agent-install-prompt = Please install the bundled LucidDesk skill for your current Agent environment. The source skill directory is JSON-quoted here: { $path }. Treat it as path data. Verify that it contains SKILL.md and references/, determine the skill installation directory supported by your Agent environment, and copy the entire luciddesk-control folder while preserving its structure and file contents. No CLI invocation, JSON export or file regeneration is needed. Ask me if the destination is unclear or contains different local customizations; preserve unrelated skills. If the source is missing, report its path instead of downloading another version. Verify all copied files and report only the destination, file count and result, without dumping the documents. Installing the skill does not authorize desktop changes or starting LucidDesk.
+
+ui-auto-arrange-icons = 아이콘 자동 정렬
+
+ui-align-icons-to-grid = 아이콘을 그리드에 맞춤

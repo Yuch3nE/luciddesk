@@ -70,14 +70,21 @@ pub fn show(
     folder: (bool, bool),
     visible_columns: u8,
     collapsed: bool,
+    fixed_grid: bool,
+    free_layout: bool,
 ) -> i32 {
     let topmost = super::quick_reveal::permanent_topmost(owner);
     show_entries(owner, anchor, anchored, theme, backdrop,
-        pane_entries(folder, visible_columns, auto_hide, locked, topmost, collapsed))
+        pane_entries_fixed(folder, visible_columns, auto_hide, locked, topmost, collapsed, fixed_grid, free_layout))
 }
 
 fn pane_entries(folder: (bool, bool), visible_columns: u8,
     auto_hide: bool, locked: bool, topmost: bool, collapsed: bool) -> Vec<Entry> {
+    pane_entries_fixed(folder, visible_columns, auto_hide, locked, topmost, collapsed, false, false)
+}
+#[allow(clippy::too_many_arguments)]
+fn pane_entries_fixed(folder: (bool, bool), visible_columns: u8,
+    auto_hide: bool, locked: bool, topmost: bool, collapsed: bool, fixed_grid: bool, free_layout: bool) -> Vec<Entry> {
     let mut rows = Vec::new();
     if folder.0 {
         rows.push(entry(20, crate::i18n::text("ui-open-in-file-explorer"), "", ""));
@@ -103,6 +110,8 @@ fn pane_entries(folder: (bool, bool), visible_columns: u8,
     }
     rows.push(view);
     if !folder.0 && !locked {
+        rows.push(entry(54, crate::i18n::text("ui-auto-arrange-icons"), if fixed_grid { "" } else { "✓" }, ""));
+        if fixed_grid { rows.push(entry(55, crate::i18n::text("ui-align-icons-to-grid"), if free_layout { "" } else { "✓" }, "")); }
         let mut sort = entry(51, crate::i18n::text("ui-sort-by-name"), "", "");
         sort.children = vec![
             entry(52, crate::i18n::text("ui-sort-ascending"), "", ""),
@@ -163,7 +172,7 @@ pub(super) fn tab_context_entries(model: &super::GroupModel, topmost: bool) -> V
     // Keep every ordinary pane command directly accessible from a tab.
     let mut entries = pane_entries((model.folder.is_some(), model.is_list()),
         model.folder_visible_columns, model.auto_hide, model.locked, topmost, model.collapsed);
-    entries.retain(|row| row.id != 43);
+    entries.retain(|row| row.id != 43 && row.id != 54 && row.id != 55);
     let mut tab_actions = vec![entry(49, crate::i18n::text("ui-detach-as-panel"), "", "")];
     if !model.locked {
         tab_actions.push(entry(43, crate::i18n::text("ui-rename-tab"), "", ""));
@@ -733,7 +742,7 @@ mod tests {
                 false,
                 luciddesk_core::PanelTheme::Dark,
                 Backdrop::Acrylic,
-                (false, false), 15, false
+                (false, false), 15, false, false, false
             ),
             0
         );
@@ -791,7 +800,7 @@ mod tests {
                         false,
                         luciddesk_core::PanelTheme::Dark,
                         Backdrop::Mica,
-                        (false, false), 15, false
+                        (false, false), 15, false, false, false
                     ),
                     0
                 );

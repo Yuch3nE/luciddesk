@@ -259,6 +259,7 @@ where
     let mut surface: Option<Surface> = None;
     let mut visibility = super::visibility::Transition::default();
     let mut drag: Option<(usize, POINT, bool)> = None;
+    let mut drag_offset = luciddesk_core::PointDip::default();
     let mut marquee: Option<super::marquee::Marquee> = None;
     let mut column_drag: Option<ColumnDrag> = None;
     let mut scrollbar_drag: Option<f32> = None;
@@ -416,6 +417,7 @@ where
                     Some(1)
                 }
                 WM_SETTINGCHANGE | WM_THEMECHANGED => {
+                    super::assets::invalidate_font();
                     scrollbar_animated = super::scrollbar::animations_enabled();
                     {
                         let mut m = model.borrow_mut();
@@ -630,12 +632,10 @@ where
                     let m = model.borrow();
                     let cell = m.resize_cell();
                     let s = scale(hwnd);
-                    let first_row = if m.collapsed { None } else {
-                        m.row_contents(grid(hwnd, &m)).get(m.scroll).copied()
-                    };
+                    let first_row = m.minimum_row_content(grid(hwnd, &m));
                     let (width, height) = super::layout::pane_minimum(
                         cell, m.collapsed, m.tabs.len() > 1, first_row);
-                    info.ptMinTrackSize.x = (width * s).ceil() as i32;
+                    info.ptMinTrackSize.x = (width.max(m.fixed_width()) * s).ceil() as i32;
                     info.ptMinTrackSize.y = (height * s).ceil() as i32;
                     Some(0)
                 }
@@ -643,7 +643,7 @@ where
                     let rect = unsafe { &mut *(lparam as *mut RECT) };
                     let proposal = *rect;
                     let m = model.borrow();
-                    if m.is_list() || m.items.is_empty() {
+                    if m.is_list() || m.items.is_empty() || m.free_layout {
                         drop(m);
                         event(Event::Sizing(rect, proposal, wparam as u32));
                         return Some(1);
@@ -683,6 +683,11 @@ where
                     // Peer alignment wins over content-grid snapping, using the
                     // unsnapped Windows proposal to preserve the release distance.
                     event(Event::Sizing(rect, proposal, wparam as u32));
+                    let min_width = (model.borrow().fixed_width() * s).ceil() as i32;
+                    if rect.right - rect.left < min_width {
+                        if matches!(wparam as u32, WMSZ_LEFT | WMSZ_TOPLEFT | WMSZ_BOTTOMLEFT) { rect.left = rect.right - min_width; }
+                        else { rect.right = rect.left + min_width; }
+                    }
                     Some(1)
                 }
                 WM_PAINT => {
@@ -936,6 +941,10 @@ where
                         drag = selected
                             .filter(|_| !modifiers.ctrl && !modifiers.shift)
                             .map(|index| (index, p, false));
+                        if let Some(index) = selected {
+                            let m = model.borrow(); let (x,y) = m.cell(grid(hwnd, &m), index);
+                            drag_offset = luciddesk_core::PointDip::new(p.x as f32 / s - x, p.y as f32 / s - y);
+                        }
                         drag_identity =
                             selected.map(|index| model.borrow().items[index].identity.clone());
                         unsafe {
@@ -1183,7 +1192,7 @@ where
                         unsafe {
                             ClientToScreen(hwnd, &raw mut p);
                         }
-                        event(Event::Drop { index, point: p });
+                        event(Event::Drop { index, point: p, offset: drag_offset });
                     }
                     Some(0)
                 }
@@ -1248,9 +1257,9 @@ where
                     let mut m = model.borrow_mut();
                     let max = grid(hwnd, &m).max_scroll(m.items.len());
                     m.scroll = if delta < 0 {
-                        (m.scroll + 1).min(max)
+                        (m.scroll + if m.free_layout && !m.is_list() { 32 } else { 1 }).min(max)
                     } else {
-                        m.scroll.saturating_sub(1)
+                        m.scroll.saturating_sub(if m.free_layout && !m.is_list() { 32 } else { 1 })
                     };
                     drop(m);
                     if let Some(selection) = &mut marquee {
@@ -1366,13 +1375,7 @@ where
                                 return Some(0);
                             }
                             let grid = grid(hwnd, &m);
-                            let next = keyboard::next_selection(
-                                key,
-                                m.selected,
-                                m.items.len(),
-                                grid.columns,
-                                grid.visible_rows,
-                            );
+                            let next = m.next_selection(key, grid);
                             if let Some(next) = next {
                                 if modifiers.ctrl && !modifiers.shift {
                                     if m.selection_anchor.is_none() {
@@ -1382,14 +1385,7 @@ where
                                 } else {
                                     m.select_item(next, modifiers.ctrl, modifiers.shift);
                                 }
-                                let row = next / grid.columns.max(1);
-                                let rows = grid.visible_rows.max(1);
-                                if row < m.scroll {
-                                    m.scroll = row;
-                                } else if row >= m.scroll + rows {
-                                    m.scroll = row - rows + 1;
-                                }
-                                m.scroll = m.scroll.min(grid.max_scroll(m.items.len()));
+                                m.ensure_visible(grid, next, scale(hwnd));
                             }
                             drop(m);
                             if next.is_some() {

@@ -56,13 +56,8 @@ impl Marquee {
             height: (sy - y).abs(),
         };
         self.rect = Some(rect);
-        let hits: BTreeSet<_> = grid
-            .visible_indices(
-                model.scroll,
-                viewport.y,
-                viewport.y + viewport.height,
-                model.items.len(),
-            )
+        let hits: BTreeSet<_> = model
+            .visible_indices(grid, viewport.y, viewport.y + viewport.height)
             .filter(|&index| overlaps(rect, model.selection_bounds(grid, index, scale)))
             .collect();
         let original: BTreeSet<_> = model

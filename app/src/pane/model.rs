@@ -9,6 +9,9 @@ pub struct GroupModel {
     pub tabs: Vec<(PanelId, String)>,
     pub active_tab: PanelId,
     pub list_view: bool,
+    pub fixed_grid: bool,
+    pub free_layout: bool,
+    pub minimum_icon_width: f32,
     pub folder_sort: (u8, bool),
     pub folder_columns: Option<[f32; 4]>,
     pub folder_visible_columns: u8,
@@ -38,6 +41,7 @@ pub struct GroupModel {
     pub selection: std::collections::BTreeSet<usize>,
     pub selection_anchor: Option<usize>,
     pub renaming: Option<ShellIdentity>,
+    // Free icons use whole DIPs; grid/list views use rows. Never persisted.
     pub scroll: usize,
     pub collapsed: bool,
     pub loading: bool,
@@ -164,17 +168,36 @@ impl GroupModel {
         (grid.cell_width, grid.cell_height)
     }
 
+    fn free_height(&self, grid: layout::Grid) -> f32 {
+        self.items.iter().filter_map(|i| i.details.free_position.map(|p| p.y + layout::icon_row_height(grid, [i.label.as_str()].into_iter())))
+            .fold(0.0, f32::max)
+    }
     fn row_content(&self, grid: layout::Grid, row: usize) -> f32 {
+        if self.fixed_grid && !self.is_list() {
+            let first = self.items.partition_point(|i| i.details.grid_position.map_or(0, |p| p.row as usize) < row);
+            let last = self.items.partition_point(|i| i.details.grid_position.map_or(0, |p| p.row as usize) <= row);
+            return layout::icon_row_height(grid, self.items[first..last].iter().map(|i| i.label.as_str()));
+        }
         let start = row * grid.columns;
         layout::icon_row_height(grid,
             self.items[start..(start + grid.columns).min(self.items.len())].iter().map(|item| item.label.as_str()))
     }
 
+    pub(super) fn minimum_row_content(&self, grid: layout::Grid) -> Option<f32> {
+        if self.collapsed { return None; }
+        if self.free_layout && !self.is_list() {
+            return Some(layout::icon_row_height(grid, self.items.iter().map(|i| i.label.as_str())));
+        }
+        if self.is_list() { return (self.scroll < self.items.len()).then_some(layout::LIST_ROW); }
+        (self.scroll < self.content_rows(grid)).then(|| self.row_content(grid, self.scroll))
+    }
+
     pub(super) fn row_contents(&self, grid: layout::Grid) -> Vec<f32> {
+        if self.free_layout && !self.is_list() { return vec![layout::icon_row_height(grid, self.items.iter().map(|i| i.label.as_str()))]; }
         if self.is_list() {
             return vec![layout::LIST_ROW; self.items.len()];
         }
-        (0..self.items.len().div_ceil(grid.columns)).map(|row| self.row_content(grid, row)).collect()
+        (0..self.content_rows(grid)).map(|row| self.row_content(grid, row)).collect()
     }
 
     pub(super) fn grid(&self, width: f32, height: f32) -> layout::Grid {
@@ -188,8 +211,14 @@ impl GroupModel {
             return grid;
         }
         let mut grid = self.icon_grid(width, height);
+        if self.free_layout {
+            let available = (height - grid.content_top - layout::PADDING).max(1.0);
+            grid.scroll_limit = Some((self.free_height(grid) - available).ceil().max(0.0) as usize);
+            grid.visible_rows = available.floor().max(1.0) as usize;
+            return grid;
+        }
         if !self.items.is_empty() {
-            let count = self.items.len().div_ceil(grid.columns);
+            let count = self.content_rows(grid);
             let available = height - self.content_header() - layout::PADDING;
             // Positive row heights mean only a viewport-sized suffix can fit at
             // the end; measuring earlier labels cannot affect the scroll limit.
@@ -207,7 +236,125 @@ impl GroupModel {
         grid
     }
     pub(super) fn cell(&self, grid: layout::Grid, index: usize) -> (f32, f32) {
+        if self.free_layout && !self.is_list() {
+            if let Some(p) = self.items[index].details.free_position {
+                return (layout::PADDING + p.x, grid.content_top + p.y - self.scroll as f32);
+            }
+        }
+        if self.fixed_grid && !self.is_list() {
+            if let Some(p) = self.items[index].details.grid_position {
+                return (layout::PADDING + p.column as f32 * grid.cell_width,
+                    grid.content_top + (p.row as f32 - self.scroll as f32) * grid.cell_height);
+            }
+        }
         grid.cell(index, self.scroll)
+    }
+    pub(super) fn content_rows(&self, grid: layout::Grid) -> usize {
+        if self.free_layout && !self.is_list() { return (self.free_height(grid) / grid.cell_height).ceil() as usize; }
+        if self.fixed_grid && !self.is_list() {
+            self.items.last().and_then(|i| i.details.grid_position).map_or(0, |p| p.row as usize + 1)
+        } else { self.items.len().div_ceil(grid.columns) }
+    }
+    pub(super) fn fixed_width(&self) -> f32 {
+        let g = self.icon_grid(0.0,0.0);
+        let own = if self.free_layout {
+            self.items.iter().filter_map(|i| i.details.free_position.map(|p|p.x+g.cell_width)).fold(0.0,f32::max)
+        } else if self.fixed_grid {
+            self.items.iter().filter_map(|i|i.details.grid_position.map(|p|(p.column as f32+1.0)*g.cell_width)).fold(0.0,f32::max)
+        } else { 0.0 };
+        self.minimum_icon_width.max(if own>0.0 { own+layout::PADDING*2.0 } else { 0.0 })
+    }
+    pub(super) fn visible_indices(&self, grid: layout::Grid, top: f32, bottom: f32) -> impl DoubleEndedIterator<Item = usize> + '_ {
+        let free = self.free_layout && !self.is_list();
+        let range = if free { 0..self.items.len() }
+        else if !self.fixed_grid || self.is_list() { grid.visible_indices(self.scroll, top, bottom, self.items.len()) }
+        else {
+            let first = ((top - grid.content_top) / grid.cell_height + self.scroll as f32).floor().max(0.0) as u32;
+            let end = ((bottom - grid.content_top) / grid.cell_height + self.scroll as f32).ceil().max(0.0) as u32;
+            self.items.partition_point(|i| i.details.grid_position.is_some_and(|p| p.row < first))..
+                self.items.partition_point(|i| i.details.grid_position.is_some_and(|p| p.row < end))
+        };
+        range.filter(move |&index| {
+            if !free { return true; }
+            let (_, y) = self.cell(grid, index);
+            y < bottom && y + layout::icon_row_height(grid, [self.items[index].label.as_str()].into_iter()) > top
+        })
+    }
+    /// Client DIPs to a drop destination. Free scroll is in DIPs; grid scroll is in rows.
+    pub(super) fn drop_destination(&self, grid: layout::Grid, x: f32, y: f32,
+        offset: luciddesk_core::PointDip) -> (usize, Option<luciddesk_core::PointDip>) {
+        if self.free_layout && !self.is_list() {
+            return (0, Some(luciddesk_core::PointDip::new(
+                x - layout::PADDING - offset.x,
+                y - grid.content_top + self.scroll as f32 - offset.y,
+            )));
+        }
+        let at = if self.fixed_grid && !self.is_list() {
+            let column = ((x - layout::PADDING) / grid.cell_width).floor().max(0.0) as usize;
+            let row = ((y - grid.content_top) / grid.cell_height).floor().max(0.0) as usize + self.scroll;
+            row * grid.columns + column.min(grid.columns - 1)
+        } else {
+            grid.hit(x, y, self.scroll, self.items.len()).unwrap_or(self.items.len())
+        };
+        (at, None)
+    }
+
+    pub(super) fn next_selection(&self, key: u16, grid: layout::Grid) -> Option<usize> {
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::*;
+        if !self.fixed_grid || self.is_list() || self.selected.is_none() || matches!(key, VK_HOME | VK_END) {
+            return keyboard::next_selection(key, self.selected, self.items.len(), grid.columns, grid.visible_rows);
+        }
+        let at = self.selected?;
+        if self.free_layout {
+            let (x, y) = self.cell(grid, at);
+            let page = grid.visible_rows as f32;
+            return (0..self.items.len()).filter_map(|i| {
+                let (px, py) = self.cell(grid, i); let dx = px-x; let dy = py-y;
+                let score = match key {
+                    VK_LEFT if dx < 0.0 => (dy.abs(), -dx), VK_RIGHT if dx > 0.0 => (dy.abs(), dx),
+                    VK_UP if dy < 0.0 => (dx.abs(), -dy), VK_DOWN if dy > 0.0 => (dx.abs(), dy),
+                    VK_PRIOR if dy < 0.0 => ((dy+page).abs(), dx.abs()), VK_NEXT if dy > 0.0 => ((dy-page).abs(), dx.abs()),
+                    _ => return None,
+                }; Some((score, i))
+            }).min_by(|a,b| a.0.0.total_cmp(&b.0.0).then_with(|| a.0.1.total_cmp(&b.0.1)).then(a.1.cmp(&b.1))).map(|(_, i)| i).or(Some(at));
+        }
+        let here = self.items.get(at)?.details.grid_position?;
+        let page = grid.visible_rows.max(1) as i64;
+        self.items.iter().enumerate().filter_map(|(index, item)| {
+            let p = item.details.grid_position?;
+            let dx = i64::from(p.column) - i64::from(here.column);
+            let dy = i64::from(p.row) - i64::from(here.row);
+            let score = match key {
+                VK_LEFT if dx < 0 => (dy.abs(), -dx),
+                VK_RIGHT if dx > 0 => (dy.abs(), dx),
+                VK_UP if dy < 0 => (dx.abs(), -dy),
+                VK_DOWN if dy > 0 => (dx.abs(), dy),
+                VK_PRIOR if dy < 0 => ((dy + page).abs(), dx.abs()),
+                VK_NEXT if dy > 0 => ((dy - page).abs(), dx.abs()),
+                _ => return None,
+            };
+            Some((score, index))
+        }).min().map(|(_, index)| index).or(Some(at))
+    }
+    pub(super) fn ensure_visible(&mut self, grid: layout::Grid, index: usize, scale: f32) {
+        if self.free_layout && !self.is_list() {
+            let bounds = self.selection_bounds(grid,index,scale);
+            let top = bounds.y - grid.content_top + self.scroll as f32;
+            let bottom = top + bounds.height;
+            let page = grid.visible_rows as f32;
+            if top < self.scroll as f32 { self.scroll = top.floor().max(0.0) as usize; }
+            else if bottom > self.scroll as f32 + page { self.scroll = (bottom-page).ceil().max(0.0) as usize; }
+        } else {
+            let row = self.item_row(grid,index); let rows = grid.visible_rows.max(1);
+            if row < self.scroll { self.scroll = row; }
+            else if row >= self.scroll + rows { self.scroll = row-rows+1; }
+        }
+        self.scroll = self.scroll.min(grid.max_scroll(self.items.len()));
+    }
+    pub(super) fn item_row(&self, grid: layout::Grid, index: usize) -> usize {
+        if self.free_layout && !self.is_list() { return self.items[index].details.free_position.map_or(0, |p| (p.y / grid.cell_height) as usize); }
+        if self.fixed_grid && !self.is_list() { self.items[index].details.grid_position.map_or(0, |p| p.row as usize) }
+        else { index / grid.columns }
     }
     pub(super) fn selection_bounds(&self, grid: layout::Grid, index: usize, scale: f32) -> RectDip {
         let (x, y) = self.cell(grid, index);
@@ -245,6 +392,18 @@ impl GroupModel {
             let r = self.selection_bounds(grid, index, scale);
             x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height
         };
+        if self.free_layout && !self.is_list() {
+            if y < grid.content_top { return None; }
+            return (0..self.items.len()).rev().find(|&i| contains(i));
+        }
+        if self.fixed_grid && !self.is_list() {
+            if x < layout::PADDING || y < grid.content_top { return None; }
+            let column = ((x - layout::PADDING) / grid.cell_width).floor() as u32;
+            let row = ((y - grid.content_top) / grid.cell_height).floor() as u32 + self.scroll as u32;
+            return self.items.binary_search_by_key(&(row, column), |i| {
+                let p = i.details.grid_position.unwrap_or_default(); (p.row, p.column)
+            }).ok().filter(|&index| contains(index));
+        }
         grid.hit(x, y, self.scroll, self.items.len())
             .filter(|&index| contains(index))
     }

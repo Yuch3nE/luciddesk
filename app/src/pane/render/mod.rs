@@ -311,7 +311,7 @@ impl Renderer {
         model: &GroupModel,
     ) -> Result<Vec<u8>> {
         self.prepare(width, height, scale)?;
-        self.draw(width, height, scale, model)?;
+        self.draw(width, height, scale, model, model.grid(width as f32 / scale, height as f32 / scale))?;
         self.target.as_ref().unwrap().2.as_ref().unwrap().pixels()
     }
 
@@ -337,13 +337,9 @@ impl Renderer {
         // Keep the viewport plus one row for smooth scrolling, not every icon
         // ever visited in a large mapped folder. Source identity still detects
         // replaced icons without re-uploading unchanged visible textures.
-        let candidates = grid.visible_indices(model.scroll, HEADER - grid.cell_height, height_dip + grid.cell_height, model.items.len());
-        let live: HashSet<_> = model
-            .items
-            .iter()
-            .enumerate()
-            .skip(candidates.start)
-            .take(candidates.len())
+        let candidates = model.visible_indices(grid, HEADER - grid.cell_height, height_dip + grid.cell_height);
+        let live: HashSet<_> = candidates
+            .map(|index| (index, &model.items[index]))
             .filter(|(index, _)| {
                 let (_, y) = model.cell(grid, *index);
                 height_dip > HEADER + 1.0
@@ -358,7 +354,7 @@ impl Renderer {
             .collect();
         self.images
             .retain(|key, _| live.contains(key));
-        self.draw(width, height, scale, model)
+        self.draw(width, height, scale, model, grid)
     }
 
     fn layout_title(
@@ -409,7 +405,7 @@ impl Renderer {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn draw(&mut self, width: u32, height: u32, scale: f32, model: &GroupModel) -> Result<()> {
+    fn draw(&mut self, width: u32, height: u32, scale: f32, model: &GroupModel, grid: super::layout::Grid) -> Result<()> {
         if self.family != super::fonts::family() || self.language != crate::i18n::language() {
             let fresh = Self::new()?;
             self.family = fresh.family;
@@ -633,7 +629,6 @@ impl Renderer {
                     target.push_clip(&{
                         Rect::from_xywh(6.0, model.content_header(), w - 12.0, (h - model.content_header() - 6.0).max(0.0))
                     });
-                    let grid = model.grid(w, h);
                     let list = model.is_list();
                     let columns = model.list_columns(grid.cell_width);
                     if list && model.folder.is_some() {
@@ -689,7 +684,7 @@ impl Renderer {
                             hover,
                         );
                     }
-                    for index in grid.visible_indices(model.scroll, HEADER, h, model.items.len()) {
+                    for index in model.visible_indices(grid, HEADER, h) {
                         let item = &model.items[index];
                         let (x, y) = model.cell(grid, index);
                         if list && y < grid.content_top {
@@ -902,7 +897,7 @@ impl Renderer {
                         );
                     }
                     target.pop_clip();
-                    if let Some(bar) = super::scrollbar::Bar::for_model(model, w, h) {
+                    if let Some(bar) = super::scrollbar::Bar::for_grid(model, grid, w, h) {
                         let expansion = model.scrollbar.expansion.clamp(0.0, 1.0);
                         let center = bar.left + super::scrollbar::Bar::WIDTH / 2.0;
                         if expansion > 0.0 {

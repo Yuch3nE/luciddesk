@@ -225,6 +225,9 @@ pub(super) fn test_model(title: &str) -> GroupModel {
         folder_visible_columns: 15,
         folder_navigation: [false; 2],
         list_view: false,
+        fixed_grid: false,
+            free_layout: false,
+        minimum_icon_width: 0.0,
         folder: None,
         folder_status: None,
         options: luciddesk_core::PaneOptions::default(),
@@ -2018,4 +2021,26 @@ fn normal_interactions_do_not_write_diagnostic_log() {
         std::thread::sleep(Duration::from_millis(50));
     }
     println!("measurement: duration_ms={} samples={} auto_hide_transitions={} log_bytes_before={} log_bytes_after={} modification_time_unchanged=true",start.elapsed().as_millis(),samples,transitions,bytes.len(),std::fs::metadata(&log).unwrap().len());
+}
+
+#[test]
+fn desktop_refresh_skips_unchanged_items_but_detects_label_position_and_image() {
+    let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+    let mut state = test_state();
+    let id = PanelId::new(1);
+    let current = items_for(&state, id);
+    assert!(!current.is_empty());
+    assert!(desktop_items_for(&state, id, Some(&current)).is_none());
+    state.workspace.desktop_item_mut(&current[0].identity).unwrap().set_display_name("Changed");
+    let renamed = desktop_items_for(&state, id, Some(&current)).unwrap();
+    assert!(renamed.iter().any(|item| item.label == "Changed"));
+    assert!(desktop_items_for(&state, id, Some(&renamed)).is_none());
+    state.workspace.panel_mut(id).unwrap().set_fixed_grid(true);
+    state.workspace.panel_mut(id).unwrap().set_free_layout(true);
+    state.workspace.desktop_item_mut(&current[0].identity).unwrap()
+        .set_pane_position(Some(luciddesk_core::PointDip::new(22.5, 37.25)));
+    let positioned = desktop_items_for(&state, id, Some(&renamed)).unwrap();
+    assert!(desktop_items_for(&state, id, Some(&positioned)).is_none());
+    state.images.insert(current[0].identity.persistent_key(), Arc::new(assets::Pixels { width: 1, height: 1, data: vec![0; 4] }));
+    assert!(desktop_items_for(&state, id, Some(&positioned)).is_some());
 }

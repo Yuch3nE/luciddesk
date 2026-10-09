@@ -7,6 +7,8 @@ import sys
 
 ROOT = Path(__file__).resolve().parent.parent
 FILTERS = (
+    "pane::fixed_grid::tests::",
+    "pane::free_layout::tests::",
     "pane::control::plans::tests::",
     "pane::control::content_layout::tests::",
     "pane::control::geometry::tests::",

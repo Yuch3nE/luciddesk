@@ -386,6 +386,7 @@ pub(super) fn supervisor(state: &Rc<RefCell<PaneApp>>) -> Result<windows_window:
                 }
                 return Some(0);
             }
+            if matches!(msg, WM_SETTINGCHANGE | WM_FONTCHANGE | WM_THEMECHANGED) { super::assets::invalidate_font(); }
             language_dirty |= msg == WM_SETTINGCHANGE || msg == super::wake::READY;
             if matches!(msg, WM_DISPLAYCHANGE | WM_SETTINGCHANGE | WM_DPICHANGED | WM_POWERBROADCAST) {
                 layout_dirty = true;

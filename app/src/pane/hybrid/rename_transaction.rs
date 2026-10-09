@@ -149,8 +149,10 @@ fn replace_item(s: &mut PaneApp, old: &ShellIdentity, renamed: luciddesk_shell::
     for item in s.workspace.desktop_items_mut() {
         if item.identity().equivalent_to(old) {
             let placement = item.placement().clone();
+            let position = item.pane_position();
             *item = DesktopItem::new(renamed.identity.clone(), renamed.display_name.clone());
             item.set_placement(placement);
+            item.set_pane_position(position);
         }
     }
     let old_key = old.persistent_key();
@@ -250,4 +252,19 @@ mod tests {
                 .any(|i| i.identity() == &old)
         );
     }
+    #[test]
+    fn renaming_preserves_free_coordinates() {
+        let mut s=crate::pane::tests::test_state();
+        let old=s.workspace.desktop_items()[0].identity().clone();
+        let point=luciddesk_core::PointDip::new(23.5,67.25);
+        s.workspace.desktop_item_mut(&old).unwrap().set_pane_position(Some(point));
+        let renamed=luciddesk_shell::ShellEntry {
+            identity: ShellIdentity::Namespace { parsing_name:"test:renamed".into() },
+            display_name:"Renamed".into(),attributes:Default::default(),modified:None,size:None,
+        };
+        let identity=renamed.identity.clone();
+        replace_item(&mut s,&old,renamed);
+        assert_eq!(s.workspace.desktop_item_mut(&identity).unwrap().pane_position(),Some(point));
+    }
+
 }

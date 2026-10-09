@@ -10,6 +10,7 @@ pub(super) fn show<F: FnMut(Event) -> bool>(
 ) {
     let event = |value| (events.borrow_mut())(value);
     let mut anchor = point(lparam);
+    let viewport = input::Viewport::read(hwnd);
     let mut tab_context = None;
     if lparam != -1 {
         let mut p = anchor;
@@ -18,9 +19,9 @@ pub(super) fn show<F: FnMut(Event) -> bool>(
         }
         let tab = crate::pane::tabs::hit(
             &model.borrow(),
-            client(hwnd).right as f32 / scale(hwnd),
-            p.x as f32 / scale(hwnd),
-            p.y as f32 / scale(hwnd),
+            viewport.width,
+            p.x as f32 / viewport.scale,
+            p.y as f32 / viewport.scale,
         );
         if let Some(tab) = tab {
             tab_context = Some(tab);
@@ -31,7 +32,7 @@ pub(super) fn show<F: FnMut(Event) -> bool>(
                 && m.is_list()
                 && !m.collapsed
                 && (m.content_header()..m.content_header() + crate::pane::layout::LIST_HEADER)
-                    .contains(&(p.y as f32 / scale(hwnd))))
+                    .contains(&(p.y as f32 / viewport.scale)))
             .then_some((m.theme, m.backdrop, m.folder_visible_columns))
         };
         if let Some((theme, backdrop, visible)) = column_menu {
@@ -65,10 +66,10 @@ pub(super) fn show<F: FnMut(Event) -> bool>(
         }
         let m = model.borrow();
         m.hit(
-            grid(hwnd, &m),
-            p.x as f32 / scale(hwnd),
-            p.y as f32 / scale(hwnd),
-            scale(hwnd),
+            viewport.grid(&m),
+            p.x as f32 / viewport.scale,
+            p.y as f32 / viewport.scale,
+            viewport.scale,
         )
     };
     if let Some(index) = index {
@@ -82,9 +83,9 @@ pub(super) fn show<F: FnMut(Event) -> bool>(
         };
         if lparam == -1 {
             let m = model.borrow();
-            let g = grid(hwnd, &m);
+            let g = viewport.grid(&m);
             let (x, y) = m.cell(g, index);
-            let s = scale(hwnd);
+            let s = viewport.scale;
             let mut rect = RECT::default();
             unsafe {
                 GetClientRect(hwnd, &raw mut rect);
@@ -154,7 +155,7 @@ pub(super) fn show<F: FnMut(Event) -> bool>(
             unsafe {
                 windows_sys::Win32::Graphics::Gdi::ScreenToClient(hwnd, &raw mut p);
             }
-            Some(p.y as f32 / scale(hwnd))
+            Some(p.y as f32 / viewport.scale)
         };
         crate::pane::folder_context::is_content_background(&m, y, wparam != 0)
     };
@@ -164,8 +165,8 @@ pub(super) fn show<F: FnMut(Event) -> bool>(
         invalidate(hwnd);
         if lparam == -1 {
             anchor = POINT {
-                x: (16.0 * scale(hwnd)) as i32,
-                y: ((model.borrow().content_header() + 48.0) * scale(hwnd)) as i32,
+                x: (16.0 * viewport.scale) as i32,
+                y: ((model.borrow().content_header() + 48.0) * viewport.scale) as i32,
             };
             unsafe {
                 ClientToScreen(hwnd, &raw mut anchor);
@@ -191,6 +192,8 @@ pub(super) fn show<F: FnMut(Event) -> bool>(
         (model.folder.is_some(), model.is_list())
     };
     let visible_columns = model.borrow().folder_visible_columns;
+    let fixed_grid = model.borrow().fixed_grid;
+    let free_layout = model.borrow().free_layout;
     let command = if tab_context.is_some() {
         let entries = crate::pane::menu::tab_context_entries(
             &model.borrow(),
@@ -208,11 +211,15 @@ pub(super) fn show<F: FnMut(Event) -> bool>(
             is_folder,
             visible_columns,
             collapsed,
+            fixed_grid,
+            free_layout,
         )
     };
     update_pointer(hwnd, &model, None);
     invalidate(hwnd);
     match command {
+        54 => { event(Event::ToggleFixedGrid); },
+        55 => { event(Event::ToggleGridAlignment); },
         52 | 53 => dispatch_sort_menu(&model, tab_context, command == 53, |action| {
             event(action);
         }),
@@ -310,6 +317,8 @@ fn menu(
     folder: (bool, bool),
     visible_columns: u8,
     collapsed: bool,
+    fixed_grid: bool,
+    free_layout: bool,
 ) -> i32 {
     let anchored = lparam == -1;
     let mut anchor = point(lparam);
@@ -334,5 +343,7 @@ fn menu(
         folder,
         visible_columns,
         collapsed,
+        fixed_grid,
+        free_layout,
     )
 }

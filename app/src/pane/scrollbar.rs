@@ -43,13 +43,16 @@ impl Bar {
     pub const WIDTH: f32 = 11.0;
     pub fn for_model(model: &GroupModel, width: f32, height: f32) -> Option<Self> {
         if model.collapsed || model.reveal < 1.0 { return None; }
-        let grid = model.grid(width, height);
+        Self::for_grid(model, model.grid(width, height), width, height)
+    }
+    pub fn for_grid(model: &GroupModel, grid: layout::Grid, width: f32, height: f32) -> Option<Self> {
+        if model.collapsed || model.reveal < 1.0 { return None; }
         let max = grid.max_scroll(model.items.len());
         let top = grid.content_top + 4.0;
         let height = height - layout::PADDING - top;
         if max == 0 || height <= 0.0 || width < 32.0 { return None; }
         let page = grid.visible_rows.max(1);
-        let visible = model.items.len().div_ceil(grid.columns).saturating_sub(max).max(1);
+        let visible = if model.free_layout && !model.is_list() { page } else { model.content_rows(grid).saturating_sub(max).max(1) };
         let thumb_height = (height * visible as f32 / (max + visible) as f32).max(16.0).min(height);
         Some(Self {
             left: width - 16.0, top, height, thumb_height, max, page,

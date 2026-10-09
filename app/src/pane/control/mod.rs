@@ -142,7 +142,7 @@ impl Snapshot {
                         "kind":if panel.is_search(){"search"} else if panel.folder().is_some(){"folder"} else {"desktop"},
                         "content_layout":content_layout::live_query(state,panel.id()),"geometry":geometry::query(state,panel,&monitors),"window_bounds_px":geometry::window_bounds(state,panel.id()),"folder_path":panel.folder(),"locked":panel.locked(),"auto_hide":panel.auto_hide(),
                         "manual_collapsed":panel.collapsed(),"effective_collapsed":effective,
-                        "list_view":panel.list_view(),"always_on_top":panel.always_on_top()})
+                        "list_view":panel.list_view(),"fixed_icon_positions":panel.fixed_grid(),"align_icons_to_grid":!panel.free_layout(),"always_on_top":panel.always_on_top()})
                 }).collect();
                 if command == "pane.get" {
                     match pane_values
@@ -177,7 +177,7 @@ impl Snapshot {
                         let (pane, placement) = match item.placement() {
                             luciddesk_core::DesktopPlacement::Pane { pane_id, position } => (
                                 Some(pane_id.get().to_string()),
-                                json!({"kind":"pane","pane_id":pane_id.get().to_string(),"column":position.column,"row":position.row}),
+                                json!({"kind":"pane","pane_id":pane_id.get().to_string(),"column":position.column,"row":position.row,"position_dip":item.pane_position().map(|p|json!({"x":p.x,"y":p.y}))}),
                             ),
                             luciddesk_core::DesktopPlacement::FreeDesktop { .. } => {
                                 (None, json!({"kind":"desktop"}))

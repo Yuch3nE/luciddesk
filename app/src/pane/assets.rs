@@ -330,7 +330,18 @@ pub fn use_ui_font(font: &mut windows_sys::Win32::Graphics::Gdi::LOGFONTW) {
     }
 }
 
+static FONT_SIZE: std::sync::Mutex<Option<f32>> = std::sync::Mutex::new(None);
+
+pub(super) fn invalidate_font() {
+    *FONT_SIZE.lock().unwrap() = None;
+}
+
 pub fn font() -> (String, f32) {
+    let size = *FONT_SIZE.lock().unwrap().get_or_insert_with(system_font_size);
+    (super::fonts::family(), size)
+}
+
+fn system_font_size() -> f32 {
     use windows_sys::Win32::Graphics::Gdi::LOGFONTW;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         SPI_GETICONTITLELOGFONT, SystemParametersInfoW,
@@ -348,9 +359,9 @@ pub fn font() -> (String, f32) {
         let dpi = unsafe { windows_sys::Win32::UI::HiDpi::GetDpiForSystem() }.max(96);
         #[allow(clippy::cast_precision_loss)]
         let size = (font.lfHeight.unsigned_abs() as f32 * 96.0 / dpi as f32).max(11.0);
-        (super::fonts::family(), size)
+        size
     } else {
-        (super::fonts::family(), 12.0)
+        12.0
     }
 }
 

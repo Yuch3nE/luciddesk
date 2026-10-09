@@ -556,3 +556,56 @@ fn snap_converts_measured_size_between_monitor_dpis_once() {
     assert_eq!(px.x, -2400.0 + 603.0 + snap::GAP_PX as f32);
     assert_eq!(px.y, 652.0);
 }
+
+#[test]
+fn fixed_grid_fit_keeps_holes_and_occupied_columns() {
+    let mut s = super::super::super::tests::test_state();
+    let id = PanelId::new(1);
+    fixed_grid::toggle(&mut s.workspace, id).unwrap();
+    let key = super::super::super::ordered_desktop_items(&s.workspace, id)[0].identity().persistent_key();
+    fixed_grid::place(&mut s.workspace, id, &[key], luciddesk_core::GridPosition::new(2, 4));
+    let before = s.workspace.clone();
+    let (width, height) = size_with_folders(&s.workspace, id, 1, &HashMap::new(), None).unwrap();
+    let model = super::super::super::create_model(&s, id).unwrap();
+    let grid = model.grid(width, height);
+    assert_eq!(grid.columns, 3);
+    assert_eq!(model.content_rows(grid), 5);
+    assert_eq!(grid.max_scroll(model.items.len()), 0);
+    let rows = model.row_contents(grid);
+    assert_eq!(height, layout::pane_content_height(5, grid.cell_height, &rows));
+    assert_eq!(measurement::query(&s.workspace,id)["content_rows"], 5);
+    assert!(measurement::minimum(&s.workspace,id,112.0,&HashMap::new()).0 >= width);
+    assert_eq!(s.workspace, before);
+}
+
+#[test]
+fn free_layout_fit_preserves_coordinates_and_covers_actual_bounds() {
+    let mut s = super::super::super::tests::test_state(); let id=PanelId::new(1);
+    fixed_grid::toggle(&mut s.workspace,id).unwrap();
+    free_layout::toggle(&mut s.workspace,id).unwrap();
+    let key=super::super::super::ordered_desktop_items(&s.workspace,id)[0].identity().persistent_key();
+    free_layout::move_items(&mut s.workspace,id,id,&[key.clone()],&key,luciddesk_core::PointDip::new(251.25,337.5)).unwrap();
+    let before=s.workspace.clone();
+    let (width,height)=size_with_folders(&s.workspace,id,1,&HashMap::new(),None).unwrap();
+    let model=super::super::super::create_model(&s,id).unwrap();let grid=model.grid(width,height);
+    assert_eq!(grid.max_scroll(model.items.len()),0);
+    for (i,_) in model.items.iter().enumerate() {
+        let bounds=model.selection_bounds(grid,i,1.0);
+        assert!(bounds.x+bounds.width <= width-layout::PADDING+0.01);
+        assert!(bounds.y+bounds.height <= height-layout::PADDING+0.01);
+    }
+    assert_eq!(measurement::query(&s.workspace,id)["align_icons_to_grid"],false);
+    assert_eq!(s.workspace,before);
+}
+
+#[test]
+fn free_fit_uses_actual_right_edge_without_rounding_an_extra_column() {
+    let mut s=super::super::super::tests::test_state();let id=PanelId::new(1);
+    fixed_grid::toggle(&mut s.workspace,id).unwrap();free_layout::toggle(&mut s.workspace,id).unwrap();
+    for item in s.workspace.desktop_items_mut() { item.set_pane_position(Some(luciddesk_core::PointDip::new(10.0,20.0))); }
+    let g=metrics(&s.workspace);let expected=layout::PADDING*2.0+10.0+g.cell_width;
+    let (width,_)=size_with_folders(&s.workspace,id,1,&HashMap::new(),None).unwrap();
+    assert_eq!(width,expected);
+    assert_eq!(measurement::minimum(&s.workspace,id,width,&HashMap::new()).0,expected);
+    assert_eq!(super::super::super::create_model(&s,id).unwrap().fixed_width(),expected);
+}

@@ -35,39 +35,21 @@ pub(super) fn track_client_leave(hwnd: HWND) {
 
 pub(super) fn update_pointer(hwnd: HWND, model: &RefCell<GroupModel>, pointer: Option<POINT>) {
     let mut m = model.borrow_mut();
-    let hovered = pointer.is_some_and(|p| {
-        scrollbar(hwnd, &m)
-            .is_some_and(|bar| bar.contains(p.x as f32 / scale(hwnd), p.y as f32 / scale(hwnd)))
-    });
-    let (button, item) = if let Some(p) = pointer {
-        let s = scale(hwnd);
-        let button = {
-            m.header_button(
-                client(hwnd).right as f32 / s,
-                p.x as f32 / s,
-                p.y as f32 / s,
-            )
-        };
+    let (button, item, hovered, tab) = if let Some(p) = pointer {
+        let viewport = Viewport::read(hwnd);
+        let (x, y) = viewport.point(p);
+        let grid = viewport.grid(&m);
+        let hovered = crate::pane::scrollbar::Bar::for_grid(&m, grid, viewport.width, viewport.height)
+            .is_some_and(|bar| bar.contains(x, y));
         (
-            button,
-            if hovered {
-                None
-            } else {
-                m.hit(grid(hwnd, &m), p.x as f32 / s, p.y as f32 / s, s)
-            },
+            m.header_button(viewport.width, x, y),
+            if hovered { None } else { m.hit(grid, x, y, viewport.scale) },
+            hovered,
+            crate::pane::tabs::hit(&m, viewport.width, x, y),
         )
     } else {
-        (None, None)
+        (None, None, false, None)
     };
-    let tab = pointer.and_then(|p| {
-        let s = scale(hwnd);
-        crate::pane::tabs::hit(
-            &m,
-            client(hwnd).right as f32 / s,
-            p.x as f32 / s,
-            p.y as f32 / s,
-        )
-    });
     if (
         m.hovered_button,
         m.hovered_item,
@@ -92,11 +74,14 @@ pub(super) fn tab_drag_threshold(origin: POINT, current: POINT, dpi: u32) -> boo
 }
 
 pub(super) fn pane_hit(r: RECT, p: POINT, scale: f32, model: &GroupModel) -> u32 {
+    let viewport = Viewport::from_client(r, scale);
+    let (x, y) = viewport.point(p);
+    let (width, height) = (viewport.width, viewport.height);
     if crate::pane::tabs::hit(
         model,
-        r.right as f32 / scale,
-        p.x as f32 / scale,
-        p.y as f32 / scale,
+        width,
+        x,
+        y,
     )
     .is_some()
     {
@@ -104,25 +89,25 @@ pub(super) fn pane_hit(r: RECT, p: POINT, scale: f32, model: &GroupModel) -> u32
     }
     if crate::pane::scrollbar::Bar::for_model(
         model,
-        r.right as f32 / scale,
-        r.bottom as f32 / scale,
+        width,
+        height,
     )
-    .is_some_and(|bar| bar.contains(p.x as f32 / scale, p.y as f32 / scale))
+    .is_some_and(|bar| bar.contains(x, y))
     {
         return HTCLIENT;
     }
     if model
         .header_button(
-            r.right as f32 / scale,
-            p.x as f32 / scale,
-            p.y as f32 / scale,
+            width,
+            x,
+            y,
         )
         .is_some()
     {
         HTCLIENT
     } else {
         let hit = frame_hit(r, p, scale, model.collapsed, model.locked);
-        if hit == HTCLIENT && model.tabs.len() > 1 && !model.locked && (p.y as f32 / scale) < HEADER
+        if hit == HTCLIENT && model.tabs.len() > 1 && !model.locked && (y) < HEADER
         {
             HTCAPTION
         } else {
@@ -183,8 +168,9 @@ pub(super) fn drag_preview(
     m: &GroupModel,
     index: usize,
 ) -> Option<(crate::pane::assets::Pixels, POINT)> {
-    let s = scale(hwnd);
-    let grid = grid(hwnd, m);
+    let viewport = Viewport::read(hwnd);
+    let s = viewport.scale;
+    let grid = viewport.grid(m);
     let selected = if m.selection.contains(&index) {
         m.selection.iter().copied().collect::<Vec<_>>()
     } else {
@@ -229,21 +215,48 @@ pub(super) fn update_marquee(
     marquee: &mut crate::pane::marquee::Marquee,
     point: POINT,
 ) {
-    let s = scale(hwnd);
-    let bounds = client(hwnd);
+    let client = Viewport::read(hwnd);
     let viewport = RectDip {
         x: 0.0,
         y: model.content_header(),
-        width: bounds.right as f32 / s,
-        height: (bounds.bottom as f32 / s - model.content_header()).max(0.0),
+        width: client.width,
+        height: (client.height - model.content_header()).max(0.0),
     };
-    marquee.update(model, grid(hwnd, model), s, point, viewport);
+    marquee.update(model, client.grid(model), client.scale, point, viewport);
+}
+
+/// One client-coordinate snapshot per operation; never cached across DPI changes.
+#[derive(Clone, Copy)]
+pub(super) struct Viewport {
+    pub scale: f32,
+    pub width: f32,
+    pub height: f32,
+}
+
+impl Viewport {
+    pub fn read(hwnd: HWND) -> Self {
+        Self::from_client(client(hwnd), scale(hwnd))
+    }
+
+    fn from_client(bounds: RECT, scale: f32) -> Self {
+        Self {
+            scale,
+            width: (bounds.right - bounds.left) as f32 / scale,
+            height: (bounds.bottom - bounds.top) as f32 / scale,
+        }
+    }
+
+    pub fn point(self, point: POINT) -> (f32, f32) {
+        (point.x as f32 / self.scale, point.y as f32 / self.scale)
+    }
+
+    pub fn grid(self, model: &GroupModel) -> Grid {
+        model.grid(self.width, self.height)
+    }
 }
 
 pub(super) fn grid(hwnd: HWND, model: &GroupModel) -> Grid {
-    let r = client(hwnd);
-    let s = scale(hwnd);
-    model.grid(r.right as f32 / s, r.bottom as f32 / s)
+    Viewport::read(hwnd).grid(model)
 }
 
 pub(super) struct ColumnDrag {
@@ -286,8 +299,9 @@ pub(super) fn column_divider(hwnd: HWND, model: &GroupModel, point: POINT) -> Op
     if !model.is_list() || model.folder.is_none() || model.collapsed {
         return None;
     }
-    let scale = scale(hwnd);
-    let grid = grid(hwnd, model);
+    let viewport = Viewport::read(hwnd);
+    let scale = viewport.scale;
+    let grid = viewport.grid(model);
     let top = grid.content_top - crate::pane::layout::LIST_HEADER;
     let y = point.y as f32 / scale;
     if !(top..grid.content_top).contains(&y) {
@@ -302,5 +316,43 @@ pub(super) fn column_divider(hwnd: HWND, model: &GroupModel, point: POINT) -> Op
 pub(super) fn invalidate(hwnd: HWND) {
     unsafe {
         InvalidateRect(hwnd, std::ptr::null(), 0);
+    }
+}
+
+#[cfg(test)]
+mod dpi_tests {
+    use super::*;
+
+    #[test]
+    fn fractional_dpi_preserves_free_icon_hit_and_scrollbar_geometry() {
+        let _sta = luciddesk_shell::ShellApartment::initialize_sta().unwrap();
+        let state = crate::pane::tests::test_state();
+        let mut model = crate::pane::create_model(&state, luciddesk_core::PanelId::new(1)).unwrap();
+        model.fixed_grid = true;
+        model.free_layout = true;
+        model.items[0].details.free_position = Some(luciddesk_core::PointDip::new(31.25, 650.5));
+        model.scroll = 500;
+        for scale in [1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0] {
+            let viewport = Viewport::from_client(RECT {
+                right: (600.0 * scale) as i32,
+                bottom: (400.0 * scale) as i32,
+                ..Default::default()
+            }, scale);
+            let grid = viewport.grid(&model);
+            let bounds = model.selection_bounds(grid, 0, scale);
+            let px = POINT {
+                x: ((bounds.x + bounds.width / 2.0) * scale).round() as i32,
+                y: ((bounds.y + 10.0) * scale).round() as i32,
+            };
+            let (x, y) = viewport.point(px);
+            assert_eq!(model.hit(grid, x, y, scale), Some(0));
+            assert_eq!(viewport.width, 600.0);
+            assert_eq!(viewport.height, 400.0);
+            let bar = crate::pane::scrollbar::Bar::for_grid(&model, grid, viewport.width, viewport.height).unwrap();
+            let reference = crate::pane::scrollbar::Bar::for_model(&model, 600.0, 400.0).unwrap();
+            assert_eq!((bar.max, bar.page, bar.thumb_top), (reference.max, reference.page, reference.thumb_top));
+            let (x, y) = viewport.point(POINT { x: -25, y: -50 });
+            assert!(x < 0.0 && y < 0.0);
+        }
     }
 }

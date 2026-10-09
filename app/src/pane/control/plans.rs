@@ -71,16 +71,17 @@ fn ordered(workspace: &Workspace, pane: PanelId) -> Vec<String> {
     items.into_iter().map(|(_, key)| key).collect()
 }
 fn order(workspace: &mut Workspace, pane: PanelId, keys: &[String]) {
+    let fixed = workspace.panel(pane).is_some_and(Panel::fixed_grid);
+    let columns = fixed_grid::columns(workspace, pane);
+    let free = workspace.panel(pane).is_some_and(Panel::free_layout);
+    let metrics = free_layout::grid(workspace);
     for (at, key) in keys.iter().enumerate() {
         if let Some(item) = workspace
             .desktop_items_mut()
             .iter_mut()
             .find(|i| i.identity().persistent_key() == *key)
         {
-            item.set_placement(DesktopPlacement::Pane {
-                pane_id: pane,
-                position: GridPosition::new(at as u32, 0),
-            });
+            fixed_grid::set_position(item, pane, if fixed { fixed_grid::position(at, columns) } else { GridPosition::new(at as u32, 0) }, free, metrics);
         }
     }
 }
@@ -136,6 +137,7 @@ fn release(workspace: &mut Workspace, moving: &[String]) -> Result<(), (String, 
         }
     }
     for pane in sources {
+        if workspace.panel(pane).is_some_and(Panel::fixed_grid) { continue; }
         let items = ordered(workspace, pane);
         order(workspace, pane, &items);
     }
@@ -144,7 +146,7 @@ fn release(workspace: &mut Workspace, moving: &[String]) -> Result<(), (String, 
 fn summary(workspace: &Workspace) -> serde_json::Value {
     json!({"tabs":workspace.tab_groups().iter().map(|g|json!({"active":g.active.get().to_string(),"members":g.members.iter().map(|id|id.get().to_string()).collect::<Vec<_>>()})).collect::<Vec<_>>(),"panes":workspace.panels().iter().map(|p|json!({"id":p.id().get().to_string(),"title":p.title(),"locked":p.locked(),"auto_hide":p.auto_hide(),"manual_collapsed":p.collapsed(),"always_on_top":p.always_on_top(),"folder_path":p.folder(),"list_view":p.list_view()})).collect::<Vec<_>>(),
         "placements":workspace.desktop_items().iter().map(|item|{
-            let placement=match item.placement(){DesktopPlacement::Pane{pane_id,position}=>json!({"pane_id":pane_id.get().to_string(),"column":position.column,"row":position.row}),_=>serde_json::Value::Null};
+            let placement=match item.placement(){DesktopPlacement::Pane{pane_id,position}=>json!({"pane_id":pane_id.get().to_string(),"column":position.column,"row":position.row,"position_dip":item.pane_position().map(|p|json!({"x":p.x,"y":p.y}))}),_=>serde_json::Value::Null};
             (item.identity().persistent_key(),placement)
         }).collect::<std::collections::BTreeMap<_,_>>()})
 }
@@ -409,14 +411,21 @@ fn prepare(
                         }
                     }
                 }
-                let mut destination = ordered(&next, target);
-                for key in moving {
-                    if !destination.contains(&key) {
-                        destination.push(key);
+                if next.panel(target).is_some_and(Panel::fixed_grid) {
+                    let existing = ordered(&next, target);
+                    let keys: Vec<_> = moving.iter().filter(|key| !existing.contains(key)).cloned().collect();
+                    fixed_grid::place(&mut next, target, &keys, GridPosition::new(0, 0));
+                } else {
+                    let mut destination = ordered(&next, target);
+                    for key in moving {
+                        if !destination.contains(&key) {
+                            destination.push(key);
+                        }
                     }
+                    order(&mut next, target, &destination);
                 }
-                order(&mut next, target, &destination);
                 for pane in sources {
+                    if next.panel(pane).is_some_and(Panel::fixed_grid) { continue; }
                     let items = ordered(&next, pane);
                     order(&mut next, pane, &items);
                 }
@@ -1303,4 +1312,39 @@ mod tests {
         );
         assert_eq!(p.error.unwrap().code, "PANE_LOCKED");
     }
+    #[test]
+    fn cli_release_and_assignment_preserve_fixed_grid_holes() {
+        let mut state = super::super::super::tests::test_state();
+        let id = PanelId::new(1);
+        fixed_grid::toggle(&mut state.workspace, id).unwrap();
+        let entries: Vec<_> = super::super::super::ordered_desktop_items(&state.workspace,id).iter().map(|i| i.identity().persistent_key()).collect();
+        fixed_grid::place(&mut state.workspace,id,&entries[..1],GridPosition::new(1,4));
+        let mut snapshot = Snapshot::new();
+        snapshot.respond(&mut state,&request("workspace.get"));
+        let released = snapshot.item_ids[&entries[1]].clone();
+        let p=preview(&mut snapshot,&mut state,json!([{"op":"item.release","item_ids":[released]}]));
+        assert!(p.ok,"{p:?}");
+        let next=snapshot.plans.pending.back().unwrap().next.clone();
+        assert!(matches!(next.desktop_items().iter().find(|i|i.identity().persistent_key()==entries[0]).unwrap().placement(),DesktopPlacement::Pane{position,..} if *position==GridPosition::new(1,4)));
+        state.workspace=next;
+        let p=preview(&mut snapshot,&mut state,json!([{"op":"item.assign","pane_id":"1","item_ids":[released]}]));
+        assert!(p.ok,"{p:?}");
+        let next=&snapshot.plans.pending.back().unwrap().next;
+        assert!(matches!(next.desktop_items().iter().find(|i|i.identity().persistent_key()==entries[0]).unwrap().placement(),DesktopPlacement::Pane{position,..} if *position==GridPosition::new(1,4)));
+    }
+
+    #[test]
+    fn explicit_free_reorder_materializes_coordinates() {
+        let mut state=crate::pane::tests::test_state();let id=PanelId::new(1);
+        fixed_grid::toggle(&mut state.workspace,id).unwrap();
+        free_layout::toggle(&mut state.workspace,id).unwrap();
+        let mut keys=ordered(&state.workspace,id);keys.reverse();
+        order(&mut state.workspace,id,&keys);
+        let positions:Vec<_>=state.workspace.desktop_items().iter().map(|i|i.pane_position().unwrap()).collect();
+        let mut g=free_layout::grid(&state.workspace);g.cell_width*=1.5;g.cell_height*=1.5;
+        for (i,p) in state.workspace.desktop_items().iter().zip(positions) { assert_eq!(free_layout::point(i,g),p); }
+        state.store.save_workspace(&state.workspace).unwrap();
+        assert_eq!(state.store.load_workspace().unwrap().desktop_items()[0].pane_position(),state.workspace.desktop_items()[0].pane_position());
+    }
+
 }

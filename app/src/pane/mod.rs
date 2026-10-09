@@ -20,6 +20,8 @@ mod search;
 mod settings;
 mod tabs;
 mod sorting;
+mod fixed_grid;
+mod free_layout;
 
 // Window interaction.
 mod window;
@@ -85,8 +87,10 @@ pub struct Item {
     pub image: Option<Arc<assets::Pixels>>,
 }
 
-#[derive(Clone, Default, PartialEq, Eq)]
+#[derive(Clone, Default, PartialEq)]
 pub struct ItemDetails {
+    pub grid_position: Option<GridPosition>,
+    pub free_position: Option<luciddesk_core::PointDip>,
     pub kind: String,
     pub modified: String,
     pub folder: bool,
@@ -207,6 +211,8 @@ enum Event {
     OpenFolder,
     SortFolder(u8),
     SortPane(PanelId, bool),
+    ToggleFixedGrid,
+    ToggleGridAlignment,
     FolderItemCreated(std::path::PathBuf),
     SetFolderColumns([f32; 4]),
     ToggleFolderColumn(u8),
@@ -218,7 +224,7 @@ enum Event {
     FileCommand(luciddesk_shell::FileCommand),
     FileDrag(Option<luciddesk_shell::FileDragImage>),
     ToggleListView,
-    Drop { index: usize, point: POINT },
+    Drop { index: usize, point: POINT, offset: luciddesk_core::PointDip },
     Geometry(RectDip),
     Collapse,
     Exit,
@@ -239,15 +245,39 @@ fn items_for(state: &PaneApp, id: PanelId) -> Vec<Item> {
             .map(|source| source.items.clone())
             .unwrap_or_default();
     }
-    ordered_desktop_items(&state.workspace, id)
-        .into_iter()
-        .map(|item| Item {
-            details: Default::default(),
-            identity: item.identity().clone(),
-            label: item.display_name().to_string(),
-            image: state.images.get(&item.identity().persistent_key()).cloned(),
-        })
-        .collect()
+    desktop_items_for(state, id, None).unwrap()
+}
+
+/// Compare borrowed desktop data before copying unchanged names and identities.
+fn desktop_items_for(state: &PaneApp, id: PanelId, current: Option<&[Item]>) -> Option<Vec<Item>> {
+    let panel = state.workspace.panel(id);
+    let free_grid = panel.filter(|p| p.free_layout()).map(|_| free_layout::grid(&state.workspace));
+    let fixed = panel.is_some_and(Panel::fixed_grid);
+    let details = |item: &luciddesk_core::DesktopItem| ItemDetails {
+        free_position: free_grid.map(|grid| free_layout::point(item, grid)),
+        grid_position: if fixed { match item.placement() {
+            DesktopPlacement::Pane { position, .. } => Some(*position), _ => None,
+        }} else { None },
+        ..Default::default()
+    };
+    let items: Vec<_> = ordered_desktop_items(&state.workspace, id).into_iter()
+        .map(|item| (item, details(item), state.images.get(&item.identity().persistent_key())))
+        .collect();
+    if current.is_some_and(|current| current.len() == items.len()
+        && current.iter().zip(&items).all(|(old, (item, details, image))| {
+            old.identity == *item.identity() && old.label == item.display_name() && old.details == *details
+                && match (old.image.as_ref(), *image) {
+                    (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+                    (None, None) => true,
+                    _ => false,
+                }
+        })) { return None; }
+    Some(items.into_iter().map(|(item, details, image)| Item {
+        details,
+        identity: item.identity().clone(),
+        label: item.display_name().to_string(),
+        image: image.cloned(),
+    }).collect())
 }
 
 fn ordered_desktop_items(workspace: &Workspace, id: PanelId) -> Vec<&luciddesk_core::DesktopItem> {
@@ -262,7 +292,7 @@ fn ordered_desktop_items(workspace: &Workspace, id: PanelId) -> Vec<&luciddesk_c
             }
         })
         .collect();
-    items.sort_by_key(|(position, _)| *position);
+    items.sort_by(|(a, left), (b, right)| a.cmp(b).then_with(|| left.identity().persistent_key().cmp(&right.identity().persistent_key())));
     items.into_iter().map(|(_, item)| item).collect()
 }
 
@@ -279,6 +309,9 @@ fn create_model(state: &PaneApp, id: PanelId) -> Result<GroupModel, String> {
         folder_visible_columns: folder::visible_columns(&state.store, id)?,
         folder_navigation: [false; 2],
         list_view: panel.list_view(),
+        fixed_grid: panel.fixed_grid(),
+        free_layout: panel.free_layout(),
+        minimum_icon_width: fixed_grid::minimum_width(&state.workspace, id),
         folder: panel.folder().map(Path::to_path_buf),
         folder_status: None,
         options: state.workspace.pane_options(),
@@ -415,10 +448,8 @@ fn refresh_changed_views(state: &mut PaneApp, force: bool) {
             }
             source.items.clone()
         } else {
-            let items = items_for(state, view.id);
-            if !force && same_items(&model.items, &items) && !model.loading {
-                continue;
-            }
+            let current = (!force && !model.loading).then_some(model.items.as_slice());
+            let Some(items) = desktop_items_for(state, view.id, current) else { continue; };
             items
         };
         model.replace_items(items);
@@ -483,12 +514,13 @@ fn set_order(workspace: &mut Workspace, id: PanelId, items: &[Item]) {
     if workspace.panel(id).is_none() {
         return;
     }
+    let columns = fixed_grid::columns(workspace, id);
+    let free = workspace.panel(id).is_some_and(Panel::free_layout);
+    let metrics = free_layout::grid(workspace);
+    let fixed = workspace.panel(id).is_some_and(Panel::fixed_grid);
     for (position, item) in items.iter().enumerate() {
         if let Some(entry) = workspace.desktop_item_mut(&item.identity) {
-            entry.set_placement(DesktopPlacement::Pane {
-                pane_id: id,
-                position: GridPosition::new(position as u32, 0),
-            });
+            fixed_grid::set_position(entry, id, if fixed { fixed_grid::position(position, columns) } else { GridPosition::new(position as u32, 0) }, free, metrics);
         }
     }
 }
@@ -498,6 +530,7 @@ fn set_order(workspace: &mut Workspace, id: PanelId, items: &[Item]) {
 fn normalize_pane_orders(state: &mut PaneApp) {
     let ids: Vec<_> = state.workspace.panels().iter().map(Panel::id).collect();
     for id in ids {
+        if state.workspace.panel(id).is_some_and(Panel::fixed_grid) { continue; }
         let items = items_for(state, id);
         set_order(&mut state.workspace, id, &items);
     }
@@ -530,6 +563,17 @@ fn transfer_many(
         return Err(crate::i18n::text("ui-selection-changed-drag-again").into());
     }
     let old = state.workspace.clone();
+    if state.workspace.panel(target).is_some_and(Panel::fixed_grid) {
+        let keys: Vec<_> = selected.iter().map(|i| items[*i].identity.persistent_key()).collect();
+        let cell = fixed_grid::position(at, fixed_grid::columns(&state.workspace, target));
+        fixed_grid::place(&mut state.workspace, target, &keys, cell);
+        if source != target && !state.workspace.panel(source).is_some_and(Panel::fixed_grid) {
+            let remaining = items_for(state, source);
+            set_order(&mut state.workspace, source, &remaining);
+        }
+        if let Err(error) = save(state) { state.workspace = old; return Err(error); }
+        return Ok(());
+    }
     let moving: Vec<_> = items
         .iter()
         .enumerate()
@@ -547,7 +591,9 @@ fn transfer_many(
     } else {
         at
     };
-    set_order(&mut state.workspace, source, &remaining);
+    if !state.workspace.panel(source).is_some_and(Panel::fixed_grid) {
+        set_order(&mut state.workspace, source, &remaining);
+    }
     let mut destination = if source == target {
         remaining
     } else {

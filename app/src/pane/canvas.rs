@@ -67,6 +67,7 @@ pub struct DrawPass<'a> {
     session: c::DrawingSession<'a>,
     native: ID2D1DeviceContext,
     active: bool,
+    scale: f32,
     clips: std::cell::Cell<usize>,
 }
 
@@ -86,6 +87,7 @@ pub fn draw<T>(
         session,
         native,
         active: true,
+        scale,
         clips: std::cell::Cell::new(0),
     })
 }
@@ -179,9 +181,7 @@ impl DrawPass<'_> {
             }
             ranges.sort_by(|a, b| a.0.total_cmp(&b.0));
             let mut left = 0.0;
-            let (mut dpi_x, mut dpi_y) = (0.0, 0.0);
-            self.native.GetDpi(&raw mut dpi_x, &raw mut dpi_y);
-            let scale = dpi_y / 96.0;
+            let scale = self.scale;
             let paint = |left: f32, right: f32, offset: f32| {
                 if right <= left { return; }
                 self.push_clip(&c::Rect::from_xywh(x + left, y, right - left, metrics.layout_height));
