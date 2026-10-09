@@ -1249,4 +1249,6 @@ agent-install-prompt = Please install the bundled LucidDesk skill for your curre
 
 ui-auto-arrange-icons = アイコンの自動整列
 
-ui-align-icons-to-grid = アイコンを等間隔に整列
+ui-align-icons-to-grid = グリッドに合わせる
+
+ui-sort-by = 並べ替え

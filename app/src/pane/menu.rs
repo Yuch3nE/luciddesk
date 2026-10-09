@@ -20,11 +20,24 @@ use windows_sys::Win32::{
 #[derive(Clone)]
 pub struct Entry {
     pub id: i32,
+    pub enabled: bool,
     pub label: &'static str,
     pub icon: &'static str,
     pub trailing: &'static str,
     pub children: Vec<Entry>,
 }
+impl Entry {
+    pub fn trailing_is_icon(&self) -> bool {
+        self.trailing.chars().next().is_some_and(|ch| ('\u{e000}'..='\u{f8ff}').contains(&ch))
+    }
+
+    pub fn trailing_width(&self) -> f32 {
+        if !self.children.is_empty() || self.trailing_is_icon() { 24.0 }
+        else if self.trailing.is_empty() { 0.0 }
+        else { 72.0 }
+    }
+}
+
 pub const ROW_HEIGHT: f32 = 30.0;
 pub(super) const CORNER_RADIUS: f32 = 8.0;
 pub fn row_top(rows: &[Entry], index: usize) -> f32 {
@@ -41,6 +54,7 @@ pub(crate) fn entry(
 ) -> Entry {
     Entry {
         id,
+        enabled: true,
         label,
         icon,
         trailing,
@@ -72,10 +86,12 @@ pub fn show(
     collapsed: bool,
     fixed_grid: bool,
     free_layout: bool,
+    sort_order: Option<(u8, bool)>,
 ) -> i32 {
     let topmost = super::quick_reveal::permanent_topmost(owner);
-    show_entries(owner, anchor, anchored, theme, backdrop,
-        pane_entries_fixed(folder, visible_columns, auto_hide, locked, topmost, collapsed, fixed_grid, free_layout))
+    let mut rows = pane_entries_fixed(folder, visible_columns, auto_hide, locked, topmost, collapsed, fixed_grid, free_layout);
+    set_sort_entries(&mut rows, sort_order);
+    show_entries(owner, anchor, anchored, theme, backdrop, rows)
 }
 
 fn pane_entries(folder: (bool, bool), visible_columns: u8,
@@ -90,17 +106,14 @@ fn pane_entries_fixed(folder: (bool, bool), visible_columns: u8,
         rows.push(entry(20, crate::i18n::text("ui-open-in-file-explorer"), "", ""));
     }
     rows.push(entry(9, crate::i18n::text("ui-refresh"), "", "F5"));
-    if !locked {
-        rows.push(entry(43, crate::i18n::text("ui-rename-panel"), "", ""));
-    }
     if folder.0 {
         rows.push(entry(21, crate::i18n::text("ui-change-folder"), "", ""));
     }
     rows.push(entry(0, "", "", ""));
     let mut view = entry(22, crate::i18n::text("ui-view"), "", "");
     view.children = vec![
-        entry(25, crate::i18n::text("ui-icons"), if folder.1 { "" } else { "✓" }, ""),
-        entry(26, crate::i18n::text("ui-list"), if folder.1 { "✓" } else { "" }, ""),
+        entry(25, crate::i18n::text("ui-icons"), if folder.1 { "" } else { "\u{e73e}" }, ""),
+        entry(26, crate::i18n::text("ui-list"), if folder.1 { "\u{e73e}" } else { "" }, ""),
     ];
     if folder.0 && folder.1 {
         view.children.push(entry(0, "", "", ""));
@@ -108,22 +121,25 @@ fn pane_entries_fixed(folder: (bool, bool), visible_columns: u8,
         columns.children = column_entries(visible_columns);
         view.children.push(columns);
     }
+    if !folder.0 && !folder.1 && !locked {
+        view.children.push(entry(0, "", "", ""));
+        view.children.push(entry(55, crate::i18n::text("ui-align-icons-to-grid"), if free_layout { "" } else { "\u{e73e}" }, ""));
+        view.children.push(entry(54, crate::i18n::text("ui-auto-arrange-icons"), if fixed_grid { "" } else { "\u{e73e}" }, ""));
+    }
     rows.push(view);
-    if !folder.0 && !locked {
-        rows.push(entry(54, crate::i18n::text("ui-auto-arrange-icons"), if fixed_grid { "" } else { "✓" }, ""));
-        if fixed_grid { rows.push(entry(55, crate::i18n::text("ui-align-icons-to-grid"), if free_layout { "" } else { "✓" }, "")); }
-        let mut sort = entry(51, crate::i18n::text("ui-sort-by-name"), "", "");
-        sort.children = vec![
-            entry(52, crate::i18n::text("ui-sort-ascending"), "", ""),
-            entry(53, crate::i18n::text("ui-sort-descending"), "", ""),
-        ];
-        rows.push(sort);
+    if !locked {
+        let children = sort_entries(None);
+        rows.push(Entry { children, ..entry(51, crate::i18n::text("ui-sort-by"), "", "") });
+    }
+    rows.push(entry(0, "", "", ""));
+    if !locked {
+        rows.push(entry(43, crate::i18n::text("ui-rename-panel"), "", ""));
     }
     rows.extend([
         entry(48, crate::i18n::text(if collapsed { "ui-expand-panel" } else { "ui-collapse-panel" }), "", ""),
-        entry(7, crate::i18n::text("ui-auto-collapse"), if auto_hide { "✓" } else { "" }, ""),
-        entry(10, crate::i18n::text("ui-lock-panel"), if locked { "✓" } else { "" }, ""),
-        entry(12, crate::i18n::text("ui-always-on-top"), if topmost { "✓" } else { "" }, ""),
+        entry(7, crate::i18n::text("ui-auto-collapse"), if auto_hide { "\u{e73e}" } else { "" }, ""),
+        entry(10, crate::i18n::text("ui-lock-panel"), if locked { "\u{e73e}" } else { "" }, ""),
+        entry(12, crate::i18n::text("ui-always-on-top"), if topmost { "\u{e73e}" } else { "" }, ""),
         entry(0, "", "", ""),
     ]);
     let mut create = entry(50, crate::i18n::text("ui-new-group"), "", "");
@@ -145,11 +161,11 @@ fn pane_entries_fixed(folder: (bool, bool), visible_columns: u8,
 }
 
 #[test]
-fn ordinary_sort_menu_is_available_only_when_unlocked() {
+fn sort_menu_is_available_only_when_unlocked() {
     let rows = pane_entries((false,false),15,false,false,false,false);
     let sort = rows.iter().find(|e|e.id==51).unwrap();
-    assert_eq!(sort.children.iter().map(|e|e.id).collect::<Vec<_>>(), vec![52,53]);
-    for (folder,locked) in [(true,false),(false,true)] {
+    assert_eq!(sort.children.iter().map(|e|e.id).collect::<Vec<_>>(), vec![60,62,61,63]);
+    for (folder,locked) in [(true,true),(false,true)] {
         assert!(!pane_entries((folder,false),15,false,locked,false,false).iter().any(|e|e.id==51));
     }
 }
@@ -168,11 +184,26 @@ pub(super) fn tab_entries() -> Vec<Entry> {
     ]
 }
 
-pub(super) fn tab_context_entries(model: &super::GroupModel, topmost: bool) -> Vec<Entry> {
+pub(super) fn tab_context_entries(model: &super::GroupModel, topmost: bool, target: luciddesk_core::PanelId) -> Vec<Entry> {
     // Keep every ordinary pane command directly accessible from a tab.
     let mut entries = pane_entries((model.folder.is_some(), model.is_list()),
         model.folder_visible_columns, model.auto_hide, model.locked, topmost, model.collapsed);
-    entries.retain(|row| row.id != 43 && row.id != 54 && row.id != 55);
+    let order = if model.folder.is_some() && target == model.active_tab { Some(model.folder_sort) }
+        else { model.sort_orders.borrow().get(&target).copied() };
+    set_sort_entries(&mut entries, order);
+    entries.retain(|row| row.id != 43);
+    for row in &mut entries {
+        if row.id == 22 {
+            // Arrangement commands target the active model, not the clicked tab.
+            row.children.retain(|child| !matches!(child.id, 54 | 55));
+        } else if row.id == 39 {
+            // These commands already appear in the clicked tab's action group.
+            row.children.retain(|child| !matches!(child.id, 49 | 42));
+        }
+        while row.children.last().is_some_and(|child| child.id == 0) {
+            row.children.pop();
+        }
+    }
     let mut tab_actions = vec![entry(49, crate::i18n::text("ui-detach-as-panel"), "", "")];
     if !model.locked {
         tab_actions.push(entry(43, crate::i18n::text("ui-rename-tab"), "", ""));
@@ -182,9 +213,20 @@ pub(super) fn tab_context_entries(model: &super::GroupModel, topmost: bool) -> V
     entries
 }
 
+fn sort_entries(order: Option<(u8, bool)>) -> Vec<Entry> {
+    [(0, "ui-name"), (2, "ui-modified"), (1, "ui-type"), (3, "ui-size")].into_iter()
+        .map(|(column, key)| entry(60 + i32::from(column), crate::i18n::text(key),
+            if order.is_some_and(|(selected, _)| selected == column) { "\u{e73e}" } else { "" },
+            match order { Some((selected, descending)) if selected == column => if descending { "\u{e70d}" } else { "\u{e70e}" }, _ => "" }))
+        .collect()
+}
+fn set_sort_entries(rows: &mut [Entry], order: Option<(u8, bool)>) {
+    if let Some(sort) = rows.iter_mut().find(|row| row.id == 51) { sort.children = sort_entries(order); }
+}
+
 pub(super) fn column_entries(visible: u8) -> Vec<Entry> {
     [(1, crate::i18n::text("ui-type")), (2, crate::i18n::text("ui-modified")), (3, crate::i18n::text("ui-size"))].into_iter()
-        .map(|(column, label)| entry(30 + column, label, if visible & (1 << column) != 0 { "✓" } else { "" }, ""))
+        .map(|(column, label)| entry(30 + column, label, if visible & (1 << column) != 0 { "\u{e73e}" } else { "" }, ""))
         .collect()
 }
 
@@ -366,7 +408,7 @@ fn show_level(
                     let y = f32::from(((lparam >> 16) as u16).cast_signed()) / scale;
                     let hit = rows.iter().enumerate().find_map(|(index, row)| {
                         let top = row_top(&rows, index);
-                        (row.id != 0
+                        (row.enabled && row.id != 0
                             && x >= 5.0
                             && x < width as f32 / scale - 5.0
                             && y >= top
@@ -402,8 +444,9 @@ fn show_level(
                         let indices: Vec<_> = rows
                             .iter()
                             .enumerate()
-                            .filter_map(|(i, row)| (row.id != 0).then_some(i))
+                            .filter_map(|(i, row)| (row.enabled && row.id != 0).then_some(i))
                             .collect();
+                        if indices.is_empty() { return Some(0); }
                         let current =
                             selected.and_then(|index| indices.iter().position(|&i| i == index));
                         let next = if wparam as u16 == VK_DOWN {
@@ -458,7 +501,7 @@ fn show_level(
                 }
                 _ => return None,
             }
-            if let Some(index) = activate {
+            if let Some(index) = activate.filter(|&index| rows[index].enabled) {
                 if rows[index].children.is_empty() {
                     if message != WM_KEYDOWN || wparam as u16 != VK_RIGHT {
                         command_handler.set(rows[index].id);
@@ -742,7 +785,7 @@ mod tests {
                 false,
                 luciddesk_core::PanelTheme::Dark,
                 Backdrop::Acrylic,
-                (false, false), 15, false, false, false
+                (false, false), 15, false, false, false, None
             ),
             0
         );
@@ -800,7 +843,7 @@ mod tests {
                         false,
                         luciddesk_core::PanelTheme::Dark,
                         Backdrop::Mica,
-                        (false, false), 15, false, false, false
+                        (false, false), 15, false, false, false, None
                     ),
                     0
                 );
@@ -847,5 +890,33 @@ mod tests {
             last.2.0 <= warm.2.0 + 2 && last.2.1 <= warm.2.1 + 2,
             "GUI resources keep growing: {samples:?}"
         );
+    }
+}
+
+#[test]
+fn sort_fields_show_only_the_current_direction() {
+    for column in 0..4 {
+        for descending in [false, true] {
+            let rows = sort_entries(Some((column, descending)));
+            assert_eq!(rows.iter().filter(|e| e.icon == "\u{e73e}").count(), 1);
+            let selected = rows.iter().find(|e| e.id == 60 + i32::from(column)).unwrap();
+            assert_eq!(selected.trailing, if descending { "\u{e70d}" } else { "\u{e70e}" });
+        }
+    }
+    assert!(sort_entries(None).iter().all(|e| e.icon.is_empty() && e.trailing.is_empty()));
+}
+
+#[test]
+fn view_contains_only_grid_alignment_and_auto_arrangement() {
+    for (fixed, free) in [(false, false), (true, false), (true, true)] {
+        let rows = pane_entries_fixed((false, false), 7, false, false, false, false, fixed, free);
+        let view = rows.iter().find(|r| r.id == 22).unwrap();
+        for (id, checked) in [(54, !fixed), (55, !free)] {
+            let entry = view.children.iter().find(|r| r.id == id).unwrap();
+            assert!(entry.enabled);
+            assert_eq!(!entry.icon.is_empty(), checked);
+        }
+        let sort = rows.iter().find(|r| r.id == 51).unwrap();
+        assert_eq!(sort.children.iter().map(|r| r.id).collect::<Vec<_>>(), [60, 62, 61, 63]);
     }
 }

@@ -22,7 +22,6 @@ pub(super) fn decorate(workspace: &Workspace, id: PanelId, model: &mut GroupMode
     let free = workspace.panel(id).is_some_and(Panel::free_layout);
     if model.free_layout != free { model.scroll = 0; }
     model.free_layout = free;
-    model.minimum_icon_width = fixed_grid::minimum_width(workspace, id);
     let tabs = workspace
         .tab_group(id)
         .map(|group| {
@@ -381,7 +380,6 @@ pub(super) fn restore_cached_model(s: &mut PaneApp, id: PanelId) {
         cached.list_view = fresh.list_view;
         cached.fixed_grid = fresh.fixed_grid;
         cached.free_layout = fresh.free_layout;
-        cached.minimum_icon_width = fresh.minimum_icon_width;
         cached.theme = fresh.theme;
         cached.dark = fresh.dark;
         cached.backdrop = fresh.backdrop;

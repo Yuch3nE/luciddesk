@@ -1249,4 +1249,6 @@ agent-install-prompt = 请为你当前使用的 Agent 环境安装 LucidDesk 配
 
 ui-auto-arrange-icons = 自动排列图标
 
-ui-align-icons-to-grid = 将图标与网格对齐
+ui-align-icons-to-grid = 对齐到网格
+
+ui-sort-by = 排序方式

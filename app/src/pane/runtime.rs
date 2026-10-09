@@ -443,6 +443,7 @@ pub(super) fn supervisor(state: &Rc<RefCell<PaneApp>>) -> Result<windows_window:
                                 runtime.last_attempt = Instant::now() - reconnect_delay(0);
                             }
                         }
+                        sorting::poll(&mut s);
                         let folder_renames = folder::poll(&mut s);
                         if s.session.is_some() {
                             if let Err(error) = hybrid::tick(&mut s) {

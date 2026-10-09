@@ -40,7 +40,8 @@ pub(super) fn update_pointer(hwnd: HWND, model: &RefCell<GroupModel>, pointer: O
         let (x, y) = viewport.point(p);
         let grid = viewport.grid(&m);
         let hovered = crate::pane::scrollbar::Bar::for_grid(&m, grid, viewport.width, viewport.height)
-            .is_some_and(|bar| bar.contains(x, y));
+            .is_some_and(|bar| bar.contains(x, y))
+            || crate::pane::scrollbar::Bar::horizontal(&m, viewport.width, viewport.height).is_some_and(|bar| bar.contains(x, y));
         (
             m.header_button(viewport.width, x, y),
             if hovered { None } else { m.hit(grid, x, y, viewport.scale) },
@@ -93,6 +94,7 @@ pub(super) fn pane_hit(r: RECT, p: POINT, scale: f32, model: &GroupModel) -> u32
         height,
     )
     .is_some_and(|bar| bar.contains(x, y))
+        || crate::pane::scrollbar::Bar::horizontal(model, width, height).is_some_and(|bar| bar.contains(x, y))
     {
         return HTCLIENT;
     }
@@ -273,6 +275,16 @@ pub(super) fn scrollbar(hwnd: HWND, model: &GroupModel) -> Option<crate::pane::s
     crate::pane::scrollbar::Bar::for_model(model, r.right as f32 / s, r.bottom as f32 / s)
 }
 
+pub(super) fn scrollbar_axis(hwnd: HWND, model: &GroupModel, horizontal: bool) -> Option<crate::pane::scrollbar::Bar> {
+    if !horizontal { return scrollbar(hwnd, model); }
+    let viewport = Viewport::read(hwnd);
+    crate::pane::scrollbar::Bar::horizontal(model, viewport.width, viewport.height)
+}
+pub(super) fn scrollbar_hit(hwnd: HWND, model: &GroupModel, point: POINT) -> Option<crate::pane::scrollbar::Bar> {
+    let (x, y) = Viewport::read(hwnd).point(point);
+    [false, true].into_iter().filter_map(|axis| scrollbar_axis(hwnd, model, axis)).find(|bar| bar.contains(x, y))
+}
+
 pub(super) fn update_scrollbar_animation(
     hwnd: HWND,
     model: &RefCell<GroupModel>,
@@ -281,7 +293,7 @@ pub(super) fn update_scrollbar_animation(
     timer_running: &mut bool,
 ) {
     let mut m = model.borrow_mut();
-    let visible = scrollbar(hwnd, &m).is_some();
+    let visible = scrollbar(hwnd, &m).is_some() || scrollbar_axis(hwnd, &m, true).is_some();
     let animating = m
         .scrollbar
         .animate(motion, std::time::Instant::now(), enabled, visible);

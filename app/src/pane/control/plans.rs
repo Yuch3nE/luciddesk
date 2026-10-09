@@ -72,7 +72,7 @@ fn ordered(workspace: &Workspace, pane: PanelId) -> Vec<String> {
 }
 fn order(workspace: &mut Workspace, pane: PanelId, keys: &[String]) {
     let fixed = workspace.panel(pane).is_some_and(Panel::fixed_grid);
-    let columns = fixed_grid::columns(workspace, pane);
+    let columns = fixed_grid::visible_columns(workspace, pane);
     let free = workspace.panel(pane).is_some_and(Panel::free_layout);
     let metrics = free_layout::grid(workspace);
     for (at, key) in keys.iter().enumerate() {
@@ -144,7 +144,7 @@ fn release(workspace: &mut Workspace, moving: &[String]) -> Result<(), (String, 
     Ok(())
 }
 fn summary(workspace: &Workspace) -> serde_json::Value {
-    json!({"tabs":workspace.tab_groups().iter().map(|g|json!({"active":g.active.get().to_string(),"members":g.members.iter().map(|id|id.get().to_string()).collect::<Vec<_>>()})).collect::<Vec<_>>(),"panes":workspace.panels().iter().map(|p|json!({"id":p.id().get().to_string(),"title":p.title(),"locked":p.locked(),"auto_hide":p.auto_hide(),"manual_collapsed":p.collapsed(),"always_on_top":p.always_on_top(),"folder_path":p.folder(),"list_view":p.list_view()})).collect::<Vec<_>>(),
+    json!({"tabs":workspace.tab_groups().iter().map(|g|json!({"active":g.active.get().to_string(),"members":g.members.iter().map(|id|id.get().to_string()).collect::<Vec<_>>()})).collect::<Vec<_>>(),"panes":workspace.panels().iter().map(|p|json!({"id":p.id().get().to_string(),"title":p.title(),"locked":p.locked(),"auto_hide":p.auto_hide(),"manual_collapsed":p.collapsed(),"always_on_top":p.always_on_top(),"folder_path":p.folder(),"list_view":p.list_view(),"auto_compact":!p.fixed_grid(),"align_icons_to_grid":!p.free_layout()})).collect::<Vec<_>>(),
         "placements":workspace.desktop_items().iter().map(|item|{
             let placement=match item.placement(){DesktopPlacement::Pane{pane_id,position}=>json!({"pane_id":pane_id.get().to_string(),"column":position.column,"row":position.row,"position_dip":item.pane_position().map(|p|json!({"x":p.x,"y":p.y}))}),_=>serde_json::Value::Null};
             (item.identity().persistent_key(),placement)
@@ -1031,6 +1031,26 @@ mod tests {
         assert!(response.ok);
         assert_eq!(response.data.unwrap()["commit_status"], "unchanged");
         assert_eq!(state.store.change_count(), count + 1);
+    }
+
+
+    #[test]
+    fn cli_reorder_uses_viewport_columns_for_scrolled_manual_grid() {
+        let mut state = super::super::super::tests::test_state();
+        let pane = PanelId::new(1);
+        let g = free_layout::grid(&state.workspace);
+        let mut rect = state.workspace.panel(pane).unwrap().rect();
+        rect.width = layout::PADDING * 2.0 + 2.0 * g.cell_width;
+        state.workspace.panel_mut(pane).unwrap().set_rect(rect);
+        state.workspace.panel_mut(pane).unwrap().set_fixed_grid(true);
+        for (index, item) in state.workspace.desktop_items_mut().iter_mut().enumerate() {
+            item.set_placement(DesktopPlacement::Pane { pane_id: pane, position: GridPosition::new(index as u32 * 4, 0) });
+        }
+        let keys = ordered(&state.workspace, pane);
+        order(&mut state.workspace, pane, &keys);
+        for (index, item) in ordered_desktop_items(&state.workspace, pane).iter().enumerate() {
+            assert_eq!(item.placement(), &DesktopPlacement::Pane { pane_id: pane, position: fixed_grid::position(index, 2) });
+        }
     }
 
     #[test]

@@ -436,7 +436,7 @@ fn apply_image_patch(item: &mut Item, update: Item) -> bool {
     changed
 }
 
-fn sort_items(items: &mut Vec<Item>, sort: (u8, bool)) {
+pub(super) fn sort_items(items: &mut Vec<Item>, sort: (u8, bool)) {
     let mut sorted: Vec<_> = std::mem::take(items)
         .into_iter()
         .map(|item| {
@@ -517,7 +517,12 @@ pub(super) fn sort(state: &mut PaneApp, id: PanelId, column: u8) -> Result<(), S
         return Ok(());
     };
     let column = column.min(3);
-    let order = (column, if source.sort.0 == column { !source.sort.1 } else { column >= 2 });
+    let order = super::sorting::next_order(Some(source.sort), column);
+    set_sort(state, id, order)
+}
+
+pub(super) fn set_sort(state: &mut PaneApp, id: PanelId, order: (u8, bool)) -> Result<(), String> {
+    let Some(source) = state.folders.get_mut(&id) else { return Ok(()); };
     state
         .store
         .save_preference(
@@ -526,6 +531,7 @@ pub(super) fn sort(state: &mut PaneApp, id: PanelId, column: u8) -> Result<(), S
         )
         .map_err(|e| e.to_string())?;
     source.sort = order;
+    state.sorting.orders.borrow_mut().insert(id, order);
     sort_items(&mut source.items, order);
     if let Some(view) = state.views.iter().find(|view| view.id == id) {
         view.model.borrow_mut().scroll = 0;

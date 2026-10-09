@@ -640,7 +640,7 @@ unsafe extern "system" fn owner_proc(
     if edit.is_null() || unsafe { GetPropW(owner, PROPERTY) } != edit {
         return result;
     }
-    if [WM_PAINT, WM_SIZE, WM_MOVE, WM_DPICHANGED, WM_MOUSEWHEEL].contains(&msg)
+    if [WM_PAINT, WM_SIZE, WM_MOVE, WM_DPICHANGED, WM_MOUSEWHEEL, WM_MOUSEHWHEEL].contains(&msg)
         || (msg == WM_COMMAND && lp == edit as isize && (wp >> 16) == EN_CHANGE as usize)
     {
         unsafe {
@@ -705,14 +705,14 @@ mod tests {
         merge_occluded: false,
             tabs: Vec::new(),
             active_tab: luciddesk_core::PanelId::new(0),
-            folder_sort: (0, false),
+            sort_orders: Default::default(),
+        folder_sort: (0, false),
             folder_columns: None,
             folder_visible_columns: 15,
         folder_navigation: [false; 2],
             list_view: false,
             fixed_grid: false,
             free_layout: false,
-            minimum_icon_width: 0.0,
             folder: None,
             folder_status: None,
             options: luciddesk_core::PaneOptions::default(),
@@ -743,6 +743,8 @@ mod tests {
             selection_anchor: Some(0),
             renaming: None,
             scroll: 0,
+        scroll_x: 0.0,
+        geometry_cache: Default::default(),
             collapsed: false,
             loading: false,
         }));

@@ -1249,4 +1249,6 @@ agent-install-prompt = Please install the bundled LucidDesk skill for your curre
 
 ui-auto-arrange-icons = Symbole automatisch anordnen
 
-ui-align-icons-to-grid = Symbole am Raster ausrichten
+ui-align-icons-to-grid = Am Raster ausrichten
+
+ui-sort-by = Sortieren nach

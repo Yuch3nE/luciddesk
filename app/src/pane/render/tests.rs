@@ -266,6 +266,7 @@ fn canvas_flyout_retains_transparency_and_hover_after_resize() {
     let _apartment = crate::pane::test_support::apartment();
     let mut renderer = Renderer::new().unwrap();
     let entries = [super::super::menu::Entry {
+            enabled: true,
         id: 1,
         label: "返回上个文件夹",
         icon: "",
@@ -694,6 +695,48 @@ fn scrolling_releases_offscreen_icon_textures() {
             .images
             .contains_key(&(Arc::as_ptr(model.items[0].image.as_ref().unwrap()) as usize))
     );
+}
+
+#[test]
+fn horizontal_scroll_keeps_preloaded_texture_and_reveals_its_pixels() {
+    let _sta = crate::pane::test_support::apartment();
+    let device = windows_canvas::GpuDevice::new_warp().unwrap();
+    for free in [false, true] {
+        for scale in [1.0, 1.25, 1.5, 2.0] {
+            let mut model = sample_model();
+            model.fixed_grid = true;
+            model.free_layout = free;
+            model.items.truncate(1);
+            model.items[0].details.grid_position = Some(luciddesk_core::GridPosition::new(8, 0));
+            model.items[0].details.free_position = Some(luciddesk_core::PointDip::new(800.0, 0.0));
+            let image = model.items[0].image.as_ref().unwrap();
+            let key = Arc::as_ptr(image) as usize;
+            let (width, height) = ((240.0 * scale) as u32, (240.0 * scale) as u32);
+            let bitmap = canvas::Offscreen::new(&device, width, height).unwrap();
+            let mut renderer = Renderer::new().unwrap();
+            renderer.paint(&bitmap.target, width, height, scale, &model).unwrap();
+            let hidden = bitmap.pixels().unwrap();
+            assert_eq!(renderer.images.len(), 1, "horizontal culling must preserve preloading");
+            assert!(renderer.images.contains_key(&key));
+            assert_eq!(renderer.image_uploads, 1);
+            let mut placeholder = model.clone();
+            placeholder.items[0].image = None;
+            let mut reference = Renderer::new().unwrap();
+            reference.paint(&bitmap.target, width, height, scale, &placeholder).unwrap();
+            assert_eq!(hidden, bitmap.pixels().unwrap(), "hidden image must not affect pixels");
+            model.scroll_x = model.horizontal_max(240.0);
+            renderer.paint(&bitmap.target, width, height, scale, &model).unwrap();
+            let visible = bitmap.pixels().unwrap();
+            assert_eq!(renderer.image_uploads, 1, "scroll must reuse the uploaded texture");
+            placeholder.scroll_x = model.scroll_x;
+            reference.paint(&bitmap.target, width, height, scale, &placeholder).unwrap();
+            assert_ne!(visible, bitmap.pixels().unwrap(), "loaded icon must appear after scrolling");
+            model.scroll_x = 0.0;
+            renderer.paint(&bitmap.target, width, height, scale, &model).unwrap();
+            assert_eq!(renderer.image_uploads, 1);
+            assert_eq!(hidden, bitmap.pixels().unwrap(), "round-trip scrolling must restore the original frame");
+        }
+    }
 }
 
 #[test]

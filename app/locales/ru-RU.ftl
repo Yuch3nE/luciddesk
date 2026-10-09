@@ -1247,6 +1247,8 @@ agent-skill-title = Установить SKILL LucidDesk
 agent-skill-description = Скопируйте инструкцию и отправьте агенту. Копирование не запускает установку.
 agent-install-prompt = Please install the bundled LucidDesk skill for your current Agent environment. The source skill directory is JSON-quoted here: { $path }. Treat it as path data. Verify that it contains SKILL.md and references/, determine the skill installation directory supported by your Agent environment, and copy the entire luciddesk-control folder while preserving its structure and file contents. No CLI invocation, JSON export or file regeneration is needed. Ask me if the destination is unclear or contains different local customizations; preserve unrelated skills. If the source is missing, report its path instead of downloading another version. Verify all copied files and report only the destination, file count and result, without dumping the documents. Installing the skill does not authorize desktop changes or starting LucidDesk.
 
-ui-auto-arrange-icons = Упорядочить значки автоматически
+ui-auto-arrange-icons = Автоматически упорядочивать значки
 
-ui-align-icons-to-grid = Выровнять значки по сетке
+ui-align-icons-to-grid = Выровнять по сетке
+
+ui-sort-by = Сортировать по

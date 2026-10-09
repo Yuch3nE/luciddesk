@@ -74,13 +74,15 @@ pub struct Renderer {
     target: Option<(u32, u32, Option<canvas::Offscreen>, ID2D1DeviceContext)>,
     brushes: std::cell::RefCell<canvas::Brushes<9>>,
     images: HashMap<usize, ImageBitmap>,
+    #[cfg(test)]
+    image_uploads: usize,
     states: HashMap<(u32, u32, u32, i32), windows_canvas::Bitmap>,
 }
 
 impl Renderer {
     pub(super) fn menu_width(&self, rows: &[super::menu::Entry]) -> f32 {
         rows.iter().filter(|row| row.id != 0).fold(216.0_f32, |width, row| {
-            let trailing = if !row.children.is_empty() { 24.0 } else if row.trailing.is_empty() { 0.0 } else { 72.0 };
+            let trailing = row.trailing_width();
             let measured = windows_canvas::TextLayout::new(row.label, &self.title, 4096.0, 64.0)
                 .map(|layout| layout.metrics().width_including_trailing_whitespace).unwrap_or(166.0);
             width.max((measured + 54.0 + trailing).ceil())
@@ -130,6 +132,7 @@ impl Renderer {
         canvas::draw(target, scale, |target| {
             let ink = if dark { 0.95 } else { 0.10 };
             let text = canvas_result(target.create_solid_brush(ColorF::new(ink, ink, ink, 1.0)))?;
+            let disabled = canvas_result(target.create_solid_brush(ColorF::new(ink, ink, ink, 0.4)))?;
             let subtle =
                 canvas_result(target.create_solid_brush(ColorF::new(ink, ink, ink, 0.13)))?;
             target.clear(ColorF::new(0.0, 0.0, 0.0, 0.0));
@@ -187,7 +190,8 @@ impl Renderer {
                         &hover,
                     );
                 }
-                let trailing_width = if !row.children.is_empty() { 24.0 } else if row.trailing.is_empty() { 0.0 } else { 72.0 };
+                let text = if row.enabled { &text } else { &disabled };
+                let trailing_width = row.trailing_width();
                 for (label, left, available) in [
                     (row.icon, 12.0, 20.0),
                     (row.label, 38.0, width - 50.0 - trailing_width),
@@ -206,6 +210,9 @@ impl Renderer {
                 }
                 if !row.children.is_empty() {
                     target.clipped_icon("\u{e76c}", &self.icons,
+                        &Rect::from_xywh(width - 28.0, top, 16.0, super::menu::ROW_HEIGHT), &text);
+                } else if row.trailing_is_icon() {
+                    target.clipped_icon(row.trailing, &self.icons,
                         &Rect::from_xywh(width - 28.0, top, 16.0, super::menu::ROW_HEIGHT), &text);
                 } else if trailing_width > 0.0 {
                     target.clipped_text(
@@ -277,6 +284,8 @@ impl Renderer {
             target: None,
             brushes: Default::default(),
             images: HashMap::new(),
+            #[cfg(test)]
+            image_uploads: 0,
             states: HashMap::new(),
         })
     }
@@ -627,7 +636,7 @@ impl Renderer {
                 }
                 if h > model.content_header() + 1.0 {
                     target.push_clip(&{
-                        Rect::from_xywh(6.0, model.content_header(), w - 12.0, (h - model.content_header() - 6.0).max(0.0))
+                        Rect::from_xywh(6.0, model.content_header(), w - 12.0, (h - model.horizontal_inset(w) - model.content_header() - 6.0).max(0.0))
                     });
                     let list = model.is_list();
                     let columns = model.list_columns(grid.cell_width);
@@ -693,6 +702,43 @@ impl Renderer {
                         if y + grid.cell_height <= { HEADER } || y >= h {
                             continue;
                         }
+                        if let Some(image) = &item.image {
+                            let key = Arc::as_ptr(image) as usize;
+                            let ratio =
+                                grid.icon_size * scale / image.width.max(image.height) as f32;
+                            let size = (
+                                (image.width as f32 * ratio).round().max(1.0) as u32,
+                                (image.height as f32 * ratio).round().max(1.0) as u32,
+                            );
+                            if self.images.get(&key).is_none_or(|(source, _, old_size)| {
+                                !Arc::ptr_eq(source, image) || *old_size != size
+                            }) {
+                                let pixels = super::scaled_icons::resample(image, size.0, size.1)?;
+                                let bitmap = canvas_result(target.create_bitmap(
+                                    &pixels.data,
+                                    pixels.width,
+                                    pixels.height,
+                                ))?;
+                                self.images
+                                    .insert(key, (Arc::clone(image), bitmap, size));
+                                #[cfg(test)]
+                                { self.image_uploads += 1; }
+                                if luciddesk_diagnostics::enabled(luciddesk_diagnostics::Level::Trace)
+                                    && item.identity.persistent_key()
+                                        .to_ascii_lowercase()
+                                        .contains("645ff040-5081-101b-9f08-00aa002f954e")
+                                {
+                                    luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Trace, "pane.render",
+                                        "recycle-render-upload hash={:x} size={:?}",
+                                        image.data.iter().fold(0u64, |h, b| h
+                                            .wrapping_mul(31)
+                                            .wrapping_add(u64::from(*b))),
+                                        size
+                                    );
+                                }
+                            }
+                        }
+                        if x + grid.cell_width <= 6.0 || x >= w - 6.0 { continue; }
                         if model.selection.contains(&index) || model.hovered_item == Some(index) {
                             let bounds = model.selection_bounds(grid, index, scale);
                             let selection_height = bounds.height;
@@ -765,37 +811,7 @@ impl Renderer {
                         }
                         if let Some(image) = &item.image {
                             let key = Arc::as_ptr(image) as usize;
-                            let ratio =
-                                grid.icon_size * scale / image.width.max(image.height) as f32;
-                            let size = (
-                                (image.width as f32 * ratio).round().max(1.0) as u32,
-                                (image.height as f32 * ratio).round().max(1.0) as u32,
-                            );
-                            if self.images.get(&key).is_none_or(|(source, _, old_size)| {
-                                !Arc::ptr_eq(source, image) || *old_size != size
-                            }) {
-                                let pixels = super::scaled_icons::resample(image, size.0, size.1)?;
-                                let bitmap = canvas_result(target.create_bitmap(
-                                    &pixels.data,
-                                    pixels.width,
-                                    pixels.height,
-                                ))?;
-                                self.images
-                                    .insert(key, (Arc::clone(image), bitmap, size));
-                                if luciddesk_diagnostics::enabled(luciddesk_diagnostics::Level::Trace)
-                                    && item.identity.persistent_key()
-                                        .to_ascii_lowercase()
-                                        .contains("645ff040-5081-101b-9f08-00aa002f954e")
-                                {
-                                    luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Trace, "pane.render",
-                                        "recycle-render-upload hash={:x} size={:?}",
-                                        image.data.iter().fold(0u64, |h, b| h
-                                            .wrapping_mul(31)
-                                            .wrapping_add(u64::from(*b))),
-                                        size
-                                    );
-                                }
-                            }
+                            let size = self.images[&key].2;
                             let (iw, ih) = (size.0 as f32 / scale, size.1 as f32 / scale);
                             let left = ((if list {
                                 x + 4.0
@@ -897,7 +913,7 @@ impl Renderer {
                         );
                     }
                     target.pop_clip();
-                    if let Some(bar) = super::scrollbar::Bar::for_grid(model, grid, w, h) {
+                    for bar in [super::scrollbar::Bar::for_grid(model, grid, w, h), super::scrollbar::Bar::horizontal(model, w, h)].into_iter().flatten() {
                         let expansion = model.scrollbar.expansion.clamp(0.0, 1.0);
                         let center = bar.left + super::scrollbar::Bar::WIDTH / 2.0;
                         if expansion > 0.0 {
@@ -905,7 +921,7 @@ impl Renderer {
                             let track = canvas_result(target.create_solid_brush(ColorF::new(ink, ink, ink, 0.06 * expansion)))?;
                             target.fill_rounded_rect(
                                 &RoundedRect {
-                                    rect: Rect::from_xywh(center - track_width / 2.0, bar.top, track_width, bar.height),
+                                    rect: { let (x,y,w,h) = bar.rect(center - track_width / 2.0, bar.top, track_width, bar.height); Rect::from_xywh(x,y,w,h) },
                                     radius_x: track_width / 2.0, radius_y: track_width / 2.0,
                                 }, &track,
                             );
@@ -914,10 +930,7 @@ impl Renderer {
                         let thumb = canvas_result(target.create_solid_brush(ColorF::new(ink, ink, ink, 0.85 + 0.15 * expansion)))?;
                         target.fill_rounded_rect(
                             &RoundedRect {
-                                rect: Rect::from_xywh(
-                                    center - width / 2.0,
-                                    bar.thumb_top, width, bar.thumb_height,
-                                ),
+                                rect: { let (x,y,w,h) = bar.rect(center - width / 2.0, bar.thumb_top, width, bar.thumb_height); Rect::from_xywh(x,y,w,h) },
                                 radius_x: width / 2.0,
                                 radius_y: width / 2.0,
                             },

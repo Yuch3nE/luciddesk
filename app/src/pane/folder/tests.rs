@@ -489,7 +489,7 @@ fn navigation_and_sort_keep_the_mapping_and_back_history() {
             .collect::<Vec<_>>(),
         ["child", "a.txt", "z.txt"]
     );
-    for expected in [["a.txt", "z.txt", "child"], ["child", "z.txt", "a.txt"]] {
+    for expected in [["child", "z.txt", "a.txt"], ["a.txt", "z.txt", "child"]] {
         sort(&mut state, id, 3).unwrap();
         assert_eq!(state.folders[&id].items.iter().map(|item| item.label.as_str()).collect::<Vec<_>>(), expected);
     }
@@ -518,7 +518,7 @@ fn navigation_and_sort_keep_the_mapping_and_back_history() {
     assert_eq!(state.folders[&id].path, root);
     state.folders.remove(&id);
     ensure(&mut state, id).unwrap();
-    assert_eq!(state.folders[&id].sort, (3, false));
+    assert_eq!(state.folders[&id].sort, (3, true));
     state.folders.clear();
     std::fs::remove_file(root.join("a.txt")).unwrap();
     std::fs::remove_file(root.join("z.txt")).unwrap();
@@ -628,4 +628,26 @@ fn folder_copy_rejects_self_recursive_and_virtual_sources() {
         }],
         destination
     ));
+}
+
+#[test]
+fn menu_sort_uses_loaded_and_externally_updated_folder_rule() {
+    let _sta = crate::pane::test_support::apartment();
+    let root = tempfile::tempdir().unwrap();
+    let mut app = super::super::tests::test_state();
+    let id = PanelId::new(2);
+    app.workspace.panel_mut(id).unwrap().set_folder(Some(root.path().to_path_buf()));
+    app.store.save_workspace(&app.workspace).unwrap();
+    app.store.save_preference("panel_folder_sort:2", "0:asc").unwrap();
+    ensure(&mut app, id).unwrap();
+    let state = Rc::new(RefCell::new(app));
+    super::super::handle(&state, id, super::super::Event::SortFolderMenu(0)).unwrap();
+    assert_eq!(state.borrow().folders[&id].sort, (0, true));
+    {
+        let mut s = state.borrow_mut();
+        s.store.save_preference("panel_folder_sort:2", "2:desc").unwrap();
+        apply_saved_preferences(&mut s, id).unwrap();
+    }
+    super::super::handle(&state, id, super::super::Event::SortFolderMenu(2)).unwrap();
+    assert_eq!(state.borrow().folders[&id].sort, (2, false));
 }

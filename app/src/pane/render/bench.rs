@@ -48,6 +48,7 @@ fn multi_window_render_latency() {
     let renderer = Renderer::new().unwrap();
     let rows: Vec<_> = (1..=10)
         .map(|id| Entry {
+            enabled: true,
             id,
             label: "文件夹面板与菜单",
             icon: "",

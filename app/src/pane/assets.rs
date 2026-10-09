@@ -330,10 +330,18 @@ pub fn use_ui_font(font: &mut windows_sys::Win32::Graphics::Gdi::LOGFONTW) {
     }
 }
 
+static FONT_REVISION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub(super) fn font_revision() -> u64 { FONT_REVISION.load(std::sync::atomic::Ordering::Relaxed) }
 static FONT_SIZE: std::sync::Mutex<Option<f32>> = std::sync::Mutex::new(None);
 
 pub(super) fn invalidate_font() {
     *FONT_SIZE.lock().unwrap() = None;
+    FONT_REVISION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub(super) fn with_font<T>(read: impl FnOnce(&str, f32) -> T) -> T {
+    let size = *FONT_SIZE.lock().unwrap().get_or_insert_with(system_font_size);
+    super::fonts::with_family(|family| read(family, size))
 }
 
 pub fn font() -> (String, f32) {

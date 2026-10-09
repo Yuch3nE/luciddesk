@@ -1249,4 +1249,6 @@ agent-install-prompt = Please install the bundled LucidDesk skill for your curre
 
 ui-auto-arrange-icons = 아이콘 자동 정렬
 
-ui-align-icons-to-grid = 아이콘을 그리드에 맞춤
+ui-align-icons-to-grid = 격자에 맞춤
+
+ui-sort-by = 정렬 기준

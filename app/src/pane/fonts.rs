@@ -2,6 +2,8 @@
 use std::sync::RwLock;
 use windows_sys::Win32::Graphics::Gdi::*;
 const KEY: &str = "ui_font_family";
+static REVISION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub(super) fn revision() -> u64 { REVISION.load(std::sync::atomic::Ordering::Relaxed) }
 static FAMILY: RwLock<String> = RwLock::new(String::new());
 
 const ICON_GLYPHS: &[u32] = &[
@@ -45,16 +47,14 @@ fn icon_coverage(name: &str) -> windows::core::Result<bool> {
         Ok(glyphs.iter().all(|glyph| *glyph != 0))
     }
 }
-pub(super) fn family() -> String {
+pub(super) fn family() -> String { with_family(str::to_owned) }
+pub(super) fn with_family<T>(read: impl FnOnce(&str) -> T) -> T {
     let value = FAMILY.read().unwrap();
-    if value.is_empty() {
-        crate::i18n::default_font().into()
-    } else {
-        value.clone()
-    }
+    read(if value.is_empty() { crate::i18n::default_font() } else { &value })
 }
 fn set(value: String) {
     *FAMILY.write().unwrap() = value;
+    REVISION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 }
 
 unsafe extern "system" fn collect(

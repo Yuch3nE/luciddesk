@@ -1249,4 +1249,6 @@ agent-install-prompt = Please install the bundled LucidDesk skill for your curre
 
 ui-auto-arrange-icons = Auto arrange icons
 
-ui-align-icons-to-grid = Align icons to grid
+ui-align-icons-to-grid = Align to grid
+
+ui-sort-by = Sort by

@@ -2,9 +2,14 @@
 use super::*;
 use std::collections::HashSet;
 
-pub(super) fn columns(w: &Workspace, id: PanelId) -> usize {
+/// Columns visible in the current viewport, used for explicit rearrangement.
+pub(super) fn visible_columns(w: &Workspace, id: PanelId) -> usize {
     let width = w.panel(id).map_or(260.0, |p| p.rect().width);
     layout::desktop_grid(width, 0.0, layout::DESKTOP_ICON_SIZE, w.pane_options().grid_scale).columns
+}
+/// Coordinate stride for stable drops into a possibly scrolled grid.
+pub(super) fn columns(w: &Workspace, id: PanelId) -> usize {
+    visible_columns(w, id).max(if w.panel(id).is_some_and(Panel::fixed_grid) { extent(w, id).0 } else { 1 })
 }
 pub(super) fn position(slot: usize, columns: usize) -> GridPosition {
     GridPosition::new((slot % columns.max(1)) as u32, (slot / columns.max(1)) as u32)
@@ -36,7 +41,7 @@ pub(super) fn toggle(w: &mut Workspace, id: PanelId) -> Result<(), String> {
     let panel = w.panel(id).ok_or("panel does not exist")?;
     if !panel.supports_tabs() || panel.locked() { return Err("only unlocked desktop panels support fixed positions".into()); }
     let enabled = !panel.fixed_grid();
-    let columns = columns(w, id);
+    let columns = visible_columns(w, id);
     let keys: Vec<_> = ordered_desktop_items(w, id).into_iter().map(|i| i.identity().clone()).collect();
     for (index, identity) in keys.iter().enumerate() {
         w.desktop_item_mut(identity).unwrap().set_placement(DesktopPlacement::Pane {
@@ -190,7 +195,7 @@ mod tests {
         for dpi in [1.0, 1.25, 1.5, 2.0] {
             assert_eq!(model.hit(grid, x + 8.0, y + 8.0, dpi), Some(last));
         }
-        let min = model.fixed_width();
+        let min = model.content_width();
         assert_eq!(model.cell(model.grid(800.0, 180.0), last), (x, y));
         assert!(min >= layout::PADDING * 2.0 + grid.cell_width * 3.0);
     }

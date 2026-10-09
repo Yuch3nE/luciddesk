@@ -574,7 +574,7 @@ fn fixed_grid_fit_keeps_holes_and_occupied_columns() {
     let rows = model.row_contents(grid);
     assert_eq!(height, layout::pane_content_height(5, grid.cell_height, &rows));
     assert_eq!(measurement::query(&s.workspace,id)["content_rows"], 5);
-    assert!(measurement::minimum(&s.workspace,id,112.0,&HashMap::new()).0 >= width);
+    assert!(measurement::minimum(&s.workspace,id,112.0,&HashMap::new()).0 < width);
     assert_eq!(s.workspace, before);
 }
 
@@ -606,6 +606,6 @@ fn free_fit_uses_actual_right_edge_without_rounding_an_extra_column() {
     let g=metrics(&s.workspace);let expected=layout::PADDING*2.0+10.0+g.cell_width;
     let (width,_)=size_with_folders(&s.workspace,id,1,&HashMap::new(),None).unwrap();
     assert_eq!(width,expected);
-    assert_eq!(measurement::minimum(&s.workspace,id,width,&HashMap::new()).0,expected);
-    assert_eq!(super::super::super::create_model(&s,id).unwrap().fixed_width(),expected);
+    assert!(measurement::minimum(&s.workspace,id,width,&HashMap::new()).0 < expected);
+    assert_eq!(super::super::super::create_model(&s,id).unwrap().content_width(),expected);
 }

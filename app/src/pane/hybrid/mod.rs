@@ -129,6 +129,7 @@ pub fn run(path: &Path, title: Option<String>) -> Result<(), String> {
     }
     let (_, receiver) = mpsc::channel();
     let state = Rc::new(RefCell::new(PaneApp {
+        sorting: Default::default(),
         wake: Default::default(),
         folders: HashMap::new(),
         tab_models: HashMap::new(),

@@ -435,7 +435,7 @@ mod tests {
             for scale in [1.0, 1.5, 2.0] {
                 let size = (64.0 * scale) as u32;
                 let surface = Offscreen::new(&device, size, size).unwrap();
-                for glyph in ["\u{e790}", "\u{f0e2}", "\u{e721}", "\u{e70d}", "\u{e8bb}"] {
+                for glyph in ["\u{e790}", "\u{f0e2}", "\u{e721}", "\u{e70d}", "\u{e70e}", "\u{e73e}", "\u{e8bb}"] {
                     draw(&surface.target, scale, |frame| {
                         frame.clear(c::ColorF::new(0.0, 0.0, 0.0, 0.0));
                         let ink = canvas_result(frame.create_solid_brush(WHITE))?;

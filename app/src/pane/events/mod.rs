@@ -45,6 +45,14 @@ pub(super) fn handle(
         if matches!(event, Event::ToggleHeaderDivider) { return Ok(false); }
     }
     if let Some(result) = tab_events::route(state, id, &event)? { return Ok(result); }
+    if let Event::SortPaneColumn(target, column) = event {
+        sorting::request(&mut state.borrow_mut(), target, column)?;
+        return Ok(false);
+    }
+    if let Event::SortFolderMenu(column) = event {
+        folder::sort(&mut state.borrow_mut(), id, column)?;
+        return Ok(false);
+    }
     if let Event::SortFolder(column) = event {
         folder::sort(&mut state.borrow_mut(), id, column)?;
         return Ok(false);

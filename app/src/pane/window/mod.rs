@@ -29,6 +29,7 @@ mod input;
 mod scheduling;
 pub(super) use scheduling::{post_action, defer_action};
 use input::*;
+#[cfg(test)]
 pub(super) fn dispatch_sort_menu(
     model: &RefCell<GroupModel>,
     tab_context: Option<luciddesk_core::PanelId>,
@@ -262,7 +263,7 @@ where
     let mut drag_offset = luciddesk_core::PointDip::default();
     let mut marquee: Option<super::marquee::Marquee> = None;
     let mut column_drag: Option<ColumnDrag> = None;
-    let mut scrollbar_drag: Option<f32> = None;
+    let mut scrollbar_drag: Option<(bool, f32)> = None;
     let mut scrollbar_motion = super::animation::Motion::settled(0.0, std::time::Instant::now());
     let mut scrollbar_timer = false;
     let mut scrollbar_animated = super::scrollbar::animations_enabled();
@@ -455,12 +456,7 @@ where
                         windows_sys::Win32::Graphics::Gdi::ScreenToClient(hwnd, &raw mut pointer);
                     }
                     if scrollbar_drag.is_some()
-                        || scrollbar(hwnd, &model.borrow()).is_some_and(|bar| {
-                            bar.contains(
-                                pointer.x as f32 / scale(hwnd),
-                                pointer.y as f32 / scale(hwnd),
-                            )
-                        })
+                        || scrollbar_hit(hwnd, &model.borrow(), pointer).is_some()
                     {
                         unsafe {
                             SetCursor(LoadCursorW(std::ptr::null_mut(), IDC_ARROW));
@@ -635,7 +631,7 @@ where
                     let first_row = m.minimum_row_content(grid(hwnd, &m));
                     let (width, height) = super::layout::pane_minimum(
                         cell, m.collapsed, m.tabs.len() > 1, first_row);
-                    info.ptMinTrackSize.x = (width.max(m.fixed_width()) * s).ceil() as i32;
+                    info.ptMinTrackSize.x = (width * s).ceil() as i32;
                     info.ptMinTrackSize.y = (height * s).ceil() as i32;
                     Some(0)
                 }
@@ -669,25 +665,19 @@ where
                         (rect.right - rect.left) as f32 / s,
                         (rect.bottom - rect.top) as f32 / s,
                     );
-                    let rows = { m.row_contents(proposed_grid) };
-                    let start = m.scroll.min(rows.len().saturating_sub(1));
+                    let rows = m.resize_rows(proposed_grid, (rect.bottom - rect.top) as f32 / s);
                     super::layout::resize_pane(
                         rect,
                         wparam as u32,
                         m.resize_cell(),
                         s,
                         m.collapsed,
-                        &rows[start..],
+                        &rows,
                     );
                     drop(m);
                     // Peer alignment wins over content-grid snapping, using the
                     // unsnapped Windows proposal to preserve the release distance.
                     event(Event::Sizing(rect, proposal, wparam as u32));
-                    let min_width = (model.borrow().fixed_width() * s).ceil() as i32;
-                    if rect.right - rect.left < min_width {
-                        if matches!(wparam as u32, WMSZ_LEFT | WMSZ_TOPLEFT | WMSZ_BOTTOMLEFT) { rect.left = rect.right - min_width; }
-                        else { rect.right = rect.left + min_width; }
-                    }
                     Some(1)
                 }
                 WM_PAINT => {
@@ -747,6 +737,7 @@ where
                     let mut m = model.borrow_mut();
                     if fold.is_none() && !m.collapsed {
                         m.scroll = m.scroll.min(grid(hwnd, &m).max_scroll(m.items.len()));
+                        m.scroll_x = m.horizontal_offset(client(hwnd).right as f32 / scale(hwnd));
                     }
                     drop(m);
                     invalidate(hwnd);
@@ -833,10 +824,9 @@ where
                         unsafe { SetFocus(hwnd); SetCapture(hwnd); }
                         return Some(0);
                     }
-                    let bar = scrollbar(hwnd, &model.borrow())
-                        .filter(|bar| bar.contains(p.x as f32 / s, p.y as f32 / s));
+                    let bar = scrollbar_hit(hwnd, &model.borrow(), p);
                     if let Some(bar) = bar {
-                        let y = p.y as f32 / s;
+                        let y = bar.axis(p.x as f32 / s, p.y as f32 / s);
                         let dragging = bar.on_thumb(y);
                         {
                             let mut m = model.borrow_mut();
@@ -844,9 +834,10 @@ where
                             m.scrollbar.hovered = true;
                             m.scrollbar.dragging = dragging;
                             if dragging {
-                                scrollbar_drag = Some(y - bar.thumb_top);
+                                scrollbar_drag = Some((bar.horizontal, y - bar.thumb_top));
                             } else {
-                                m.scroll = bar.page_to(m.scroll, y);
+                                if bar.horizontal { m.scroll_x = bar.page_to(m.scroll_x as usize, y) as f32; }
+                                else { m.scroll = bar.page_to(m.scroll, y); }
                             }
                         }
                         unsafe {
@@ -986,10 +977,12 @@ where
                         }
                         return Some(0);
                     }
-                    if let Some(offset) = scrollbar_drag {
+                    if let Some((horizontal, offset)) = scrollbar_drag {
                         let mut m = model.borrow_mut();
-                        if let Some(bar) = scrollbar(hwnd, &m) {
-                            m.scroll = bar.drag_to(point(lparam).y as f32 / scale(hwnd), offset);
+                        if let Some(bar) = scrollbar_axis(hwnd, &m, horizontal) {
+                            let p = point(lparam); let dpi = scale(hwnd);
+                            let value = bar.drag_to(bar.axis(p.x as f32 / dpi, p.y as f32 / dpi), offset);
+                            if horizontal { m.scroll_x = value as f32; } else { m.scroll = value; }
                         }
                         drop(m);
                         invalidate(hwnd);
@@ -1232,8 +1225,7 @@ where
                     if hit.is_some() { return Some(0); }
                     let p = point(lparam);
                     let s = scale(hwnd);
-                    if scrollbar(hwnd, &model.borrow())
-                        .is_some_and(|bar| bar.contains(p.x as f32 / s, p.y as f32 / s))
+                    if scrollbar_hit(hwnd, &model.borrow(), p).is_some()
                     {
                         return Some(0);
                     }
@@ -1252,15 +1244,22 @@ where
                     }
                     Some(0)
                 }
-                WM_MOUSEWHEEL => {
+                WM_MOUSEWHEEL | WM_MOUSEHWHEEL => {
                     let delta = point(wparam.cast_signed()).y;
                     let mut m = model.borrow_mut();
+                    let horizontal = message == WM_MOUSEHWHEEL || wparam & 4 != 0;
+                    if horizontal {
+                        let direction = if message == WM_MOUSEHWHEEL { delta } else { -delta };
+                        let max = m.horizontal_max(client(hwnd).right as f32 / scale(hwnd));
+                        m.scroll_x = (m.horizontal_offset(client(hwnd).right as f32 / scale(hwnd)) + direction as f32 / 120.0 * 48.0).clamp(0.0, max);
+                    } else {
                     let max = grid(hwnd, &m).max_scroll(m.items.len());
                     m.scroll = if delta < 0 {
                         (m.scroll + if m.free_layout && !m.is_list() { 32 } else { 1 }).min(max)
                     } else {
                         m.scroll.saturating_sub(if m.free_layout && !m.is_list() { 32 } else { 1 })
                     };
+                    }
                     drop(m);
                     if let Some(selection) = &mut marquee {
                         if selection.rect.is_some() {

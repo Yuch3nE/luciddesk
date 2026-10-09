@@ -131,6 +131,7 @@ struct View {
 }
 
 struct PaneApp {
+    sorting: sorting::State,
     wake: wake::Wake,
     folders: HashMap<PanelId, folder::Source>,
     tab_models: HashMap<PanelId, GroupModel>,
@@ -210,7 +211,9 @@ enum Event {
     SetFolder(std::path::PathBuf),
     OpenFolder,
     SortFolder(u8),
+    SortFolderMenu(u8),
     SortPane(PanelId, bool),
+    SortPaneColumn(PanelId, u8),
     ToggleFixedGrid,
     ToggleGridAlignment,
     FolderItemCreated(std::path::PathBuf),
@@ -304,6 +307,7 @@ fn create_model(state: &PaneApp, id: PanelId) -> Result<GroupModel, String> {
         merge_occluded: false,
         tabs: Vec::new(),
         active_tab: id,
+        sort_orders: state.sorting.orders.clone(),
         folder_sort: (0, false),
         folder_columns: folder::saved_columns(&state.store, id)?,
         folder_visible_columns: folder::visible_columns(&state.store, id)?,
@@ -311,7 +315,6 @@ fn create_model(state: &PaneApp, id: PanelId) -> Result<GroupModel, String> {
         list_view: panel.list_view(),
         fixed_grid: panel.fixed_grid(),
         free_layout: panel.free_layout(),
-        minimum_icon_width: fixed_grid::minimum_width(&state.workspace, id),
         folder: panel.folder().map(Path::to_path_buf),
         folder_status: None,
         options: state.workspace.pane_options(),
@@ -337,6 +340,8 @@ fn create_model(state: &PaneApp, id: PanelId) -> Result<GroupModel, String> {
         selection_anchor: None,
         renaming: None,
         scroll: 0,
+        scroll_x: 0.0,
+        geometry_cache: Default::default(),
         collapsed: panel.collapsed(),
         // Desktop membership is available before creating the view. Only folder
         // sources have an asynchronous inventory to wait for; icons load separately.
@@ -405,6 +410,7 @@ fn refresh_views(state: &mut PaneApp) {
 }
 
 fn refresh_changed_views(state: &mut PaneApp, force: bool) {
+    sorting::maintain(state);
     for view in &state.views {
         if state.workspace.panel(view.id).is_some_and(Panel::is_search) {
             continue;
@@ -460,6 +466,7 @@ fn refresh_changed_views(state: &mut PaneApp, force: bool) {
             GetWindowRect(hwnd, &raw mut bounds);
         }
         let scale = unsafe { GetDpiForWindow(hwnd) }.max(96) as f32 / 96.0;
+        model.scroll_x = model.horizontal_offset((bounds.right - bounds.left) as f32 / scale);
         model.scroll = model.scroll.min(
             model
                 .grid(
@@ -514,7 +521,7 @@ fn set_order(workspace: &mut Workspace, id: PanelId, items: &[Item]) {
     if workspace.panel(id).is_none() {
         return;
     }
-    let columns = fixed_grid::columns(workspace, id);
+    let columns = fixed_grid::visible_columns(workspace, id);
     let free = workspace.panel(id).is_some_and(Panel::free_layout);
     let metrics = free_layout::grid(workspace);
     let fixed = workspace.panel(id).is_some_and(Panel::fixed_grid);
@@ -571,8 +578,7 @@ fn transfer_many(
             let remaining = items_for(state, source);
             set_order(&mut state.workspace, source, &remaining);
         }
-        if let Err(error) = save(state) { state.workspace = old; return Err(error); }
-        return Ok(());
+        return sorting::finish_move(state, old, source, target);
     }
     let moving: Vec<_> = items
         .iter()
@@ -604,19 +610,15 @@ fn transfer_many(
         moving,
     );
     set_order(&mut state.workspace, target, &destination);
-    if let Err(e) = save(state) {
-        state.workspace = old;
-        return Err(e);
-    }
-    Ok(())
+    sorting::finish_move(state, old, source, target)
 }
 
 #[cfg(test)]
 mod tests;
-
-
 #[cfg(test)]
 pub(crate) mod test_support;
+
+
 fn load_log_level(store: &WorkspaceStore) -> Result<(), String> {
     let value = store.preference("log_level").map_err(|e| e.to_string())?.unwrap_or_else(|| "error".into());
     luciddesk_diagnostics::set_level(luciddesk_diagnostics::Level::parse(&value));

@@ -18,13 +18,15 @@ impl<K: Eq + std::hash::Hash + Clone, V: Clone> LayoutCache<K, V> {
             clock: 0,
         }
     }
-    fn get(&mut self, key: &K) -> Option<V> {
+    fn get_ref(&mut self, key: &K) -> Option<&V> {
         self.clock += 1;
         self.entries.get_mut(key).map(|(value, used)| {
             *used = self.clock;
-            value.clone()
+            &*value
         })
     }
+    #[cfg(test)]
+    fn get(&mut self, key: &K) -> Option<V> { self.get_ref(key).cloned() }
     fn insert(&mut self, key: K, value: V) {
         self.clock += 1;
         if self.entries.len() >= 1024 && !self.entries.contains_key(&key) {
@@ -48,24 +50,36 @@ pub struct Label {
     pub padding: u32,
 }
 
+#[derive(Clone)]
+struct CachedLayout {
+    family: String, text: String, metrics: (u32,u32,u32,u32), layout: TextLayout, height: f32,
+}
+
 pub fn layout_scaled(text: &str, width: u32, dpi: u32, lines: u32, font_scale: f32) -> Result<(TextLayout, f32)> {
+    super::assets::with_font(|family, size| layout_with_font(text, width, dpi, lines, font_scale, family, size))
+}
+fn layout_with_font(text: &str, width: u32, dpi: u32, lines: u32, font_scale: f32, family: &str, size: f32) -> Result<(TextLayout, f32)> {
     use std::cell::RefCell;
     thread_local! {
-        static CACHE: RefCell<LayoutCache<(String, String, u32, u32, u32, u32), (TextLayout, f32)>> = RefCell::new(LayoutCache::new());
+        static CACHE: RefCell<LayoutCache<u64, CachedLayout>> = RefCell::new(LayoutCache::new());
         static FORMAT: RefCell<Option<(String, u32, TextFormat, f32)>> = const { RefCell::new(None) };
     }
-    let (family, size) = super::assets::font();
     let size = size * font_scale;
-    let key = (family.clone(), text.to_owned(), width, dpi, lines, size.to_bits());
+    use std::hash::{Hash, Hasher};
+    let metrics = (width, dpi, lines, size.to_bits());
+    let mut hash = std::collections::hash_map::DefaultHasher::new();
+    (family, text, metrics).hash(&mut hash);
+    let key = hash.finish();
     CACHE.with(|cache| {
-        if let Some(value) = cache.borrow_mut().get(&key) {
-            return Ok(value);
+        if let Some(value) = cache.borrow_mut().get_ref(&key)
+            && value.family == family && value.text == text && value.metrics == metrics {
+            return Ok((value.layout.clone(), value.height));
         }
         let scale = dpi.max(48) as f32 / 96.0;
         let (format, line_height) = FORMAT.with(|slot| -> Result<_> {
             let mut slot = slot.borrow_mut();
             if let Some((cached_family, key, format, height)) = slot.as_ref()
-                && *key == size.to_bits() && cached_family == &family
+                && *key == size.to_bits() && cached_family == family
             {
                 return Ok((format.clone(), *height));
             }
@@ -75,7 +89,7 @@ pub fn layout_scaled(text: &str, width: u32, dpi: u32, lines: u32, font_scale: f
             canvas::ellipsis(&format)?;
             let probe = canvas_result(TextLayout::new("A", &format, 1000.0, 1000.0))?;
             let height = probe.metrics().height;
-            *slot = Some((family.clone(), size.to_bits(), format.clone(), height));
+            *slot = Some((family.to_owned(), size.to_bits(), format.clone(), height));
             Ok((format, height))
         })?;
         let max_height = line_height * lines as f32;
@@ -87,7 +101,7 @@ pub fn layout_scaled(text: &str, width: u32, dpi: u32, lines: u32, font_scale: f
         ))?;
         let height = (layout.metrics().height.min(max_height) * scale).ceil();
         let mut cache = cache.borrow_mut();
-        cache.insert(key, (layout.clone(), height));
+        cache.insert(key, CachedLayout { family: family.to_owned(), text: text.to_owned(), metrics, layout: layout.clone(), height });
         Ok((layout, height))
     })
 }
@@ -251,6 +265,39 @@ pub fn scaled_content_height(text: &str, width: u32, dpi: u32, font_scale: f32) 
 #[cfg(test)]
 mod cache_tests {
     use super::LayoutCache;
+    #[test]
+    fn layout_cache_reuses_identical_inputs_and_separates_every_metric() {
+        let _sta = crate::pane::test_support::apartment();
+        let layout = |text, width, dpi, lines, scale, family, size|
+            super::layout_with_font(text, width, dpi, lines, scale, family, size).unwrap().0;
+        let first = layout("Cache 测试", 88, 96, 2, 1.0, "Segoe UI", 12.0);
+        let again = layout("Cache 测试", 88, 96, 2, 1.0, "Segoe UI", 12.0);
+        assert_eq!(first.raw(), again.raw());
+        for changed in [
+            layout("Different", 88, 96, 2, 1.0, "Segoe UI", 12.0),
+            layout("Cache 测试", 89, 96, 2, 1.0, "Segoe UI", 12.0),
+            layout("Cache 测试", 88, 120, 2, 1.0, "Segoe UI", 12.0),
+            layout("Cache 测试", 88, 96, 3, 1.0, "Segoe UI", 12.0),
+            layout("Cache 测试", 88, 96, 2, 1.25, "Segoe UI", 12.0),
+            layout("Cache 测试", 88, 96, 2, 1.0, "Arial", 12.0),
+            layout("Cache 测试", 88, 96, 2, 1.0, "Segoe UI", 13.0),
+        ] { assert_ne!(first.raw(), changed.raw()); }
+        assert_eq!(first.raw(), layout("Cache 测试", 88, 96, 2, 1.0, "Segoe UI", 12.0).raw());
+    }
+
+    #[test]
+    fn replacing_existing_entry_at_capacity_does_not_evict_another() {
+        let mut cache = LayoutCache::new();
+        for key in 0..1024 { cache.insert(key, key); }
+        cache.insert(0, 99);
+        assert_eq!(cache.entries.len(), 1024);
+        assert_eq!(cache.get(&0), Some(99));
+        assert_eq!(cache.get(&1), Some(1));
+        cache.insert(1024, 1024);
+        assert_eq!(cache.get(&2), None);
+        assert_eq!(cache.get(&0), Some(99));
+        assert_eq!(cache.entries.len(), 1024);
+    }
     #[test]
     fn evicts_one_least_recent_entry_and_preserves_hot_entries() {
         let mut cache = LayoutCache::new();

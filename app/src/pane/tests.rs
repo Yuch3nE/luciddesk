@@ -220,6 +220,7 @@ pub(super) fn test_model(title: &str) -> GroupModel {
         merge_occluded: false,
         tabs: Vec::new(),
         active_tab: luciddesk_core::PanelId::new(0),
+        sort_orders: Default::default(),
         folder_sort: (0, false),
         folder_columns: None,
         folder_visible_columns: 15,
@@ -227,7 +228,6 @@ pub(super) fn test_model(title: &str) -> GroupModel {
         list_view: false,
         fixed_grid: false,
             free_layout: false,
-        minimum_icon_width: 0.0,
         folder: None,
         folder_status: None,
         options: luciddesk_core::PaneOptions::default(),
@@ -253,6 +253,8 @@ pub(super) fn test_model(title: &str) -> GroupModel {
         selection_anchor: None,
         renaming: None,
         scroll: 0,
+        scroll_x: 0.0,
+        geometry_cache: Default::default(),
         collapsed: false,
         loading: false,
     }
@@ -290,6 +292,7 @@ pub(super) fn test_state() -> PaneApp {
     reconcile(&mut workspace, inventory);
     let (_, receiver) = mpsc::channel();
     PaneApp {
+        sorting: Default::default(),
         wake: Default::default(),
         folders: HashMap::new(),
         tab_models: HashMap::new(),

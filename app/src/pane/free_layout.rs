@@ -38,10 +38,11 @@ pub(super) fn extent(w: &Workspace, id: PanelId) -> (f32, f32) {
 }
 pub(super) fn toggle(w: &mut Workspace, id: PanelId) -> Result<(), String> {
     let panel = w.panel(id).ok_or("panel does not exist")?;
-    if !panel.fixed_grid() || panel.locked() {
-        return Err("disable auto arrange on an unlocked desktop panel first".into());
+    if !panel.supports_tabs() || panel.locked() {
+        return Err("only unlocked desktop panels support free positions".into());
     }
     let enable = !panel.free_layout();
+    if !panel.fixed_grid() { fixed_grid::toggle(w, id)?; }
     let g = grid(w);
     let positions: Vec<_> = ordered_desktop_items(w, id)
         .iter()
@@ -55,11 +56,14 @@ pub(super) fn toggle(w: &mut Workspace, id: PanelId) -> Result<(), String> {
                 .set_pane_position(Some(point));
         }
     } else {
-        let columns = fixed_grid::columns(w, id);
+        // Round in the unbounded content grid before choosing a stride. The
+        // viewport must not clamp icons in horizontally scrolled content.
+        let columns = positions.iter().map(|(_, p)| (p.x / g.cell_width).round() as usize + 1)
+            .max().unwrap_or(1).max(fixed_grid::visible_columns(w, id));
         let mut used = std::collections::HashSet::new();
         for (identity, p) in positions {
             let mut slot = (p.y / g.cell_height).round() as usize * columns
-                + ((p.x / g.cell_width).round() as usize).min(columns - 1);
+                + (p.x / g.cell_width).round() as usize;
             while !used.insert(slot) {
                 slot += 1;
             }
@@ -112,20 +116,8 @@ pub(super) fn move_items(
         .iter()
         .map(|(_, p)| p.y)
         .fold(f32::INFINITY, f32::min);
-    let right = positions
-        .iter()
-        .map(|(_, p)| p.x + g.cell_width)
-        .fold(0.0, f32::max);
-    let available = w
-        .panel(target)
-        .ok_or("target panel is unavailable")?
-        .rect()
-        .width
-        - layout::PADDING * 2.0;
-    if right - min_x > available {
-        return Err("Selection is wider than the target panel. Widen the panel before moving these icons together.".into());
-    }
-    let dx = (destination.x - origin.x).clamp(-min_x, available - right);
+    if w.panel(target).is_none() { return Err("target panel is unavailable".into()); }
+    let dx = (destination.x - origin.x).max(-min_x);
     let dy = (destination.y - origin.y).max(-min_y);
     for (identity, p) in positions {
         let p = PointDip::new(p.x + dx, p.y + dy);
@@ -294,6 +286,23 @@ mod tests {
                 .all(|i| i.pane_position().is_none())
         );
     }
+    #[test]
+    fn alignment_rounds_into_hidden_columns_without_clamping_to_old_extent() {
+        let mut s = fixture();
+        let id = PanelId::new(1);
+        let g = grid(&s.workspace);
+        let key = ordered_desktop_items(&s.workspace, id)[0].identity().persistent_key();
+        move_items(&mut s.workspace, id, id, &[key.clone()], &key,
+            PointDip::new(7.8 * g.cell_width, 1.7 * g.cell_height)).unwrap();
+        let mut rect = s.workspace.panel(id).unwrap().rect();
+        rect.width = layout::PADDING * 2.0 + g.cell_width * 2.0;
+        s.workspace.panel_mut(id).unwrap().set_rect(rect);
+        toggle(&mut s.workspace, id).unwrap();
+        let item = s.workspace.desktop_items().iter().find(|i| i.identity().persistent_key() == key).unwrap();
+        assert_eq!(item.placement(), &DesktopPlacement::Pane { pane_id: id, position: GridPosition::new(8, 2) });
+        assert!(item.pane_position().is_none());
+    }
+
     #[test]
     fn incoming_icons_avoid_free_rectangles_and_sort_is_explicit() {
         let mut s = fixture();

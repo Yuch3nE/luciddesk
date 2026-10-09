@@ -172,9 +172,7 @@ pub(in crate::pane::control) fn minimum(w: &Workspace, id: PanelId, width: f32, 
         labels(w, id, folders).ok().filter(|names| !names.is_empty())
             .map(|names| layout::icon_row_height(g, names.iter().take(columns).copied()))
     };
-    let mut minimum = layout::pane_minimum(cell, false, members(w, id).len() > 1, first);
-    minimum.0 = minimum.0.max(fixed_grid::minimum_width(w,id));
-    minimum
+    layout::pane_minimum(cell, false, members(w, id).len() > 1, first)
 }
 
 pub(in crate::pane::control) fn query(w: &Workspace, id: PanelId) -> serde_json::Value {

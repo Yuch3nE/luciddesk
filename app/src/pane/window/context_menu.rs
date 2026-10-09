@@ -198,6 +198,7 @@ pub(super) fn show<F: FnMut(Event) -> bool>(
         let entries = crate::pane::menu::tab_context_entries(
             &model.borrow(),
             crate::pane::quick_reveal::permanent_topmost(hwnd),
+            tab_context.unwrap(),
         );
         crate::pane::menu::show_entries(hwnd, anchor, false, theme, backdrop, entries)
     } else {
@@ -213,6 +214,7 @@ pub(super) fn show<F: FnMut(Event) -> bool>(
             collapsed,
             fixed_grid,
             free_layout,
+            { let m = model.borrow(); if m.folder.is_some() { Some(m.folder_sort) } else { m.sort_orders.borrow().get(&m.active_tab).copied() } },
         )
     };
     update_pointer(hwnd, &model, None);
@@ -220,9 +222,14 @@ pub(super) fn show<F: FnMut(Event) -> bool>(
     match command {
         54 => { event(Event::ToggleFixedGrid); },
         55 => { event(Event::ToggleGridAlignment); },
-        52 | 53 => dispatch_sort_menu(&model, tab_context, command == 53, |action| {
-            event(action);
-        }),
+        60..=63 => {
+            let column = (command - 60) as u8;
+            if is_folder.0 { event(Event::SortFolderMenu(column)); }
+            else {
+                let id = tab_context.unwrap_or_else(|| model.borrow().active_tab);
+                event(Event::SortPaneColumn(id, column));
+            }
+        },
         49 => {
             let id = tab_context.unwrap_or(model.borrow().active_tab);
             event(Event::DetachTab(id));
@@ -319,6 +326,7 @@ fn menu(
     collapsed: bool,
     fixed_grid: bool,
     free_layout: bool,
+    sort_order: Option<(u8, bool)>,
 ) -> i32 {
     let anchored = lparam == -1;
     let mut anchor = point(lparam);
@@ -345,5 +353,6 @@ fn menu(
         collapsed,
         fixed_grid,
         free_layout,
+        sort_order,
     )
 }

@@ -1,6 +1,8 @@
 //! A single layout is shared by painting, hit testing, scrolling and keyboard navigation.
 #[derive(Clone, Copy, Debug)]
 pub struct Grid {
+    pub viewport_width: f32,
+    pub horizontal_limit: f32,
     pub content_top: f32,
     pub columns: usize,
     pub cell_width: f32,
@@ -80,6 +82,8 @@ impl Grid {
     pub fn list(width: f32, height: f32) -> Self {
         let top = HEADER + LIST_HEADER;
         Self {
+            viewport_width: width,
+            horizontal_limit: 0.0,
             content_top: top,
             columns: 1,
             cell_width: (width - PADDING * 2.0).max(1.0),
@@ -94,6 +98,8 @@ impl Grid {
         let cell_width = spacing.0.max(icon_size + 16.0);
         let cell_height = spacing.1.max(icon_size + 34.0);
         Self {
+            viewport_width: width,
+            horizontal_limit: 0.0,
             content_top: HEADER + PADDING,
             scroll_limit: None,
             columns: ((width - PADDING * 2.0) / cell_width).floor().max(1.0) as usize,

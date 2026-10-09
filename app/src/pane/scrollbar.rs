@@ -30,6 +30,7 @@ pub(super) fn animations_enabled() -> bool {
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Bar {
+    pub horizontal: bool,
     pub left: f32,
     pub top: f32,
     pub height: f32,
@@ -49,17 +50,33 @@ impl Bar {
         if model.collapsed || model.reveal < 1.0 { return None; }
         let max = grid.max_scroll(model.items.len());
         let top = grid.content_top + 4.0;
-        let height = height - layout::PADDING - top;
+        let height = height - model.horizontal_inset(width) - layout::PADDING - top;
         if max == 0 || height <= 0.0 || width < 32.0 { return None; }
         let page = grid.visible_rows.max(1);
         let visible = if model.free_layout && !model.is_list() { page } else { model.content_rows(grid).saturating_sub(max).max(1) };
         let thumb_height = (height * visible as f32 / (max + visible) as f32).max(16.0).min(height);
         Some(Self {
+            horizontal: false,
             left: width - 16.0, top, height, thumb_height, max, page,
             thumb_top: top + (height - thumb_height) * model.scroll.min(max) as f32 / max as f32,
         })
     }
+    pub fn horizontal(model: &GroupModel, width: f32, height: f32) -> Option<Self> {
+        let max = model.horizontal_max(width).ceil() as usize;
+        if model.collapsed || model.reveal < 1.0 || max == 0 || width < 32.0 { return None; }
+        let page = (width - layout::PADDING * 2.0).max(1.0) as usize;
+        let length = (width - 32.0).max(1.0);
+        let thumb_height = (length * page as f32 / (max + page) as f32).max(16.0).min(length);
+        Some(Self { horizontal: true, left: height - 16.0, top: 12.0, height: length,
+            thumb_top: 12.0 + (length - thumb_height) * model.horizontal_offset(width) / max as f32,
+            thumb_height, max, page })
+    }
+    pub fn axis(self, x: f32, y: f32) -> f32 { if self.horizontal { x } else { y } }
+    pub fn rect(self, x: f32, y: f32, width: f32, height: f32) -> (f32, f32, f32, f32) {
+        if self.horizontal { (y, x, height, width) } else { (x, y, width, height) }
+    }
     pub fn contains(self, x: f32, y: f32) -> bool {
+        let (x, y) = if self.horizontal { (y, x) } else { (x, y) };
         (self.left..self.left + Self::WIDTH).contains(&x)
             && (self.top..self.top + self.height).contains(&y)
     }
@@ -110,4 +127,94 @@ mod tests {
         assert!(!state.animate(&mut motion, at(270), true, false));
         assert_eq!(state.expansion, 0.0);
     }
+}
+
+#[cfg(test)]
+mod horizontal_tests {
+    use super::*;
+    use luciddesk_core::{PanelId, GridPosition, PointDip};
+
+    #[test]
+    fn narrow_manual_panes_scroll_without_moving_icons_and_keep_coordinates_reversible() {
+        let _sta = crate::pane::test_support::apartment();
+        for free in [false, true] {
+            let mut state = crate::pane::tests::test_state();
+            let id = PanelId::new(1);
+            crate::pane::fixed_grid::toggle(&mut state.workspace, id).unwrap();
+            let key = crate::pane::ordered_desktop_items(&state.workspace, id)[0].identity().persistent_key();
+            crate::pane::fixed_grid::place(&mut state.workspace, id, &[key.clone()], GridPosition::new(7, 1));
+            if free { crate::pane::free_layout::toggle(&mut state.workspace, id).unwrap(); }
+            let positions = state.workspace.desktop_items().to_vec();
+            let mut rect = state.workspace.panel(id).unwrap().rect();
+            rect.width = 220.0;
+            state.workspace.panel_mut(id).unwrap().set_rect(rect);
+            state.store.save_workspace(&state.workspace).unwrap();
+            let restored = state.store.load_workspace().unwrap();
+            assert_eq!(restored.desktop_items(), positions);
+            assert_eq!(restored.panel(id).unwrap().rect().width, 220.0);
+            let mut model = crate::pane::create_model(&state, id).unwrap();
+            let index = model.items.iter().position(|i| i.identity.persistent_key() == key).unwrap();
+            let grid = model.grid(220.0, 350.0);
+            assert!(grid.horizontal_limit > 0.0);
+            assert_eq!(grid.columns, crate::pane::fixed_grid::columns(&state.workspace, id));
+            model.ensure_visible(grid, index, 1.0);
+            let bar = Bar::horizontal(&model, 220.0, 350.0).unwrap();
+            assert!(bar.contains(bar.thumb_top + 1.0, bar.left + 1.0));
+            assert_eq!(bar.drag_to(bar.top + bar.height - bar.thumb_height, 0.0), bar.max);
+            let grid = model.grid(220.0, 350.0);
+            let (x, y) = model.cell(grid, index);
+            assert!(x >= layout::PADDING - 0.01 && x + grid.cell_width <= 220.0 - layout::PADDING + 0.01);
+            for dpi in [1.0, 1.25, 1.5, 2.0] {
+                let px = ((x + 8.0) * dpi).round() / dpi;
+                let py = ((y + 8.0) * dpi).round() / dpi;
+                assert_eq!(model.hit(grid, px, py, dpi), Some(index));
+            }
+            let (slot, destination) = model.drop_destination(grid, x + 8.0, y + 8.0, PointDip::new(8.0, 8.0));
+            if free {
+                let expected = model.items[index].details.free_position.unwrap();
+                let actual = destination.unwrap();
+                assert!((actual.x - expected.x).abs() < 0.01 && (actual.y - expected.y).abs() < 0.01);
+            } else {
+                assert_eq!(crate::pane::fixed_grid::position(slot, grid.columns), GridPosition::new(7, 1));
+            }
+            assert!(Bar::horizontal(&model, model.content_width() + 10.0, 350.0).is_none());
+            model.list_view = true;
+            assert_eq!(model.horizontal_offset(220.0), 0.0);
+            assert!(Bar::horizontal(&model, 220.0, 350.0).is_none());
+        }
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn native_resize_and_horizontal_wheel_do_not_change_saved_icon_positions() {
+    use crate::pane::*;
+    use windows_sys::Win32::UI::WindowsAndMessaging::*;
+    let _sta = test_support::apartment();
+    let mut app = tests::test_state();
+    let id = PanelId::new(1);
+    fixed_grid::toggle(&mut app.workspace, id).unwrap();
+    let key = ordered_desktop_items(&app.workspace, id)[0].identity().persistent_key();
+    fixed_grid::place(&mut app.workspace, id, &[key], GridPosition::new(9, 0));
+    let mut rect = app.workspace.panel(id).unwrap().rect();
+    rect.width = 220.0;
+    app.workspace.panel_mut(id).unwrap().set_rect(rect);
+    let state = Rc::new(RefCell::new(app));
+    create_view(&state, id).unwrap();
+    let (hwnd, model, positions, writes) = {
+        let s = state.borrow();
+        (s.views[0].window.hwnd().cast(), Rc::clone(&s.views[0].model), s.workspace.desktop_items().to_vec(), s.store.change_count())
+    };
+    let mut limits = MINMAXINFO::default();
+    unsafe { SendMessageW(hwnd, WM_GETMINMAXINFO, 0, (&raw mut limits) as isize); }
+    let dpi = unsafe { windows_sys::Win32::UI::HiDpi::GetDpiForWindow(hwnd) }.max(96) as f32 / 96.0;
+    assert!(limits.ptMinTrackSize.x as f32 / dpi < model.borrow().content_width());
+    unsafe { SendMessageW(hwnd, WM_MOUSEHWHEEL, (120u32 << 16) as usize, 0); }
+    assert!(model.borrow().scroll_x > 0.0);
+    let right = model.borrow().scroll_x;
+    unsafe { SendMessageW(hwnd, WM_MOUSEWHEEL, ((120u32 << 16) | 4) as usize, 0); }
+    assert!(model.borrow().scroll_x < right);
+    let s = state.borrow();
+    assert_eq!(s.workspace.desktop_items(), positions);
+    assert_eq!(s.store.change_count(), writes);
 }

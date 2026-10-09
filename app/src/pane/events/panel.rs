@@ -21,7 +21,9 @@ pub(super) fn apply(
         | Event::CloseTab
         | Event::CloseTabId(_)
         | Event::MoveTab(_) => unreachable!("Tabs handled before borrowing PaneApp"),
-        Event::SortFolder(_)
+        Event::SortPaneColumn(..)
+        | Event::SortFolderMenu(_)
+        | Event::SortFolder(_)
         | Event::FolderItemCreated(_)
         | Event::SetFolderColumns(_)
         | Event::ToggleFolderColumn(_)
@@ -376,7 +378,7 @@ pub(super) fn apply(
                     if target != id && !s.workspace.panel(id).is_some_and(Panel::fixed_grid) {
                         let remaining = items_for(&s, id); set_order(&mut s.workspace, id, &remaining);
                     }
-                    if let Err(error) = save(&mut s) { s.workspace = previous; return Err(error); }
+                    sorting::finish_move(&mut s, previous, id, target)?;
                 } else { transfer_many(&mut s, id, &indices, target, at)?; }
                 for view in &s.views {
                     view.model.borrow_mut().clear_selection();
