@@ -1,8 +1,8 @@
 $ErrorActionPreference = 'Stop'
-$testRoot = Join-Path $PSScriptRoot ("../target/dump-collector-regression-" + [guid]::NewGuid().ToString('N'))
+$testRoot = Join-Path $PSScriptRoot ("../../target/dump-collector-regression-" + [guid]::NewGuid().ToString('N'))
 $testRoot = [IO.Path]::GetFullPath($testRoot)
 New-Item -ItemType Directory -Path $testRoot | Out-Null
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'render-diagnostics/Collect-Existing-Dumps.ps1') -Destination $testRoot
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot '../render-diagnostics/Collect-Existing-Dumps.ps1') -Destination $testRoot
 $previousProgramData = $env:ProgramData
 $previousLocalData = $env:LOCALAPPDATA
 try {

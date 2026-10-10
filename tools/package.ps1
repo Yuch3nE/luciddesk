@@ -31,7 +31,7 @@ try {
         $InnoCompiler = (Resolve-Path -LiteralPath $InnoCompiler).Path
     }
     if ($Installer -and $InstallerFormat -in @('Msi', 'Both')) {
-        . (Join-Path $PSScriptRoot 'installer-tooling.ps1')
+        . (Join-Path $PSScriptRoot 'packaging/installer-tooling.ps1')
         $wixTools = Get-WixTooling
         & $wixTools.Compiler --version | Out-Host
         if ($LASTEXITCODE -ne 0) { throw 'WiX cannot run. Check the installed .NET runtime.' }
@@ -69,7 +69,7 @@ try {
     if ($Offline) { $buildArgs += '--offline' }
     & cargo @buildArgs
     if ($LASTEXITCODE -ne 0) { throw 'Release build failed.' }
-    & (Join-Path $PSScriptRoot 'verify-app-icon.ps1') -Executable (Join-Path $productionTarget 'release/luciddesk.exe')
+    & (Join-Path $PSScriptRoot 'assets/verify-app-icon.ps1') -Executable (Join-Path $productionTarget 'release/luciddesk.exe')
     # All package modes share these exact binaries and build provenance.
     $binaryFiles = @('luciddesk.exe', 'luciddesk_explorer.dll', 'luciddesk-cli.exe')
     $files = @($binaryFiles | ForEach-Object {
@@ -94,8 +94,8 @@ try {
         foreach ($file in $binaryFiles) {
             Copy-Item -LiteralPath (Join-Path $productionTarget "release\$file") -Destination $stage
         }
-        $agentFiles = & (Join-Path $PSScriptRoot 'stage-agent-payload.ps1') -SourceRoot $repoRoot -Destination $stage
-        Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Refresh-App-Icon.ps1') -Destination $stage
+        $agentFiles = & (Join-Path $PSScriptRoot 'packaging/stage-agent-payload.ps1') -SourceRoot $repoRoot -Destination $stage
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'assets/Refresh-App-Icon.ps1') -Destination $stage
         $readme = if ($isPortable) { 'docs\portable.md' } else { 'docs\package.md' }
         Copy-Item -LiteralPath (Join-Path $repoRoot $readme) -Destination (Join-Path $stage 'README.md')
         if ($isPortable) {
@@ -126,7 +126,7 @@ try {
             buildEnvironment = $buildEnvironment
             files = @($files) + @($agentFiles)
         } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $stage 'build.json') -Encoding UTF8
-        $null = & (Join-Path $PSScriptRoot 'test-agent-package.ps1') -Directory $stage
+        $null = & (Join-Path $PSScriptRoot 'validation/test-agent-package.ps1') -Directory $stage
         $archive = Join-Path $outRoot "$name.zip"
         Compress-Archive -LiteralPath $stage -DestinationPath $archive -CompressionLevel Optimal
         $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -136,10 +136,10 @@ try {
             $setupRoot = Join-Path $repoRoot "target\installers\$version-$revisionLabel-$stamp"
             $setups = @()
             if ($InstallerFormat -in @('Exe', 'Both')) {
-                $setups += & (Join-Path $PSScriptRoot 'build-exe.ps1') -SourcePath $stage -OutputPath $setupRoot -Version $version -InnoCompiler $InnoCompiler -Compression $ExeCompression
+                $setups += & (Join-Path $PSScriptRoot 'packaging/build-exe.ps1') -SourcePath $stage -OutputPath $setupRoot -Version $version -InnoCompiler $InnoCompiler -Compression $ExeCompression
             }
             if ($InstallerFormat -in @('Msi', 'Both')) {
-                $setups += & (Join-Path $PSScriptRoot 'build-msi.ps1') -SourcePath $stage -OutputPath $setupRoot -Version $version
+                $setups += & (Join-Path $PSScriptRoot 'packaging/build-msi.ps1') -SourcePath $stage -OutputPath $setupRoot -Version $version
             }
             foreach ($setup in $setups) {
                 $setupHash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant()

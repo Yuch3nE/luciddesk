@@ -5,7 +5,7 @@ import copy
 import json
 from pathlib import Path
 import sys
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'target/cli-validation-deps'))
 from jsonschema import Draft202012Validator
 schema = json.loads((ROOT / 'crates/luciddesk-api/protocol.schema.json').read_text(encoding='utf-8'))

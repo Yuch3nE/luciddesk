@@ -8,7 +8,7 @@ param(
     [switch]$TestFixture
 )
 $ErrorActionPreference = 'Stop'
-$repo = Split-Path -Parent $PSScriptRoot
+$repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 . (Join-Path $PSScriptRoot 'installer-tooling.ps1')
 $wixTools = Get-WixTooling
 $wix = $wixTools.Compiler
@@ -30,13 +30,13 @@ foreach ($required in @('luciddesk.exe', 'luciddesk_explorer.dll', 'build.json',
 if (-not $TestFixture) {
     $build = Get-Content -LiteralPath (Join-Path $SourcePath 'build.json') -Raw | ConvertFrom-Json
     if ($build.version -ne $Version) { throw 'MSI version must match the staged build.' }
-    $null = & (Join-Path $PSScriptRoot 'test-agent-package.ps1') -Directory $SourcePath
+    $null = & (Join-Path $PSScriptRoot '../validation/test-agent-package.ps1') -Directory $SourcePath
 }
 $OutputPath = [IO.Path]::GetFullPath($OutputPath)
 New-Item -ItemType Directory -Force -Path $OutputPath | Out-Null
 $work = Join-Path $OutputPath 'build'
 New-Item -ItemType Directory -Force -Path $work | Out-Null
-& (Join-Path $PSScriptRoot 'use-windows-toolchain.ps1') | Out-Host
+& (Join-Path $PSScriptRoot '../use-windows-toolchain.ps1') | Out-Host
 $cache = Join-Path $repo 'target/msi-cache'
 $source = Join-Path $repo 'installer/msi-actions.cpp'
 # A fixture DLL bypasses desktop checks; never share it with production builds.

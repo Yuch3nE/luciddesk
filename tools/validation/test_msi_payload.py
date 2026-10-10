@@ -6,7 +6,7 @@ import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 
 
 @unittest.skipUnless(os.name == 'nt', 'MSI generation requires PowerShell 7 on Windows')
@@ -15,11 +15,11 @@ class MsiPayloadTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='luciddesk-msi-payload-') as temporary:
             root = Path(temporary)
             source = root / 'package with spaces'
-            subprocess.run(['pwsh', '-NoProfile', '-File', str(ROOT / 'tools/stage-agent-payload.ps1'),
+            subprocess.run(['pwsh', '-NoProfile', '-File', str(ROOT / 'tools/packaging/stage-agent-payload.ps1'),
                             '-SourceRoot', str(ROOT), '-Destination', str(source)],
                            check=True, capture_output=True)
             output = root / 'payload.wxs'
-            subprocess.run(['pwsh', '-NoProfile', '-File', str(ROOT / 'tools/msi-payload.ps1'),
+            subprocess.run(['pwsh', '-NoProfile', '-File', str(ROOT / 'tools/packaging/msi-payload.ps1'),
                             '-SourcePath', str(source), '-RepoRoot', str(ROOT), '-OutputFile', str(output)],
                            check=True, capture_output=True)
             ns = {'w': 'http://wixtoolset.org/schemas/v4/wxs'}

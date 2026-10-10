@@ -297,9 +297,9 @@ Agent 可以先使用 `--dry-run --json` 查看差异，再按既有用户授权
 
 程序退出时 CLI 返回 APP_NOT_RUNNING。重启后实例 ID 改变，旧计划 token 返回 PLAN_EXPIRED、旧请求回执返回 RESULT_UNKNOWN；持久化面板仍可查询。收到这些错误应获取新快照并核对实际结果，而不是盲目重做。
 
-开发验收命令：先构建 `cargo build -p luciddesk-shell --example desktop_snapshot --locked --offline --target-dir target/cli-plan-build`，再运行 `tools/test-cli-plan.ps1 -LiveDesktopItems -RestartRecovery`。它要求没有其他主程序运行，使用独立数据目录，并只创建/整理/清理唯一命名的桌面测试文件；测试包含独立 Explorer 可见性及位置探针。
+开发验收命令：先构建 `cargo build -p luciddesk-shell --example desktop_snapshot --locked --offline --target-dir target/cli-plan-build`，再运行 `tools/validation/test-cli-plan.ps1 -LiveDesktopItems -RestartRecovery`。它要求没有其他主程序运行，使用独立数据目录，并只创建/整理/清理唯一命名的桌面测试文件；测试包含独立 Explorer 可见性及位置探针。
 
-持续查询验证可使用 `tools/test-cli-plan.ps1 -IdleSeconds 30`：先等待之前修改触发的自动备份完成，再比较整个测试数据目录的文件哈希、大小及写入时间，并记录 GUI CPU/内存。保持默认 error 日志，不禁用自动备份。正常自动备份是预期写入，不应误归因于只读查询。
+持续查询验证可使用 `tools/validation/test-cli-plan.ps1 -IdleSeconds 30`：先等待之前修改触发的自动备份完成，再比较整个测试数据目录的文件哈希、大小及写入时间，并记录 GUI CPU/内存。保持默认 error 日志，不禁用自动备份。正常自动备份是预期写入，不应误归因于只读查询。
 
 
 启动 Debug 前确认同一输出目录包含 `luciddesk.exe`、`luciddesk-cli.exe` 和 `luciddesk_explorer.dll`。仅构建主程序和 CLI 不会生成独立桌面组件 DLL；缺失时桌面收纳不可用。

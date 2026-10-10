@@ -12,7 +12,7 @@
 | `app/` | 主程序、窗口交互、内嵌资源及应用测试 |
 | `crates/` | 领域模型、存储与 Windows 平台能力 |
 | `installer/` | Inno EXE 脚本、MSI 定义、安装检查、安装标记与许可文本 |
-| `tools/` | 打包、验证、资源生成、诊断及发布维护工具 |
+| `tools/` | 常用打包与工具链入口；辅助脚本按 `packaging`、`validation`、`release`、`assets`、`analysis` 分类，见[脚本导航](../../tools/README.md) |
 | `docs/` | 使用说明、开发指南、品牌说明与设计素材 |
 | `screenshot/` | README 等文档使用的截图 |
 | `.github/` | 构建、发布说明及发布刷新工作流与配置 |
@@ -109,7 +109,7 @@ rg -n 'mod |pub.*use ' app/src/pane/mod.rs
 
 各库公共入口与依赖边界见 [crates 导航](../../crates/README.md)。`luciddesk-explorer` 同时包含控制端和 DLL 侧代码，定位问题时应先确认执行进程与线程，不能只按 crate 名判断运行位置。
 
-生成绑定由 `tools/windows-bindings/` 维护，修改时同步生成器、筛选清单与输出。图标生成与验证分别由 `tools/generate-app-icon.ps1`、`tools/verify-app-icon.ps1` 负责；资源规则见[应用资源说明](../../app/assets/README.md)。
+生成绑定由 `tools/windows-bindings/` 维护，修改时同步生成器、筛选清单与输出。图标生成与验证分别由 `tools/assets/generate-app-icon.ps1`、`tools/assets/verify-app-icon.ps1` 负责；资源规则见[应用资源说明](../../app/assets/README.md)。
 
 ## 打包、测试与诊断工具
 
@@ -119,10 +119,10 @@ rg -n 'mod |pub.*use ' app/src/pane/mod.rs
 | `tools/package-msix.ps1` | 从普通生产包生成 MSIX |
 | `installer/LucidDesk.iss`、`shortcut-cleanup.iss`、`installed` | 安装逻辑、快捷方式清理及安装标记 |
 | `tools/ensure-inno.ps1`、`ensure-wix.ps1`、`build-msi.ps1`、`use-windows-toolchain.ps1` | 安装器编译器和 Windows 构建工具链准备 |
-| `tools/check-locales.py` | 翻译资源与调用检查 |
-| `tools/test-installer.ps1`、`test-package-lifecycle.py` | 安装器及真实应用生命周期回归 |
+| `tools/validation/check-locales.py` | 翻译资源与调用检查 |
+| `tools/validation/test-installer.ps1`、`test-package-lifecycle.py` | 安装器及真实应用生命周期回归 |
 | `tools/render-diagnostics/` | 渲染比较、崩溃转储配置和收集 |
-| `tools/release-notes.py`、`refresh-release.py` | 发布说明与发布内容维护 |
+| `tools/release/release-notes.py`、`refresh-release.py` | 发布说明与发布内容维护 |
 
 单元测试可内联在实现中，较大的测试模块拆到对应功能目录；例如 `app/src/pane/hybrid/icons/tests.rs`。跨模块集成测试位于各包的 `tests/`，独立探针通常位于 `examples/`。真实桌面和安装测试可能改变运行状态，执行要求见[验证与兼容边界](validation.md)。
 

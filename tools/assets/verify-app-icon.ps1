@@ -2,7 +2,7 @@
 param([Parameter(Mandatory = $true)][string]$Executable)
 $ErrorActionPreference = 'Stop'
 $exe = (Resolve-Path -LiteralPath $Executable).ProviderPath
-$ico = [IO.File]::ReadAllBytes((Join-Path $PSScriptRoot '../app/assets/luciddesk.ico'))
+$ico = [IO.File]::ReadAllBytes((Join-Path $PSScriptRoot '../../app/assets/luciddesk.ico'))
 if (-not ('LucidDesk.IconResourceCheck' -as [type])) {
     Add-Type @'
 using System;

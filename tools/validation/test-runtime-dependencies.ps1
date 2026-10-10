@@ -3,7 +3,7 @@ param([Parameter(Mandatory)][string]$Directory)
 $ErrorActionPreference = 'Stop'
 $Directory = (Resolve-Path -LiteralPath $Directory).Path
 if (-not (Get-Command dumpbin.exe -ErrorAction SilentlyContinue)) {
-    & (Join-Path $PSScriptRoot 'use-windows-toolchain.ps1') | Out-Host
+    & (Join-Path $PSScriptRoot '../use-windows-toolchain.ps1') | Out-Host
 }
 foreach ($name in @('luciddesk.exe', 'luciddesk-cli.exe', 'luciddesk_explorer.dll')) {
     $path = Join-Path $Directory $name

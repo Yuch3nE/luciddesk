@@ -65,7 +65,7 @@ Choose checks relevant to the change. Documentation edits do not require a full 
 ```powershell
 cargo check --workspace --all-targets --locked
 cargo test -p luciddesk-core -p luciddesk-storage --lib --locked
-python tools/check-locales.py
+python tools/validation/check-locales.py
 cargo test -p luciddesk --bin luciddesk i18n::tests --locked
 ```
 

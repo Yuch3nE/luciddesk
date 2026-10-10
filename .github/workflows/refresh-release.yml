@@ -65,4 +65,4 @@ jobs:
           RELEASE_TAG: ${{ steps.request.outputs.release_tag }}
           SOURCE_RUN_ID: ${{ steps.request.outputs.source_run_id }}
           SOURCE_SHA: ${{ steps.request.outputs.source_sha }}
-        run: python3 tools/refresh-release.py
+        run: python3 tools/release/refresh-release.py

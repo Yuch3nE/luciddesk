@@ -2,7 +2,7 @@
 from pathlib import Path
 import re
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 LANGUAGES = ("zh-CN", "zh-TW", "en-US", "ja-JP", "ko-KR", "de-DE", "ru-RU")
 
 def catalog(language):

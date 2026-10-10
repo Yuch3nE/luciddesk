@@ -3,7 +3,7 @@ from pathlib import Path
 import re
 import unittest
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 # Runtime, Agent support, license and build provenance only.
 PAYLOAD = {
     "luciddesk.exe", "luciddesk_explorer.dll", "luciddesk-cli.exe",

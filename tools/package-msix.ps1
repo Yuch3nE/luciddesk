@@ -45,7 +45,7 @@ foreach ($file in @('luciddesk.exe', 'luciddesk_explorer.dll', 'luciddesk-cli.ex
 }
 Copy-Item -LiteralPath (Join-Path $source 'skills') -Destination $stage -Recurse
 [IO.File]::WriteAllBytes((Join-Path $stage 'msix'), [byte[]]@())
-$null = & (Join-Path $PSScriptRoot 'test-agent-package.ps1') -Directory $stage
+$null = & (Join-Path $PSScriptRoot 'validation/test-agent-package.ps1') -Directory $stage
 
 # Generate package logos from the application's existing icon.
 Add-Type -AssemblyName System.Drawing

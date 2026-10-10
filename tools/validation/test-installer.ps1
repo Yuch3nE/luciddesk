@@ -4,7 +4,7 @@ param(
     [switch]$AllUsers
 )
 $ErrorActionPreference = 'Stop'
-$repo = Split-Path -Parent $PSScriptRoot
+$repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $id = [guid]::NewGuid().ToString()
 $name = "LucidDesk Test $id"
 $upgrade = [guid]::NewGuid().ToString()
@@ -36,8 +36,8 @@ function Run-Msi([string]$Mode, [string]$Package, [string[]]$Properties = @()) {
 }
 function Require([bool]$Condition, [string]$Message) { if (-not $Condition) { throw $Message } }
 try {
-    $old = & "$PSScriptRoot/build-msi.ps1" -SourcePath $SourcePath -OutputPath "$root/old" -Version '0.0.1' -ProductName $name -UpgradeCode $upgrade -TestFixture
-    $current = & "$PSScriptRoot/build-msi.ps1" -SourcePath $SourcePath -OutputPath "$root/current" -Version '0.0.2' -ProductName $name -UpgradeCode $upgrade -TestFixture
+    $old = & "$PSScriptRoot/../packaging/build-msi.ps1" -SourcePath $SourcePath -OutputPath "$root/old" -Version '0.0.1' -ProductName $name -UpgradeCode $upgrade -TestFixture
+    $current = & "$PSScriptRoot/../packaging/build-msi.ps1" -SourcePath $SourcePath -OutputPath "$root/current" -Version '0.0.2' -ProductName $name -UpgradeCode $upgrade -TestFixture
     New-Item -ItemType Directory -Path $installed | Out-Null
     Set-Content (Join-Path $installed 'portable') 'portable'
     Require ((Run-Msi i $old @("INSTALLFOLDER=`"$installed`"")) -ne 0) 'Portable directory was accepted.'
@@ -53,7 +53,7 @@ try {
     Require ((Run-Msi i $current) -ne 0) 'Locked component was overwritten.'
     $lock.Dispose(); $lock = $null
     $csc = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
-    & $csc /nologo /target:winexe "/out:$root\probe.exe" (Join-Path $repo 'tools\installer-close-probe.cs')
+    & $csc /nologo /target:winexe "/out:$root\probe.exe" (Join-Path $repo 'tools\validation\installer-close-probe.cs')
     if ($LASTEXITCODE -ne 0) { throw 'Probe compilation failed.' }
     $hash = (Get-FileHash "$installed/luciddesk.exe").Hash
     $args = @("Local\LucidDesk.Test.$id", 'windows-window.Window', "`"$name`"", "`"$root/ready`"", "`"$root/closed`"", "`"$installed/luciddesk.exe`"", $hash, 'close')

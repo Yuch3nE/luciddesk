@@ -1,4 +1,4 @@
-﻿param([string]$BuildDirectory = "$PSScriptRoot/../target/cli-plan-build/debug", [switch]$LiveDesktopItems, [switch]$RestartRecovery, [ValidateRange(0,120)][int]$IdleSeconds = 0)
+﻿param([string]$BuildDirectory = "$PSScriptRoot/../../target/cli-plan-build/debug", [switch]$LiveDesktopItems, [switch]$RestartRecovery, [ValidateRange(0,120)][int]$IdleSeconds = 0)
 $ErrorActionPreference = 'Stop'
 $build = (Resolve-Path -LiteralPath $BuildDirectory).Path
 if ((Split-Path $build -Leaf) -ne 'debug') { throw 'Only Debug builds are allowed' }
@@ -9,7 +9,7 @@ foreach ($required in @('luciddesk.exe','luciddesk-cli.exe','luciddesk_explorer.
 }
 if (Get-Process luciddesk -ErrorAction SilentlyContinue) { throw 'LucidDesk is already running; stop the authorized Debug instance first' }
 $cli = Join-Path $build 'luciddesk-cli.exe'
-$root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../target/cli-e2e-$([guid]::NewGuid().ToString('N'))"))
+$root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../../target/cli-e2e-$([guid]::NewGuid().ToString('N'))"))
 [IO.Directory]::CreateDirectory($root) | Out-Null
 function Get-SharedHash([string]$Path) {
     $stream = [IO.FileStream]::new($Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
@@ -262,7 +262,7 @@ try {
     $panel=Invoke-Cli @('pane','get','--id',$id)
     if (-not ($panel.data.locked -and $panel.data.auto_hide -and $panel.data.always_on_top)) { throw 'Options did not apply' }
     $null=Invoke-Plan @(@{op='pane.update';pane_id=$id;locked=$false},@{op='pane.remove';pane_id=$id})
-    if ($LiveDesktopItems) { & (Join-Path $PSScriptRoot 'test-cli-desktop-items.ps1') }
+    if ($LiveDesktopItems) { & (Join-Path $PSScriptRoot 'support/cli-desktop-items.ps1') }
     $workspace=Invoke-Cli @('workspace','get')
     if ($id -in $workspace.data.panes.id) { throw 'Removed panel remains' }
     if ($RestartRecovery) {
@@ -295,7 +295,7 @@ try {
         $null = Invoke-Plan @(@{op='pane.remove';pane_id=$restartPane})
         @{result='passed';old_instance=$oldContext.instance_id;new_instance=$restarted.context.instance_id;receipt_unknown=$true;token_expired=$true} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $root 'restart-result.json')
     }
-    if ($IdleSeconds -gt 0) { & (Join-Path $PSScriptRoot 'test-cli-idle.ps1') }
+    if ($IdleSeconds -gt 0) { & (Join-Path $PSScriptRoot 'support/cli-idle.ps1') }
     @{result='passed';data_dir=$root;instance=$status.context.instance_id;created_and_removed_id=$id;desktop_connected=$status.data.desktop_connected} | ConvertTo-Json
 } finally {
     if ($app -and -not $app.HasExited) {

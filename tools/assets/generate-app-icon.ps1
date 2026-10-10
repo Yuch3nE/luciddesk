@@ -1,6 +1,6 @@
 # Requires ImageMagick 7. Run only when the selected design changes.
 $ErrorActionPreference = 'Stop'
-$projectRoot = Split-Path -Parent $PSScriptRoot
+$projectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $sourcePath = Join-Path $projectRoot 'docs\design\luciddesk-green-square-v19.png'
 $iconOutput = Join-Path $projectRoot 'app\assets\luciddesk.ico'
 # Measure the visible artwork, ignoring almost-transparent generation artifacts.

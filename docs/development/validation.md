@@ -42,7 +42,7 @@ cargo test -p luciddesk-core -p luciddesk-storage -p luciddesk-explorer -p lucid
 cargo test -p luciddesk --bin luciddesk --locked --offline -- --test-threads=1
 cargo test -p luciddesk --test canvas_compat --locked --offline
 cargo test -p luciddesk-shell --doc --locked --offline
-python tools/check-locales.py
+python tools/validation/check-locales.py
 ```
 
 这些命令不包含默认忽略的交互测试。图形、托盘和 Shell 探针的专用命令见各专题文档；生成绑定变更还需执行生成器的 `--check`。受限桌面、文件占用或工具链缺失造成的失败应记录具体错误，不直接归类为代码回归，也不能视为通过。
@@ -51,7 +51,7 @@ python tools/check-locales.py
 
 ### 面板性能优化回归
 
-CI 的 `tools/test-control-ci.py` 将排列默认值、固定网格、自由排列、控制布局、延迟任务、排序、行测量和文字缓存测试逐例放入独立进程执行，限制单例 60 秒，避免原生 UI 状态相互影响。每个筛选组必须命中测试，忽略或零用例不能视为通过；筛选逻辑另有 Python 单元测试。可用 `python tools/test-control-ci.py --offline` 在本地复现，添加 `--release` 使用 Release 测试配置。
+CI 的 `tools/validation/test-control-ci.py` 将排列默认值、固定网格、自由排列、控制布局、延迟任务、排序、行测量和文字缓存测试逐例放入独立进程执行，限制单例 60 秒，避免原生 UI 状态相互影响。每个筛选组必须命中测试，忽略或零用例不能视为通过；筛选逻辑另有 Python 单元测试。可用 `python tools/validation/test-control-ci.py --offline` 在本地复现，添加 `--release` 使用 Release 测试配置。
 
 以下测试验证优化前后的行为约束，不使用耗时阈值判断通过，也不等同于性能基准或全项目覆盖率证明。
 
@@ -92,9 +92,9 @@ cargo test -p luciddesk --locked --offline --bin luciddesk -- --test-threads=1
 | 安装版 | `installed` 标记、当前用户/所有用户范围、开始菜单快捷方式、卸载记录 | 运行中安装处理、版本替换、修复、卸载清理及数据保留 |
 | MSIX | `msix` 标记和真实包身份、WindowsApps 内主程序、缓存 DLL 实际加载路径 | 停止及运行中更新、缓存修复、旧组件占用和卸载清理 |
 
-`tools/test-installer.ps1` 使用随机产品名称和 UpgradeCode 验证 MSI 生命周期；`-AllUsers` 需要管理员会话。夹具不检查真实 Explorer 组件，不代表正式产品的完整桌面生命周期通过。
+`tools/validation/test-installer.ps1` 使用随机产品名称和 UpgradeCode 验证 MSI 生命周期；`-AllUsers` 需要管理员会话。夹具不检查真实 Explorer 组件，不代表正式产品的完整桌面生命周期通过。
 
-`tools/test-package-lifecycle.py` 支持 `portable`、`unload` 模式，会启动应用并操作桌面组件，运行前应退出现有 LucidDesk。`tools/test-desktop-sync.ps1` 汇总编译、测试和重复回归，启用真实桌面检查前先阅读脚本的影响范围。这些工具不是纯文档检查的默认步骤。
+`tools/validation/test-package-lifecycle.py` 支持 `portable`、`unload` 模式，会启动应用并操作桌面组件，运行前应退出现有 LucidDesk。`tools/validation/test-desktop-sync.ps1` 执行文件夹监听重复回归，并可选运行两项只读桌面探针；每项必须实际执行一个测试，启用真实桌面检查前先阅读脚本的影响范围。这些工具不是纯文档检查的默认步骤。
 
 ### MSIX 的必要前提
 

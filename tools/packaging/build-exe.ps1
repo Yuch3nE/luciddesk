@@ -7,12 +7,12 @@ param(
     [ValidateSet('Fast', 'Normal', 'Max')][string]$Compression = 'Fast'
 )
 $ErrorActionPreference = 'Stop'
-$repo = Split-Path -Parent $PSScriptRoot
+$repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $SourcePath = (Resolve-Path -LiteralPath $SourcePath).Path
 $InnoCompiler = (Resolve-Path -LiteralPath $InnoCompiler).Path
 $build = Get-Content -LiteralPath (Join-Path $SourcePath 'build.json') -Raw | ConvertFrom-Json
 if ($Version -notmatch '^\d+\.\d+\.\d+$' -or $build.version -ne $Version) { throw 'EXE version must match the staged build.' }
-$null = & (Join-Path $PSScriptRoot 'test-agent-package.ps1') -Directory $SourcePath
+$null = & (Join-Path $PSScriptRoot '../validation/test-agent-package.ps1') -Directory $SourcePath
 $OutputPath = [IO.Path]::GetFullPath($OutputPath)
 New-Item -ItemType Directory -Path $OutputPath -Force | Out-Null
 & $InnoCompiler /Q "/DAppVersion=$Version" "/DSourcePath=$SourcePath" "/DOutputPath=$OutputPath" "/DInstallerCompression=$($Compression.ToLowerInvariant())" (Join-Path $repo 'installer/LucidDesk.iss') | Out-Host

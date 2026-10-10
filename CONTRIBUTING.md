@@ -65,7 +65,7 @@ EXE 与 `luciddesk_explorer.dll` 必须来自同次构建并放在同一目录�
 ```powershell
 cargo check --workspace --all-targets --locked
 cargo test -p luciddesk-core -p luciddesk-storage --lib --locked
-python tools/check-locales.py
+python tools/validation/check-locales.py
 cargo test -p luciddesk --bin luciddesk i18n::tests --locked
 ```
 

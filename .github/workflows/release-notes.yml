@@ -6,8 +6,8 @@ on:
     paths:
       - CHANGELOG.md
       - CHANGELOG.en.md
-      - tools/release-notes.py
-      - tools/test_release_notes.py
+      - tools/release/release-notes.py
+      - tools/validation/test_release_notes.py
       - .github/workflows/release-notes.yml
 
 permissions:
@@ -25,7 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Test release notes
-        run: python3 -m unittest discover -s tools -p "test_release_notes.py"
+        run: python3 -m unittest discover -s tools/validation -p "test_release_notes.py"
       - name: Update existing release notes
         shell: bash
         env:
@@ -37,7 +37,7 @@ jobs:
           updated=false
           for tag in "v$version" "$version"; do
             if gh release view "$tag" --json tagName >/dev/null 2>&1; then
-              python3 tools/release-notes.py --tag "$tag" --repository "$GH_REPO" --output release-notes.md
+              python3 tools/release/release-notes.py --tag "$tag" --repository "$GH_REPO" --output release-notes.md
               gh release edit "$tag" --notes-file release-notes.md
               echo "Updated release notes for $tag"
               updated=true

@@ -16,20 +16,20 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Test bilingual release notes
-        run: python3 -m unittest discover -s tools -p "test_release_notes.py"
+        run: python3 -m unittest discover -s tools/validation -p "test_release_notes.py"
       - name: Check minimal EXE installer payload
-        run: python3 -m unittest discover -s tools -p "test_installer_payload.py"
+        run: python3 -m unittest discover -s tools/validation -p "test_installer_payload.py"
       - name: Check language resources
-        run: python3 tools/check-locales.py
+        run: python3 tools/validation/check-locales.py
       - name: Test release assets with optional MSI
-        run: python3 -m unittest discover -s tools -p "test_refresh_release.py"
+        run: python3 -m unittest discover -s tools/validation -p "test_refresh_release.py"
       - name: Test isolated CI test selection
-        run: python3 -m unittest discover -s tools -p "test_control_ci.py"
+        run: python3 -m unittest discover -s tools/validation -p "test_control_ci.py"
       - name: Validate public CLI JSON Schema
         run: |
           python3 -m venv "$RUNNER_TEMP/cli-schema-venv"
-          "$RUNNER_TEMP/cli-schema-venv/bin/python" -m pip install -r tools/requirements-ci.txt
-          "$RUNNER_TEMP/cli-schema-venv/bin/python" tools/test-cli-schema.py
+          "$RUNNER_TEMP/cli-schema-venv/bin/python" -m pip install -r tools/validation/requirements-ci.txt
+          "$RUNNER_TEMP/cli-schema-venv/bin/python" tools/validation/test-cli-schema.py
   build:
     runs-on: windows-2025-vs2026
     timeout-minutes: 60
@@ -84,7 +84,7 @@ jobs:
         run: cargo test -p luciddesk-cli -p luciddesk-api --locked --offline -- --test-threads=1
       - name: Test layout defaults, sorting, caches and deferred task reentry
         timeout-minutes: 15
-        run: python tools/test-control-ci.py --offline
+        run: python tools/validation/test-control-ci.py --offline
       - name: Test workspace data, layout rules and shared diagnostics
         run: cargo test -p luciddesk-core -p luciddesk-storage -p luciddesk-diagnostics --locked --offline --lib --tests
       - name: Test drag image alpha conversion
@@ -94,7 +94,7 @@ jobs:
       - name: Test workspace documentation examples
         run: cargo test --workspace --doc --locked --offline
       - name: Verify complete Skill directory in MSI payload
-        run: python -m unittest discover -s tools -p "test_msi_payload.py"
+        run: python -m unittest discover -s tools/validation -p "test_msi_payload.py"
       - name: Cache Inno Setup compiler
         uses: actions/cache@v5
         with:
@@ -153,7 +153,7 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          python3 tools/release-notes.py --tag "$RELEASE_TAG" --repository "$GH_REPO" --changelog CHANGELOG.md --changelog-en CHANGELOG.en.md --output release-notes.md
+          python3 tools/release/release-notes.py --tag "$RELEASE_TAG" --repository "$GH_REPO" --changelog CHANGELOG.md --changelog-en CHANGELOG.en.md --output release-notes.md
           mapfile -d '' archives < <(find artifacts -type f \( -name '*.zip' -o -name '*-setup.exe' \) -print0)
           mapfile -d '' checksums < <(find artifacts -type f -name '*.sha256' -print0)
           [[ ${#archives[@]} -eq 3 && ${#checksums[@]} -eq 3 ]]

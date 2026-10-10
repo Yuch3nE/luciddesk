@@ -102,7 +102,7 @@ cargo build -p luciddesk -p luciddesk-explorer --locked --offline --target-dir t
 
 `-InnoCompiler <ISCC.exe>` 可指定已有的 Inno 编译器。未传 `-Installer` 或 `-All` 时仍只生成 ZIP。`-All` 默认生成普通 ZIP、便携 ZIP、EXE 及各自 SHA256。CI 显式使用 `-All -InstallerFormat Exe`，只准备 Inno Setup，不生成 MSI。本地需要同时生成 MSI 时使用 `-All -InstallerFormat Both` 并先准备 WiX。
 
-EXE 由 `tools/build-exe.ps1` 编译，MSI 由 `tools/build-msi.ps1` 编译。两个生产入口均核对传入版本与 `build.json`，并验证完整 Skill 文件、清单哈希及内嵌导出的一致性；安装后的目录固定为 `skills/luciddesk-control/`。独立打包使用同样检查，MSI 隔离测试产品仍可使用 `-TestFixture`。
+EXE 由 `tools/packaging/build-exe.ps1` 编译，MSI 由 `tools/packaging/build-msi.ps1` 编译。两个生产入口均核对传入版本与 `build.json`，并验证完整 Skill 文件、清单哈希及内嵌导出的一致性；安装后的目录固定为 `skills/luciddesk-control/`。独立打包使用同样检查，MSI 隔离测试产品仍可使用 `-TestFixture`。
 
 CI 的 `test_installer_payload.py` 将 EXE 清单与技能源目录比较，新增参考文件时缺项即失败；Windows 上 `test_msi_payload.py` 生成 WiX 清单并验证所有 Skill 文件的安装位置和内容，无需安装到系统。`test_refresh_release.py` 覆盖带/不带 MSI 的附件校验及损坏 MSI 的拒绝。
 
@@ -120,9 +120,9 @@ EXE 默认采用 `lzma2/fast` 固实压缩，以较小的体积增量缩短打�
 
 ```powershell
 cargo test -p luciddesk --bin luciddesk updates::tests --locked --offline
-.\tools\test-installer.ps1 -SourcePath <普通ZIP解压目录>
+.\tools\validation\test-installer.ps1 -SourcePath <普通ZIP解压目录>
 # 在管理员 PowerShell 中验证 Program Files 安装、升级和卸载
-.\tools\test-installer.ps1 -AllUsers -SourcePath <普通ZIP解压目录>
+.\tools\validation\test-installer.ps1 -AllUsers -SourcePath <普通ZIP解压目录>
 # 可选：检查实际 GitHub Release 元数据
 cargo test -p luciddesk --bin luciddesk updates::tests::live_release_check --locked --offline -- --ignored --exact
 ```
@@ -145,7 +145,7 @@ MSIX 从普通生产包生成，不使用便携包作为输入；包身份、签
 
 ## 自动检查
 
-Build CI 在恢复 Cargo 缓存后统一执行 `cargo fetch --locked --target x86_64-pc-windows-msvc`，后续 Rust 检查、测试与生产打包均离线执行。元数据任务单独验证 CLI JSON Schema、发布清单、多语言与测试筛选规则；Schema 验证依赖固定在 `tools/requirements-ci.txt`，安装到临时虚拟环境，不进入应用或安装包。
+Build CI 在恢复 Cargo 缓存后统一执行 `cargo fetch --locked --target x86_64-pc-windows-msvc`，后续 Rust 检查、测试与生产打包均离线执行。元数据任务单独验证 CLI JSON Schema、发布清单、多语言与测试筛选规则；Schema 验证依赖固定在 `tools/validation/requirements-ci.txt`，安装到临时虚拟环境，不进入应用或安装包。
 
 同一非标签引用的新运行会取消旧工作流；标签构建不会自动取消。任务和关键步骤设置超时，Release 摘要列出主程序、CLI 和桌面 DLL 的体积，Actions 构建附件保留 14 天。发布仍只生成 EXE、普通 ZIP、便携 ZIP 及校验文件。
 
@@ -247,7 +247,7 @@ Windows 依赖版本在工作区统一管理，API 特性由各 crate 按需声�
 
 CI 运行 `cargo test -p luciddesk-cli -p luciddesk-api --locked -- --test-threads=1`，覆盖 CLI 参数、离线技能与协议，以及通信契约。元数据检查同时校验 GUI、CLI 和锁文件版本一致性。
 
-布局计划、内容适配、显示器几何和任务调度测试通过 `python tools/test-control-ci.py` 执行。脚本先构建测试程序，再为每项测试启动独立进程，隔离原生窗口状态；单项超时 60 秒，崩溃、失败、零项匹配或未实际执行测试均使检查失败。本地可加 `--offline --target-dir target/cli-layout-build`，CI 沿用 `CARGO_TARGET_DIR` 缓存目录。该检查不启动真实用户的主程序，不替代多显示器和 MSIX 实机验收。
+布局计划、内容适配、显示器几何和任务调度测试通过 `python tools/validation/test-control-ci.py` 执行。脚本先构建测试程序，再为每项测试启动独立进程，隔离原生窗口状态；单项超时 60 秒，崩溃、失败、零项匹配或未实际执行测试均使检查失败。本地可加 `--offline --target-dir target/cli-layout-build`，CI 沿用 `CARGO_TARGET_DIR` 缓存目录。该检查不启动真实用户的主程序，不替代多显示器和 MSIX 实机验收。
 
 发布包中的 CLI、协议与 Skill 一致性继续由打包脚本调用 `test-agent-package.ps1` 校验。元数据任务运行 `test_installer_payload.py`，检查 EXE 安装清单的必需文件、源路径和安装位置，拒绝通配符、递归收录及额外文档；这是脚本清单检查，不替代实际安装验收。
 

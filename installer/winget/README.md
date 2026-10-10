@@ -39,7 +39,7 @@ winget settings --disable LocalManifestFiles
 
 0.20.1 的正式 GUI 导入 `VCRUNTIME140.dll`，安装器在复制文件前将 GUI 提取到临时目录执行 `--check-desktop-component`；缺少运行库会在此阶段弹出系统错误。该版本清单已声明 `Microsoft.VCRedist.2015+.x64`，但使用 `--skip-dependencies` 的测试仍不能据此保证通过。
 
-后续源码通过 Windows MSVC `crt-static` 消除三个发布二进制对可再分发 VC++ DLL 的直接依赖，打包前用 `tools/test-runtime-dependencies.ps1` 校验最终导入表。2026-10-09 本地验证：旧安装版被检查器以 `VCRUNTIME140.dll` 拦截，新 GUI、CLI 和 Explorer DLL 均通过；仅包含 GUI 的独立目录中，预检在约 0.19 秒返回 1（当前桌面组件仍在使用），CLI 启动及 DLL 在测试进程中加载成功。静态运行库构建的 CLI/Core/Storage 共 85 项测试通过，EXE 与 ZIP 构建成功。
+后续源码通过 Windows MSVC `crt-static` 消除三个发布二进制对可再分发 VC++ DLL 的直接依赖，打包前用 `tools/validation/test-runtime-dependencies.ps1` 校验最终导入表。2026-10-09 本地验证：旧安装版被检查器以 `VCRUNTIME140.dll` 拦截，新 GUI、CLI 和 Explorer DLL 均通过；仅包含 GUI 的独立目录中，预检在约 0.19 秒返回 1（当前桌面组件仍在使用），CLI 启动及 DLL 在测试进程中加载成功。静态运行库构建的 CLI/Core/Storage 共 85 项测试通过，EXE 与 ZIP 构建成功。
 
 以上是开发机依赖检查和启动回归，不是缺少运行库的干净 Windows 安装验收；本机无 Windows Sandbox。发布修复版本前仍需在干净 Windows 上完成首次静默安装、升级和卸载验证。不要卸载开发机的共享运行库来模拟该环境，也不要用本地同版本测试包覆盖已发布附件。
 

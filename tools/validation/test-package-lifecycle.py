@@ -17,7 +17,7 @@ import time
 import uuid
 import zipfile
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 user = ctypes.WinDLL("user32", use_last_error=True)
 user.FindWindowW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR]
 user.FindWindowW.restype = wintypes.HWND

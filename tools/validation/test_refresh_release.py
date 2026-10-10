@@ -7,7 +7,7 @@ import tempfile
 import unittest
 import zipfile
 
-spec = importlib.util.spec_from_file_location('refresh_release', Path(__file__).with_name('refresh-release.py'))
+spec = importlib.util.spec_from_file_location('refresh_release', Path(__file__).resolve().parents[1] / 'release/refresh-release.py')
 refresh = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(refresh)
 
