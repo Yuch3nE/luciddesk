@@ -45,7 +45,7 @@ The default 0.20.5 distribution does not include the system monitor plugin. Its 
 
 ### fix
 
-- Preserve panel membership and position when an updater deletes and recreates a desktop shortcut at the same path, including across restarts.
+- Preserve panel membership and position when an updater deletes and recreates a desktop shortcut at the same path within five minutes in the same desktop session. Retention is memory-only and does not survive a restart.
 - Verify native desktop icon recovery per item and retain unfinished records so one failure does not block other items. Layout errors after membership recovery no longer trigger a full refresh.
 - Respect Explorer's Show desktop icons setting without rejecting a connection solely because icons are hidden. Include connection stages, item counts and original errors in diagnostics.
 - Retry recycle-bin subscriptions and workspace saves independently instead of treating their failures as desktop connection failures. Continue acknowledging submitted requests while a save is pending.

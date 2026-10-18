@@ -4,6 +4,7 @@ mod audit_schedule;
 mod icon_changes;
 mod icons;
 mod image_retention;
+mod shortcut_retention;
 mod inventory;
 mod rename_transaction;
 use super::assets::RECYCLE_BIN_PARSING_NAME;
@@ -49,6 +50,7 @@ pub(super) struct Session {
     requested: std::collections::HashSet<String>,
     icon_failures: HashMap<String, (u32, Instant)>,
     image_retention: image_retention::ImageRetention,
+    shortcut_retention: shortcut_retention::ShortcutRetention,
     initial_batches: usize,
     menu_active: Cell<bool>,
     last_pane_input: Cell<Option<u32>>,
@@ -410,6 +412,7 @@ pub(super) fn connect(state: &Rc<RefCell<PaneApp>>, _path: &Path) -> Result<(), 
         requested: Default::default(),
         icon_failures: HashMap::new(),
         image_retention: Default::default(),
+        shortcut_retention: Default::default(),
         initial_batches: 0,
         menu_active: Cell::new(false),
         last_pane_input: Cell::new(None),
@@ -581,12 +584,14 @@ fn reconcile_inventory(s: &mut PaneApp) -> Result<(), String> {
         .image_retention
         .invalidate(&mut s.images);
     normalize_pane_orders(s);
-    let snapshot = &s.session.as_ref().unwrap().snapshot;
-    s.workspace.reconcile_desktop_items(
+    let h = s.session.as_mut().unwrap();
+    let snapshot = &h.snapshot;
+    h.shortcut_retention.reconcile(&mut s.workspace,
         snapshot
             .items
             .iter()
             .map(|item| DesktopItem::new(item.identity.clone(), item.display_name.clone())),
+        Instant::now(),
     );
     let valid: Vec<_> = s.workspace.panels().iter().map(Panel::id).collect();
     for item in s.workspace.desktop_items_mut() {
@@ -890,6 +895,7 @@ pub(super) fn workspace_save_pending(s: &PaneApp) -> bool {
 }
 
 fn tick_once(s: &mut PaneApp) -> Result<(), String> {
+    s.session.as_mut().unwrap().shortcut_retention.expire(&s.workspace, Instant::now());
     if s.session.as_ref().unwrap().menu_active.get() {
         return Ok(());
     }
@@ -1033,6 +1039,7 @@ pub(super) fn next_work(s: &PaneApp) -> Option<u32> {
                 .deadline()
                 .filter(|_| !h.pending_workspace_save),
         )
+        .chain(h.shortcut_retention.deadline())
         .chain(h.recycle_subscription.is_none().then_some(h.recycle_retry))
         .chain(icons::retry_deadline(
             h.initial_batches != 0 || h.icon_reload.is_some(),

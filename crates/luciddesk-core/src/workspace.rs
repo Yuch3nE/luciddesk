@@ -9,7 +9,6 @@ pub struct Workspace {
     pane_options: PaneOptions,
     panels: Vec<Panel>,
     desktop_items: Vec<DesktopItem>,
-    shortcut_history: Vec<DesktopItem>,
     tabs: Vec<PaneTabs>,
 }
 
@@ -42,7 +41,6 @@ impl Workspace {
             appearance: None,
             pane_options: PaneOptions::DEFAULT,
             desktop_items: Vec::new(),
-            shortcut_history: Vec::new(),
             tabs: Vec::new(),
         }
     }
@@ -64,7 +62,6 @@ impl Workspace {
             appearance: None,
             pane_options: PaneOptions::DEFAULT,
             desktop_items: Vec::new(),
-            shortcut_history: Vec::new(),
             tabs: Vec::new(),
         })
     }
@@ -96,59 +93,22 @@ impl Workspace {
             .find(|item| item.identity().equivalent_to(identity))
     }
 
-    /// Missing managed shortcuts are kept separately from the visible inventory.
-    #[must_use]
-    pub fn shortcut_history(&self) -> &[DesktopItem] { &self.shortcut_history }
-
-    /// Restores persisted history, excluding live items and invalid destinations.
-    pub fn set_shortcut_history(&mut self, items: Vec<DesktopItem>) {
-        self.shortcut_history = items.into_iter().filter(|item| {
-            self.can_remember_shortcut(item)
-                && self.desktop_item(item.identity()).is_none()
-        }).collect();
-    }
-
-    fn can_remember_shortcut(&self, item: &DesktopItem) -> bool {
-        item.identity().file_system_path().is_some_and(|path|
-            path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("lnk")))
-            && matches!(item.placement(), crate::DesktopPlacement::Pane { pane_id, .. }
-                if self.panel(*pane_id).is_some_and(Panel::supports_tabs))
-    }
-
     /// Reconciles a fresh Shell inventory while preserving placement for surviving identities.
-    /// A shortcut deleted and recreated by an updater can recover by its original path.
     pub fn reconcile_desktop_items(&mut self, inventory: impl IntoIterator<Item = DesktopItem>) {
         let previous = std::mem::take(&mut self.desktop_items);
-        let mut history = std::mem::take(&mut self.shortcut_history);
-        self.desktop_items = inventory.into_iter().map(|mut incoming| {
-            let remembered = history.iter().position(|item|
-                item.identity().equivalent_to(incoming.identity()));
-            let existing = previous.iter().find(|existing|
-                existing.identity().equivalent_to(incoming.identity()))
-                .or_else(|| remembered.map(|index| &history[index]));
-            if let Some(existing) = existing {
-                incoming.set_placement(existing.placement().clone());
-                incoming.set_pane_position(existing.pane_position());
-            }
-            if let Some(index) = remembered { history.remove(index); }
-            incoming
-        }).collect();
-        for item in previous {
-            if self.can_remember_shortcut(&item) && self.desktop_item(item.identity()).is_none() {
-                // History identifies the shortcut path, never a recycled file ID or app name.
-                let Some(path) = item.identity().file_system_path() else { continue; };
-                let identity = ShellIdentity::FileSystem {
-                    path: path.to_owned(),
-                    volume_id: None, file_id: None,
-                };
-                history.retain(|old| !old.identity().equivalent_to(&identity));
-                let mut remembered = DesktopItem::new(identity, item.display_name());
-                remembered.set_placement(item.placement().clone());
-                remembered.set_pane_position(item.pane_position());
-                history.push(remembered);
-            }
-        }
-        self.set_shortcut_history(history);
+        self.desktop_items = inventory
+            .into_iter()
+            .map(|mut incoming| {
+                if let Some(existing) = previous
+                    .iter()
+                    .find(|existing| existing.identity().equivalent_to(incoming.identity()))
+                {
+                    incoming.set_placement(existing.placement().clone());
+                    incoming.set_pane_position(existing.pane_position());
+                }
+                incoming
+            })
+            .collect();
     }
 
     /// Adds a panel to this workspace.
@@ -187,8 +147,6 @@ impl Workspace {
             }
         }
         self.tabs.retain(|group| group.members.len() > 1);
-        self.shortcut_history.retain(|item|
-            !matches!(item.placement(), crate::DesktopPlacement::Pane { pane_id, .. } if *pane_id == id));
         Some(self.panels.remove(index))
     }
 

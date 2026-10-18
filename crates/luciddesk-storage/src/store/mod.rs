@@ -5,7 +5,6 @@ pub use config::SettingValue;
 #[cfg(test)]
 mod config_tests;
 mod desktop_items;
-mod shortcut_history;
 mod folder_view;
 pub use folder_view::FolderPreferences;
 mod geometry;
@@ -249,7 +248,6 @@ impl WorkspaceStore {
         let mut workspace = Workspace::from_panels(panels)
             .map_err(|error| StoreError::InvalidData(error.to_string()))?;
         workspace.reconcile_desktop_items(load_desktop_items(&self.connection)?);
-        workspace.set_shortcut_history(shortcut_history::load(&self.connection)?);
         let appearance = self.preference("appearance")?;
         if let Some(value) = appearance {
             let parts: Vec<_> = value.split('|').collect();
@@ -430,7 +428,6 @@ impl WorkspaceStore {
         folder_view::absorb(&transaction)?;
         for (id, preferences) in folders { folder_view::save_preferences(&transaction, *id, preferences)?; }
         insert_desktop_items(&transaction, workspace.desktop_items())?;
-        shortcut_history::save(&transaction, workspace.shortcut_history())?;
         let live_panels: std::collections::HashSet<_> =
             workspace.panels().iter().map(|p| p.id().get()).collect();
         let old_panels: Vec<u64> = transaction
