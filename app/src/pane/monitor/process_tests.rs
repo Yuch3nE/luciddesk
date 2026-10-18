@@ -24,11 +24,7 @@ fn measure(cycle: usize, phase: &str, process: windows_sys::Win32::Foundation::H
         let mut memory = PROCESS_MEMORY_COUNTERS_EX::default();
         memory.cb = size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32;
         assert_ne!(
-            GetProcessMemoryInfo(
-                process,
-                (&raw mut memory).cast(),
-                memory.cb
-            ),
+            GetProcessMemoryInfo(process, (&raw mut memory).cast(), memory.cb),
             0
         );
         let mut handles = 0;
@@ -50,11 +46,22 @@ fn isolated_monitor_closes_process_and_keeps_host_sampling_empty() {
     assert!(super::super::available());
     let state = Rc::new(RefCell::new(crate::pane::tests::test_state()));
     state.borrow_mut().monitor_child = false;
+    let directory = tempfile::tempdir().unwrap();
+    {
+        let mut s = state.borrow_mut();
+        s.store = WorkspaceStore::open(&directory.path().join("workspace.db")).unwrap();
+        let workspace = s.workspace.clone();
+        s.store.save_workspace(&workspace).unwrap();
+        crate::plugins::initialize(&s.store).unwrap();
+    }
+    let database_before = std::fs::read(directory.path().join("workspace.db")).unwrap();
+    let workspace_before = state.borrow().workspace.clone();
+    let stored_before = state.borrow().store.load_workspace().unwrap();
     // Warm ordinary host rendering and plugin settings before the first monitor ever opens.
     create_view(&state, PanelId::new(1)).unwrap();
     crate::plugins::request(
         super::super::PLUGIN_ID,
-        serde_json::json!({"op":"settings","panels":[]}),
+        serde_json::json!({"op":"settings"}),
     )
     .unwrap();
     pump(&state, 500);
@@ -68,27 +75,20 @@ fn isolated_monitor_closes_process_and_keeps_host_sampling_empty() {
         .ok()
         .map(|s| s.parse().unwrap())
         .unwrap_or(63000);
-    handle(&state, PanelId::new(0), Event::NewMonitor).unwrap();
-    let id = state
-        .borrow()
-        .workspace
-        .panels()
-        .iter()
-        .find(|p| p.is_monitor())
-        .unwrap()
-        .id();
+    handle(&state, PanelId::new(0), Event::EnableMonitor).unwrap();
+    let id = PanelId::new(0);
     for cycle in 1..=cycles {
         if cycle != 1 {
             handle(&state, id, Event::MonitorOptions(Preferences::default())).unwrap();
         }
         let deadline = Instant::now() + Duration::from_secs(20);
-        while state.borrow().monitors.processes[&id].hwnd == 0 {
+        while state.borrow().monitors.process.as_ref().unwrap().hwnd == 0 {
             assert!(Instant::now() < deadline, "Child startup timed out");
             pump(&state, 20);
         }
         let (pid, hwnd) = {
             let s = state.borrow();
-            let p = &s.monitors.processes[&id];
+            let p = &s.monitors.process.as_ref().unwrap();
             (p.child.id(), p.hwnd)
         };
         let child = unsafe {
@@ -123,7 +123,19 @@ fn isolated_monitor_closes_process_and_keeps_host_sampling_empty() {
             .unwrap();
             pump(&state, 500);
             assert!(
-                (state.borrow().workspace.panel(id).unwrap().rect().width - 320.0).abs() < 1.0,
+                (state
+                    .borrow()
+                    .monitors
+                    .process
+                    .as_ref()
+                    .unwrap()
+                    .config
+                    .panel
+                    .rect()
+                    .width
+                    - 320.0)
+                    .abs()
+                    < 1.0,
                 "Compact layout was not returned to host"
             );
         }
@@ -143,7 +155,7 @@ fn isolated_monitor_closes_process_and_keeps_host_sampling_empty() {
             .unwrap();
         }
         let deadline = Instant::now() + Duration::from_secs(15);
-        while state.borrow().monitors.processes.contains_key(&id) {
+        while state.borrow().monitors.process.is_some() {
             assert!(Instant::now() < deadline, "Child close timed out");
             pump(&state, 20);
         }
@@ -155,18 +167,49 @@ fn isolated_monitor_closes_process_and_keeps_host_sampling_empty() {
         }
         assert_eq!(code, 0, "Child must exit normally");
         assert_eq!(unsafe { IsWindow(hwnd as _) }, 0);
-        assert!(
-            !Preferences::load(&state.borrow().store, id)
-                .unwrap()
-                .enabled
-        );
+        assert!(!Preferences::load().unwrap().enabled);
         pump(&state, 300);
         measure(cycle, "closed", host);
     }
+    // The settings plugin switch stops the real child without changing panel preferences.
+    handle(&state, id, Event::MonitorOptions(Preferences::default())).unwrap();
+    pump(&state, 1500);
+    let pid = state.borrow().monitors.process.as_ref().unwrap().child.id();
+    let child = unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_SYNCHRONIZE, 0, pid) };
+
+    crate::pane::settings::plugin_page::set_enabled(&state, super::super::PLUGIN_ID, false)
+        .unwrap();
+    assert_eq!(unsafe { WaitForSingleObject(child, 5000) }, 0);
+    let mut code = 1;
+    unsafe {
+        GetExitCodeProcess(child, &mut code);
+        CloseHandle(child);
+    }
+    assert_eq!(code, 0);
+    assert!(!super::super::available());
+    assert!(state.borrow().monitors.process.is_none());
+    assert_eq!(state.borrow().workspace, workspace_before);
+    let saved_config =
+        std::fs::read(directory.path().join("plugins/system-monitor/config.toml")).unwrap();
+    configure(&state).unwrap();
+    assert!(state.borrow().monitors.process.is_none());
+    crate::pane::settings::plugin_page::set_enabled(&state, super::super::PLUGIN_ID, true).unwrap();
+    pump(&state, 1500);
+    assert_ne!(state.borrow().monitors.process.as_ref().unwrap().hwnd, 0);
+    assert!(Preferences::load().unwrap().enabled);
+    assert_eq!(
+        std::fs::read(directory.path().join("plugins/system-monitor/config.toml")).unwrap(),
+        saved_config
+    );
+    assert_ne!(
+        state.borrow().monitors.process.as_ref().unwrap().child.id(),
+        pid
+    );
+    state.borrow_mut().monitors = Manager::default();
     // Host shutdown (dropping its pipe) must also exit a still-visible child normally.
     handle(&state, id, Event::MonitorOptions(Preferences::default())).unwrap();
     pump(&state, 1500);
-    let pid = state.borrow().monitors.processes[&id].child.id();
+    let pid = state.borrow().monitors.process.as_ref().unwrap().child.id();
     let child = unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_SYNCHRONIZE, 0, pid) };
     state.borrow_mut().monitors = Manager::default();
     assert_eq!(unsafe { WaitForSingleObject(child, 5000) }, 0);
@@ -181,23 +224,34 @@ fn isolated_monitor_closes_process_and_keeps_host_sampling_empty() {
     pump(&state, 1500);
     {
         let mut s = state.borrow_mut();
-        let process = s.monitors.processes.get_mut(&id).unwrap();
+        let process = s.monitors.process.as_mut().unwrap();
         writeln!(process.input.as_mut().unwrap(), "invalid configuration").unwrap();
     }
     let deadline = Instant::now() + Duration::from_secs(10);
-    while state.borrow().monitors.processes.contains_key(&id) {
+    while state.borrow().monitors.process.is_some() {
         assert!(Instant::now() < deadline);
         pump(&state, 20);
     }
-    assert!(state.borrow().workspace.panel(id).unwrap().is_monitor());
-    assert!(
-        !Preferences::load(&state.borrow().store, id)
-            .unwrap()
-            .enabled
-    );
+    assert_eq!(state.borrow().workspace, workspace_before);
+    assert!(!Preferences::load().unwrap().enabled);
     // Re-enabling after the failure starts a fresh, usable process.
     handle(&state, id, Event::MonitorOptions(Preferences::default())).unwrap();
     pump(&state, 1500);
-    assert_ne!(state.borrow().monitors.processes[&id].hwnd, 0);
+    assert_ne!(state.borrow().monitors.process.as_ref().unwrap().hwnd, 0);
     state.borrow_mut().monitors = Manager::default();
+    assert_eq!(state.borrow().workspace, workspace_before);
+    assert_eq!(
+        state.borrow().store.load_workspace().unwrap(),
+        stored_before
+    );
+    assert_eq!(
+        std::fs::read(directory.path().join("workspace.db")).unwrap(),
+        database_before
+    );
+    assert!(
+        directory
+            .path()
+            .join("plugins/system-monitor/config.toml")
+            .exists()
+    );
 }

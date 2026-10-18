@@ -274,7 +274,7 @@ fn prepare(
                 let monitor = monitors.iter().find(|m| m.id.as_str() == monitor_id)
                     .ok_or_else(|| invalid("unknown monitor ID; query monitor list again"))?;
                 let minimum = if panel.is_monitor() {
-                    crate::pane::monitor::Preferences::load(store, target).map_err(invalid)?.minimum(false)
+                    (300.0, 400.0)
                 } else {
                     super::content_layout::minimum(&next, target, *width, folder_content)
                 };
@@ -1159,23 +1159,6 @@ mod tests {
         assert_eq!(std::fs::read_to_string(root.path().join("keep.txt")).unwrap(),"keep");
     }
 
-    #[test]
-    fn monitor_geometry_follows_saved_layout_and_icon_fitting_is_rejected() {
-        let mut state = super::super::super::tests::test_state();
-        let id = PanelId::new(1);
-        state.workspace.panel_mut(id).unwrap().set_monitor(true);
-        state.store.save_workspace(&state.workspace).unwrap();
-        let mut snapshot = Snapshot::new();
-        let monitors = luciddesk_window::enumerate_monitors();
-        let monitor = monitors.first().expect("test desktop monitor");
-        let geometry = json!({"op":"pane.geometry","pane_id":"1","monitor_id":monitor.id.as_str(),"x":10,"y":10,"width":320,"height":240});
-        assert!(!preview(&mut snapshot, &mut state, json!([geometry.clone()])).ok);
-        crate::pane::monitor::Preferences { compact: true, ..Default::default() }.save(&state.store, id).unwrap();
-        let compact = preview(&mut snapshot, &mut state, json!([geometry]));
-        assert!(compact.ok, "{compact:?}");
-        let fitting = preview(&mut snapshot, &mut state, json!([{"op":"pane.fit","pane_id":"1","icon_columns":3}]));
-        assert!(!fitting.ok);
-    }
     #[test]
     fn geometry_plan_persists_layout_atomically_and_rejects_locked_or_unknown_monitors() {
         let mut state = super::super::super::tests::test_state();

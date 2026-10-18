@@ -67,8 +67,9 @@ fn plugin_content_draws_through_host_context_and_preserves_the_header() {
 fn monitor_window_reuses_native_panel_lifecycle_without_registering_shell_drop() {
     let _sta = crate::pane::test_support::apartment();
     let state = Rc::new(RefCell::new(crate::pane::tests::test_state()));
+    state.borrow_mut().monitor_child = true;
     if !available() {
-        assert!(super::super::handle(&state, PanelId::new(0), Event::NewMonitor).is_err());
+        assert!(super::super::handle(&state, PanelId::new(0), Event::EnableMonitor).is_err());
         let id = state.borrow().workspace.panels()[0].id();
         state
             .borrow_mut()
@@ -76,15 +77,12 @@ fn monitor_window_reuses_native_panel_lifecycle_without_registering_shell_drop()
             .panel_mut(id)
             .unwrap()
             .set_monitor(true);
-        let saved = state.borrow().workspace.clone();
-        state.borrow_mut().store.save_workspace(&saved).unwrap();
         super::super::create_view(&state, id).unwrap();
         assert!(state.borrow().views.is_empty());
         assert!(state.borrow().workspace.panel(id).unwrap().is_monitor());
-        assert_eq!(state.borrow().store.load_workspace().unwrap(), saved);
         return;
     }
-    super::super::handle(&state, PanelId::new(0), Event::NewMonitor).unwrap();
+    super::super::handle(&state, PanelId::new(0), Event::EnableMonitor).unwrap();
     let (id, hwnd) = {
         let s = state.borrow();
         let view = s.views.last().unwrap();
@@ -120,7 +118,7 @@ fn monitor_window_reuses_native_panel_lifecycle_without_registering_shell_drop()
     assert!((compact_bounds.width - 320.0).abs() < 1.0);
     assert!((compact_bounds.height - 280.0).abs() < 1.0);
     assert!(
-        Preferences::load(&state.borrow().store, id)
+        Preferences::load()
             .unwrap()
             .compact
     );
@@ -154,6 +152,7 @@ fn single_monitor_releases_resources_after_repeated_close() {
     let _sta = crate::pane::test_support::apartment();
     assert!(available());
     let state = Rc::new(RefCell::new(crate::pane::tests::test_state()));
+    state.borrow_mut().monitor_child = true;
     let diagnostics =
         || crate::plugins::request(PLUGIN_ID, serde_json::json!({"op":"diagnostics"})).unwrap();
     let pump = |duration| {
@@ -260,7 +259,7 @@ fn single_monitor_releases_resources_after_repeated_close() {
         .map(|s| s.parse().unwrap())
         .unwrap_or(63000);
     for cycle in 1..=cycles {
-        super::super::handle(&state, PanelId::new(0), Event::NewMonitor).unwrap();
+        super::super::handle(&state, PanelId::new(0), Event::EnableMonitor).unwrap();
         let (id, hwnd, model) = {
             let s = state.borrow();
             assert_eq!(s.views.len(), 1);

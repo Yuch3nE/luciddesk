@@ -7,11 +7,100 @@ use std::os::windows::ffi::OsStrExt;
 use std::{collections::BTreeMap, ffi::c_void, path::Path, sync::OnceLock};
 use windows_sys::Win32::System::LibraryLoader::*;
 
+thread_local! {
+    static CONFIG_ROOT: std::cell::RefCell<Option<std::path::PathBuf>> = const { std::cell::RefCell::new(None) };
+    static DISABLED: std::cell::RefCell<std::collections::BTreeSet<String>> = Default::default();
+}
+pub fn initialize(store: &luciddesk_storage::WorkspaceStore) -> Result<(), String> {
+    CONFIG_ROOT.with(|root| {
+        *root.borrow_mut() = store
+            .config_path()
+            .and_then(|p| p.parent().map(|p| p.join("plugins")))
+    });
+    if let Some(plugins) = REGISTRY.get() {
+        for plugin in plugins.values() {
+            configure(plugin)?;
+        }
+    }
+    let saved = store
+        .preference("plugins_disabled")
+        .map_err(|e| e.to_string())?
+        .unwrap_or_default();
+    let disabled = saved.split_whitespace().map(str::to_owned).collect();
+    if let Some(plugins) = REGISTRY.get() {
+        for id in plugins.keys() {
+            if enabled(id) && std::collections::BTreeSet::contains(&disabled, id) {
+                set_enabled(id, false);
+            }
+        }
+    }
+    DISABLED.with(|v| *v.borrow_mut() = disabled);
+    Ok(())
+}
+pub fn enabled(id: &str) -> bool {
+    DISABLED.with(|v| !v.borrow().contains(id))
+}
+pub fn installed() -> Vec<Manifest> {
+    registry().values().map(|p| p.manifest.clone()).collect()
+}
+pub fn save_enabled(
+    store: &luciddesk_storage::WorkspaceStore,
+    id: &str,
+    enabled: bool,
+) -> Result<(), String> {
+    if !registry().contains_key(id) {
+        return Err(format!("Plugin {id} is not installed"));
+    }
+    let mut disabled = DISABLED.with(|v| v.borrow().clone());
+    if enabled {
+        disabled.remove(id);
+    } else {
+        disabled.insert(id.to_owned());
+    }
+    store
+        .save_preference(
+            "plugins_disabled",
+            &disabled.into_iter().collect::<Vec<_>>().join(" "),
+        )
+        .map_err(|e| e.to_string())
+}
+pub fn set_enabled(id: &str, enabled: bool) {
+    if !enabled {
+        if let Err(error) = request(id, json!({"op":"shutdown"})) {
+            log(&error);
+        }
+    }
+    DISABLED.with(|v| {
+        if enabled {
+            v.borrow_mut().remove(id);
+        } else {
+            v.borrow_mut().insert(id.to_owned());
+        }
+    });
+}
+
 struct Plugin {
     invoke: Invoke,
     manifest: Manifest,
 }
 static REGISTRY: OnceLock<BTreeMap<String, Plugin>> = OnceLock::new();
+fn configure(plugin: &Plugin) -> Result<(), String> {
+    if plugin.manifest.supports("config.v1") {
+        if let Some(directory) =
+            CONFIG_ROOT.with(|root| root.borrow().as_ref().map(|p| p.join(&plugin.manifest.id)))
+        {
+            unsafe {
+                call_json(
+                    plugin.invoke,
+                    std::ptr::null_mut(),
+                    &json!({"op":"config_open", "directory":directory}),
+                )
+            }
+            .map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
 fn load(path: &Path, plugins: &BTreeMap<String, Plugin>) -> Result<Plugin, String> {
     let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
     unsafe {
@@ -42,7 +131,9 @@ fn load(path: &Path, plugins: &BTreeMap<String, Plugin>) -> Result<Plugin, Strin
                     manifest.id
                 ));
             }
-            Ok(Plugin { invoke, manifest })
+            let plugin = Plugin { invoke, manifest };
+            configure(&plugin)?;
+            Ok(plugin)
         })();
         if result.is_err() {
             windows_sys::Win32::Foundation::FreeLibrary(module);
@@ -99,11 +190,15 @@ fn registry() -> &'static BTreeMap<String, Plugin> {
     })
 }
 pub fn supports(id: &str, capability: &str) -> bool {
-    registry()
-        .get(id)
-        .is_some_and(|p| p.manifest.supports(capability))
+    enabled(id)
+        && registry()
+            .get(id)
+            .is_some_and(|p| p.manifest.supports(capability))
 }
 pub fn call(id: &str, mut request: Value, context: *mut c_void) -> Result<Value, String> {
+    if !enabled(id) {
+        return Err(format!("Plugin {id} is disabled"));
+    }
     let plugin = registry()
         .get(id)
         .ok_or_else(|| format!("Plugin {id} is not installed"))?;
@@ -175,6 +270,20 @@ mod tests {
                 .unwrap_err()
                 .contains("UNSUPPORTED_OPERATION")
         );
+        let store = luciddesk_storage::WorkspaceStore::open_in_memory().unwrap();
+        save_enabled(&store, "example.echo", false).unwrap();
+        set_enabled("example.echo", false);
+        assert!(installed().iter().any(|m| m.id == "example.echo"));
+        assert!(!supports("example.echo", "example.echo.v1"));
+        assert!(
+            request("example.echo", json!({"op":"echo"}))
+                .unwrap_err()
+                .contains("disabled")
+        );
+        initialize(&store).unwrap();
+        assert!(!enabled("example.echo"));
+        save_enabled(&store, "example.echo", true).unwrap();
+        set_enabled("example.echo", true);
         shutdown();
         assert!(request("example.echo", json!({"op":"echo","value":42})).is_ok());
     }

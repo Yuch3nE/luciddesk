@@ -1291,5 +1291,9 @@ monitor-settings-description = モニターパネルを有効にし、指標と�
 monitor-enable = モニターパネルを有効にする
 monitor-enable-description = 無効にしてもレイアウトと設定は保持されます。
 
+
+plugins-title = プラグイン
+plugins-description = インストール済みプラグインを管理します。変更は即時に反映され、設定は保持されます。DLL の追加・更新後は再起動してください。
+plugins-empty = プラグインはありません。アプリと同じ場所の plugins フォルダーに DLL を置き、再起動してください。
 monitor-display-settings = 表示と更新
 monitor-device-settings = デバイスの選択

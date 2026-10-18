@@ -49,7 +49,8 @@ use windows_sys::Win32::UI::Controls::WM_MOUSELEAVE;
 
 #[derive(Clone)]
 enum Action {
-    MonitorOptions(PanelId, monitor::Preferences),
+    PluginEnabled(String, bool),
+    MonitorOptions(monitor::Preferences),
     Startup(bool),
     CliEnabled(bool),
     CopySkillPrompt,
@@ -128,6 +129,7 @@ fn contains(r: &Rect, x: f32, y: f32) -> bool {
 }
 mod layout;
 mod monitor_page;
+pub(in crate::pane) mod plugin_page;
 use layout::scene;
 
 const TOGGLE_TIMER: usize = 0x4c5054;
@@ -138,7 +140,7 @@ use painter::Painter;
 mod actions;
 mod agent;
 mod host;
-pub(super) use host::show;
+pub(super) use host::{show, show_monitor};
 
 #[cfg(test)]
 pub(super) mod tests;

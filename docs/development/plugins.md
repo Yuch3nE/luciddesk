@@ -1,5 +1,7 @@
 # 插件开发指南
 
+插件功能仍在开发中：默认发行包不带插件，设置导航暂不显示插件列表。页面和宿主实现保留用于后续开发，当前不作为已上线功能。
+
 本文对应 `luciddesk-plugin-api 0.1.0`、C ABI **1**、JSON 协议 **1**。接口仍处于开发预览阶段；0.21.0 默认发行包不附带系统监控插件。较早的试验 DLL 缺少协议版本和能力清单，需要重新构建，不会被静默当作兼容插件使用。
 
 ## 1. 宿主和插件的职责
@@ -9,7 +11,7 @@
 | 发现 DLL、校验 ABI/清单、按 ID 路由、结束资源生命周期 | 导出入口、声明身份与能力、实现操作 |
 | 面板 HWND、标题栏、DPI、材质、位置、缩放、折叠、层级 | 面板内容、图表、内容交互和后台采集 |
 | 设置窗口、导航、标准控件、焦点与滚动 | 设置页的内容描述、选项和动作 |
-| 当前语言、字体和持久化适配 | 功能内部状态、设备选择、业务逻辑 |
+| 当前语言、字体和独立配置目录 | 配置文件的格式、默认值、校验、读写，功能内部状态 |
 
 **能够加载不等于自动拥有 UI。** 通用注册表可以加载任何合法插件并按 ID 调用；目前正式接入 UI 的能力配置是 `system-monitor.v1`。新功能需要定义能力协议并增加对应宿主适配器。仅声明一个未知能力不会自动创建设置页或面板。当前接口没有通用的任意 HWND 注册、菜单注入或跨插件配置存储服务。
 
@@ -118,7 +120,7 @@ SDK 的 `Page` 返回 `description` 和 `items`。控件标签与排列由 DLL �
 
 | 操作 | 请求的主要字段 | 成功响应 |
 | --- | --- | --- |
-| `settings` | `panels: [[panel_id,title,options], ...]` | `Page` |
+| `settings` | 无；插件读取自己的配置 | `Page` |
 | `devices` | 无 | `[network_devices,disk_devices,gpu_devices]`，每项为 `[id,name]` |
 | `inventory` | `devices: [network_devices,disk_devices,gpu_devices]` | `null`；更新主进程设置页的设备清单，不启动采样 |
 | `client_new` | 无 | 不透明 `u64` 客户端 ID |
@@ -137,7 +139,7 @@ SDK 的 `Page` 返回 `description` 和 `items`。控件标签与排列由 DLL �
 {"enabled":true,"metrics":["Cpu","Memory","Gpu","Network","Disk"],"compact":false,"paused":false,"interval":1,"network":null,"disk":null,"gpu":null}
 ```
 
-`interval` 支持 1、2、5 秒。设备字段为设备 ID 或 `null`；`metrics` 可以为空。持久化、启停面板与显示器位置由宿主适配器执行。设置动作包括 `{"op":"new"}`、`{"op":"save","id":1,"options":{...}}` 和 `{"op":"task_manager"}`；它们是该适配器的协议，不是通用插件操作。卸下 DLL 后已有监控配置保留，但不创建窗口，也不显示设置入口。
+`interval` 支持 1、2、5 秒。设备字段为设备 ID 或 `null`；`metrics` 可以为空。插件负责配置持久化，宿主适配器负责启停窗口和应用位置。设置动作包括 `{"op":"save","options":{...}}` 和 `{"op":"task_manager"}`，不携带工作区面板 ID；它们是该适配器的协议，不是通用插件操作。卸下 DLL 后已有监控配置保留，但不创建窗口，也不显示设置入口。
 
 ## 8. 编写和构建第一个插件
 
@@ -153,7 +155,7 @@ cargo build -p luciddesk-plugin-api --example minimal --locked --target-dir targ
 plugins::request("example.echo", serde_json::json!({"op":"echo","value":"hello"}))?;
 ```
 
-独立仓库应建立 `crate-type = ["cdylib"]` 的 crate，使用与目标主程序一致的 Windows 架构，依赖 SDK 并参照示例导出入口。ABI 兼容不等于能力协议兼容：增加 UI 功能时先定义能力版本、数据和动作，再实现宿主适配器、持久化及真实 UI 测试。
+独立仓库应建立 `crate-type = ["cdylib"]` 的 crate，使用与目标主程序一致的 Windows 架构，依赖 SDK 并参照示例导出入口。ABI 兼容不等于能力协议兼容：增加 UI 功能时先定义能力版本、数据和动作，再实现宿主适配器、插件配置及真实 UI 测试。
 
 本仓库的默认发行与可选监控构建：
 
@@ -192,8 +194,30 @@ try {
 
 CI 正式发行使用 `tools/package.ps1 -All -InstallerFormat Exe -Offline -NoPlugins`。该参数禁止同时选择插件，并在生成 ZIP 和安装包前检查暂存清单与 DLL；插件测试产物不进入正式发行包。本地仍可显式使用 `-Plugins system-monitor` 构建开发预览包。
 
+## 插件列表与启停
+
+“设置 → 插件”列出通过接口校验的已安装插件名称、版本和 ID；开关即时生效。禁用后能力查询和普通调用均被阻止，但 DLL 保持加载直到进程退出，以便读取清单并再次启用。此开关不是代码安全隔离：发现清单仍需要加载 DLL，只安装可信插件。添加或替换 DLL 后需重启程序。
+
+禁用系统监控插件时，宿主先正常退出监控子进程，再关闭主进程中的插件资源；不修改插件配置中的功能开关。重新启用插件后，按该开关恢复监控窗口。插件 ID 的禁用列表保存在 `config.toml` 的 `plugins.disabled`（空格分隔），未安装插件的记录仍保留。
+
 ## 系统监控的进程隔离
 
 系统监控是进程隔离插件的现有实例：主进程仅调用清单、设置描述和设备清单同步；实际窗口及 `client_new` / `drawing_new` 都运行于独立的 `luciddesk.exe --monitor-child`。原有 C ABI 不变，DLL 在子进程中仍通过标准宿主绘图上下文工作。`inventory` 操作接受三个设备列表（网络、磁盘、GPU），供主进程设置页使用，不触发本地采样。
 
 该子进程入口与按行 JSON 管道属于同一构建的私有协议，并非通用的第三方插件 ABI。插件文件继续位于 EXE 同级 `plugins`，默认发行包不带插件，也不需要额外分发 helper EXE。
+
+## 插件拥有配置
+
+需要磁盘配置的插件声明 `config.v1` 能力。主程序初始化或重新加载配置时，在调用功能操作前发送：
+
+```json
+{"op":"config_open","directory":"<data-dir>/plugins/<plugin-id>"}
+```
+
+目录由宿主按已验证的插件 ID 分配。插件自行决定文件名、格式、默认值、校验和保存时机，宿主不解析或改写配置文件。没有声明此能力的插件不接收该操作。重新加载失败应返回协议错误，不能覆盖原文件。
+
+系统监控使用 `config.toml`，提供 `config_get`、`save_options { options }` 和 `save_window { window }` 操作。主进程的插件实例负责文件读写；监控子进程不接收 `config_open`，只使用宿主发送的运行时快照。首次读取缺失文件使用默认值（监控关闭），修改后才创建文件；没有变化不写入。
+
+插件激活状态仍属于宿主，保存在主配置的 `plugins.disabled`。插件自身的功能开关、指标和窗口设置不写入主配置或工作区数据库。当前工作区 `.db` 备份不包含插件配置；备份插件设置请复制对应插件配置目录。DLL 所在的程序目录 `plugins` 与数据目录下的 `plugins` 用途不同。
+
+开发验证应使用独立的 `LUCIDDESK_DATA_DIR`（例如仓库 `target/dev-data`），不要让实验构建改写日常工作区。未发布的实验数据可以在备份后本地清理，不为其增加发行版迁移逻辑。

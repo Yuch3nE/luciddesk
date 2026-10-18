@@ -1134,17 +1134,7 @@ fn control_position(
             Default::default(),
         );
         if page == 14 {
-            let panels = s
-                .workspace
-                .panels()
-                .iter()
-                .filter(|p| p.is_monitor())
-                .map(|p| {
-                    monitor::Preferences::load(&s.store, p.id())
-                        .map(|options| (p.id(), p.title().into(), options))
-                })
-                .collect();
-            monitor_page::draw(&mut content, w, &panels);
+            monitor_page::draw(&mut content, w);
         }
         let mut body = with_titlebar(content, w, false);
         let mut scroll = 0.0;
@@ -1403,15 +1393,7 @@ fn all_languages_layout_and_render_without_control_overflow() {
                         true,
                         false,
                     ),
-                    14 => monitor_page::draw(
-                        &mut body,
-                        width,
-                        &Ok(vec![(
-                            PanelId::new(1),
-                            "Monitor".into(),
-                            monitor::Preferences::default(),
-                        )]),
-                    ),
+                    14 => monitor_page::draw(&mut body, width),
                     _ => {}
                 }
                 let mut scene = with_titlebar(body, width, false);
@@ -1837,9 +1819,10 @@ fn native_monitor_settings_switch_reopens_the_saved_panel() {
     }
     let _sta = crate::pane::test_support::apartment();
     let state = Rc::new(RefCell::new(super::super::tests::test_state()));
-    handle(&state, PanelId::new(0), Event::NewMonitor).unwrap();
+    state.borrow_mut().monitor_child = true;
+    handle(&state, PanelId::new(0), Event::EnableMonitor).unwrap();
     let id = state.borrow().workspace.panels().last().unwrap().id();
-    show(&state, id).unwrap();
+    host::show_at(&state, id, 14).unwrap();
     let hwnd = state.borrow().settings.as_ref().unwrap().hwnd().cast();
     let click = |predicate| {
         let point = control_position(&state, hwnd, 14, predicate, 0.5);
@@ -1850,24 +1833,24 @@ fn native_monitor_settings_switch_reopens_the_saved_panel() {
         }
     };
     click(
-        |a| matches!(a, Action::MonitorOptions(_, p) if !p.metrics.contains(&monitor::Metric::Cpu)),
+        |a| matches!(a, Action::MonitorOptions(p) if !p.metrics.contains(&monitor::Metric::Cpu)),
     );
     assert!(
-        !monitor::Preferences::load(&state.borrow().store, id)
+        !monitor::Preferences::load()
             .unwrap()
             .metrics
             .contains(&monitor::Metric::Cpu)
     );
-    click(|a| matches!(a, Action::MonitorOptions(_, p) if !p.enabled));
+    click(|a| matches!(a, Action::MonitorOptions(p) if !p.enabled));
     assert!(!state.borrow().views.iter().any(|v| v.id == id));
     assert!(
-        !monitor::Preferences::load(&state.borrow().store, id)
+        !monitor::Preferences::load()
             .unwrap()
             .enabled
     );
-    click(|a| matches!(a, Action::MonitorOptions(_, p) if p.enabled));
+    click(|a| matches!(a, Action::MonitorOptions(p) if p.enabled));
     assert!(state.borrow().views.iter().any(|v| v.id == id));
-    let options = monitor::Preferences::load(&state.borrow().store, id).unwrap();
+    let options = monitor::Preferences::load().unwrap();
     assert!(options.enabled);
     assert!(!options.metrics.contains(&monitor::Metric::Cpu));
     unsafe {

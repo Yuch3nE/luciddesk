@@ -6,8 +6,8 @@ mod sampling;
 mod tests;
 use super::{Event, GroupModel};
 pub(super) use drawing::Drawing;
+#[cfg(test)]
 use luciddesk_core::PanelId;
-use luciddesk_storage::WorkspaceStore;
 pub(super) use sampling::Client;
 pub(super) const PLUGIN_ID: &str = "system-monitor";
 pub(super) fn available() -> bool {
@@ -140,36 +140,12 @@ impl Default for Preferences {
     }
 }
 impl Preferences {
-    pub(super) fn load(store: &WorkspaceStore, id: PanelId) -> Result<Self, String> {
-        let raw = store
-            .preference(&format!("monitor:{}", id.get()))
-            .map_err(|e| e.to_string())?;
-        let mut value = raw
-            .map(|s| serde_json::from_str::<Self>(&s))
-            .transpose()
-            .map_err(|e| format!("Invalid monitor preferences: {e}"))?
-            .unwrap_or_default();
-        let mut unique = Vec::new();
-        value.metrics.retain(|m| {
-            if unique.contains(m) {
-                false
-            } else {
-                unique.push(*m);
-                true
-            }
-        });
-        if ![1, 2, 5].contains(&value.interval) {
-            value.interval = 1;
-        }
-        Ok(value)
+    pub(super) fn load() -> Result<Self, String> {
+        let config = crate::plugins::request(PLUGIN_ID, serde_json::json!({"op":"config_get"}))?;
+        serde_json::from_value(config["options"].clone()).map_err(|e| e.to_string())
     }
-    pub(super) fn save(&self, store: &WorkspaceStore, id: PanelId) -> Result<(), String> {
-        store
-            .save_preference(
-                &format!("monitor:{}", id.get()),
-                &serde_json::to_string(self).map_err(|e| e.to_string())?,
-            )
-            .map_err(|e| e.to_string())
+    pub(super) fn save(&self) -> Result<(), String> {
+        crate::plugins::request(PLUGIN_ID, serde_json::json!({"op":"save_options", "options":self})).map(|_| ())
     }
     pub(super) fn minimum(&self, collapsed: bool) -> (f32, f32) {
         (
@@ -201,7 +177,6 @@ pub(super) fn show_menu(
     let rows = vec![
         entry(18, crate::i18n::text("monitor-settings"), "", ""),
         entry(0, "", "", ""),
-        entry(43, crate::i18n::text("ui-rename-panel"), "", ""),
         entry(
             48,
             crate::i18n::text(if collapsed {
@@ -223,7 +198,6 @@ pub(super) fn show_menu(
     ];
     match show_entries(hwnd, anchor, anchored, theme, backdrop, rows) {
         18 => event(Event::Settings),
-        43 if !locked => event(Event::RenameTitle),
         48 => event(Event::Collapse),
         7 => event(Event::ToggleAutoHide),
         10 => event(Event::ToggleLocked),
@@ -243,43 +217,4 @@ pub(super) fn devices(metric: Metric) -> Vec<(String, String)> {
         .ok()
         .and_then(|v| serde_json::from_value(v[index].clone()).ok())
         .unwrap_or_default()
-}
-
-#[cfg(test)]
-mod preference_tests {
-    use super::*;
-    #[test]
-    fn monitor_preferences_roundtrip_devices_order_layout_and_sampling() {
-        let store = WorkspaceStore::open_in_memory().unwrap();
-        let id = PanelId::new(1);
-        let preferences = Preferences {
-            enabled: true,
-            metrics: vec![Metric::Network, Metric::Gpu],
-            compact: true,
-            paused: true,
-            interval: 5,
-            network: Some("Ethernet".into()),
-            disk: Some("C:\\".into()),
-            gpu: Some("adapter-luid".into()),
-        };
-        preferences.save(&store, id).unwrap();
-        let loaded = Preferences::load(&store, id).unwrap();
-        assert_eq!(
-            serde_json::to_value(loaded).unwrap(),
-            serde_json::to_value(preferences).unwrap()
-        );
-    }
-    #[test]
-    fn persisted_duplicate_metrics_and_invalid_intervals_are_normalized() {
-        let store = WorkspaceStore::open_in_memory().unwrap();
-        store
-            .save_preference(
-                "monitor:1",
-                r#"{"metrics":["Cpu","Memory","Cpu"],"interval":0}"#,
-            )
-            .unwrap();
-        let preferences = Preferences::load(&store, PanelId::new(1)).unwrap();
-        assert_eq!(preferences.metrics, [Metric::Cpu, Metric::Memory]);
-        assert_eq!(preferences.interval, 1);
-    }
 }

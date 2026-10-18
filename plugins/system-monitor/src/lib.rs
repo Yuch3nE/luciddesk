@@ -1,5 +1,6 @@
 //! Optional native system-monitor plugin. No worker is started by loading the DLL.
 mod options;
+mod config;
 use options::{Metric, Preferences};
 mod drawing;
 mod gpu;
@@ -62,10 +63,11 @@ struct Request {
 #[serde(tag = "op", rename_all = "snake_case")]
 enum Command {
     Manifest,
-    Settings {
-        #[serde(default)]
-        panels: Vec<(u64, String, Preferences)>,
-    },
+    ConfigOpen { directory: std::path::PathBuf },
+    ConfigGet,
+    SaveOptions { options: Preferences },
+    SaveWindow { window: config::Window },
+    Settings,
     Devices,
     Inventory { devices: [Vec<(String, String)>; 3] },
     ClientNew,
@@ -117,12 +119,14 @@ fn dispatch(context: *mut c_void, r: Request) -> Result<Value, String> {
             name: i18n::text("monitor-title").into(),
             version: env!("CARGO_PKG_VERSION").into(),
             protocol_version: PROTOCOL_VERSION,
-            capabilities: vec!["system-monitor.v1".into()],
+            capabilities: vec!["system-monitor.v1".into(), "config.v1".into()],
         })
         .map_err(|e| e.to_string()),
-        Command::Settings { panels } => {
-            serde_json::to_value(settings::draw(&panels)).map_err(|e| e.to_string())
-        }
+        Command::ConfigOpen { directory } => { config::open(directory)?; Ok(Value::Null) },
+        Command::ConfigGet => serde_json::to_value(config::get()).map_err(|e| e.to_string()),
+        Command::SaveOptions { options } => { config::options(options)?; Ok(Value::Null) },
+        Command::SaveWindow { window } => { config::window(window)?; Ok(Value::Null) },
+        Command::Settings => serde_json::to_value(settings::draw(&config::get().options)).map_err(|e| e.to_string()),
         Command::Inventory { devices } => { INVENTORY.with(|v| *v.borrow_mut() = Some(devices)); Ok(Value::Null) },
         Command::Devices => Ok(json!([
             devices(Metric::Network),

@@ -49,8 +49,12 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
     let all_fonts = context.all_fonts;
     let mut invalidate = false;
     match &c.action {
-        Action::MonitorOptions(id, options) => {
-            if let Err(error) = handle(state, *id, Event::MonitorOptions(options.clone())) {
+        Action::PluginEnabled(id, enabled) => {
+            if let Err(error) = plugin_page::set_enabled(state, id, *enabled) { window::error(&error); }
+            invalidate = true;
+        }
+        Action::MonitorOptions(options) => {
+            if let Err(error) = handle(state, selected, Event::MonitorOptions(options.clone())) {
                 window::error(&error);
             }
             invalidate = true;

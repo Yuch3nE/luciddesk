@@ -213,7 +213,7 @@ enum Event {
     Sizing(*mut RECT, RECT, u32),
     Material(luciddesk_core::Backdrop),
     New,
-    NewMonitor,
+    EnableMonitor,
     MonitorOptions(monitor::Preferences),
     EnableSearch,
     ToggleSearch,
@@ -360,7 +360,7 @@ fn create_model(state: &PaneApp, id: PanelId) -> Result<GroupModel, String> {
     Ok(GroupModel {
         monitor: panel
             .is_monitor()
-            .then(|| monitor::Preferences::load(&state.store, id))
+            .then(|| monitor::Preferences::load())
             .transpose()?,
         merge_preview: Vec::new(),
         merge_occluded: false,
@@ -426,12 +426,12 @@ fn create_view(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result<(), String> 
         .workspace
         .panel(id)
         .is_some_and(Panel::is_monitor)
-        && !monitor::Preferences::load(&state.borrow().store, id)?.enabled
+        && !monitor::Preferences::load()?.enabled
     {
         return Ok(());
     }
     if !state.borrow().monitor_child && state.borrow().workspace.panel(id).is_some_and(Panel::is_monitor) {
-        return monitor::process::open(state, id);
+        return Ok(());
     }
     folder::ensure(&mut state.borrow_mut(), id)?;
     let panel = state.borrow().workspace.panel(id).unwrap().clone();
@@ -606,6 +606,10 @@ fn save(state: &mut PaneApp) -> Result<(), String> {
 }
 
 fn save_state(state: &mut PaneApp, record_layout: bool) -> Result<(), String> {
+    if state.monitor_child {
+        if let Some(panel) = state.workspace.panels().first() { monitor::process::publish_panel(panel); }
+        return Ok(());
+    }
     state.workspace.sync_tab_windows();
     hybrid::sync(state)?;
     let layout = record_layout
@@ -620,9 +624,6 @@ fn save_state(state: &mut PaneApp, record_layout: bool) -> Result<(), String> {
                 .map(|(topology, bounds)| (topology.as_str(), bounds.as_slice())),
         )
         .map_err(|e| crate::i18n::format("ui-could-not-save-group", &[("e", format!("{}", e))]))?;
-    if state.monitor_child {
-        if let Some(panel) = state.workspace.panels().first() { monitor::process::publish_panel(panel); }
-    }
     Ok(())
 }
 

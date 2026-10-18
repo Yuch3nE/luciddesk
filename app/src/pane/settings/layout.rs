@@ -257,6 +257,7 @@ fn scene_with_mica(
         scroll_offset: 0.0,
         text: vec![],
         cards: vec![],
+        let navigation_height = (stride - 2.0).min(38.0);
         separators: vec![],
         controls: vec![],
         previews: vec![],
@@ -267,19 +268,19 @@ fn scene_with_mica(
         // Keep spacing tied to semantic groups, not insertion positions.
         let gap = match id {
             4 | 3 => 10.0,
-            6 | 12 | 5 => 20.0,
+            6 | 12 | 15 | 5 => 20.0,
             _ => 0.0,
         };
         let stride = ((_height - 136.0) / (pages().len() - 1) as f32).clamp(34.0, 42.0);
         let y = 78.0 + position as f32 * stride + gap;
         s.control(
             ControlKind::Navigation,
-            Rect::from_xywh(12.0, y, Tokens::content_x() - 48.0, 38.0),
+            Rect::from_xywh(12.0, y, Tokens::content_x() - 48.0, navigation_height),
             name,
             Action::Page(id),
             page == id || (page == 7 && id == 0) || (matches!(page, 9 | 10) && id == 6),
         );
-        s.text(Rect::from_xywh(30.0, y, 22.0, 38.0), icon, 5);
+        s.text(Rect::from_xywh(30.0, y, 22.0, navigation_height), icon, 5);
     }
     let x = Tokens::content_x();
     let w = (width - x - Tokens::MARGIN).min(Tokens::MAX_WIDTH);

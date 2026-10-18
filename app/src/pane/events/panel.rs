@@ -41,7 +41,7 @@ pub(super) fn apply(
         | Event::ToggleListView
         | Event::ToggleSearch
         | Event::EnableSearch
-        | Event::NewMonitor
+        | Event::EnableMonitor
         | Event::MonitorOptions(_)
         | Event::FileDrag(_)
         | Event::NewFolder
@@ -241,6 +241,10 @@ pub(super) fn apply(
                     rect
                 });
             }
+            if s.monitor_child {
+                monitor::process::publish_panel(s.workspace.panel(id).unwrap());
+                return Ok(false);
+            }
             s.workspace.sync_tab_windows();
             let rectangles: Vec<_> = s
                 .workspace
@@ -258,7 +262,6 @@ pub(super) fn apply(
                 s.workspace = previous;
                 return Err(error.to_string());
             }
-            if s.monitor_child { monitor::process::publish_panel(s.workspace.panel(id).unwrap()); }
         }
         Event::AutoHideCollapsed(collapsed) => {
             // Hover state belongs to the live window, never to the persisted panel.

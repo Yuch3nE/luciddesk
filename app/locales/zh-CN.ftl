@@ -1291,5 +1291,9 @@ monitor-settings-description = 在此启用监控面板，选择显示指标和�
 monitor-enable = 启用监控面板
 monitor-enable-description = 关闭后保留布局与设置，再次开启即可恢复。
 
+
+plugins-title = 插件
+plugins-description = 管理已安装插件；开关立即生效并保留配置。添加或更新 DLL 后请重启程序。
+plugins-empty = 未安装插件。将插件 DLL 放入程序目录下的 plugins 文件夹后重启。
 monitor-display-settings = 显示与刷新
 monitor-device-settings = 设备来源

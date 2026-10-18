@@ -18,7 +18,7 @@ try {
     if ($executables.Count -ne 1) { throw 'Expected one host test executable.' }
     $executable = $executables[0]
     $destination = Join-Path (Split-Path -Parent $executable) 'plugins'
-    $filters = @('pane::monitor::', 'pane::settings::monitor_page::',
+    $filters = @('pane::settings::plugin_page::', 'pane::monitor::', 'pane::settings::monitor_page::',
         'pane::settings::tests::native_monitor_settings_switch_')
     # The host uses the Windows GUI subsystem; a pipeline makes PowerShell wait.
     $listing = @(& $executable --list | ForEach-Object { $_ })

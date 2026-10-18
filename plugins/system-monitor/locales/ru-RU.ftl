@@ -1,6 +1,5 @@
 ui-open = { "Открыть" }
 monitor-title = Монитор системы
-monitor-new = Новая панель мониторинга
 monitor-cpu = ЦП
 monitor-memory = Память
 monitor-gpu = GPU
@@ -30,7 +29,7 @@ monitor-live = В реальном времени
 monitor-history = Последние 60 секунд
 monitor-used = Занято
 monitor-settings = Настройки системного монитора
-monitor-settings-description = Включайте панели и выбирайте показатели и устройства. У каждой панели свои настройки.
+monitor-settings-description = Включите мониторинг системы и выберите показатели и устройства. При закрытии настройки сохраняются.
 monitor-enable = Включить панель монитора
 monitor-enable-description = При отключении расположение и настройки сохраняются.
 monitor-display-settings = Отображение и обновление

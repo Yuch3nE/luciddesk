@@ -1291,5 +1291,9 @@ monitor-settings-description = Monitor-Panels aktivieren und Messwerte und Gerä
 monitor-enable = Monitor-Panel aktivieren
 monitor-enable-description = Layout und Einstellungen bleiben beim Deaktivieren erhalten.
 
+
+plugins-title = Plugins
+plugins-description = Installierte Plugins verwalten. Änderungen gelten sofort; Einstellungen bleiben erhalten. Nach DLL-Updates neu starten.
+plugins-empty = Keine Plugins installiert. DLLs im Ordner plugins neben der App ablegen und neu starten.
 monitor-display-settings = Anzeige und Aktualisierung
 monitor-device-settings = Gerätequellen

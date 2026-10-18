@@ -1291,5 +1291,9 @@ monitor-settings-description = Включайте панели и выбирай
 monitor-enable = Включить панель монитора
 monitor-enable-description = При отключении расположение и настройки сохраняются.
 
+
+plugins-title = Плагины
+plugins-description = Управление установленными плагинами. Изменения применяются сразу, настройки сохраняются. После обновления DLL перезапустите приложение.
+plugins-empty = Плагины не установлены. Поместите DLL в папку plugins рядом с приложением и перезапустите его.
 monitor-display-settings = Отображение и обновление
 monitor-device-settings = Источники данных

@@ -117,6 +117,7 @@ pub fn run(path: &Path, title: Option<String>) -> Result<(), String> {
     let first_run = !path.exists();
     let mut store = WorkspaceStore::open(path).map_err(|e| e.to_string())?;
     load_log_level(&store)?;
+    crate::plugins::initialize(&store)?;
     crate::i18n::initialize(&store)?;
     super::peek::load(&store)?;
     fonts::load(&store)?;
@@ -201,6 +202,7 @@ pub fn run(path: &Path, title: Option<String>) -> Result<(), String> {
     for id in ids {
         create_view(&state, id)?;
     }
+    monitor::process::configure(&state)?;
     let tray_state = Rc::downgrade(&state);
     let appearance_state = Rc::downgrade(&state);
     let tray = crate::tray::Tray::new(

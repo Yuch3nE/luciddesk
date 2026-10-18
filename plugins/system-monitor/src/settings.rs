@@ -2,23 +2,13 @@ use crate::{Metric, Preferences};
 use luciddesk_plugin_api::{Item, Page};
 use serde_json::{Value, json};
 
-pub(crate) fn draw(panels: &[(u64, String, Preferences)]) -> Page {
+pub(crate) fn draw(options: &Preferences) -> Page {
     let mut form = Form(Page {
         description: crate::i18n::text("monitor-settings-description").into(),
         items: Vec::new(),
     });
-    if panels.is_empty() {
-        form.toggle(
-            crate::i18n::text("monitor-enable"),
-            "",
-            false,
-            json!({"op":"new"}),
-        );
-        return form.0;
-    }
-    for (id, title, options) in panels {
-        let action = |options| json!({"op":"save", "id":id, "options":options});
-        form.section(title);
+    {
+        let action = |options| json!({"op":"save", "options":options});
         form.toggle(
             crate::i18n::text("monitor-enable"),
             crate::i18n::text("monitor-enable-description"),
@@ -154,12 +144,6 @@ pub(crate) fn draw(panels: &[(u64, String, Preferences)]) -> Page {
             );
         }
     }
-    form.button(
-        crate::i18n::text("monitor-new"),
-        "",
-        crate::i18n::text("monitor-new"),
-        json!({"op":"new"}),
-    );
     form.button(
         crate::i18n::text("monitor-task-manager"),
         "",

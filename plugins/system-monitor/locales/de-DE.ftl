@@ -1,6 +1,5 @@
 ui-open = { "Öffnen" }
 monitor-title = Systemmonitor
-monitor-new = Neues Systemmonitor-Panel
 monitor-cpu = CPU
 monitor-memory = Arbeitsspeicher
 monitor-gpu = GPU
@@ -30,7 +29,7 @@ monitor-live = Live
 monitor-history = Letzte 60 Sekunden
 monitor-used = Belegt
 monitor-settings = Systemmonitor-Einstellungen
-monitor-settings-description = Monitor-Panels aktivieren und Messwerte und Geräte auswählen. Jedes Panel speichert eigene Einstellungen.
+monitor-settings-description = Systemmonitor aktivieren und Messwerte und Geräte auswählen. Einstellungen bleiben beim Schließen erhalten.
 monitor-enable = Monitor-Panel aktivieren
 monitor-enable-description = Layout und Einstellungen bleiben beim Deaktivieren erhalten.
 monitor-display-settings = Anzeige und Aktualisierung

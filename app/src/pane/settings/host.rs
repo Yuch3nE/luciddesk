@@ -1,13 +1,15 @@
 //! Settings window construction and native message dispatch.
 use super::*;
 
-pub(in crate::pane) fn show(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result<(), String> {
+pub(in crate::pane) fn show(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result<(), String> { show_at(state, id, 0) }
+pub(in crate::pane) fn show_monitor(state: &Rc<RefCell<PaneApp>>) -> Result<(), String> { show_at(state, PanelId::new(0), 14) }
+pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: usize) -> Result<(), String> {
     // Native activation synchronously dispatches messages to other panes. Do not
     // hold a shared-state borrow while showing or activating this window.
     let existing = state.borrow().settings.as_ref().map(|window| window.hwnd());
     if let Some(hwnd) = existing {
         unsafe {
-            SendMessageW(hwnd.cast(), SELECT_PANEL, id.get() as usize, 0);
+            SendMessageW(hwnd.cast(), SELECT_PANEL, id.get() as usize, initial_page as isize);
             ShowWindow(hwnd.cast(), SW_RESTORE);
             SetForegroundWindow(hwnd.cast());
         }
@@ -61,18 +63,8 @@ pub(in crate::pane) fn show(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result
     let mut paint_recovery = composition::PaintRecovery::default();
     let mut reveal: Option<PendingReveal> = None;
     // Navigation belongs to this window, not the saved workspace or connection state.
-    let mut page = if monitor::available()
-        && state
-            .borrow()
-            .workspace
-            .panel(id)
-            .is_some_and(Panel::is_monitor)
-    {
-        14
-    } else {
-        0
-    };
-    let mut monitor_panels = Ok(Vec::new());
+    let mut page = initial_page;
+    let mut monitor_options = None;
     let mut recording_peek = false;
     let mut recording_search = false;
     let mut recording_show_panels = false;
@@ -271,6 +263,7 @@ pub(in crate::pane) fn show(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result
                 return Some(0);
             }
             if msg == SELECT_PANEL {
+                if lp == 14 { page = 14; scene_key = None; }
                 if wp != 0 {
                     selected = PanelId::new(wp as u64);
                     if monitor::available() && state.borrow().workspace.panel(selected).is_some_and(Panel::is_monitor) {
@@ -411,12 +404,9 @@ pub(in crate::pane) fn show(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result
                     snapshot_changed = true;
                 }
                 if page == 14 {
-                    let fresh = state.workspace.panels().iter().filter(|p| p.is_monitor())
-                        .map(|p| monitor::Preferences::load(&state.store, p.id())
-                            .map(|options| (p.id(), p.title().to_owned(), options)))
-                        .collect::<Result<Vec<_>, String>>();
-                    snapshot_changed |= monitor_panels != fresh;
-                    monitor_panels = fresh;
+                    let fresh = Some(monitor::Preferences::load());
+                    snapshot_changed |= monitor_options != fresh;
+                    monitor_options = fresh;
                 }
                 let fresh_cli = control::enabled(&state.store);
                 snapshot_changed |= cli_enabled != fresh_cli;
@@ -489,7 +479,8 @@ pub(in crate::pane) fn show(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result
                         appearance,
                         options,
                     );
-                if page == 14 { monitor_page::draw(&mut body, w, &monitor_panels); }
+                if page == 15 { plugin_page::draw(&mut body, w); }
+                if page == 14 { monitor_page::draw(&mut body, w); }
                 if page == 12 {
                     layout::language(&mut body, w, &chosen_language);
                 }

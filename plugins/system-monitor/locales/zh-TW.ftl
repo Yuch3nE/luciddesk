@@ -1,6 +1,5 @@
 ui-open = { "開啟" }
 monitor-title = 系統監控
-monitor-new = 新增系統監控面板
 monitor-cpu = CPU
 monitor-memory = 記憶體
 monitor-gpu = GPU
@@ -30,7 +29,7 @@ monitor-live = 即時
 monitor-history = 最近 60 秒
 monitor-used = 已用
 monitor-settings = 系統監控設定
-monitor-settings-description = 在此啟用監控面板，選擇顯示指標和裝置；每個面板獨立儲存設定。
+monitor-settings-description = 啟用系統監控，選擇顯示指標和裝置；關閉後保留設定。
 monitor-enable = 啟用監控面板
 monitor-enable-description = 關閉後保留版面與設定，再次開啟即可恢復。
 monitor-display-settings = 顯示與更新

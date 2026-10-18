@@ -338,6 +338,8 @@ dependencies = [
  "serde",
  "serde_json",
  "sysinfo",
+ "tempfile",
+ "toml",
  "windows",
  "windows-canvas",
  "windows-core 0.100.0",

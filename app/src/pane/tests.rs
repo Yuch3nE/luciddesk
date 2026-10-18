@@ -320,7 +320,7 @@ pub(super) fn test_state() -> PaneApp {
     let (_, receiver) = mpsc::channel();
     PaneApp {
         monitors: Default::default(),
-        monitor_child: true,
+        monitor_child: false,
         sorting: Default::default(),
         wake: Default::default(),
         folders: HashMap::new(),

@@ -1,6 +1,7 @@
-//! Private same-build IPC. Only the host persists configuration; child EOF closes the UI.
+//! Private same-build IPC. The parent plugin persists configuration; child EOF closes the UI.
 use super::super::*;
 use super::Preferences;
+use luciddesk_core::{Backdrop, PanelTheme};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};
 use std::os::windows::process::CommandExt;
@@ -16,16 +17,60 @@ struct Config {
     font: String,
     flags: [bool; 3],
 }
+#[derive(Clone, Serialize, Deserialize)]
+struct WindowOptions {
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    collapsed: bool,
+    locked: bool,
+    always_on_top: bool,
+    auto_hide: bool,
+}
+impl WindowOptions {
+    fn from_panel(p: &Panel) -> Self {
+        let r = p.rect();
+        Self {
+            x: r.x,
+            y: r.y,
+            width: r.width,
+            height: r.height,
+            collapsed: p.collapsed(),
+            locked: p.locked(),
+            always_on_top: p.always_on_top(),
+            auto_hide: p.auto_hide(),
+        }
+    }
+}
 impl Config {
-    fn capture(s: &PaneApp, id: PanelId) -> Result<Self, String> {
+    fn capture(s: &PaneApp) -> Result<Self, String> {
+        let value =
+            crate::plugins::request(super::PLUGIN_ID, serde_json::json!({"op":"config_get"}))?;
+        let window: WindowOptions =
+            serde_json::from_value(value["window"].clone()).map_err(|e| e.to_string())?;
+        // This ID exists only inside the child renderer, never in the user's workspace.
+        let mut panel = Panel::new(
+            PanelId::new(1),
+            crate::i18n::text("monitor-title"),
+            RectDip::from_bounds(window.x, window.y, window.width, window.height),
+        );
+        panel.set_monitor(true);
+        panel.set_collapsed(window.collapsed);
+        panel.set_locked(window.locked);
+        panel.set_always_on_top(window.always_on_top);
+        panel.set_auto_hide(window.auto_hide);
+        let (theme, backdrop) = s
+            .workspace
+            .appearance()
+            .unwrap_or((PanelTheme::System, Backdrop::Mica));
+        panel.set_theme(theme);
+        panel.set_backdrop(backdrop);
         Ok(Self {
-            panel: s
-                .workspace
-                .panel(id)
-                .ok_or("Monitor panel missing")?
-                .clone(),
+            panel,
+            preferences: serde_json::from_value(value["options"].clone())
+                .map_err(|e| e.to_string())?,
             options: s.workspace.pane_options(),
-            preferences: Preferences::load(&s.store, id)?,
             language: crate::i18n::language().into(),
             font: fonts::family(),
             flags: [
@@ -134,43 +179,29 @@ impl Drop for Process {
 }
 #[derive(Default)]
 pub(in crate::pane) struct Manager {
-    processes: HashMap<PanelId, Process>,
+    process: Option<Process>,
 }
 impl Manager {
     pub(in crate::pane) fn windows(&self) -> Vec<windows_sys::Win32::Foundation::HWND> {
-        self.processes
-            .values()
+        self.process
+            .iter()
             .filter(|p| p.hwnd != 0)
             .map(|p| p.hwnd as _)
             .collect()
     }
-    pub(in crate::pane) fn stop(&mut self, id: PanelId) {
-        if self.processes.remove(&id).is_some() {
-            self.publish_inventory();
-        }
-    }
     fn publish_inventory(&self) {
-        let mut devices: Devices = Default::default();
-        for process in self.processes.values() {
-            for (all, values) in devices.iter_mut().zip(&process.devices) {
-                for item in values {
-                    if !all.iter().any(|(id, _)| id == &item.0) {
-                        all.push(item.clone());
-                    }
-                }
-            }
-        }
+        let devices = self
+            .process
+            .as_ref()
+            .map(|p| p.devices.clone())
+            .unwrap_or_default();
         let _ = crate::plugins::request(
             super::PLUGIN_ID,
-            serde_json::json!({"op":"inventory","devices":devices}),
+            serde_json::json!({"op":"inventory", "devices":devices}),
         );
     }
 }
-pub(in crate::pane) fn open(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result<(), String> {
-    if state.borrow().monitors.processes.contains_key(&id) {
-        return Ok(());
-    }
-    let config = Config::capture(&state.borrow(), id)?;
+fn open(state: &Rc<RefCell<PaneApp>>, config: Config) -> Result<(), String> {
     let executable = std::env::current_exe().map_err(|e| e.to_string())?;
     #[cfg(test)]
     let executable = executable
@@ -222,101 +253,94 @@ pub(in crate::pane) fn open(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result
         devices: Default::default(),
     };
     write_json(process.input.as_mut().unwrap(), &process.config)?;
-    state.borrow_mut().monitors.processes.insert(id, process);
+    state.borrow_mut().monitors.process = Some(process);
     Ok(())
 }
-pub(in crate::pane) fn configure(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result<(), String> {
-    if !Preferences::load(&state.borrow().store, id)?.enabled {
-        state.borrow_mut().monitors.stop(id);
+pub(in crate::pane) fn configure(state: &Rc<RefCell<PaneApp>>) -> Result<(), String> {
+    let config = if super::available() {
+        Some(Config::capture(&state.borrow())?)
+    } else {
+        None
+    };
+    if config.as_ref().is_none_or(|c| !c.preferences.enabled) {
+        let process = state.borrow_mut().monitors.process.take();
+        drop(process);
+        if super::available() {
+            state.borrow().monitors.publish_inventory();
+        }
         return Ok(());
     }
-    open(state, id)?;
-    synchronize(&mut state.borrow_mut())
-}
-fn synchronize(s: &mut PaneApp) -> Result<(), String> {
-    let ids: Vec<_> = s.monitors.processes.keys().copied().collect();
-    for id in ids {
-        if !s.workspace.panel(id).is_some_and(Panel::is_monitor) {
-            s.monitors.stop(id);
-            continue;
-        }
-        let next = Config::capture(s, id)?;
-        if !next.preferences.enabled {
-            s.monitors.stop(id);
-            continue;
-        }
-        let process = s.monitors.processes.get_mut(&id).unwrap();
-        if next != process.config {
-            write_json(process.input.as_mut().unwrap(), &next)?;
-            process.config = next;
-        }
+    let config = config.unwrap();
+    if state.borrow().monitors.process.is_none() {
+        return open(state, config);
+    }
+    let mut s = state.borrow_mut();
+    let process = s.monitors.process.as_mut().unwrap();
+    if process.config != config {
+        write_json(process.input.as_mut().unwrap(), &config)?;
+        process.config = config;
     }
     Ok(())
 }
 pub(in crate::pane) fn poll(state: &Rc<RefCell<PaneApp>>) -> Result<(), String> {
-    if state.borrow().monitor_child {
+    if state.borrow().monitor_child || state.borrow().monitors.process.is_none() {
         return Ok(());
     }
-    let mut settings = Vec::new();
+    let mut show_settings = false;
+    let mut settings_changed = false;
+    let mut closed = false;
     {
         let mut s = state.borrow_mut();
-        let ids: Vec<_> = s.monitors.processes.keys().copied().collect();
-        for id in ids {
-            let mut closed = false;
-            loop {
-                match s.monitors.processes[&id].replies.try_recv() {
-                    Ok(Reply::Devices(devices)) => {
-                        s.monitors.processes.get_mut(&id).unwrap().devices = devices;
-                        s.monitors.publish_inventory();
-                        if let Some(window) = &s.settings {
-                            unsafe {
-                                InvalidateRect(window.hwnd().cast(), std::ptr::null(), 0);
-                            }
-                        }
-                    }
-                    Ok(Reply::Ready(hwnd)) => {
-                        s.monitors.processes.get_mut(&id).unwrap().hwnd = hwnd
-                    }
-                    Ok(Reply::Settings) => settings.push(id),
-                    Ok(Reply::Panel(panel)) => {
-                        if let Some(target) = s.workspace.panel_mut(id) {
-                            *target = panel.clone();
-                            save(&mut s)?;
-                            s.monitors.processes.get_mut(&id).unwrap().config.panel = panel;
-                        }
-                    }
-                    Ok(Reply::Closed) => closed = true,
-                    Ok(Reply::Error(error)) => {
-                        luciddesk_diagnostics::log(
-                            luciddesk_diagnostics::Level::Error,
-                            "monitor.process",
-                            &error,
-                        );
-                        closed = true;
-                    }
-                    Err(mpsc::TryRecvError::Disconnected) => {
-                        closed = true;
-                        break;
-                    }
-                    Err(mpsc::TryRecvError::Empty) => break,
+        loop {
+            match s.monitors.process.as_ref().unwrap().replies.try_recv() {
+                Ok(Reply::Devices(devices)) => {
+                    settings_changed = true;
+                    s.monitors.process.as_mut().unwrap().devices = devices;
+                    s.monitors.publish_inventory();
                 }
+                Ok(Reply::Ready(hwnd)) => s.monitors.process.as_mut().unwrap().hwnd = hwnd,
+                Ok(Reply::Settings) => show_settings = true,
+                Ok(Reply::Panel(panel)) => {
+                    crate::plugins::request(
+                        super::PLUGIN_ID,
+                        serde_json::json!({"op":"save_window", "window":WindowOptions::from_panel(&panel)}),
+                    )?;
+                    s.monitors.process.as_mut().unwrap().config.panel = panel;
+                }
+                Ok(Reply::Closed) => closed = true,
+                Ok(Reply::Error(error)) => {
+                    luciddesk_diagnostics::log(
+                        luciddesk_diagnostics::Level::Error,
+                        "monitor.process",
+                        &error,
+                    );
+                    closed = true;
+                }
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    closed = true;
+                    break;
+                }
+                Err(mpsc::TryRecvError::Empty) => break,
             }
-            if closed {
-                s.monitors.stop(id);
-                let mut preferences = Preferences::load(&s.store, id)?;
-                preferences.enabled = false;
-                preferences.save(&s.store, id)?;
-                if let Some(window) = &s.settings {
-                    unsafe {
-                        InvalidateRect(window.hwnd().cast(), std::ptr::null(), 0);
-                    }
+        }
+        if settings_changed || closed {
+            if let Some(window) = &s.settings {
+                unsafe {
+                    InvalidateRect(window.hwnd().cast(), std::ptr::null(), 0);
                 }
             }
         }
-        synchronize(&mut s)?;
     }
-    for id in settings {
-        settings::show(state, id)?;
+    if closed {
+        let process = state.borrow_mut().monitors.process.take();
+        drop(process);
+        let mut preferences = Preferences::load()?;
+        preferences.enabled = false;
+        preferences.save()?;
+    }
+    configure(state)?;
+    if show_settings {
+        settings::show_monitor(state)?;
     }
     Ok(())
 }
@@ -357,13 +381,7 @@ fn apply(state: &Rc<RefCell<PaneApp>>, config: Config) -> Result<(), String> {
                 .add_panel(config.panel.clone())
                 .map_err(|e| e.to_string())?;
         }
-        if initial {
-            let workspace = s.workspace.clone();
-            s.store
-                .save_workspace(&workspace)
-                .map_err(|e| e.to_string())?;
-            config.preferences.save(&s.store, id)?;
-        }
+        config.preferences.save()?;
     }
     if initial {
         create_view(state, id)?;

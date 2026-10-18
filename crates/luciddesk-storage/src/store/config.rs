@@ -8,6 +8,7 @@ use std::{
 use toml_edit::{DocumentMut, Item, value};
 
 pub(super) const KEYS: &[&str] = &[
+    "plugins_disabled",
     "language",
     "log_level",
     "cli_enabled",
@@ -26,6 +27,9 @@ pub(super) const KEYS: &[&str] = &[
 const DEFAULTS: &str = r##"# LucidDesk global settings. Reload from Settings after editing.
 config_version = 1
 language = "system"
+
+[plugins]
+disabled = ""
 
 [cli]
 enabled = true
@@ -236,6 +240,7 @@ pub(super) fn decode(doc: &DocumentMut) -> Result<BTreeMap<String, String>, Stor
     let mut map = BTreeMap::new();
     let language = s(&["language"])?;
     validate_language(&language)?;
+    map.insert("plugins_disabled".into(), s(&["plugins", "disabled"])?);
     map.insert("language".into(), language);
     let log_level = s(&["diagnostics", "level"])?;
     validate_log_level(&log_level)?;
@@ -349,6 +354,7 @@ fn update(doc: &mut DocumentMut, key: &str, raw: &str) -> Result<(), StoreError>
     let f = |s: &str| s.parse::<f64>().map_err(io);
     let flag = |s: &str| s.parse::<bool>().map_err(io);
     match key {
+        "plugins_disabled" => { set(doc, &["plugins", "disabled"], value(raw)); }
         "cli_enabled" => { set(doc, &["cli", "enabled"], value(flag(raw)?)); }
         "log_level" => { validate_log_level(raw)?; set(doc, &["diagnostics", "level"], value(raw)); }
         "language" => { validate_language(raw)?; set(doc, &["language"], value(raw)); }

@@ -274,6 +274,9 @@ pub(super) fn backup_status(s: &PaneApp) -> String {
 
 pub(super) fn reload(state: &Rc<RefCell<PaneApp>>) -> Result<(), String> {
     load_log_level(&state.borrow().store)?;
+    let children = std::mem::take(&mut state.borrow_mut().monitors);
+    drop(children);
+    crate::plugins::initialize(&state.borrow().store)?;
     let views = {
         let mut s = state.borrow_mut();
         let workspace = s.store.load_workspace().map_err(|e| e.to_string())?;
@@ -298,6 +301,7 @@ pub(super) fn reload(state: &Rc<RefCell<PaneApp>>) -> Result<(), String> {
         std::mem::take(&mut s.views)
     };
     drop(views);
+    monitor::process::configure(state)?;
     reconnect(state);
     let ids: Vec<_> = {
         let s = state.borrow();
