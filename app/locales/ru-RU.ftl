@@ -645,7 +645,6 @@ ui-previous = { "Назад" }
 ui-next = { "Далее" }
 
 # 桌面面板与文件整理
-ui-desktop-groups-and-file-organization = { "Панели рабочего стола и организация файлов" }
 
 # 预设配色
 ui-color-presets = { "Готовые цвета" }
@@ -975,10 +974,8 @@ ui-global-shortcut = { "Глобальные клавиши" }
 ui-focus-the-desktop-search-panel-from-any-app = { "Перейти к панели поиска рабочего стола из любой программы." }
 
 # 把 Windows 桌面整理成顺手的工作区。
-ui-turn-your-windows-desktop-into-a-workspace-that-works-for-you = { "Превратите рабочий стол Windows в удобное рабочее пространство." }
 
 # 开发者与开源许可
-ui-developer-license = { "Разработчик и лицензия" }
 
 # 项目主页
 ui-project-website = { "Сайт проекта" }
@@ -1160,7 +1157,6 @@ font-unavailable = Шрифт не установлен или не содерж
 
 ui-project-resources = { "Ресурсы проекта" }
 
-ui-download-releases = { "Скачать" }
 
 ui-release-history = { "История изменений" }
 

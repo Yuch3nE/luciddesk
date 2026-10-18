@@ -645,7 +645,6 @@ ui-previous = { "前へ" }
 ui-next = { "次へ" }
 
 # 桌面面板与文件整理
-ui-desktop-groups-and-file-organization = { "デスクトップパネルとファイル整理" }
 
 # 预设配色
 ui-color-presets = { "プリセットカラー" }
@@ -975,10 +974,8 @@ ui-global-shortcut = { "グローバルショートカット" }
 ui-focus-the-desktop-search-panel-from-any-app = { "どのアプリからでもデスクトップ検索にフォーカスします。" }
 
 # 把 Windows 桌面整理成顺手的工作区。
-ui-turn-your-windows-desktop-into-a-workspace-that-works-for-you = { "Windows デスクトップを使いやすい作業空間に。" }
 
 # 开发者与开源许可
-ui-developer-license = { "開発者とライセンス" }
 
 # 项目主页
 ui-project-website = { "プロジェクトサイト" }
@@ -1160,7 +1157,6 @@ font-unavailable = フォントが未インストールか、現在の言語の�
 
 ui-project-resources = { "プロジェクト情報" }
 
-ui-download-releases = { "ダウンロード" }
 
 ui-release-history = { "更新履歴" }
 

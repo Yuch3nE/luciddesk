@@ -645,7 +645,6 @@ ui-previous = { "이전" }
 ui-next = { "다음" }
 
 # 桌面面板与文件整理
-ui-desktop-groups-and-file-organization = { "바탕 화면 패널 및 파일 정리" }
 
 # 预设配色
 ui-color-presets = { "색상 프리셋" }
@@ -975,10 +974,8 @@ ui-global-shortcut = { "전역 단축키" }
 ui-focus-the-desktop-search-panel-from-any-app = { "모든 앱에서 바탕 화면 검색 패널에 포커스를 맞춥니다." }
 
 # 把 Windows 桌面整理成顺手的工作区。
-ui-turn-your-windows-desktop-into-a-workspace-that-works-for-you = { "Windows 바탕 화면을 편리한 작업 공간으로 만드세요." }
 
 # 开发者与开源许可
-ui-developer-license = { "개발자 및 라이선스" }
 
 # 项目主页
 ui-project-website = { "프로젝트 홈페이지" }
@@ -1160,7 +1157,6 @@ font-unavailable = 글꼴이 없거나 현재 언어에 필요한 문자를 지�
 
 ui-project-resources = { "프로젝트 정보" }
 
-ui-download-releases = { "다운로드" }
 
 ui-release-history = { "변경 기록" }
 

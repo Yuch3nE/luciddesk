@@ -645,7 +645,6 @@ ui-previous = { "上一頁" }
 ui-next = { "下一頁" }
 
 # 桌面面板与文件整理
-ui-desktop-groups-and-file-organization = { "桌面面板與檔案整理" }
 
 # 预设配色
 ui-color-presets = { "預設配色" }
@@ -975,10 +974,8 @@ ui-global-shortcut = { "全域快速鍵" }
 ui-focus-the-desktop-search-panel-from-any-app = { "在任何應用程式中喚出搜尋面板。" }
 
 # 把 Windows 桌面整理成顺手的工作区。
-ui-turn-your-windows-desktop-into-a-workspace-that-works-for-you = { "將 Windows 桌面整理成順手的工作區。" }
 
 # 开发者与开源许可
-ui-developer-license = { "開發者與開源授權" }
 
 # 项目主页
 ui-project-website = { "專案首頁" }
@@ -1160,7 +1157,6 @@ font-unavailable = 此字型未安裝，或不支援目前介面所需字元
 
 ui-project-resources = { "專案資源" }
 
-ui-download-releases = { "下載發行版" }
 
 ui-release-history = { "更新記錄" }
 

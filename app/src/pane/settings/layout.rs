@@ -677,11 +677,7 @@ pub(super) fn about_updates(
     copied: bool,
     updates: &crate::updates::Controller,
 ) {
-    let mut form = SettingsForm::new(
-        s,
-        width,
-        crate::i18n::text("ui-turn-your-windows-desktop-into-a-workspace-that-works-for-you"),
-    );
+    let mut form = SettingsForm::continuation(s, width, 76.0);
     form.brand();
     form.actions(
         crate::i18n::text("update-title"),
@@ -694,31 +690,6 @@ pub(super) fn about_updates(
             ),
         ],
     );
-    form.button(
-        crate::i18n::text("ui-developer-license"),
-        concat!(env!("CARGO_PKG_AUTHORS"), " · ", env!("CARGO_PKG_LICENSE")),
-        crate::i18n::text("ui-project-website"),
-        Action::ProjectLink("https://github.com/Yuch3nE/luciddesk"),
-    );
-    form.actions(
-        crate::i18n::text("ui-project-resources"),
-        "GitHub · Yuch3nE/luciddesk",
-        vec![
-            (
-                crate::i18n::text("ui-download-releases"),
-                Action::ProjectLink("https://github.com/Yuch3nE/luciddesk/releases"),
-            ),
-            (
-                crate::i18n::text("ui-release-history"),
-                Action::ProjectLink(crate::i18n::text("ui-changelog-url")),
-            ),
-            (
-                crate::i18n::text("ui-report-an-issue"),
-                Action::ProjectLink("https://github.com/Yuch3nE/luciddesk/issues"),
-            ),
-        ],
-    );
-    form.section(crate::i18n::text("ui-status"));
     form.info(
         crate::i18n::text("ui-operating-system"),
         &format!(
@@ -743,6 +714,15 @@ pub(super) fn about_updates(
                 },
                 Action::CopyDiagnostics,
             ),
+        ],
+    );
+    form.actions(
+        crate::i18n::text("ui-project-resources"),
+        "",
+        vec![
+            (crate::i18n::text("ui-project-website"), Action::ProjectLink("https://github.com/Yuch3nE/luciddesk")),
+            (crate::i18n::text("ui-release-history"), Action::ProjectLink(crate::i18n::text("ui-changelog-url"))),
+            (crate::i18n::text("ui-report-an-issue"), Action::ProjectLink("https://github.com/Yuch3nE/luciddesk/issues")),
         ],
     );
     for control in &mut s.controls {

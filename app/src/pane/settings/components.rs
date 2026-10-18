@@ -346,26 +346,19 @@ impl<'a> SettingsForm<'a> {
         }
     }
     pub fn brand(&mut self) {
-        self.scene
-            .cards
-            .push(Rect::from_xywh(self.x, self.y, self.width, 136.0));
-        self.scene.app_icon = Some(Rect::from_xywh(self.x + 16.0, self.y + 36.0, 64.0, 64.0));
+        self.scene.cards.push(Rect::from_xywh(self.x, self.y, self.width, 104.0));
+        self.scene.app_icon = Some(Rect::from_xywh(self.x + 20.0, self.y + 20.0, 64.0, 64.0));
         self.scene.text(
-            Rect::from_xywh(self.x + 96.0, self.y + 24.0, self.width - 112.0, 32.0),
+            Rect::from_xywh(self.x + 104.0, self.y + 16.0, self.width - 120.0, 32.0),
             "LucidDesk",
             2,
         );
         self.scene.text(
-            Rect::from_xywh(self.x + 96.0, self.y + 60.0, self.width - 112.0, 28.0),
-            crate::i18n::text("ui-desktop-groups-and-file-organization"),
+            Rect::from_xywh(self.x + 104.0, self.y + 54.0, self.width - 120.0, 28.0),
+            concat!("v", env!("CARGO_PKG_VERSION"), " · ", env!("CARGO_PKG_AUTHORS"), " · ", env!("CARGO_PKG_LICENSE")),
             6,
         );
-        self.scene.text(
-            Rect::from_xywh(self.x + 96.0, self.y + 92.0, self.width - 112.0, 24.0),
-            concat!("v", env!("CARGO_PKG_VERSION")),
-            6,
-        );
-        self.y += 144.0;
+        self.y += 112.0;
     }
     pub fn colors(&mut self, color: u32) {
         let r = self.card(
