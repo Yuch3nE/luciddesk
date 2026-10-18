@@ -8,9 +8,17 @@ mod library;
 mod menu;
 mod owner;
 mod retry;
+mod recovery;
 mod schedule;
 mod wire;
 pub use client::FilterSession;
+
+/// Read the current or most recent native view failure, including pending recovery.
+/// Diagnostics survive a successful detach until the next attachment.
+#[must_use]
+pub fn desktop_filter_diagnostics() -> Option<String> {
+    crate::desktop_view().ok().map(|view| diagnostics::summary(view as _))
+}
 
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 pub(crate) const OWNER: windows_sys::core::PCWSTR = windows_sys::w!("LucidDesk.Filter.Owner.v1");

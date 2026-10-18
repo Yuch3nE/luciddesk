@@ -2,6 +2,21 @@
 
 本文说明桌面项目从收纳、同步到恢复的完整流程。应用使用 `FilterSession` 管理 Explorer 视图成员，面板由独立窗口自绘；进程分工和 DLL 生命周期见[架构说明](architecture.md)。
 
+## 接口失败与恢复
+
+`IShellFolderView` 仍是需要兼容性验证的旧接口；使用它不代表获得跨 Windows 版本保证。所有增删与恢复都在 Explorer 桌面 STA 执行，不创建替代桌面视图。
+
+- 文件存在性检查只把 `ERROR_FILE_NOT_FOUND`、`ERROR_PATH_NOT_FOUND` 视为确认不存在。权限、网络及其他错误保留恢复记录并中止本批写入。
+- `RemoveObject` 前保存恢复 PIDL，避免调用发生部分副作用后返回错误时丢失记录。刷新后再次隐藏时使用新快照中的 PIDL。
+- `AddObject` 返回成功后仍需在视图中观察到项目；整个释放集合验证通过才删除恢复记录。移除批次同样检查目标确实消失。无关项目的增删不作为这两个目标集合校验的失败条件；底层快照仍要求读取一致。
+- 写入或结果验证失败后停止新增隐藏，进入仅恢复状态。恢复失败时尝试 `IShellView::Refresh`，其成功不等于恢复完成；后续消息循环重新验证。恢复尝试按 250ms 起步指数退避，最高 60 秒一次，不在 STA 中 sleep 或等待刷新。
+- 正常退出、控制窗口销毁和进程退出均使用同一恢复路径。恢复尚未确认时保留 State、PIDL、Subclass 和 DLL 引用；新连接会得到恢复未完成的诊断。只有验证成功才释放会话。原生视图本身销毁则释放旧状态，由 Explorer 新视图重新枚举数据源。
+- `status --json` 的 `desktop_diagnostic` 包含阶段、HRESULT、OS Build、Explorer PID、视图句柄和恢复状态。初始错误与恢复／刷新错误分别保留；`recovery=verified` 表示恢复验证通过，历史错误码仅用于诊断。记录在下一次连接时重置。
+
+故障测试使用与 COM 路径共用的成员事务和恢复调度逻辑，注入属性访问失败、Add 失败或无效成功、Remove 写入后报错或无效成功、验证读取失败、Refresh 失败及延迟恢复。运行 `cargo test -p luciddesk-explorer --lib filter:: -- --test-threads=1`。
+
+实机验收：先关闭已授权的调试实例，构建 `luciddesk`、`luciddesk-explorer`、`luciddesk-cli` 和 `luciddesk-shell --example desktop_snapshot`，再运行 `tools/validation/test-filter-recovery.ps1`。脚本使用隔离工作区和唯一测试文件，验证正常／强制退出、每种场景三轮收纳释放、原生视图可见性、源文件内容及坐标。它不向真实 Explorer 注入故障，也不覆盖其他 Windows 构建的兼容性。
+
 ## 收纳与显示
 
 收纳改变项目的显示归属，不删除或移动源文件，也不切换系统自动排列设置。Explorer 绘制未收纳项目，LucidDesk 绘制面板内容。DLL 在 Explorer 桌面 STA 上调用 `IShellFolderView::RemoveObject` 移除对应视图成员；自动排列开启时由 Explorer 补位，关闭时沿用系统布局行为。

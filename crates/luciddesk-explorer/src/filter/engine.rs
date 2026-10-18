@@ -47,6 +47,8 @@ struct State {
     update_sequence: u32,
     queued: bool,
     failed: bool,
+    closing: bool,
+    recovery: recovery::Recovery,
     read_retry: retry::ReadRetry,
     drag_start: Option<windows_sys::Win32::Foundation::POINT>,
     user_menu: bool,
@@ -63,9 +65,12 @@ impl Drop for State {
 }
 
 pub fn attach(hwnd: HWND, owner: HWND) {
+    diagnostics::reset(hwnd);
+    diagnostics::stage(hwnd, diagnostics::Stage::Attach);
     let result = attach_inner(hwnd, owner);
 
     if let Err(error) = result {
+        diagnostics::attach_failure(hwnd, error.code());
         unsafe {
             SetPropW(hwnd, ERROR, error.code().0 as u32 as usize as _);
         }
@@ -83,8 +88,10 @@ fn attach_inner(hwnd: HWND, owner: HWND) -> Result<()> {
                 windows::Win32::Foundation::E_UNEXPECTED,
             ));
         }
+        diagnostics::stage(hwnd, diagnostics::Stage::ShellWindows);
         let shell: IShellWindows = CoCreateInstance(&ShellWindows, None, CLSCTX_ALL)?;
         let mut raw = 0;
+        diagnostics::stage(hwnd, diagnostics::Stage::DesktopDispatch);
         let dispatch = shell.FindWindowSW(
             &VARIANT::from(CSIDL_DESKTOP.cast_signed()),
             &VARIANT::default(),
@@ -92,27 +99,42 @@ fn attach_inner(hwnd: HWND, owner: HWND) -> Result<()> {
             &raw mut raw,
             SWFO_NEEDDISPATCH,
         )?;
+        diagnostics::stage(hwnd, diagnostics::Stage::ServiceProvider);
         let provider: IServiceProvider = dispatch.cast()?;
+        diagnostics::stage(hwnd, diagnostics::Stage::Browser);
         let browser: IShellBrowser = provider.QueryService(&SID_STopLevelBrowser)?;
+        diagnostics::stage(hwnd, diagnostics::Stage::ActiveView);
         let view = browser.QueryActiveShellView()?;
-        if GetParent(hwnd) != view.GetWindow()?.0 {
+        diagnostics::stage(hwnd, diagnostics::Stage::ViewWindow);
+        let shell_hwnd = view.GetWindow()?.0;
+        diagnostics::stage(hwnd, diagnostics::Stage::ViewIdentity);
+        if GetParent(hwnd) != shell_hwnd {
             return Err(windows::core::Error::from_hresult(
                 windows::Win32::Foundation::E_INVALIDARG,
             ));
         }
+        diagnostics::stage(hwnd, diagnostics::Stage::FolderView);
         let folder: IFolderView2 = view.cast()?;
+        diagnostics::stage(hwnd, diagnostics::Stage::ObjectView);
         let object_view: IShellFolderView = view.cast()?;
-        if object_view.GetObjectCount()? as i32 != folder.ItemCount(SVGIO_ALLVIEW)? {
+        diagnostics::stage(hwnd, diagnostics::Stage::ObjectCount);
+        let object_count = object_view.GetObjectCount()? as i32;
+        diagnostics::stage(hwnd, diagnostics::Stage::FolderCount);
+        let folder_count = folder.ItemCount(SVGIO_ALLVIEW)?;
+        diagnostics::stage(hwnd, diagnostics::Stage::CountMatch);
+        if object_count != folder_count {
             return Err(windows::core::Error::from_hresult(
                 windows::Win32::Foundation::E_FAIL,
             ));
         }
         let mut pid = 0;
         GetWindowThreadProcessId(owner, &raw mut pid);
+        diagnostics::stage(hwnd, diagnostics::Stage::OwnerProcess);
         let process = OpenProcess(PROCESS_SYNCHRONIZE, 0, pid);
         if process.is_null() {
             return Err(windows::core::Error::from_thread());
         }
+        diagnostics::stage(hwnd, diagnostics::Stage::Library);
         let library = match library::StaLease::new() {
             Ok(library) => library,
             Err(error) => { CloseHandle(process); return Err(error); }
@@ -135,25 +157,31 @@ fn attach_inner(hwnd: HWND, owner: HWND) -> Result<()> {
             update_sequence: 0,
             queued: false,
             failed: false,
+            closing: false,
+            recovery: Default::default(),
             read_retry: Default::default(),
             drag_start: None,
             user_menu: false,
             _library: library,
         };
+        diagnostics::stage(hwnd, diagnostics::Stage::OwnerWatch);
         state.owner_watch = Some(owner::OwnerWatch::new(process, owner, hwnd)?);
         // The caller may abandon a stale view while Shell COM initialization
         // is running. Never publish a late attachment to its destroyed owner.
         if IsWindow(owner) == 0 {
             return Err(windows::core::Error::from_hresult(windows::Win32::Foundation::E_ABORT));
         }
+        diagnostics::stage(hwnd, diagnostics::Stage::ListSubclass);
         if SetWindowSubclass(hwnd, Some(subclass), MAGIC, 0) == 0 {
             return Err(windows::core::Error::from_thread());
         }
+        diagnostics::stage(hwnd, diagnostics::Stage::ParentSubclass);
         if SetWindowSubclass(GetParent(hwnd), Some(subclass), MAGIC, 0) == 0 {
             RemoveWindowSubclass(hwnd, Some(subclass), MAGIC);
             return Err(windows::core::Error::from_thread());
         }
         // Last-resort lifecycle check if a wakeup is lost; never scans items.
+        diagnostics::stage(hwnd, diagnostics::Stage::Timer);
         if SetTimer(hwnd, TIMER, 60_000, None) == 0 {
             RemoveWindowSubclass(GetParent(hwnd), Some(subclass), MAGIC);
             RemoveWindowSubclass(hwnd, Some(subclass), MAGIC);
@@ -163,6 +191,7 @@ fn attach_inner(hwnd: HWND, owner: HWND) -> Result<()> {
         RemovePropW(hwnd, ACK);
         STATE.with(|slot| *slot.borrow_mut() = Some(state));
         SetPropW(hwnd, OWNER, owner);
+        diagnostics::stage(hwnd, diagnostics::Stage::Ready);
     }
     Ok(())
 }
@@ -172,8 +201,8 @@ impl State {
         unsafe {
             KillTimer(self.hwnd, RECOVERY_TIMER);
             if let Some(delay) = schedule::recovery_delay(
-                if self.failed { None } else { self.read_retry.deadline() },
-                self.updating, self.queued, std::time::Instant::now(),
+                if self.failed { self.recovery.deadline() } else { self.read_retry.deadline() },
+                self.updating, self.queued && !self.failed, std::time::Instant::now(),
             ) {
                 SetTimer(self.hwnd, RECOVERY_TIMER, delay, None);
             }
@@ -203,13 +232,27 @@ impl State {
             || redraw.before_write(),
         )
     }
-    fn restore(&mut self) {
-        if self.membership.restore(&self.folder, &self.object_view).is_err() {
-            // A refresh asks the real data source to rebuild membership. It does
-            // not invent missing filesystem items or depend on our cached PIDLs.
-            let _ = unsafe { self.view.Refresh() };
+    fn restore(&mut self) -> bool {
+        self.failed = true;
+        self.paused = false;
+        self.updating = false;
+        let report = self.recovery.attempt(std::time::Instant::now(),
+            || self.membership.restore(&self.folder, &self.object_view).map_err(|e| {
+                diagnostics::restore_failure(self.hwnd, e.stage, e.code());
+                e.error
+            }),
+            || unsafe { self.view.Refresh() });
+        diagnostics::recovery(self.hwnd, if report.complete { 2 } else { 1 }, report.restore_error, report.refresh_error);
+        if !report.complete {
+            unsafe {
+                if GetPropW(self.hwnd, ERROR).is_null() {
+                    SetPropW(self.hwnd, ERROR, report.restore_error.unwrap_or(windows::core::HRESULT::from_win32(windows_sys::Win32::Foundation::ERROR_RETRY)).0 as u32 as usize as _);
+                }
+            }
         }
         self.redraw(true);
+        self.arm_recovery();
+        report.complete
     }
     fn apply_request(
         &mut self,
@@ -350,6 +393,7 @@ impl State {
                 None
             }
             Err(error) => {
+                diagnostics::failure(self.hwnd, error.stage, error.code());
                 if !self
                     .read_retry
                     .failed(error.before_write, std::time::Instant::now())
@@ -366,10 +410,12 @@ impl State {
         self.arm_recovery();
         error
     }
-    fn cleanup(&mut self) {
+    fn cleanup(&mut self) -> bool {
+        self.closing = true;
         self.menu_host.take();
-        self.restore();
+        if !self.restore() { return false; }
         remove_registration(self.hwnd);
+        true
     }
 }
 
@@ -574,9 +620,15 @@ unsafe extern "system" fn subclass(
                 if unsafe {
                     IsWindow(state.owner) == 0 || WaitForSingleObject(state.process, 0) == 0
                 } {
-                    state.cleanup();
-                    slot.take();
+                    if state.cleanup() { slot.take(); }
                     return Some(0);
+                }
+                if state.closing {
+                    if state.cleanup() { slot.take(); }
+                    return Some(0);
+                }
+                if state.failed {
+                    state.restore();
                 }
                 if state.updating
                     && unsafe { GetPropW(hwnd, UPDATE_RELEASE) as usize }
@@ -609,8 +661,7 @@ unsafe extern "system" fn subclass(
                     .as_ref()
                     .is_some_and(|request| request.op == wire::DETACH)
                 {
-                    state.cleanup();
-                    slot.take();
+                    if state.cleanup() { slot.take(); }
                     return Some(0);
                 }
                 if !state.failed {

@@ -6,6 +6,6 @@ fn main() -> Result<(), String> {
     let items:Vec<_>=snapshot.items.iter().map(|(entry,x,y)|serde_json::json!({
         "key":entry.identity.persistent_key(),"path":entry.identity.file_system_path(),"x":x,"y":y
     })).collect();
-    println!("{}",serde_json::json!({"items":items}));
+    println!("{}",serde_json::json!({"items":items,"icons_hidden":luciddesk_shell::desktop_icons_hidden()}));
     Ok(())
 }

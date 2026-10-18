@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use super::diagnostics::Stage;
 use windows::{
     Win32::{
         Foundation::POINT,
@@ -12,8 +13,12 @@ use windows::{
 pub struct ApplyError {
     pub error: windows::core::Error,
     pub before_write: bool,
+    pub stage: Stage,
 }
 impl ApplyError {
+    fn at(error: windows::core::Error, stage: Stage) -> Self {
+        Self { error, before_write: false, stage }
+    }
     pub fn code(&self) -> windows::core::HRESULT {
         self.error.code()
     }
@@ -23,7 +28,30 @@ impl From<windows::core::Error> for ApplyError {
         Self {
             error,
             before_write: false,
+            stage: Stage::Membership,
         }
+    }
+}
+
+// The same transaction runs against COM in production and a fault-injecting
+// view in tests. No test-only branch changes the recovery decisions.
+trait View {
+    fn snapshot(&mut self) -> Result<Vec<Item>>;
+    fn exists(&mut self, name: &str) -> Result<bool>;
+    fn add(&mut self, row: &Item) -> Result<()>;
+    fn remove(&mut self, row: &Item) -> Result<()>;
+    fn position(&mut self, rows: &[(*const ITEMIDLIST, POINT)]) -> Result<()>;
+}
+struct ShellView<'a> { folder: &'a IFolderView2, objects: &'a IShellFolderView }
+impl View for ShellView<'_> {
+    fn snapshot(&mut self) -> Result<Vec<Item>> { snapshot(self.folder) }
+    fn exists(&mut self, name: &str) -> Result<bool> { exists(name) }
+    fn add(&mut self, row: &Item) -> Result<()> { unsafe { self.objects.AddObject(row.pidl).map(|_| ()) } }
+    fn remove(&mut self, row: &Item) -> Result<()> { unsafe { self.objects.RemoveObject(Some(row.pidl)).map(|_| ()) } }
+    fn position(&mut self, rows: &[(*const ITEMIDLIST, POINT)]) -> Result<()> {
+        let ids: Vec<_> = rows.iter().map(|(id, _)| *id).collect();
+        let points: Vec<_> = rows.iter().map(|(_, point)| *point).collect();
+        unsafe { self.folder.SelectAndPositionItems(ids.len() as u32, ids.as_ptr(), Some(points.as_ptr()), SVSI_POSITIONITEM.0 as u32) }
     }
 }
 impl From<windows::core::HRESULT> for ApplyError {
@@ -219,14 +247,23 @@ impl Membership {
         folder: &IFolderView2,
         object_view: &IShellFolderView,
         paused: bool,
+        before_write: impl FnMut(),
+    ) -> std::result::Result<(), ApplyError> {
+        self.apply_view(&mut ShellView { folder, objects: object_view }, paused, before_write)
+    }
+    fn apply_view(
+        &mut self,
+        view: &mut impl View,
+        paused: bool,
         mut before_write: impl FnMut(),
     ) -> std::result::Result<(), ApplyError> {
         if self.desired.is_empty() && self.hidden.is_empty() && self.baseline.is_empty() {
             return Ok(());
         }
-        let mut current = snapshot(folder).map_err(|error| ApplyError {
+        let mut current = view.snapshot().map_err(|error| ApplyError {
             error,
             before_write: true,
+            stage: Stage::Snapshot,
         })?;
 
         let layout: BTreeMap<_, _> = current
@@ -245,19 +282,28 @@ impl Membership {
             .cloned()
             .collect();
         let mut added = false;
-        for name in release {
-            let row = &self.hidden[&name];
-            if !current.iter().any(|item| item.name == name) && exists(&row.name) {
+        for name in &release {
+            let row = &self.hidden[name];
+            if !current.iter().any(|item| &item.name == name)
+                && view.exists(&row.name).map_err(|e| ApplyError::at(e, Stage::Existence))? {
                 before_write();
-                unsafe {
-                    object_view.AddObject(row.pidl)?;
-                }
+                view.add(row).map_err(|e| ApplyError::at(e, Stage::Add))?;
                 added = true;
             }
-            self.hidden.remove(&name);
         }
         if added {
-            current = snapshot(folder)?;
+            current = view.snapshot().map_err(|e| ApplyError::at(e, Stage::VerifyAdd))?;
+        }
+        // Do not discard recovery PIDLs merely because AddObject returned S_OK.
+        // Keep the entire release set until all surviving targets are observed.
+        for name in &release {
+            if !current.iter().any(|row| &row.name == name)
+                && view.exists(name).map_err(|e| ApplyError::at(e, Stage::Existence))? {
+                return Err(ApplyError::at(changed_snapshot(), Stage::VerifyAdd));
+            }
+        }
+        for name in release {
+            self.hidden.remove(&name);
         }
         // Restore the initial layout only while the user has not moved/sorted it.
         // Native changes during the session take precedence over our old baseline.
@@ -280,20 +326,12 @@ impl Membership {
                 })
                 .collect();
             if !positioned.is_empty() {
-                let ids: Vec<_> = positioned.iter().map(|(id, _)| *id).collect();
-                let points: Vec<_> = positioned.iter().map(|(_, point)| *point).collect();
                 before_write();
-                unsafe {
-                    folder.SelectAndPositionItems(
-                        ids.len() as u32,
-                        ids.as_ptr(),
-                        Some(points.as_ptr()),
-                        SVSI_POSITIONITEM.0 as u32,
-                    )?;
-                }
+                view.position(&positioned).map_err(|e| ApplyError::at(e, Stage::Position))?;
             }
         }
         if !paused {
+            let mut removed = BTreeSet::new();
             // Remove by PIDL, never by the indices invalidated by earlier removals.
             for row in current
                 .into_iter()
@@ -301,10 +339,19 @@ impl Membership {
                 .filter(|row| self.desired.contains(&row.name))
             {
                 before_write();
-                unsafe {
-                    object_view.RemoveObject(Some(row.pidl))?;
+                // Record first: even a failing COM call may have changed the view.
+                let name = row.name.clone();
+                let mut row = row;
+                if let Some(previous) = self.hidden.get(&name) { row.position = previous.position; }
+                self.hidden.insert(name.clone(), row);
+                view.remove(&self.hidden[&name]).map_err(|e| ApplyError::at(e, Stage::Remove))?;
+                removed.insert(name);
+            }
+            if !removed.is_empty() {
+                let observed = view.snapshot().map_err(|e| ApplyError::at(e, Stage::VerifyRemove))?;
+                if observed.iter().any(|row| removed.contains(&row.name)) {
+                    return Err(ApplyError::at(changed_snapshot(), Stage::VerifyRemove));
                 }
-                self.hidden.entry(row.name.clone()).or_insert(row);
             }
         }
         if !paused && self.desired.is_empty() {
@@ -314,31 +361,169 @@ impl Membership {
         }
         Ok(())
     }
-    pub fn restore(&mut self, folder: &IFolderView2, object_view: &IShellFolderView) -> Result<()> {
+    pub fn restore(&mut self, folder: &IFolderView2, object_view: &IShellFolderView) -> std::result::Result<(), ApplyError> {
         self.desired.clear();
-        self.apply(folder, object_view, false).map_err(|e| e.error)
+        self.apply(folder, object_view, false)
     }
     pub fn user_changed_layout(&mut self) {
         self.user_layout_changed = true;
     }
 }
 
-fn exists(name: &str) -> bool {
+fn exists(name: &str) -> Result<bool> {
     if name.starts_with("::{") {
-        return true;
+        return Ok(true);
     }
     // No file content is opened. A deleted/renamed file must never be resurrected
     // as a stale Shell item when its membership is released.
     let wide: Vec<_> = name.encode_utf16().chain(Some(0)).collect();
     unsafe {
-        windows_sys::Win32::Storage::FileSystem::GetFileAttributesW(wide.as_ptr())
-            != windows_sys::Win32::Storage::FileSystem::INVALID_FILE_ATTRIBUTES
+        let attributes = windows_sys::Win32::Storage::FileSystem::GetFileAttributesW(wide.as_ptr());
+        if attributes != windows_sys::Win32::Storage::FileSystem::INVALID_FILE_ATTRIBUTES {
+            Ok(true)
+        } else {
+            missing_or_error(windows_sys::Win32::Foundation::GetLastError())
+        }
+    }
+}
+
+fn missing_or_error(code: u32) -> Result<bool> {
+    use windows_sys::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND};
+    match code {
+        ERROR_FILE_NOT_FOUND | ERROR_PATH_NOT_FOUND => Ok(false),
+        _ => Err(windows::core::Error::from_hresult(if code == 0 {
+            windows::Win32::Foundation::E_FAIL
+        } else { windows::core::HRESULT::from_win32(code) })),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Default)]
+    struct FaultView {
+        visible: BTreeSet<String>,
+        missing: BTreeSet<String>,
+        unknown: bool,
+        add_error: bool,
+        add_noop: bool,
+        remove_error_after_write: bool,
+        remove_noop: bool,
+        reads: usize,
+        fail_read: Option<usize>,
+    }
+    fn row(name: &str) -> Item {
+        Item { name: name.into(), pidl: std::ptr::null_mut(), position: POINT::default() }
+    }
+    impl View for FaultView {
+        fn snapshot(&mut self) -> Result<Vec<Item>> {
+            self.reads += 1;
+            if self.fail_read == Some(self.reads) { return Err(windows::Win32::Foundation::E_FAIL.into()); }
+            Ok(self.visible.iter().map(|name| row(name)).collect())
+        }
+        fn exists(&mut self, name: &str) -> Result<bool> {
+            if self.unknown { return Err(windows::Win32::Foundation::E_ACCESSDENIED.into()); }
+            Ok(!self.missing.contains(name))
+        }
+        fn add(&mut self, row: &Item) -> Result<()> {
+            if self.add_error { return Err(windows::Win32::Foundation::E_FAIL.into()); }
+            if !self.add_noop { self.visible.insert(row.name.clone()); }
+            Ok(())
+        }
+        fn remove(&mut self, row: &Item) -> Result<()> {
+            if !self.remove_noop { self.visible.remove(&row.name); }
+            if self.remove_error_after_write { return Err(windows::Win32::Foundation::E_FAIL.into()); }
+            Ok(())
+        }
+        fn position(&mut self, _: &[(*const ITEMIDLIST, POINT)]) -> Result<()> { Ok(()) }
+    }
+    fn hidden() -> Membership {
+        let mut membership = Membership::default();
+        membership.hidden.insert("a".into(), row("a"));
+        membership
+    }
+    #[test]
+    fn existence_only_discards_confirmed_missing_files() {
+        for code in [2, 3] { assert!(!missing_or_error(code).unwrap()); }
+        for code in [5, 32, 53, 64, 121, 0] { assert!(missing_or_error(code).is_err()); }
+        let mut membership = hidden();
+        let mut view = FaultView { unknown: true, ..Default::default() };
+        let error = membership.apply_view(&mut view, false, || {}).unwrap_err();
+        assert_eq!(error.stage, Stage::Existence);
+        assert!(membership.hidden.contains_key("a"));
+        view.unknown = false;
+        view.missing.insert("a".into());
+        membership.apply_view(&mut view, false, || {}).unwrap();
+        assert!(membership.hidden.is_empty());
+        assert!(view.visible.is_empty());
+    }
+    #[test]
+    fn failed_or_noop_add_retains_pidl_until_presence_is_verified() {
+        for noop in [false, true] {
+            let mut membership = hidden();
+            let mut view = FaultView { add_error: !noop, add_noop: noop, ..Default::default() };
+            let error = membership.apply_view(&mut view, false, || {}).unwrap_err();
+            assert_eq!(error.stage, if noop { Stage::VerifyAdd } else { Stage::Add });
+            assert!(membership.hidden.contains_key("a"));
+            // Delayed Shell enumeration or Refresh eventually exposes the item.
+            view.visible.insert("a".into());
+            membership.apply_view(&mut view, false, || {}).unwrap();
+            assert!(membership.hidden.is_empty());
+        }
+    }
+    #[test]
+    fn failed_remove_after_mutation_remains_recoverable() {
+        let mut membership = Membership::default();
+        membership.desired.insert("a".into());
+        let mut view = FaultView { visible: ["a".into(), "unrelated".into()].into(), remove_error_after_write: true, ..Default::default() };
+        let error = membership.apply_view(&mut view, false, || {}).unwrap_err();
+        assert_eq!(error.stage, Stage::Remove);
+        assert!(!error.before_write);
+        assert!(!view.visible.contains("a"));
+        assert!(membership.hidden.contains_key("a"));
+        membership.desired.clear();
+        membership.apply_view(&mut view, false, || {}).unwrap();
+        assert!(view.visible.contains("a"));
+        assert!(view.visible.contains("unrelated"));
+        assert!(membership.hidden.is_empty());
+    }
+    #[test]
+    fn successful_noop_remove_is_not_acknowledged_as_filtered() {
+        let mut membership = Membership::default();
+        membership.desired.insert("a".into());
+        let mut view = FaultView { visible: ["a".into()].into(), remove_noop: true, ..Default::default() };
+        let error = membership.apply_view(&mut view, false, || {}).unwrap_err();
+        assert_eq!(error.stage, Stage::VerifyRemove);
+        assert!(membership.hidden.contains_key("a"));
+        membership.desired.clear();
+        membership.apply_view(&mut view, false, || {}).unwrap();
+        assert!(membership.hidden.is_empty());
+        assert!(view.visible.contains("a"));
+    }
+    #[test]
+    fn read_failure_after_add_retains_release_records() {
+        let mut membership = hidden();
+        let mut view = FaultView { fail_read: Some(2), ..Default::default() };
+        let error = membership.apply_view(&mut view, false, || {}).unwrap_err();
+        assert_eq!(error.stage, Stage::VerifyAdd);
+        assert!(!error.before_write);
+        assert!(membership.hidden.contains_key("a"));
+        assert!(view.visible.contains("a"));
+        membership.apply_view(&mut view, false, || {}).unwrap();
+        assert!(membership.hidden.is_empty());
+    }
+    #[test]
+    fn batch_validation_allows_unrelated_items_and_preserves_other_members() {
+        let mut membership = hidden();
+        membership.hidden.insert("b".into(), row("b"));
+        membership.desired.insert("b".into());
+        let mut view = FaultView { visible: ["unrelated".into()].into(), ..Default::default() };
+        membership.apply_view(&mut view, false, || {}).unwrap();
+        assert!(!membership.hidden.contains_key("a"));
+        assert!(membership.hidden.contains_key("b"));
+        assert_eq!(view.visible, ["a".into(), "unrelated".into()].into());
+    }
     #[test]
     fn unchanged_layout_does_not_reposition_but_insertions_keep_original_order() {
         let mut membership = Membership::default();

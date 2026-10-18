@@ -65,7 +65,7 @@ fn wait_for_attach(target: &AttachTarget, owner: HWND) -> Result<(), String> {
         unsafe {
             if GetPropW(target.view, OWNER) == owner { return Ok(()); }
             let error = GetPropW(target.view, ERROR) as usize as u32;
-            if error != 0 { return Err(format!("此桌面不支持视图过滤 (0x{error:08x})")); }
+            if error != 0 { return Err(format!("桌面过滤连接失败 (0x{error:08x}); {}", diagnostics::summary(target.view))); }
         }
         // Explorer's Shell initialization can synchronously query our windows.
         // Keep this STA responsive rather than making the handshake wait for
@@ -97,7 +97,7 @@ impl FilterSession {
                 return Err("桌面或控制窗口无效".into());
             }
             if !GetPropW(view, OWNER).is_null() {
-                return Err("桌面过滤已有活动连接".into());
+                return Err(format!("桌面过滤已有活动连接或恢复尚未完成; {}", diagnostics::summary(view)));
             }
             let target = AttachTarget::capture(view)?;
             // SetWindowsHookEx translates the entry RVA into Explorer's module.
@@ -112,14 +112,18 @@ impl FilterSession {
                 .encode_utf16()
                 .chain(Some(0))
                 .collect();
+            diagnostics::reset(view);
+            diagnostics::stage(view, diagnostics::Stage::LoadLibrary);
             let module = LoadLibraryExW(
                 path.as_ptr(),
                 null_mut(),
                 LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32,
             );
             if module.is_null() {
-                return Err(std::io::Error::last_os_error().to_string());
+                let error = std::io::Error::last_os_error();
+                return Err(format!("{error}; {}", diagnostics::summary(view)));
             }
+            diagnostics::stage(view, diagnostics::Stage::Export);
             let Some(proc) = GetProcAddress(module, windows_sys::s!("LucidDeskFilterHook")) else {
                 FreeLibrary(module);
                 return Err("Hook DLL 缺少视图过滤入口".into());
@@ -128,6 +132,7 @@ impl FilterSession {
                 unsafe extern "system" fn() -> isize,
                 unsafe extern "system" fn(i32, usize, isize) -> isize,
             >(proc);
+            diagnostics::stage(view, diagnostics::Stage::Hook);
             let hook = SetWindowsHookExW(
                 WH_GETMESSAGE,
                 Some(callback),
@@ -135,8 +140,9 @@ impl FilterSession {
                 target.thread,
             );
             if hook.is_null() {
+                let error = std::io::Error::last_os_error();
                 FreeLibrary(module);
-                return Err(std::io::Error::last_os_error().to_string());
+                return Err(format!("{error}; {}", diagnostics::summary(view)));
             }
             let mut session = Self {
                 view,
@@ -149,6 +155,7 @@ impl FilterSession {
                 explorer_watch: None,
             };
             RemovePropW(view, ERROR);
+            diagnostics::stage(view, diagnostics::Stage::PostAttach);
             if PostMessageW(view, message(), owner as usize, MAGIC as isize) == 0 {
                 return Err("无法请求桌面过滤连接".into());
             }
@@ -190,7 +197,7 @@ impl FilterSession {
         unsafe {
             if !self.is_alive() {
                 self.pending_hidden.set(None);
-                return Err("桌面过滤连接已断开".into());
+                return Err(format!("桌面过滤连接已断开; {}", diagnostics::summary(self.view)));
             }
             if GetPropW(self.view, ACK) as usize != sequence as usize {
                 return Ok(false);
@@ -198,7 +205,7 @@ impl FilterSession {
             self.pending_hidden.set(None);
             let error = GetPropW(self.view, REQUEST_ERROR) as usize as u32;
             if error != 0 {
-                return Err(format!("桌面快照暂不可用，等待重试 (0x{error:08x})"));
+                return Err(format!("桌面过滤请求未完成 (0x{error:08x}); {}", diagnostics::summary(self.view)));
             }
         }
         Ok(true)
@@ -386,11 +393,11 @@ impl FilterSession {
                             Ok(())
                         } else {
                             Err(format!(
-                                "桌面快照暂不可用，保留过滤等待重试 (0x{retry:08x})"
+                                "桌面过滤请求未完成 (0x{retry:08x}); {}", diagnostics::summary(self.view)
                             ))
                         }
                     } else {
-                        Err(format!("桌面过滤失败，已请求恢复原生项目 (0x{error:08x})"))
+                        Err(format!("桌面过滤失败，已请求恢复原生项目 (0x{error:08x}); {}", diagnostics::summary(self.view)))
                     };
                 }
                 if wire::is_menu_transaction(op) {
