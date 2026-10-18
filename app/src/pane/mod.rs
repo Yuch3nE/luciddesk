@@ -5,63 +5,64 @@
     clippy::cast_sign_loss
 )]
 // Application state and native desktop integration.
-mod hybrid;
-mod runtime;
 mod control;
-mod events;
-mod recovery;
 mod display_layout;
+mod events;
+mod hybrid;
+mod recovery;
+mod runtime;
 mod wake;
 
 // Panel content and configuration.
+mod fixed_grid;
 mod folder;
 mod folder_context;
-mod search;
-mod monitor;
-mod settings;
-mod tabs;
-mod sorting;
-mod fixed_grid;
 mod free_layout;
 mod layout_defaults;
+mod monitor;
+mod search;
+mod settings;
+mod sorting;
+mod tabs;
 
 // Window interaction.
-mod window;
-mod drag_drop;
-mod keyboard;
-mod rename;
-mod peek;
-mod executable_picker;
-mod marquee;
-mod columns;
-mod layout;
-mod scrollbar;
-mod snap;
 mod auto_hide;
-mod visibility;
+mod columns;
+mod drag_drop;
+mod executable_picker;
+mod keyboard;
+mod layout;
+mod marquee;
+mod peek;
 mod quick_reveal;
+mod rename;
+mod scrollbar;
 mod show_hotkey;
+mod snap;
+mod visibility;
+mod window;
 
 // Rendering and shared visual resources.
 mod render;
 pub(crate) use render::debug as render_debug;
-mod assets;
-mod image_pool;
-mod scaled_icons;
-mod canvas;
-mod native_graphics;
-mod composition;
 mod acrylic;
 mod animation;
-mod theme;
+mod assets;
+mod canvas;
+mod composition;
 mod fonts;
+mod image_pool;
 mod interface_flags;
 mod label;
+mod native_graphics;
+mod scaled_icons;
 mod shell_menu;
+mod theme;
 
 pub(crate) mod menu;
 use events::handle;
 pub use hybrid::run;
+pub(crate) use monitor::process::run as run_monitor_child;
 
 use luciddesk_core::{
     DesktopItem, DesktopPlacement, GridPosition, Panel, PanelId, RectDip, ShellIdentity, Workspace,
@@ -103,7 +104,11 @@ impl ItemDetails {
     pub fn kind_text(&self) -> &str {
         // Shell type names use the Windows language and may be cached across
         // application language changes. Resolve folders when rendering instead.
-        if self.folder { crate::i18n::text("ui-folder-type") } else { &self.kind }
+        if self.folder {
+            crate::i18n::text("ui-folder-type")
+        } else {
+            &self.kind
+        }
     }
 }
 
@@ -132,6 +137,8 @@ struct View {
 }
 
 struct PaneApp {
+    monitors: monitor::process::Manager,
+    monitor_child: bool,
     sorting: sorting::State,
     wake: wake::Wake,
     folders: HashMap<PanelId, folder::Source>,
@@ -169,7 +176,9 @@ enum Event {
     ToggleCompactMenu,
     SetTitleEmojiColor(bool),
     PaneItemFocus,
-    BeginItemMenu(Rc<RefCell<Option<Result<Rc<luciddesk_explorer::filter::FilterSession>, String>>>>),
+    BeginItemMenu(
+        Rc<RefCell<Option<Result<Rc<luciddesk_explorer::filter::FilterSession>, String>>>>,
+    ),
     EndItemMenu,
     RenameItem(ShellIdentity),
     RenameTitle,
@@ -228,14 +237,22 @@ enum Event {
     FileCommand(luciddesk_shell::FileCommand),
     FileDrag(Option<luciddesk_shell::FileDragImage>),
     ToggleListView,
-    Drop { index: usize, point: POINT, offset: luciddesk_core::PointDip },
+    Drop {
+        index: usize,
+        point: POINT,
+        offset: luciddesk_core::PointDip,
+    },
     Geometry(RectDip),
     Collapse,
     Exit,
 }
 
 fn items_for(state: &PaneApp, id: PanelId) -> Vec<Item> {
-    if state.workspace.panel(id).is_some_and(|p| p.is_search() || p.is_monitor()) {
+    if state
+        .workspace
+        .panel(id)
+        .is_some_and(|p| p.is_search() || p.is_monitor())
+    {
         return Vec::new();
     }
     if state
@@ -255,33 +272,61 @@ fn items_for(state: &PaneApp, id: PanelId) -> Vec<Item> {
 /// Compare borrowed desktop data before copying unchanged names and identities.
 fn desktop_items_for(state: &PaneApp, id: PanelId, current: Option<&[Item]>) -> Option<Vec<Item>> {
     let panel = state.workspace.panel(id);
-    let free_grid = panel.filter(|p| p.free_layout()).map(|_| free_layout::grid(&state.workspace));
+    let free_grid = panel
+        .filter(|p| p.free_layout())
+        .map(|_| free_layout::grid(&state.workspace));
     let fixed = panel.is_some_and(Panel::fixed_grid);
     let details = |item: &luciddesk_core::DesktopItem| ItemDetails {
         free_position: free_grid.map(|grid| free_layout::point(item, grid)),
-        grid_position: if fixed { match item.placement() {
-            DesktopPlacement::Pane { position, .. } => Some(*position), _ => None,
-        }} else { None },
+        grid_position: if fixed {
+            match item.placement() {
+                DesktopPlacement::Pane { position, .. } => Some(*position),
+                _ => None,
+            }
+        } else {
+            None
+        },
         ..Default::default()
     };
-    let items: Vec<_> = ordered_desktop_items(&state.workspace, id).into_iter()
-        .map(|item| (item, details(item), state.images.get(&item.identity().persistent_key())))
+    let items: Vec<_> = ordered_desktop_items(&state.workspace, id)
+        .into_iter()
+        .map(|item| {
+            (
+                item,
+                details(item),
+                state.images.get(&item.identity().persistent_key()),
+            )
+        })
         .collect();
-    if current.is_some_and(|current| current.len() == items.len()
-        && current.iter().zip(&items).all(|(old, (item, details, image))| {
-            old.identity == *item.identity() && old.label == item.display_name() && old.details == *details
-                && match (old.image.as_ref(), *image) {
-                    (Some(a), Some(b)) => Arc::ptr_eq(a, b),
-                    (None, None) => true,
-                    _ => false,
-                }
-        })) { return None; }
-    Some(items.into_iter().map(|(item, details, image)| Item {
-        details,
-        identity: item.identity().clone(),
-        label: item.display_name().to_string(),
-        image: image.cloned(),
-    }).collect())
+    if current.is_some_and(|current| {
+        current.len() == items.len()
+            && current
+                .iter()
+                .zip(&items)
+                .all(|(old, (item, details, image))| {
+                    old.identity == *item.identity()
+                        && old.label == item.display_name()
+                        && old.details == *details
+                        && match (old.image.as_ref(), *image) {
+                            (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+                            (None, None) => true,
+                            _ => false,
+                        }
+                })
+    }) {
+        return None;
+    }
+    Some(
+        items
+            .into_iter()
+            .map(|(item, details, image)| Item {
+                details,
+                identity: item.identity().clone(),
+                label: item.display_name().to_string(),
+                image: image.cloned(),
+            })
+            .collect(),
+    )
 }
 
 fn ordered_desktop_items(workspace: &Workspace, id: PanelId) -> Vec<&luciddesk_core::DesktopItem> {
@@ -296,15 +341,27 @@ fn ordered_desktop_items(workspace: &Workspace, id: PanelId) -> Vec<&luciddesk_c
             }
         })
         .collect();
-    items.sort_by(|(a, left), (b, right)| a.cmp(b).then_with(|| left.identity().persistent_key().cmp(&right.identity().persistent_key())));
+    items.sort_by(|(a, left), (b, right)| {
+        a.cmp(b).then_with(|| {
+            left.identity()
+                .persistent_key()
+                .cmp(&right.identity().persistent_key())
+        })
+    });
     items.into_iter().map(|(_, item)| item).collect()
 }
 
 fn create_model(state: &PaneApp, id: PanelId) -> Result<GroupModel, String> {
-    let panel = state.workspace.panel(id).ok_or(crate::i18n::text("ui-tab-closed"))?;
+    let panel = state
+        .workspace
+        .panel(id)
+        .ok_or(crate::i18n::text("ui-tab-closed"))?;
     let items = items_for(state, id);
     Ok(GroupModel {
-        monitor: panel.is_monitor().then(|| monitor::Preferences::load(&state.store, id)).transpose()?,
+        monitor: panel
+            .is_monitor()
+            .then(|| monitor::Preferences::load(&state.store, id))
+            .transpose()?,
         merge_preview: Vec::new(),
         merge_occluded: false,
         tabs: Vec::new(),
@@ -352,7 +409,30 @@ fn create_model(state: &PaneApp, id: PanelId) -> Result<GroupModel, String> {
 }
 
 fn create_view(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result<(), String> {
-    if !state.borrow().workspace.tab_visible(id) { return Ok(()); }
+    if !state.borrow().workspace.tab_visible(id) {
+        return Ok(());
+    }
+    if !monitor::available()
+        && state
+            .borrow()
+            .workspace
+            .panel(id)
+            .is_some_and(Panel::is_monitor)
+    {
+        return Ok(());
+    }
+    if state
+        .borrow()
+        .workspace
+        .panel(id)
+        .is_some_and(Panel::is_monitor)
+        && !monitor::Preferences::load(&state.borrow().store, id)?.enabled
+    {
+        return Ok(());
+    }
+    if !state.borrow().monitor_child && state.borrow().workspace.panel(id).is_some_and(Panel::is_monitor) {
+        return monitor::process::open(state, id);
+    }
     folder::ensure(&mut state.borrow_mut(), id)?;
     let panel = state.borrow().workspace.panel(id).unwrap().clone();
     let mut initial = create_model(&state.borrow(), id)?;
@@ -366,13 +446,26 @@ fn create_view(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result<(), String> 
             return false;
         };
         if matches!(event, Event::ClosePane) {
-            let hwnd = state.borrow().views.iter().find(|v| v.id == event_target.get())
+            let hwnd = state
+                .borrow()
+                .views
+                .iter()
+                .find(|v| v.id == event_target.get())
                 .map(|v| v.window.hwnd().cast());
-            if hwnd.is_some_and(visibility::request_close) { return false; }
+            if hwnd.is_some_and(visibility::request_close) {
+                return false;
+            }
         }
         let closing = matches!(event, Event::ClosePane);
         let wake_needed = !matches!(&event, Event::Moving(_) | Event::Sizing(..));
+        let child = state.borrow().monitor_child
+            && state.borrow().workspace.panel(event_target.get()).is_some_and(Panel::is_monitor);
+        if child && matches!(event, Event::Settings) {
+            monitor::process::emit_settings();
+            return false;
+        }
         let result = handle(&state, event_target.get(), event);
+        if child { monitor::process::publish(&state, event_target.get()); }
         if wake_needed {
             state.borrow().wake.notify();
         }
@@ -380,13 +473,28 @@ fn create_view(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result<(), String> 
             Ok(done) => done,
             Err(error) => {
                 if closing {
-                    let hwnd = state.borrow().views.iter().find(|v| v.id == event_target.get())
+                    let hwnd = state
+                        .borrow()
+                        .views
+                        .iter()
+                        .find(|v| v.id == event_target.get())
                         .map(|v| v.window.hwnd().cast());
                     if let Some(hwnd) = hwnd {
-                        unsafe { windows_sys::Win32::UI::WindowsAndMessaging::SendMessageW(hwnd, visibility::RESTORE, 0, 0); }
+                        unsafe {
+                            windows_sys::Win32::UI::WindowsAndMessaging::SendMessageW(
+                                hwnd,
+                                visibility::RESTORE,
+                                0,
+                                0,
+                            );
+                        }
                     }
                 }
-                luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Error, "pane.mod", &format!("{error}"));
+                luciddesk_diagnostics::log(
+                    luciddesk_diagnostics::Level::Error,
+                    "pane.mod",
+                    &format!("{error}"),
+                );
                 window::error(&error);
                 false
             }
@@ -399,7 +507,12 @@ fn create_view(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result<(), String> 
     };
     window::set_layer(window.hwnd().cast(), panel.always_on_top());
     state.borrow().wake.watch_window(window.hwnd() as isize)?;
-    state.borrow_mut().views.push(View { id, target, window, model });
+    state.borrow_mut().views.push(View {
+        id,
+        target,
+        window,
+        model,
+    });
     display_layout::place(&state.borrow(), id);
     if !panel.is_monitor() && (state.borrow().session.is_some() || panel.folder().is_some()) {
         hybrid::register_drop(state, id)?;
@@ -457,7 +570,9 @@ fn refresh_changed_views(state: &mut PaneApp, force: bool) {
             source.items.clone()
         } else {
             let current = (!force && !model.loading).then_some(model.items.as_slice());
-            let Some(items) = desktop_items_for(state, view.id, current) else { continue; };
+            let Some(items) = desktop_items_for(state, view.id, current) else {
+                continue;
+            };
             items
         };
         model.replace_items(items);
@@ -493,14 +608,22 @@ fn save(state: &mut PaneApp) -> Result<(), String> {
 fn save_state(state: &mut PaneApp, record_layout: bool) -> Result<(), String> {
     state.workspace.sync_tab_windows();
     hybrid::sync(state)?;
-    let layout = record_layout.then(|| display_layout::capture(state)).flatten();
+    let layout = record_layout
+        .then(|| display_layout::capture(state))
+        .flatten();
     state
         .store
         .save_workspace_with_layout(
             &state.workspace,
-            layout.as_ref().map(|(topology, bounds)| (topology.as_str(), bounds.as_slice())),
+            layout
+                .as_ref()
+                .map(|(topology, bounds)| (topology.as_str(), bounds.as_slice())),
         )
-        .map_err(|e| crate::i18n::format("ui-could-not-save-group", &[("e", format!("{}", e))]))
+        .map_err(|e| crate::i18n::format("ui-could-not-save-group", &[("e", format!("{}", e))]))?;
+    if state.monitor_child {
+        if let Some(panel) = state.workspace.panels().first() { monitor::process::publish_panel(panel); }
+    }
+    Ok(())
 }
 
 fn remove_panel(workspace: &mut Workspace, id: PanelId) {
@@ -529,7 +652,17 @@ fn set_order(workspace: &mut Workspace, id: PanelId, items: &[Item]) {
     let fixed = workspace.panel(id).is_some_and(Panel::fixed_grid);
     for (position, item) in items.iter().enumerate() {
         if let Some(entry) = workspace.desktop_item_mut(&item.identity) {
-            fixed_grid::set_position(entry, id, if fixed { fixed_grid::position(position, columns) } else { GridPosition::new(position as u32, 0) }, free, metrics);
+            fixed_grid::set_position(
+                entry,
+                id,
+                if fixed {
+                    fixed_grid::position(position, columns)
+                } else {
+                    GridPosition::new(position as u32, 0)
+                },
+                free,
+                metrics,
+            );
         }
     }
 }
@@ -539,7 +672,9 @@ fn set_order(workspace: &mut Workspace, id: PanelId, items: &[Item]) {
 fn normalize_pane_orders(state: &mut PaneApp) {
     let ids: Vec<_> = state.workspace.panels().iter().map(Panel::id).collect();
     for id in ids {
-        if state.workspace.panel(id).is_some_and(Panel::fixed_grid) { continue; }
+        if state.workspace.panel(id).is_some_and(Panel::fixed_grid) {
+            continue;
+        }
         let items = items_for(state, id);
         set_order(&mut state.workspace, id, &items);
     }
@@ -573,7 +708,10 @@ fn transfer_many(
     }
     let old = state.workspace.clone();
     if state.workspace.panel(target).is_some_and(Panel::fixed_grid) {
-        let keys: Vec<_> = selected.iter().map(|i| items[*i].identity.persistent_key()).collect();
+        let keys: Vec<_> = selected
+            .iter()
+            .map(|i| items[*i].identity.persistent_key())
+            .collect();
         let cell = fixed_grid::position(at, fixed_grid::columns(&state.workspace, target));
         fixed_grid::place(&mut state.workspace, target, &keys, cell);
         if source != target && !state.workspace.panel(source).is_some_and(Panel::fixed_grid) {
@@ -616,13 +754,15 @@ fn transfer_many(
 }
 
 #[cfg(test)]
-mod tests;
-#[cfg(test)]
 pub(crate) mod test_support;
-
+#[cfg(test)]
+mod tests;
 
 fn load_log_level(store: &WorkspaceStore) -> Result<(), String> {
-    let value = store.preference("log_level").map_err(|e| e.to_string())?.unwrap_or_else(|| "error".into());
+    let value = store
+        .preference("log_level")
+        .map_err(|e| e.to_string())?
+        .unwrap_or_else(|| "error".into());
     luciddesk_diagnostics::set_level(luciddesk_diagnostics::Level::parse(&value));
     Ok(())
 }

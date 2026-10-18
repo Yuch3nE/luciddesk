@@ -1285,3 +1285,11 @@ monitor-paused = Приостановлено
 monitor-live = В реальном времени
 monitor-history = Последние 60 секунд
 monitor-used = Занято
+
+monitor-settings = Настройки системного монитора
+monitor-settings-description = Включайте панели и выбирайте показатели и устройства. У каждой панели свои настройки.
+monitor-enable = Включить панель монитора
+monitor-enable-description = При отключении расположение и настройки сохраняются.
+
+monitor-display-settings = Отображение и обновление
+monitor-device-settings = Источники данных

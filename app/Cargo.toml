@@ -16,6 +16,7 @@ default = []
 menu-diagnostics = ["luciddesk-explorer/menu-diagnostics", "luciddesk-shell/menu-diagnostics"]
 
 [dependencies]
+luciddesk-plugin-api = { path = "../crates/luciddesk-plugin-api" }
 luciddesk-diagnostics.workspace = true
 luciddesk-api = { path = "../crates/luciddesk-api" }
 luciddesk-core.workspace = true
@@ -24,7 +25,6 @@ luciddesk-storage.workspace = true
 tempfile = "3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sysinfo = { version = "0.39.6", default-features = false, features = ["system", "network", "disk"] }
 semver = "1"
 luciddesk-window.workspace = true
 luciddesk-explorer.workspace = true
@@ -105,7 +105,7 @@ fluent-bundle = "0.16"
 unic-langid = "0.9"
 
 [dev-dependencies]
-windows-sys = { workspace = true, features = ["Win32_System_Diagnostics_Debug", "Win32_System_ProcessStatus"] }
+windows-sys = { workspace = true, features = ["Win32_System_Diagnostics_Debug", "Win32_System_ProcessStatus", "Win32_System_Memory"] }
 
 [lints]
 workspace = true

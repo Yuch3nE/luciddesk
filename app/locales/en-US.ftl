@@ -1285,3 +1285,11 @@ monitor-paused = Paused
 monitor-live = Live
 monitor-history = Last 60 seconds
 monitor-used = Used
+
+monitor-settings = System monitor settings
+monitor-settings-description = Enable monitor panels and choose metrics and devices. Each panel keeps its own settings.
+monitor-enable = Enable monitor panel
+monitor-enable-description = Turning this off preserves the layout and settings for the next time you enable it.
+
+monitor-display-settings = Display and refresh
+monitor-device-settings = Device sources

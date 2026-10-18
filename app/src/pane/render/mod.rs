@@ -18,8 +18,13 @@ type ImageBitmap = (Arc<assets::Pixels>, windows_canvas::Bitmap, (u32, u32));
 
 // A quiet, font-independent silhouette fills the same slot as the real icon.
 // It also remains useful when Shell extraction fails; no perpetual loading animation.
-fn draw_placeholder(target: &canvas::DrawPass<'_>, slot: Rect, folder: bool,
-    fill: &windows_canvas::Brush, edge: &windows_canvas::Brush) {
+fn draw_placeholder(
+    target: &canvas::DrawPass<'_>,
+    slot: Rect,
+    folder: bool,
+    fill: &windows_canvas::Brush,
+    edge: &windows_canvas::Brush,
+) {
     let size = slot.right - slot.left;
     let x = slot.left;
     let y = slot.top;
@@ -41,8 +46,12 @@ fn draw_placeholder(target: &canvas::DrawPass<'_>, slot: Rect, folder: bool,
         target.fill_rounded_rect(&body, fill);
         target.draw_rounded_rect(&body, edge, stroke);
         for (top, width) in [(0.55, 0.32), (0.69, 0.22)] {
-            target.draw_line(Vector2::new(x + size * 0.34, y + size * top),
-                Vector2::new(x + size * (0.34 + width), y + size * top), edge, stroke);
+            target.draw_line(
+                Vector2::new(x + size * 0.34, y + size * top),
+                Vector2::new(x + size * (0.34 + width), y + size * top),
+                edge,
+                stroke,
+            );
         }
     }
 }
@@ -82,12 +91,17 @@ pub struct Renderer {
 
 impl Renderer {
     pub(super) fn menu_width(&self, rows: &[super::menu::Entry]) -> f32 {
-        rows.iter().filter(|row| row.id != 0).fold(216.0_f32, |width, row| {
-            let trailing = row.trailing_width();
-            let measured = windows_canvas::TextLayout::new(row.label, &self.title, 4096.0, 64.0)
-                .map(|layout| layout.metrics().width_including_trailing_whitespace).unwrap_or(166.0);
-            width.max((measured + 54.0 + trailing).ceil())
-        }).min(480.0)
+        rows.iter()
+            .filter(|row| row.id != 0)
+            .fold(216.0_f32, |width, row| {
+                let trailing = row.trailing_width();
+                let measured =
+                    windows_canvas::TextLayout::new(row.label, &self.title, 4096.0, 64.0)
+                        .map(|layout| layout.metrics().width_including_trailing_whitespace)
+                        .unwrap_or(166.0);
+                width.max((measured + 54.0 + trailing).ceil())
+            })
+            .min(480.0)
     }
 
     #[cfg(test)]
@@ -133,7 +147,8 @@ impl Renderer {
         canvas::draw(target, scale, |target| {
             let ink = if dark { 0.95 } else { 0.10 };
             let text = canvas_result(target.create_solid_brush(ColorF::new(ink, ink, ink, 1.0)))?;
-            let disabled = canvas_result(target.create_solid_brush(ColorF::new(ink, ink, ink, 0.4)))?;
+            let disabled =
+                canvas_result(target.create_solid_brush(ColorF::new(ink, ink, ink, 0.4)))?;
             let subtle =
                 canvas_result(target.create_solid_brush(ColorF::new(ink, ink, ink, 0.13)))?;
             target.clear(ColorF::new(0.0, 0.0, 0.0, 0.0));
@@ -145,11 +160,14 @@ impl Renderer {
                     if dark { 0.12 } else { 0.96 },
                     1.0,
                 )))?;
-                target.fill_rounded_rect(&RoundedRect {
-                    rect: Rect::from_xywh(0.0, 0.0, width, height as f32 / scale),
-                    radius_x: super::menu::CORNER_RADIUS + 0.5,
-                    radius_y: super::menu::CORNER_RADIUS + 0.5,
-                }, &background);
+                target.fill_rounded_rect(
+                    &RoundedRect {
+                        rect: Rect::from_xywh(0.0, 0.0, width, height as f32 / scale),
+                        radius_x: super::menu::CORNER_RADIUS + 0.5,
+                        radius_y: super::menu::CORNER_RADIUS + 0.5,
+                    },
+                    &background,
+                );
             }
             target.draw_rounded_rect(
                 &RoundedRect {
@@ -197,9 +215,17 @@ impl Renderer {
                     (row.icon, 12.0, 20.0),
                     (row.label, 38.0, width - 50.0 - trailing_width),
                 ] {
-                    if label.chars().next().is_some_and(|ch| ('\u{e000}'..='\u{f8ff}').contains(&ch)) {
-                        target.clipped_icon(label, &self.icons,
-                            &Rect::from_xywh(left, top, available, super::menu::ROW_HEIGHT), &text);
+                    if label
+                        .chars()
+                        .next()
+                        .is_some_and(|ch| ('\u{e000}'..='\u{f8ff}').contains(&ch))
+                    {
+                        target.clipped_icon(
+                            label,
+                            &self.icons,
+                            &Rect::from_xywh(left, top, available, super::menu::ROW_HEIGHT),
+                            &text,
+                        );
                         continue;
                     }
                     target.clipped_text(
@@ -210,11 +236,19 @@ impl Renderer {
                     );
                 }
                 if !row.children.is_empty() {
-                    target.clipped_icon("\u{e76c}", &self.icons,
-                        &Rect::from_xywh(width - 28.0, top, 16.0, super::menu::ROW_HEIGHT), &text);
+                    target.clipped_icon(
+                        "\u{e76c}",
+                        &self.icons,
+                        &Rect::from_xywh(width - 28.0, top, 16.0, super::menu::ROW_HEIGHT),
+                        &text,
+                    );
                 } else if row.trailing_is_icon() {
-                    target.clipped_icon(row.trailing, &self.icons,
-                        &Rect::from_xywh(width - 28.0, top, 16.0, super::menu::ROW_HEIGHT), &text);
+                    target.clipped_icon(
+                        row.trailing,
+                        &self.icons,
+                        &Rect::from_xywh(width - 28.0, top, 16.0, super::menu::ROW_HEIGHT),
+                        &text,
+                    );
                 } else if trailing_width > 0.0 {
                     target.clipped_text(
                         row.trailing,
@@ -249,10 +283,23 @@ impl Renderer {
             .with_word_wrapping(WordWrapping::NoWrap);
         canvas::ellipsis(&tab_title)?;
         let mut column_label_widths = [0.0; 4];
-        for (index, name) in [crate::i18n::text("ui-name"), crate::i18n::text("ui-type"), crate::i18n::text("ui-modified"), crate::i18n::text("ui-size")].iter().enumerate() {
+        for (index, name) in [
+            crate::i18n::text("ui-name"),
+            crate::i18n::text("ui-type"),
+            crate::i18n::text("ui-modified"),
+            crate::i18n::text("ui-size"),
+        ]
+        .iter()
+        .enumerate()
+        {
             column_label_widths[index] = canvas_result(windows_canvas::TextLayout::new(
-                name, &details, 256.0, super::layout::LIST_HEADER,
-            ))?.metrics().width_including_trailing_whitespace;
+                name,
+                &details,
+                256.0,
+                super::layout::LIST_HEADER,
+            ))?
+            .metrics()
+            .width_including_trailing_whitespace;
         }
         Ok(Self {
             monitor: None,
@@ -322,7 +369,13 @@ impl Renderer {
         model: &GroupModel,
     ) -> Result<Vec<u8>> {
         self.prepare(width, height, scale)?;
-        self.draw(width, height, scale, model, model.grid(width as f32 / scale, height as f32 / scale))?;
+        self.draw(
+            width,
+            height,
+            scale,
+            model,
+            model.grid(width as f32 / scale, height as f32 / scale),
+        )?;
         self.target.as_ref().unwrap().2.as_ref().unwrap().pixels()
     }
 
@@ -348,7 +401,11 @@ impl Renderer {
         // Keep the viewport plus one row for smooth scrolling, not every icon
         // ever visited in a large mapped folder. Source identity still detects
         // replaced icons without re-uploading unchanged visible textures.
-        let candidates = model.visible_indices(grid, HEADER - grid.cell_height, height_dip + grid.cell_height);
+        let candidates = model.visible_indices(
+            grid,
+            HEADER - grid.cell_height,
+            height_dip + grid.cell_height,
+        );
         let live: HashSet<_> = candidates
             .map(|index| (index, &model.items[index]))
             .filter(|(index, _)| {
@@ -357,14 +414,9 @@ impl Renderer {
                     && y + grid.cell_height * 2.0 > HEADER
                     && y < height_dip + grid.cell_height
             })
-            .filter_map(|(_, item)| {
-                item.image
-                    .as_ref()
-                    .map(|image| Arc::as_ptr(image) as usize)
-            })
+            .filter_map(|(_, item)| item.image.as_ref().map(|image| Arc::as_ptr(image) as usize))
             .collect();
-        self.images
-            .retain(|key, _| live.contains(key));
+        self.images.retain(|key, _| live.contains(key));
         self.draw(width, height, scale, model, grid)
     }
 
@@ -416,7 +468,14 @@ impl Renderer {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn draw(&mut self, width: u32, height: u32, scale: f32, model: &GroupModel, grid: super::layout::Grid) -> Result<()> {
+    fn draw(
+        &mut self,
+        width: u32,
+        height: u32,
+        scale: f32,
+        model: &GroupModel,
+        grid: super::layout::Grid,
+    ) -> Result<()> {
         if model.monitor.is_some() && self.monitor.is_none() {
             self.monitor = Some(super::monitor::Drawing::new()?);
         }
@@ -471,26 +530,54 @@ impl Renderer {
                 };
                 let base = contrast.base();
                 let ink = contrast.ink();
-                let [background, outline, white, dim, placeholder_fill, placeholder_edge, selection, hover, inactive] =
-                    canvas_result(brushes.get(context, &target, [
-                        if !model.native_material { super::theme::mica_fallback(model.backdrop, model.dark) } else { None }
+                let [
+                    background,
+                    outline,
+                    white,
+                    dim,
+                    placeholder_fill,
+                    placeholder_edge,
+                    selection,
+                    hover,
+                    inactive,
+                ] = canvas_result(
+                    brushes.get(
+                        context,
+                        &target,
+                        [
+                            if !model.native_material {
+                                super::theme::mica_fallback(model.backdrop, model.dark)
+                            } else {
+                                None
+                            }
                             .unwrap_or_else(|| {
-                                if model.monitor.is_some() && !model.native_material
-                                    && matches!(model.backdrop, luciddesk_core::Backdrop::Translucent { .. })
+                                if model.monitor.is_some()
+                                    && !model.native_material
+                                    && matches!(
+                                        model.backdrop,
+                                        luciddesk_core::Backdrop::Translucent { .. }
+                                    )
                                 {
-                                    if model.dark { ColorF::new(0.075, 0.082, 0.10, opacity) }
-                                    else { ColorF::new(0.985, 0.987, 0.99, opacity) }
-                                } else { ColorF::new(base, base, base, opacity) }
+                                    if model.dark {
+                                        ColorF::new(0.075, 0.082, 0.10, opacity)
+                                    } else {
+                                        ColorF::new(0.985, 0.987, 0.99, opacity)
+                                    }
+                                } else {
+                                    ColorF::new(base, base, base, opacity)
+                                }
                             }),
-                        super::theme::panel_border(model.dark, model.backdrop),
-                        ColorF::new(ink, ink, ink, 1.0),
-                        ColorF::new(ink, ink, ink, 0.85),
-                        ColorF::new(ink, ink, ink, 0.08),
-                        ColorF::new(ink, ink, ink, 0.48),
-                        ColorF::new(0.55, 0.75, 1.0, 0.25),
-                        ColorF::new(0.7, 0.85, 1.0, 0.12),
-                        ColorF::new(0.75, 0.8, 0.85, 0.16),
-                    ]))?;
+                            super::theme::panel_border(model.dark, model.backdrop),
+                            ColorF::new(ink, ink, ink, 1.0),
+                            ColorF::new(ink, ink, ink, 0.85),
+                            ColorF::new(ink, ink, ink, 0.08),
+                            ColorF::new(ink, ink, ink, 0.48),
+                            ColorF::new(0.55, 0.75, 1.0, 0.25),
+                            ColorF::new(0.7, 0.85, 1.0, 0.12),
+                            ColorF::new(0.75, 0.8, 0.85, 0.16),
+                        ],
+                    ),
+                )?;
                 target.clear(ColorF::new(0.0, 0.0, 0.0, 0.0));
                 let rounded = RoundedRect {
                     rect: Rect::from_xywh(0.5, 0.5, w - 1.0, h - 1.0),
@@ -504,11 +591,15 @@ impl Renderer {
                         let stroke = 1.0 / scale;
                         let inset = stroke * 0.5;
                         let radius = (model.options.corner_radius - inset).max(0.0);
-                        target.draw_rounded_rect(&RoundedRect {
-                            rect: Rect::from_xywh(inset, inset, w - stroke, h - stroke),
-                            radius_x: radius,
-                            radius_y: radius,
-                        }, outline, stroke);
+                        target.draw_rounded_rect(
+                            &RoundedRect {
+                                rect: Rect::from_xywh(inset, inset, w - stroke, h - stroke),
+                                radius_x: radius,
+                                radius_y: radius,
+                            },
+                            outline,
+                            stroke,
+                        );
                     }
                     if show_icon && model.tabs.len() < 2 && model.merge_preview.is_empty() {
                         target.clipped_icon(
@@ -519,13 +610,27 @@ impl Renderer {
                         );
                     }
                     if model.tabs.len() < 2 && model.merge_preview.is_empty() {
-                        target.clipped_color_layout(&model.title, &title, group_left + icon_width, canvas::text_ink_center_offset(&title)?, white)?;
+                        target.clipped_color_layout(
+                            &model.title,
+                            &title,
+                            group_left + icon_width,
+                            canvas::text_ink_center_offset(&title)?,
+                            white,
+                        )?;
                     }
-                    for button in 0..if !model.merge_preview.is_empty() { 0 } else if model.folder.is_some() { 4 } else { 2 } {
+                    for button in 0..if !model.merge_preview.is_empty() {
+                        0
+                    } else if model.folder.is_some() {
+                        4
+                    } else {
+                        2
+                    } {
                         let top = super::layout::HEADER_INSET;
                         let button_height = HEADER - top * 2.0;
                         let center_y = HEADER / 2.0;
-                        if model.tabs.len() > 1 && button < 2 { continue; }
+                        if model.tabs.len() > 1 && button < 2 {
+                            continue;
+                        }
                         let x = model.header_button_x(w, button);
                         let enabled = model.header_button_enabled(button);
                         let hovered = enabled && model.hovered_button == Some(button);
@@ -533,7 +638,13 @@ impl Renderer {
                             ink,
                             ink,
                             ink,
-                            if !enabled { 0.3 } else if hovered { 1.0 } else { 0.85 },
+                            if !enabled {
+                                0.3
+                            } else if hovered {
+                                1.0
+                            } else {
+                                0.85
+                            },
                         )))?;
                         if hovered {
                             let fill = canvas_result(
@@ -595,105 +706,228 @@ impl Renderer {
                     }
                 }
                 let mut chrome = super::theme::material_chrome(model.backdrop, model.dark);
-                if !matches!(model.backdrop.base(), luciddesk_core::Backdrop::Acrylic | luciddesk_core::Backdrop::Mica | luciddesk_core::Backdrop::MicaAlt) {
+                if !matches!(
+                    model.backdrop.base(),
+                    luciddesk_core::Backdrop::Acrylic
+                        | luciddesk_core::Backdrop::Mica
+                        | luciddesk_core::Backdrop::MicaAlt
+                ) {
                     chrome.tab_active = ColorF::new(ink, ink, ink, 0.14);
                     chrome.tab_inactive = ColorF::new(ink, ink, ink, 0.04);
                     chrome.tab_hover = ColorF::new(ink, ink, ink, 0.09);
                     chrome.tab_incoming = ColorF::new(ink, ink, ink, 0.09);
                 }
-                for (id, bounds) in super::tabs::strip(model, w).into_iter().filter(|_| model.merge_preview.is_empty()) {
+                for (id, bounds) in super::tabs::strip(model, w)
+                    .into_iter()
+                    .filter(|_| model.merge_preview.is_empty())
+                {
                     let rect = Rect::from_xywh(bounds.x, bounds.y, bounds.width, bounds.height);
-                    let fill = canvas_result(target.create_solid_brush(
-                        if id == model.active_tab { chrome.tab_active } else if model.hovered_tab == Some(id) { chrome.tab_hover } else { chrome.tab_inactive }))?;
-                    target.fill_rounded_rect(&RoundedRect { rect, radius_x: model.options.corner_radius, radius_y: model.options.corner_radius }, &fill);
+                    let fill =
+                        canvas_result(target.create_solid_brush(if id == model.active_tab {
+                            chrome.tab_active
+                        } else if model.hovered_tab == Some(id) {
+                            chrome.tab_hover
+                        } else {
+                            chrome.tab_inactive
+                        }))?;
+                    target.fill_rounded_rect(
+                        &RoundedRect {
+                            rect,
+                            radius_x: model.options.corner_radius,
+                            radius_y: model.options.corner_radius,
+                        },
+                        &fill,
+                    );
                     if id == model.active_tab || model.hovered_tab == Some(id) {
                         let edge = canvas_result(target.create_solid_brush(chrome.card_border))?;
-                        target.draw_rounded_rect(&RoundedRect { rect, radius_x: model.options.corner_radius, radius_y: model.options.corner_radius }, &edge, 1.0);
+                        target.draw_rounded_rect(
+                            &RoundedRect {
+                                rect,
+                                radius_x: model.options.corner_radius,
+                                radius_y: model.options.corner_radius,
+                            },
+                            &edge,
+                            1.0,
+                        );
                     }
-                    let text = model.tabs.iter().find(|(tab, _)| *tab == id).map_or("", |(_, title)| title.as_str());
-                    target.clipped_color_text(text, &self.tab_title, &Rect::from_xywh(rect.left + 10.0, rect.top, (bounds.width - 20.0).max(1.0), bounds.height),
-                        if id == model.active_tab { white } else { dim })?;
+                    let text = model
+                        .tabs
+                        .iter()
+                        .find(|(tab, _)| *tab == id)
+                        .map_or("", |(_, title)| title.as_str());
+                    target.clipped_color_text(
+                        text,
+                        &self.tab_title,
+                        &Rect::from_xywh(
+                            rect.left + 10.0,
+                            rect.top,
+                            (bounds.width - 20.0).max(1.0),
+                            bounds.height,
+                        ),
+                        if id == model.active_tab { white } else { dim },
+                    )?;
                 }
                 for (text, incoming, active, bounds) in super::tabs::merge_strip(model, w) {
                     let rect = Rect::from_xywh(bounds.x, bounds.y, bounds.width, bounds.height);
-                    let fill = canvas_result(target.create_solid_brush(
-                        if incoming { chrome.tab_incoming } else if active { chrome.tab_active } else { chrome.tab_inactive }))?;
-                    target.fill_rounded_rect(&RoundedRect { rect, radius_x: 5.0, radius_y: 5.0 }, &fill);
+                    let fill = canvas_result(target.create_solid_brush(if incoming {
+                        chrome.tab_incoming
+                    } else if active {
+                        chrome.tab_active
+                    } else {
+                        chrome.tab_inactive
+                    }))?;
+                    target.fill_rounded_rect(
+                        &RoundedRect {
+                            rect,
+                            radius_x: 5.0,
+                            radius_y: 5.0,
+                        },
+                        &fill,
+                    );
                     if incoming {
-                        let edge = canvas_result(target.create_solid_brush(ColorF::new(ink, ink, ink, 0.24 + chrome.border.a)))?;
+                        let edge = canvas_result(target.create_solid_brush(ColorF::new(
+                            ink,
+                            ink,
+                            ink,
+                            0.24 + chrome.border.a,
+                        )))?;
                         // Short neutral dashes keep provisional tabs distinct without an accent color.
                         let mut x = rect.left + 5.0;
                         while x < rect.right - 5.0 {
                             for y in [rect.top + 0.5, rect.bottom - 0.5] {
-                                target.draw_line(Vector2::new(x, y), Vector2::new((x + 4.0).min(rect.right - 5.0), y), &edge, 1.0);
+                                target.draw_line(
+                                    Vector2::new(x, y),
+                                    Vector2::new((x + 4.0).min(rect.right - 5.0), y),
+                                    &edge,
+                                    1.0,
+                                );
                             }
                             x += 7.0;
                         }
                         let mut y = rect.top + 5.0;
                         while y < rect.bottom - 5.0 {
                             for x in [rect.left + 0.5, rect.right - 0.5] {
-                                target.draw_line(Vector2::new(x, y), Vector2::new(x, (y + 4.0).min(rect.bottom - 5.0)), &edge, 1.0);
+                                target.draw_line(
+                                    Vector2::new(x, y),
+                                    Vector2::new(x, (y + 4.0).min(rect.bottom - 5.0)),
+                                    &edge,
+                                    1.0,
+                                );
                             }
                             y += 7.0;
                         }
                     }
-                    target.clipped_color_text(&text, &self.tab_title, &Rect::from_xywh(rect.left + 10.0, rect.top,
-                        (bounds.width - 20.0).max(1.0), bounds.height), if active || incoming { white } else { dim })?;
+                    target.clipped_color_text(
+                        &text,
+                        &self.tab_title,
+                        &Rect::from_xywh(
+                            rect.left + 10.0,
+                            rect.top,
+                            (bounds.width - 20.0).max(1.0),
+                            bounds.height,
+                        ),
+                        if active || incoming { white } else { dim },
+                    )?;
                 }
-                if super::interface_flags::HEADER_DIVIDER.get() && !model.collapsed && h > model.content_header() + 1.0 {
-                    let divider = canvas_result(target.create_solid_brush(super::theme::panel_divider(model.dark, model.backdrop)))?;
+                if super::interface_flags::HEADER_DIVIDER.get()
+                    && !model.collapsed
+                    && h > model.content_header() + 1.0
+                {
+                    let divider = canvas_result(target.create_solid_brush(
+                        super::theme::panel_divider(model.dark, model.backdrop),
+                    ))?;
                     let inset = super::layout::HEADER_INSET;
-                    let divider_y = ((model.content_header() - inset + 4.0) * scale).round() / scale;
-                    target.fill_rect(&Rect::from_xywh(inset, divider_y, (w - inset * 2.0).max(0.0), 1.0 / scale), &divider);
+                    let divider_y =
+                        ((model.content_header() - inset + 4.0) * scale).round() / scale;
+                    target.fill_rect(
+                        &Rect::from_xywh(inset, divider_y, (w - inset * 2.0).max(0.0), 1.0 / scale),
+                        &divider,
+                    );
                 }
-                if let Some(options) = model.monitor.as_ref().filter(|_| h > model.content_header() + 1.0) {
-                    self.monitor.as_mut().unwrap().paint(&target, options,
-                        Rect::from_xywh(6.0, model.content_header() + 6.0, (w - 12.0).max(1.0), (h - model.content_header() - 12.0).max(1.0)),
-                        white, dim, model.dark, ink)?;
+                if let Some(options) = model
+                    .monitor
+                    .as_ref()
+                    .filter(|_| h > model.content_header() + 1.0)
+                {
+                    self.monitor.as_mut().unwrap().paint(
+                        &target,
+                        options,
+                        Rect::from_xywh(
+                            6.0,
+                            model.content_header() + 6.0,
+                            (w - 12.0).max(1.0),
+                            (h - model.content_header() - 12.0).max(1.0),
+                        ),
+                        model.dark,
+                        ink,
+                    )?;
                 } else if h > model.content_header() + 1.0 {
                     target.push_clip(&{
-                        Rect::from_xywh(6.0, model.content_header(), w - 12.0, (h - model.horizontal_inset(w) - model.content_header() - 6.0).max(0.0))
+                        Rect::from_xywh(
+                            6.0,
+                            model.content_header(),
+                            w - 12.0,
+                            (h - model.horizontal_inset(w) - model.content_header() - 6.0).max(0.0),
+                        )
                     });
                     let list = model.is_list();
                     let columns = model.list_columns(grid.cell_width);
                     if list && model.folder.is_some() {
                         for column in 1..4 {
-                            if model.folder_visible_columns & (1 << column) == 0 { continue; }
+                            if model.folder_visible_columns & (1 << column) == 0 {
+                                continue;
+                            }
                             let boundary = columns[column];
                             target.fill_rect(
                                 &Rect::from_xywh(
                                     super::layout::PADDING + boundary,
                                     grid.content_top - super::layout::LIST_HEADER + 6.0,
-                                    1.0, super::layout::LIST_HEADER - 12.0,
+                                    1.0,
+                                    super::layout::LIST_HEADER - 12.0,
                                 ),
                                 hover,
                             );
                         }
-                        for (column, name) in [crate::i18n::text("ui-name"), crate::i18n::text("ui-type"), crate::i18n::text("ui-modified"), crate::i18n::text("ui-size")].iter().enumerate()
+                        for (column, name) in [
+                            crate::i18n::text("ui-name"),
+                            crate::i18n::text("ui-type"),
+                            crate::i18n::text("ui-modified"),
+                            crate::i18n::text("ui-size"),
+                        ]
+                        .iter()
+                        .enumerate()
                         {
-                            if column > 0 && model.folder_visible_columns & (1 << column) == 0 { continue; }
+                            if column > 0 && model.folder_visible_columns & (1 << column) == 0 {
+                                continue;
+                            }
                             let inset = if column == 0 { 0.0 } else { 8.0 };
                             let left = super::layout::PADDING + columns[column] + inset;
                             let top = grid.content_top - super::layout::LIST_HEADER;
-                            let available = (columns[column + 1] - columns[column] - inset - 8.0).max(1.0);
-                            let sorted = model.folder_sort.0 as usize == column && available >= 30.0;
+                            let available =
+                                (columns[column + 1] - columns[column] - inset - 8.0).max(1.0);
+                            let sorted =
+                                model.folder_sort.0 as usize == column && available >= 30.0;
                             let text_width = if sorted { available - 18.0 } else { available };
                             target.clipped_text(
                                 name,
                                 &self.details,
-                                &Rect::from_xywh(
-                                    left, top, text_width,
-                                    super::layout::LIST_HEADER,
-                                ),
+                                &Rect::from_xywh(left, top, text_width, super::layout::LIST_HEADER),
                                 dim,
                             );
                             if sorted {
                                 target.clipped_icon(
-                                    if model.folder_sort.1 { "\u{e70d}" } else { "\u{e70e}" },
+                                    if model.folder_sort.1 {
+                                        "\u{e70d}"
+                                    } else {
+                                        "\u{e70e}"
+                                    },
                                     &self.sort_icons,
                                     &Rect::from_xywh(
-                                        left + self.column_label_widths[column].min(text_width) + 4.0,
-                                        top, 14.0, super::layout::LIST_HEADER,
+                                        left + self.column_label_widths[column].min(text_width)
+                                            + 4.0,
+                                        top,
+                                        14.0,
+                                        super::layout::LIST_HEADER,
                                     ),
                                     dim,
                                 );
@@ -735,16 +969,22 @@ impl Renderer {
                                     pixels.width,
                                     pixels.height,
                                 ))?;
-                                self.images
-                                    .insert(key, (Arc::clone(image), bitmap, size));
+                                self.images.insert(key, (Arc::clone(image), bitmap, size));
                                 #[cfg(test)]
-                                { self.image_uploads += 1; }
-                                if luciddesk_diagnostics::enabled(luciddesk_diagnostics::Level::Trace)
-                                    && item.identity.persistent_key()
-                                        .to_ascii_lowercase()
-                                        .contains("645ff040-5081-101b-9f08-00aa002f954e")
                                 {
-                                    luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Trace, "pane.render",
+                                    self.image_uploads += 1;
+                                }
+                                if luciddesk_diagnostics::enabled(
+                                    luciddesk_diagnostics::Level::Trace,
+                                ) && item
+                                    .identity
+                                    .persistent_key()
+                                    .to_ascii_lowercase()
+                                    .contains("645ff040-5081-101b-9f08-00aa002f954e")
+                                {
+                                    luciddesk_diagnostics::emit!(
+                                        luciddesk_diagnostics::Level::Trace,
+                                        "pane.render",
                                         "recycle-render-upload hash={:x} size={:?}",
                                         image.data.iter().fold(0u64, |h, b| h
                                             .wrapping_mul(31)
@@ -754,7 +994,9 @@ impl Renderer {
                                 }
                             }
                         }
-                        if x + grid.cell_width <= 6.0 || x >= w - 6.0 { continue; }
+                        if x + grid.cell_width <= 6.0 || x >= w - 6.0 {
+                            continue;
+                        }
                         if model.selection.contains(&index) || model.hovered_item == Some(index) {
                             let bounds = model.selection_bounds(grid, index, scale);
                             let selection_height = bounds.height;
@@ -849,37 +1091,64 @@ impl Renderer {
                                 1.0,
                             );
                         } else {
-                            let left = if list { x + 4.0 } else { x + (grid.cell_width - grid.icon_size) / 2.0 };
-                            let top = if list { y + (grid.cell_height - grid.icon_size) / 2.0 } else { y + 2.0 };
-                            draw_placeholder(&target,
-                                Rect::from_xywh((left * scale).round() / scale, (top * scale).round() / scale,
-                                    grid.icon_size, grid.icon_size),
-                                item.details.folder, placeholder_fill, placeholder_edge);
-
+                            let left = if list {
+                                x + 4.0
+                            } else {
+                                x + (grid.cell_width - grid.icon_size) / 2.0
+                            };
+                            let top = if list {
+                                y + (grid.cell_height - grid.icon_size) / 2.0
+                            } else {
+                                y + 2.0
+                            };
+                            draw_placeholder(
+                                &target,
+                                Rect::from_xywh(
+                                    (left * scale).round() / scale,
+                                    (top * scale).round() / scale,
+                                    grid.icon_size,
+                                    grid.icon_size,
+                                ),
+                                item.details.folder,
+                                placeholder_fill,
+                                placeholder_edge,
+                            );
                         }
 
                         if list {
-                            let size = super::folder::size_text(item.details.size, item.details.folder);
-                            for (column, text) in
-                                [item.label.as_str(), item.details.kind_text(), item.details.modified.as_str(), size.as_str()]
-                                    .iter()
-                                    .enumerate()
+                            let size =
+                                super::folder::size_text(item.details.size, item.details.folder);
+                            for (column, text) in [
+                                item.label.as_str(),
+                                item.details.kind_text(),
+                                item.details.modified.as_str(),
+                                size.as_str(),
+                            ]
+                            .iter()
+                            .enumerate()
                             {
                                 if column > 0 && model.folder.is_none() {
                                     continue;
                                 }
-                                if column > 0 && model.folder_visible_columns & (1 << column) == 0 { continue; }
+                                if column > 0 && model.folder_visible_columns & (1 << column) == 0 {
+                                    continue;
+                                }
                                 if column == 0 && model.renaming.as_ref() == Some(&item.identity) {
                                     continue;
                                 }
                                 let inset = if column == 0 { 0.0 } else { 8.0 };
                                 target.clipped_text(
                                     text,
-                                    if column == 3 { &self.menu_shortcut } else { &self.details },
+                                    if column == 3 {
+                                        &self.menu_shortcut
+                                    } else {
+                                        &self.details
+                                    },
                                     &Rect::from_xywh(
                                         x + columns[column] + inset,
                                         y,
-                                        (columns[column + 1] - columns[column] - inset - 8.0).max(1.0),
+                                        (columns[column + 1] - columns[column] - inset - 8.0)
+                                            .max(1.0),
                                         grid.cell_height,
                                     ),
                                     if column == 0 { white } else { dim },
@@ -929,24 +1198,58 @@ impl Renderer {
                         );
                     }
                     target.pop_clip();
-                    for bar in [super::scrollbar::Bar::for_grid(model, grid, w, h), super::scrollbar::Bar::horizontal(model, w, h)].into_iter().flatten() {
+                    for bar in [
+                        super::scrollbar::Bar::for_grid(model, grid, w, h),
+                        super::scrollbar::Bar::horizontal(model, w, h),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    {
                         let expansion = model.scrollbar.expansion.clamp(0.0, 1.0);
                         let center = bar.left + super::scrollbar::Bar::WIDTH / 2.0;
                         if expansion > 0.0 {
                             let track_width = 2.0 + 4.0 * expansion;
-                            let track = canvas_result(target.create_solid_brush(ColorF::new(ink, ink, ink, 0.06 * expansion)))?;
+                            let track = canvas_result(target.create_solid_brush(ColorF::new(
+                                ink,
+                                ink,
+                                ink,
+                                0.06 * expansion,
+                            )))?;
                             target.fill_rounded_rect(
                                 &RoundedRect {
-                                    rect: { let (x,y,w,h) = bar.rect(center - track_width / 2.0, bar.top, track_width, bar.height); Rect::from_xywh(x,y,w,h) },
-                                    radius_x: track_width / 2.0, radius_y: track_width / 2.0,
-                                }, &track,
+                                    rect: {
+                                        let (x, y, w, h) = bar.rect(
+                                            center - track_width / 2.0,
+                                            bar.top,
+                                            track_width,
+                                            bar.height,
+                                        );
+                                        Rect::from_xywh(x, y, w, h)
+                                    },
+                                    radius_x: track_width / 2.0,
+                                    radius_y: track_width / 2.0,
+                                },
+                                &track,
                             );
                         }
                         let width = 2.0 + 2.0 * expansion;
-                        let thumb = canvas_result(target.create_solid_brush(ColorF::new(ink, ink, ink, 0.85 + 0.15 * expansion)))?;
+                        let thumb = canvas_result(target.create_solid_brush(ColorF::new(
+                            ink,
+                            ink,
+                            ink,
+                            0.85 + 0.15 * expansion,
+                        )))?;
                         target.fill_rounded_rect(
                             &RoundedRect {
-                                rect: { let (x,y,w,h) = bar.rect(center - width / 2.0, bar.thumb_top, width, bar.thumb_height); Rect::from_xywh(x,y,w,h) },
+                                rect: {
+                                    let (x, y, w, h) = bar.rect(
+                                        center - width / 2.0,
+                                        bar.thumb_top,
+                                        width,
+                                        bar.thumb_height,
+                                    );
+                                    Rect::from_xywh(x, y, w, h)
+                                },
                                 radius_x: width / 2.0,
                                 radius_y: width / 2.0,
                             },
@@ -956,8 +1259,11 @@ impl Renderer {
                 }
                 if let Some(rect) = self.marquee.filter(|_| !model.collapsed) {
                     let bounds = Rect::from_xywh(rect.x, rect.y, rect.width, rect.height);
-                    let fill = canvas_result(target.create_solid_brush(ColorF::new(0.2, 0.55, 1.0, 0.18)))?;
-                    let border = canvas_result(target.create_solid_brush(ColorF::new(0.3, 0.65, 1.0, 0.9)))?;
+                    let fill = canvas_result(
+                        target.create_solid_brush(ColorF::new(0.2, 0.55, 1.0, 0.18)),
+                    )?;
+                    let border =
+                        canvas_result(target.create_solid_brush(ColorF::new(0.3, 0.65, 1.0, 0.9)))?;
                     target.fill_rect(&bounds, &fill);
                     target.draw_rect(&bounds, &border, 1.0 / scale);
                 }

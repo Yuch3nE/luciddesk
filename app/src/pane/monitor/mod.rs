@@ -1,6 +1,6 @@
-//! Native monitor content. All windows share one demand-driven sampling worker.
+//! Native monitor content, hosted with its sampling worker in a dedicated process.
+pub(super) mod process;
 mod drawing;
-mod gpu;
 mod sampling;
 #[cfg(test)]
 mod tests;
@@ -9,6 +9,10 @@ pub(super) use drawing::Drawing;
 use luciddesk_core::PanelId;
 use luciddesk_storage::WorkspaceStore;
 pub(super) use sampling::Client;
+pub(super) const PLUGIN_ID: &str = "system-monitor";
+pub(super) fn available() -> bool {
+    crate::plugins::supports(PLUGIN_ID, "system-monitor.v1")
+}
 use serde::{Deserialize, Serialize};
 use std::{cell::RefCell, rc::Rc};
 use windows_sys::Win32::Foundation::{HWND, POINT};
@@ -91,7 +95,8 @@ pub(super) enum Metric {
     Disk,
 }
 impl Metric {
-    fn label(self) -> &'static str {
+    #[cfg(test)]
+    pub(super) fn label(self) -> &'static str {
         crate::i18n::text(match self {
             Self::Cpu => "monitor-cpu",
             Self::Memory => "monitor-memory",
@@ -102,9 +107,10 @@ impl Metric {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub(super) struct Preferences {
+    pub enabled: bool,
     pub metrics: Vec<Metric>,
     pub compact: bool,
     pub paused: bool,
@@ -116,6 +122,7 @@ pub(super) struct Preferences {
 impl Default for Preferences {
     fn default() -> Self {
         Self {
+            enabled: true,
             metrics: vec![
                 Metric::Cpu,
                 Metric::Memory,
@@ -151,9 +158,6 @@ impl Preferences {
                 true
             }
         });
-        if value.metrics.is_empty() {
-            value.metrics = Self::default().metrics;
-        }
         if ![1, 2, 5].contains(&value.interval) {
             value.interval = 1;
         }
@@ -189,98 +193,13 @@ pub(super) fn show_menu(
     mut event: impl FnMut(Event),
 ) {
     use super::menu::{entry, show_entries};
-    let (mut options, theme, backdrop, locked, collapsed, hide) = {
+    let (theme, backdrop, locked, collapsed, hide) = {
         let m = model.borrow();
-        (
-            m.monitor.clone().unwrap(),
-            m.theme,
-            m.backdrop,
-            m.locked,
-            m.collapsed,
-            m.auto_hide,
-        )
+        (m.theme, m.backdrop, m.locked, m.collapsed, m.auto_hide)
     };
     let check = |yes| if yes { "\u{e73e}" } else { "" };
-    let mut rows = vec![
-        entry(
-            100,
-            crate::i18n::text("monitor-compact"),
-            check(options.compact),
-            "",
-        ),
-        entry(
-            101,
-            crate::i18n::text(if options.paused {
-                "monitor-resume"
-            } else {
-                "monitor-pause"
-            }),
-            "",
-            "",
-        ),
-    ];
-    let all = [
-        Metric::Cpu,
-        Metric::Memory,
-        Metric::Gpu,
-        Metric::Network,
-        Metric::Disk,
-    ];
-    let mut metrics = entry(102, crate::i18n::text("monitor-metrics"), "", "");
-    metrics.children = all
-        .iter()
-        .enumerate()
-        .map(|(i, m)| {
-            let mut row = entry(
-                110 + i as i32,
-                m.label(),
-                check(options.metrics.contains(m)),
-                "",
-            );
-            row.enabled = !options.metrics.contains(m) || options.metrics.len() > 1;
-            row
-        })
-        .collect();
-    rows.push(metrics);
-    let mut order = entry(103, crate::i18n::text("monitor-first"), "", "");
-    order.children = options
-        .metrics
-        .iter()
-        .map(|m| {
-            entry(
-                120 + all.iter().position(|x| x == m).unwrap() as i32,
-                m.label(),
-                "",
-                "",
-            )
-        })
-        .collect();
-    rows.push(order);
-    let mut interval = entry(104, crate::i18n::text("monitor-interval"), "", "");
-    interval.children = [
-        (1, "monitor-one-second"),
-        (2, "monitor-two-seconds"),
-        (5, "monitor-five-seconds"),
-    ]
-    .into_iter()
-    .map(|(n, key)| {
-        entry(
-            130 + n as i32,
-            crate::i18n::text(key),
-            check(options.interval == n),
-            "",
-        )
-    })
-    .collect();
-    rows.push(interval);
-    let snapshot = sampling::snapshot();
-    // Entry labels borrow the persistent i18n catalog. Device names are dynamic;
-    // the native popup below supports them without leaking strings into that catalog.
-    rows.extend([
-        entry(140, crate::i18n::text("monitor-select-network"), "", ""),
-        entry(141, crate::i18n::text("monitor-select-disk"), "", ""),
-        entry(142, crate::i18n::text("monitor-select-gpu"), "", ""),
-        entry(143, crate::i18n::text("monitor-task-manager"), "", ""),
+    let rows = vec![
+        entry(18, crate::i18n::text("monitor-settings"), "", ""),
         entry(0, "", "", ""),
         entry(43, crate::i18n::text("ui-rename-panel"), "", ""),
         entry(
@@ -301,149 +220,29 @@ pub(super) fn show_menu(
             check(super::quick_reveal::permanent_topmost(hwnd)),
             "",
         ),
-        entry(0, "", "", ""),
-        entry(18, crate::i18n::text("ui-settings"), "", ""),
-        entry(11, crate::i18n::text("ui-close-panel"), "", ""),
-    ]);
-    let command = show_entries(hwnd, anchor, anchored, theme, backdrop, rows);
-    match command {
-        100 => options.compact = !options.compact,
-        101 => options.paused = !options.paused,
-        110..=114 => {
-            let metric = all[(command - 110) as usize];
-            if options.metrics.contains(&metric) {
-                if options.metrics.len() > 1 {
-                    options.metrics.retain(|m| *m != metric);
-                }
-            } else {
-                options.metrics.push(metric);
-            }
-        }
-        120..=124 => {
-            let metric = all[(command - 120) as usize];
-            options.metrics.retain(|m| *m != metric);
-            options.metrics.insert(0, metric);
-        }
-        131 | 132 | 135 => options.interval = (command - 130) as u64,
-        140..=142 => {
-            let names: Vec<_> = match command {
-                140 => snapshot
-                    .networks
-                    .iter()
-                    .map(|d| (d.id.clone(), d.name.clone()))
-                    .collect(),
-                141 => snapshot
-                    .disks
-                    .iter()
-                    .map(|d| (d.id.clone(), d.name.clone()))
-                    .collect(),
-                _ => snapshot
-                    .gpus
-                    .iter()
-                    .map(|d| (d.id.clone(), d.name.clone()))
-                    .collect(),
-            };
-            let selected = match command {
-                140 => &options.network,
-                141 => &options.disk,
-                _ => &options.gpu,
-            };
-            let Some(selected) = device_menu(hwnd, anchor, &names, selected.as_deref()) else {
-                return;
-            };
-            match command {
-                140 => options.network = selected,
-                141 => options.disk = selected,
-                _ => options.gpu = selected,
-            }
-        }
-        143 => {
-            let task_manager = std::path::PathBuf::from(
-                std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into()),
-            )
-            .join("System32/taskmgr.exe");
-            if let Err(e) = std::process::Command::new(task_manager).spawn() {
-                super::window::error(&e.to_string());
-            }
-            return;
-        }
-        43 if !locked => {
-            event(Event::RenameTitle);
-            return;
-        }
-        48 => {
-            event(Event::Collapse);
-            return;
-        }
-        7 => {
-            event(Event::ToggleAutoHide);
-            return;
-        }
-        10 => {
-            event(Event::ToggleLocked);
-            return;
-        }
-        12 => {
-            event(Event::ToggleTopmost);
-            return;
-        }
-        18 => {
-            event(Event::Settings);
-            return;
-        }
-        11 => {
-            event(Event::ClosePane);
-            return;
-        }
-        _ => return,
+    ];
+    match show_entries(hwnd, anchor, anchored, theme, backdrop, rows) {
+        18 => event(Event::Settings),
+        43 if !locked => event(Event::RenameTitle),
+        48 => event(Event::Collapse),
+        7 => event(Event::ToggleAutoHide),
+        10 => event(Event::ToggleLocked),
+        12 => event(Event::ToggleTopmost),
+        _ => {}
     }
-    event(Event::MonitorOptions(options));
 }
 
-fn device_menu(
-    hwnd: HWND,
-    point: POINT,
-    devices: &[(String, String)],
-    selected: Option<&str>,
-) -> Option<Option<String>> {
-    use windows_sys::Win32::UI::WindowsAndMessaging::*;
-    unsafe {
-        let menu = CreatePopupMenu();
-        if menu.is_null() {
-            return None;
-        }
-        let mut names = vec![crate::i18n::text("monitor-auto").to_string()];
-        names.extend(devices.iter().map(|(_, name)| name.clone()));
-        for (i, name) in names.iter().enumerate() {
-            let wide: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
-            let checked = if i == 0 {
-                selected.is_none()
-            } else {
-                selected == Some(devices[i - 1].0.as_str())
-            };
-            AppendMenuW(
-                menu,
-                MF_STRING | if checked { MF_CHECKED } else { 0 },
-                i + 1,
-                wide.as_ptr(),
-            );
-        }
-        let command = TrackPopupMenu(
-            menu,
-            TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON,
-            point.x,
-            point.y,
-            0,
-            hwnd,
-            std::ptr::null(),
-        );
-        DestroyMenu(menu);
-        match command {
-            0 => None,
-            1 => Some(None),
-            n => devices.get(n as usize - 2).map(|d| Some(d.0.clone())),
-        }
-    }
+pub(super) fn devices(metric: Metric) -> Vec<(String, String)> {
+    let index = match metric {
+        Metric::Network => 0,
+        Metric::Disk => 1,
+        Metric::Gpu => 2,
+        _ => return Vec::new(),
+    };
+    crate::plugins::request(PLUGIN_ID, serde_json::json!({"op":"devices"}))
+        .ok()
+        .and_then(|v| serde_json::from_value(v[index].clone()).ok())
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -454,6 +253,7 @@ mod preference_tests {
         let store = WorkspaceStore::open_in_memory().unwrap();
         let id = PanelId::new(1);
         let preferences = Preferences {
+            enabled: true,
             metrics: vec![Metric::Network, Metric::Gpu],
             compact: true,
             paused: true,

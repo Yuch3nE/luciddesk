@@ -51,12 +51,28 @@ pub fn apply_fallback(format: &c::TextFormat) -> Result<()> {
     unsafe {
         let factory: IDWriteFactory2 = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED)?;
         let builder = factory.CreateFontFallbackBuilder()?;
-        let wide: Vec<u16> = crate::i18n::default_font().encode_utf16().chain(Some(0)).collect();
+        let wide: Vec<u16> = crate::i18n::default_font()
+            .encode_utf16()
+            .chain(Some(0))
+            .collect();
         // Private-use icons keep their dedicated font mapping.
-        builder.AddMapping(&[
-            DWRITE_UNICODE_RANGE { first: 0, last: 0xd7ff },
-            DWRITE_UNICODE_RANGE { first: 0xf900, last: 0xeffff },
-        ], &[wide.as_ptr()], None, PCWSTR::null(), PCWSTR::null(), 1.0)?;
+        builder.AddMapping(
+            &[
+                DWRITE_UNICODE_RANGE {
+                    first: 0,
+                    last: 0xd7ff,
+                },
+                DWRITE_UNICODE_RANGE {
+                    first: 0xf900,
+                    last: 0xeffff,
+                },
+            ],
+            &[wide.as_ptr()],
+            None,
+            PCWSTR::null(),
+            PCWSTR::null(),
+            1.0,
+        )?;
         builder.AddMappings(&factory.GetSystemFontFallback()?)?;
         let native: IDWriteTextFormat1 = native_interface(format.raw())?;
         native.SetFontFallback(&builder.CreateFontFallback()?)
@@ -100,25 +116,54 @@ impl<'a> std::ops::Deref for DrawPass<'a> {
 }
 
 impl DrawPass<'_> {
+    pub fn plugin_context(&self) -> *mut std::ffi::c_void {
+        use windows::core::Interface;
+        self.native.as_raw()
+    }
+
     /// Title-only color-font drawing; other pane text keeps its existing rendering.
-    pub fn clipped_color_layout(&self, text: &str, layout: &c::TextLayout, x: f32, y: f32, brush: &c::Brush) -> Result<()> {
+    pub fn clipped_color_layout(
+        &self,
+        text: &str,
+        layout: &c::TextLayout,
+        x: f32,
+        y: f32,
+        brush: &c::Brush,
+    ) -> Result<()> {
         use c::Paint;
         use windows::Win32::Graphics::{
-            Direct2D::{D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT, D2D1_DRAW_TEXT_OPTIONS_NONE, ID2D1Brush},
-            DirectWrite::{IDWriteTextLayout, IDWriteFactory, DWriteCreateFactory,
-                DWRITE_FACTORY_TYPE_SHARED, DWRITE_CLUSTER_METRICS, DWRITE_HIT_TEST_METRICS,
-                DWRITE_LINE_METRICS, DWRITE_LINE_SPACING_METHOD_UNIFORM},
+            Direct2D::{
+                D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT, D2D1_DRAW_TEXT_OPTIONS_NONE, ID2D1Brush,
+            },
+            DirectWrite::{
+                DWRITE_CLUSTER_METRICS, DWRITE_FACTORY_TYPE_SHARED, DWRITE_HIT_TEST_METRICS,
+                DWRITE_LINE_METRICS, DWRITE_LINE_SPACING_METHOD_UNIFORM, DWriteCreateFactory,
+                IDWriteFactory, IDWriteTextLayout,
+            },
         };
         let native_layout: IDWriteTextLayout = native_interface(layout.raw())?;
-        let text_options = if super::interface_flags::TITLE_EMOJI.get() { D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT } else { D2D1_DRAW_TEXT_OPTIONS_NONE };
+        let text_options = if super::interface_flags::TITLE_EMOJI.get() {
+            D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT
+        } else {
+            D2D1_DRAW_TEXT_OPTIONS_NONE
+        };
         let native_brush: ID2D1Brush = native_interface(brush.as_raw_brush())?;
         let metrics = layout.metrics();
-        self.push_clip(&c::Rect::from_xywh(x, y, metrics.layout_width, metrics.layout_height));
+        self.push_clip(&c::Rect::from_xywh(
+            x,
+            y,
+            metrics.layout_width,
+            metrics.layout_height,
+        ));
         unsafe {
             // Plain titles need no UTF-16 buffers, cluster metrics or emoji probes.
             if !text.chars().any(emoji_character) {
-                self.native.DrawTextLayout(windows_numerics::Vector2::new(x, y), &native_layout,
-                    &native_brush, text_options);
+                self.native.DrawTextLayout(
+                    windows_numerics::Vector2::new(x, y),
+                    &native_layout,
+                    &native_brush,
+                    text_options,
+                );
                 self.pop_clip();
                 return Ok(());
             }
@@ -133,13 +178,20 @@ impl DrawPass<'_> {
             let mut has_emoji = false;
             for cluster in &clusters[..count as usize] {
                 let end = at + cluster.length as usize;
-                if emoji_cluster(&wide[at..end]) { has_emoji = true; }
-                else { plain.extend_from_slice(&wide[at..end]); }
+                if emoji_cluster(&wide[at..end]) {
+                    has_emoji = true;
+                } else {
+                    plain.extend_from_slice(&wide[at..end]);
+                }
                 at = end;
             }
             if !has_emoji {
-                self.native.DrawTextLayout(windows_numerics::Vector2::new(x, y), &native_layout,
-                    &native_brush, text_options);
+                self.native.DrawTextLayout(
+                    windows_numerics::Vector2::new(x, y),
+                    &native_layout,
+                    &native_brush,
+                    text_options,
+                );
                 self.pop_clip();
                 return Ok(());
             }
@@ -148,15 +200,29 @@ impl DrawPass<'_> {
             let mut lines = 0;
             native_layout.GetLineMetrics(Some(&mut line), &raw mut lines)?;
             let ink_center = |text: &[u16]| -> Result<f32> {
-                let probe = factory.CreateTextLayout(text, &native_layout, 1_000_000.0, metrics.layout_height)?;
+                let probe = factory.CreateTextLayout(
+                    text,
+                    &native_layout,
+                    1_000_000.0,
+                    metrics.layout_height,
+                )?;
                 // Keep the original mixed-font baseline when measuring each run.
-                probe.SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, line[0].height, line[0].baseline)?;
+                probe.SetLineSpacing(
+                    DWRITE_LINE_SPACING_METHOD_UNIFORM,
+                    line[0].height,
+                    line[0].baseline,
+                )?;
                 let ink = probe.GetOverhangMetrics()?;
                 Ok((metrics.layout_height + ink.bottom - ink.top) * 0.5)
             };
-            let reference = if plain.iter().all(|ch| matches!(*ch, 9 | 10 | 13 | 32 | 0x200d | 0xfe0e | 0xfe0f)) {
+            let reference = if plain
+                .iter()
+                .all(|ch| matches!(*ch, 9 | 10 | 13 | 32 | 0x200d | 0xfe0e | 0xfe0f))
+            {
                 None
-            } else { Some(ink_center(&plain)?) };
+            } else {
+                Some(ink_center(&plain)?)
+            };
             let mut position = 0usize;
             let mut ranges = Vec::new();
             for cluster in &clusters[..count as usize] {
@@ -164,15 +230,24 @@ impl DrawPass<'_> {
                 if emoji_cluster(&wide[position..end]) {
                     let mut hit = [DWRITE_HIT_TEST_METRICS::default(); 2];
                     let mut hits = 0;
-                    native_layout.HitTestTextRange(position as u32, u32::from(cluster.length),
-                        0.0, 0.0, Some(&mut hit), &raw mut hits)?;
+                    native_layout.HitTestTextRange(
+                        position as u32,
+                        u32::from(cluster.length),
+                        0.0,
+                        0.0,
+                        Some(&mut hit),
+                        &raw mut hits,
+                    )?;
                     for bounds in &hit[..hits as usize] {
                         if bounds.isText.as_bool() && bounds.width > 0.0 {
                             let left = bounds.left.clamp(0.0, metrics.layout_width);
-                            let right = (bounds.left + bounds.width).clamp(left, metrics.layout_width);
+                            let right =
+                                (bounds.left + bounds.width).clamp(left, metrics.layout_width);
                             let offset = if let Some(reference) = reference {
                                 ink_center(&wide[position..end])? - reference
-                            } else { 0.0 };
+                            } else {
+                                0.0
+                            };
                             ranges.push((left, right, offset));
                         }
                     }
@@ -183,10 +258,21 @@ impl DrawPass<'_> {
             let mut left = 0.0;
             let scale = self.scale;
             let paint = |left: f32, right: f32, offset: f32| {
-                if right <= left { return; }
-                self.push_clip(&c::Rect::from_xywh(x + left, y, right - left, metrics.layout_height));
-                self.native.DrawTextLayout(windows_numerics::Vector2::new(x, y - offset),
-                    &native_layout, &native_brush, text_options);
+                if right <= left {
+                    return;
+                }
+                self.push_clip(&c::Rect::from_xywh(
+                    x + left,
+                    y,
+                    right - left,
+                    metrics.layout_height,
+                ));
+                self.native.DrawTextLayout(
+                    windows_numerics::Vector2::new(x, y - offset),
+                    &native_layout,
+                    &native_brush,
+                    text_options,
+                );
                 self.pop_clip();
             };
             for (start, end, offset) in ranges {
@@ -201,23 +287,47 @@ impl DrawPass<'_> {
         Ok(())
     }
 
-    pub fn clipped_color_text(&self, text: &str, format: &c::TextFormat, bounds: &c::Rect, brush: &c::Brush) -> Result<()> {
-        let layout = canvas_result(c::TextLayout::new(text, format,
-            bounds.right - bounds.left, bounds.bottom - bounds.top))?;
+    pub fn clipped_color_text(
+        &self,
+        text: &str,
+        format: &c::TextFormat,
+        bounds: &c::Rect,
+        brush: &c::Brush,
+    ) -> Result<()> {
+        let layout = canvas_result(c::TextLayout::new(
+            text,
+            format,
+            bounds.right - bounds.left,
+            bounds.bottom - bounds.top,
+        ))?;
         self.clipped_color_layout(text, &layout, bounds.left, bounds.top, brush)
     }
 
     /// Center the visible glyph, not the font's line box. MDL2's em-square
     /// placement differs from the UI text font and from Segoe Fluent Icons.
-    pub fn clipped_icon(&self, text: &str, format: &c::TextFormat, bounds: &c::Rect, brush: &c::Brush) {
-        let Ok(layout) = c::TextLayout::new(text, format,
-            bounds.right - bounds.left, bounds.bottom - bounds.top) else {
+    pub fn clipped_icon(
+        &self,
+        text: &str,
+        format: &c::TextFormat,
+        bounds: &c::Rect,
+        brush: &c::Brush,
+    ) {
+        let Ok(layout) = c::TextLayout::new(
+            text,
+            format,
+            bounds.right - bounds.left,
+            bounds.bottom - bounds.top,
+        ) else {
             self.clipped_text(text, format, bounds, brush);
             return;
         };
         let offset = text_ink_center_offset(&layout).unwrap_or(0.0);
         self.push_clip(bounds);
-        self.session.draw_text_layout(c::Vector2::new(bounds.left, bounds.top + offset), &layout, brush);
+        self.session.draw_text_layout(
+            c::Vector2::new(bounds.left, bounds.top + offset),
+            &layout,
+            brush,
+        );
         self.pop_clip();
     }
 
@@ -274,7 +384,9 @@ impl DrawPass<'_> {
 
 fn emoji_cluster(wide: &[u16]) -> bool {
     !wide.contains(&0xfe0e)
-        && char::decode_utf16(wide.iter().copied()).filter_map(std::result::Result::ok).any(emoji_character)
+        && char::decode_utf16(wide.iter().copied())
+            .filter_map(std::result::Result::ok)
+            .any(emoji_character)
 }
 
 fn emoji_character(ch: char) -> bool {
@@ -344,36 +456,52 @@ mod tests {
     fn title_folder_emoji_and_latin_text_have_aligned_visual_centers() {
         let device = c::GpuDevice::new_warp().unwrap();
         for family in ["Segoe UI", "Microsoft YaHei UI"] {
-        for scale in [1.0, 1.5, 2.0] {
-            let format = c::TextFormat::new(family, 14.0).unwrap()
-                .with_paragraph_alignment(c::ParagraphAlignment::Center)
-                .with_word_wrapping(c::WordWrapping::NoWrap);
-            apply_fallback(&format).unwrap();
-            let layout = c::TextLayout::new("📁AI", &format, 100.0, 40.0).unwrap();
-            let boundary = (layout.caret_bounds(2, false).left * scale).round() as usize;
-            let width = (100.0 * scale) as u32;
-            let height = (40.0 * scale) as u32;
-            let surface = Offscreen::new(&device, width, height).unwrap();
-            draw(&surface.target, scale, |frame| {
-                frame.clear(c::ColorF::default());
-                let ink = canvas_result(frame.create_solid_brush(WHITE))?;
-                frame.clipped_color_layout("📁AI", &layout, 0.0, 0.0, &ink)?;
-                frame.finish()
-            }).unwrap();
-            let pixels = surface.pixels().unwrap();
-            let center = |emoji: bool| {
-                let rows: Vec<_> = (0..height as usize).filter(|y| {
-                    pixels[*y * width as usize * 4..(*y + 1) * width as usize * 4]
-                        .chunks_exact(4).enumerate().any(|(x, p)| {
-                            p[3] > 100 && if emoji { x < boundary && p[..3].iter().max().unwrap() - p[..3].iter().min().unwrap() > 40 }
-                            else { x >= boundary && p[0] == p[1] && p[1] == p[2] }
+            for scale in [1.0, 1.5, 2.0] {
+                let format = c::TextFormat::new(family, 14.0)
+                    .unwrap()
+                    .with_paragraph_alignment(c::ParagraphAlignment::Center)
+                    .with_word_wrapping(c::WordWrapping::NoWrap);
+                apply_fallback(&format).unwrap();
+                let layout = c::TextLayout::new("📁AI", &format, 100.0, 40.0).unwrap();
+                let boundary = (layout.caret_bounds(2, false).left * scale).round() as usize;
+                let width = (100.0 * scale) as u32;
+                let height = (40.0 * scale) as u32;
+                let surface = Offscreen::new(&device, width, height).unwrap();
+                draw(&surface.target, scale, |frame| {
+                    frame.clear(c::ColorF::default());
+                    let ink = canvas_result(frame.create_solid_brush(WHITE))?;
+                    frame.clipped_color_layout("📁AI", &layout, 0.0, 0.0, &ink)?;
+                    frame.finish()
+                })
+                .unwrap();
+                let pixels = surface.pixels().unwrap();
+                let center = |emoji: bool| {
+                    let rows: Vec<_> = (0..height as usize)
+                        .filter(|y| {
+                            pixels[*y * width as usize * 4..(*y + 1) * width as usize * 4]
+                                .chunks_exact(4)
+                                .enumerate()
+                                .any(|(x, p)| {
+                                    p[3] > 100
+                                        && if emoji {
+                                            x < boundary
+                                                && p[..3].iter().max().unwrap()
+                                                    - p[..3].iter().min().unwrap()
+                                                    > 40
+                                        } else {
+                                            x >= boundary && p[0] == p[1] && p[1] == p[2]
+                                        }
+                                })
                         })
-                }).collect();
-                (*rows.first().unwrap() + *rows.last().unwrap()) as f32 / 2.0
-            };
-            let (emoji, text) = (center(true), center(false));
-            assert!((emoji - text).abs() <= 1.0, "{family} scale={scale}: emoji center={emoji}, text center={text}");
-        }
+                        .collect();
+                    (*rows.first().unwrap() + *rows.last().unwrap()) as f32 / 2.0
+                };
+                let (emoji, text) = (center(true), center(false));
+                assert!(
+                    (emoji - text).abs() <= 1.0,
+                    "{family} scale={scale}: emoji center={emoji}, text center={text}"
+                );
+            }
         }
     }
 
@@ -429,26 +557,37 @@ mod tests {
     fn icon_ink_stays_centered_for_mdl2_and_fluent_at_multiple_scales() {
         let device = c::GpuDevice::new_warp().unwrap();
         for family in ["Segoe MDL2 Assets", super::super::fonts::icon_family()] {
-            let format = c::TextFormat::new(family, 20.0).unwrap()
+            let format = c::TextFormat::new(family, 20.0)
+                .unwrap()
                 .with_alignment(c::TextAlignment::Center)
                 .with_paragraph_alignment(c::ParagraphAlignment::Center);
             for scale in [1.0, 1.5, 2.0] {
                 let size = (64.0 * scale) as u32;
                 let surface = Offscreen::new(&device, size, size).unwrap();
-                for glyph in ["\u{e790}", "\u{f0e2}", "\u{e721}", "\u{e70d}", "\u{e70e}", "\u{e73e}", "\u{e8bb}"] {
+                for glyph in [
+                    "\u{e790}", "\u{f0e2}", "\u{e721}", "\u{e70d}", "\u{e70e}", "\u{e73e}",
+                    "\u{e8bb}",
+                ] {
                     draw(&surface.target, scale, |frame| {
                         frame.clear(c::ColorF::new(0.0, 0.0, 0.0, 0.0));
                         let ink = canvas_result(frame.create_solid_brush(WHITE))?;
                         frame.clipped_icon(glyph, &format, &bounds(8.0, 8.0, 48.0, 48.0), &ink);
                         frame.finish()
-                    }).unwrap();
+                    })
+                    .unwrap();
                     let pixels = surface.pixels().unwrap();
-                    let rows: Vec<_> = (0..size as usize).filter(|y|
-                        pixels[y * size as usize * 4..(y + 1) * size as usize * 4]
-                            .chunks_exact(4).any(|pixel| pixel[3] > 16)).collect();
+                    let rows: Vec<_> = (0..size as usize)
+                        .filter(|y| {
+                            pixels[y * size as usize * 4..(y + 1) * size as usize * 4]
+                                .chunks_exact(4)
+                                .any(|pixel| pixel[3] > 16)
+                        })
+                        .collect();
                     let center = (*rows.first().unwrap() + *rows.last().unwrap() + 1) as f32 / 2.0;
-                    assert!((center - 28.0 * scale).abs() <= 1.0,
-                        "{family} {glyph} scale={scale} ink center={center}");
+                    assert!(
+                        (center - 28.0 * scale).abs() <= 1.0,
+                        "{family} {glyph} scale={scale} ink center={center}"
+                    );
                 }
             }
         }

@@ -1,13 +1,13 @@
 //! Panel materials, themes, and presentation options.
 
 /// Materials that support a strength adjustment in [`Backdrop::Tuned`].
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, PartialEq)]
 pub enum TunableMaterial {
     Acrylic,
     Mica,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, PartialEq)]
 pub enum Backdrop {
     Tuned {
         material: TunableMaterial,
@@ -25,7 +25,7 @@ pub enum Backdrop {
     Acrylic,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PanelTheme {
     #[default]
     System,
@@ -33,7 +33,7 @@ pub enum PanelTheme {
     Dark,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PanelText {
     #[default]
     Auto,
@@ -41,7 +41,7 @@ pub enum PanelText {
     Dark,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, PartialEq)]
 pub struct PaneOptions {
     pub corner_radius: f32,
     pub grid_scale: f32,

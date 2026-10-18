@@ -319,6 +319,8 @@ pub(super) fn test_state() -> PaneApp {
     reconcile(&mut workspace, inventory);
     let (_, receiver) = mpsc::channel();
     PaneApp {
+        monitors: Default::default(),
+        monitor_child: true,
         sorting: Default::default(),
         wake: Default::default(),
         folders: HashMap::new(),

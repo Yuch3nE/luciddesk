@@ -1,23 +1,65 @@
 use super::*;
 
-pub(super) fn general(s: &mut Scene, width: f32, status: crate::startup::Status, busy: bool, cli_enabled: bool, skill_prompt_copied: bool) {
+pub(super) fn general(
+    s: &mut Scene,
+    width: f32,
+    status: crate::startup::Status,
+    busy: bool,
+    cli_enabled: bool,
+    skill_prompt_copied: bool,
+) {
     let mut form = SettingsForm::new(s, width, crate::i18n::text("startup-description"));
     form.section(crate::i18n::text("startup-section"));
-    form.toggle_enabled(crate::i18n::text("startup-title"), if busy { crate::i18n::text("startup-working") } else { status.message() }, status.registered(),
+    form.toggle_enabled(
+        crate::i18n::text("startup-title"),
+        if busy {
+            crate::i18n::text("startup-working")
+        } else {
+            status.message()
+        },
+        status.registered(),
         status.editable() && !busy,
-        Action::Startup(!status.registered()));
-    form.button(crate::i18n::text("startup-manage"), crate::i18n::text("startup-manage-description"),
-        crate::i18n::text("startup-open-settings"), Action::ProjectLink("ms-settings:startupapps"));
+        Action::Startup(!status.registered()),
+    );
+    form.button(
+        crate::i18n::text("startup-manage"),
+        crate::i18n::text("startup-manage-description"),
+        crate::i18n::text("startup-open-settings"),
+        Action::ProjectLink("ms-settings:startupapps"),
+    );
     form.section(crate::i18n::text("agent-section"));
-    form.toggle(crate::i18n::text("agent-cli-title"), crate::i18n::text("agent-cli-description"),
-        cli_enabled, Action::CliEnabled(!cli_enabled));
-    form.button(crate::i18n::text("agent-skill-title"), crate::i18n::text("agent-skill-description"),
-        crate::i18n::text(if skill_prompt_copied { "ui-copied" } else { "ui-copy" }), Action::CopySkillPrompt);
+    form.toggle(
+        crate::i18n::text("agent-cli-title"),
+        crate::i18n::text("agent-cli-description"),
+        cli_enabled,
+        Action::CliEnabled(!cli_enabled),
+    );
+    form.button(
+        crate::i18n::text("agent-skill-title"),
+        crate::i18n::text("agent-skill-description"),
+        crate::i18n::text(if skill_prompt_copied {
+            "ui-copied"
+        } else {
+            "ui-copy"
+        }),
+        Action::CopySkillPrompt,
+    );
     use luciddesk_diagnostics::{Level, level};
     form.section(crate::i18n::text("diagnostics-section"));
-    form.choices(crate::i18n::text("diagnostics-level"), crate::i18n::text("diagnostics-level-description"),
-        [Level::Error, Level::Warn, Level::Info, Level::Debug, Level::Trace].into_iter()
-            .map(|value| (value.label(), Action::LogLevel(value), value == level())).collect());
+    form.choices(
+        crate::i18n::text("diagnostics-level"),
+        crate::i18n::text("diagnostics-level-description"),
+        [
+            Level::Error,
+            Level::Warn,
+            Level::Info,
+            Level::Debug,
+            Level::Trace,
+        ]
+        .into_iter()
+        .map(|value| (value.label(), Action::LogLevel(value), value == level()))
+        .collect(),
+    );
 }
 
 #[cfg(test)]
@@ -27,20 +69,49 @@ mod compatibility_tests {
     #[test]
     fn windows10_material_page_hides_mica_in_choices_and_preview() {
         for show_mica in [false, true] {
-            for material in [Backdrop::Mica, Backdrop::MicaAlt, Backdrop::Mica.with_strength(75)] {
-                let page = scene_with_mica(900.0, 700.0, 0, false,
-                    (PanelTheme::Light, material), luciddesk_core::PaneOptions::default(), show_mica);
-                let choices: Vec<_> = page.controls.iter().filter_map(|control| {
-                    if let Action::Change(Event::Material(value)) = control.action {
-                        Some((value, control.selected))
-                    } else { None }
-                }).collect();
+            for material in [
+                Backdrop::Mica,
+                Backdrop::MicaAlt,
+                Backdrop::Mica.with_strength(75),
+            ] {
+                let page = scene_with_mica(
+                    900.0,
+                    700.0,
+                    0,
+                    false,
+                    (PanelTheme::Light, material),
+                    luciddesk_core::PaneOptions::default(),
+                    show_mica,
+                );
+                let choices: Vec<_> = page
+                    .controls
+                    .iter()
+                    .filter_map(|control| {
+                        if let Action::Change(Event::Material(value)) = control.action {
+                            Some((value, control.selected))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
                 assert_eq!(choices.len(), if show_mica { 4 } else { 2 });
                 if !show_mica {
-                    assert!(choices.iter().all(|(value, _)| !matches!(value, Backdrop::Mica | Backdrop::MicaAlt)));
-                    assert!(choices.iter().any(|(value, selected)| *value == Backdrop::Acrylic && *selected));
+                    assert!(
+                        choices
+                            .iter()
+                            .all(|(value, _)| !matches!(value, Backdrop::Mica | Backdrop::MicaAlt))
+                    );
+                    assert!(
+                        choices
+                            .iter()
+                            .any(|(value, selected)| *value == Backdrop::Acrylic && *selected)
+                    );
                     assert!(page.text.iter().all(|(_, text, _)| !text.contains("Mica")));
-                    assert!(page.previews.iter().all(|(_, value)| value.base() == Backdrop::Acrylic));
+                    assert!(
+                        page.previews
+                            .iter()
+                            .all(|(_, value)| value.base() == Backdrop::Acrylic)
+                    );
                     assert_eq!(page.material.strength(), material.strength().or(Some(50)));
                 }
             }
@@ -64,8 +135,14 @@ pub(super) fn folder_defaults(
         crate::i18n::text("ui-open-subfolders-in"),
         crate::i18n::text("ui-used-on-double-click-or-enter-in-all-folder-panels"),
         [
-            (crate::i18n::text("ui-this-panel"), folder::EntryMode::Inline),
-            (crate::i18n::text("ui-file-explorer"), folder::EntryMode::Explorer),
+            (
+                crate::i18n::text("ui-this-panel"),
+                folder::EntryMode::Inline,
+            ),
+            (
+                crate::i18n::text("ui-file-explorer"),
+                folder::EntryMode::Explorer,
+            ),
         ]
         .into_iter()
         .map(|(label, choice)| (label, Action::FolderEntryMode(choice), mode == choice))
@@ -75,18 +152,25 @@ pub(super) fn folder_defaults(
     form.choices(
         crate::i18n::text("ui-default-view"),
         crate::i18n::text("ui-applies-to-new-panels-existing-panels-keep-their-settings"),
-        [(crate::i18n::text("ui-icons"), false), (crate::i18n::text("ui-list"), true)]
-            .into_iter()
-            .map(|(label, list)| {
-                (
-                    label,
-                    Action::FolderDefaults(folder::Defaults { list, ..value }),
-                    value.list == list,
-                )
-            })
-            .collect(),
+        [
+            (crate::i18n::text("ui-icons"), false),
+            (crate::i18n::text("ui-list"), true),
+        ]
+        .into_iter()
+        .map(|(label, list)| {
+            (
+                label,
+                Action::FolderDefaults(folder::Defaults { list, ..value }),
+                value.list == list,
+            )
+        })
+        .collect(),
     );
-    for (label, column) in [(crate::i18n::text("ui-type"), 1), (crate::i18n::text("ui-modified"), 2), (crate::i18n::text("ui-size"), 3)] {
+    for (label, column) in [
+        (crate::i18n::text("ui-type"), 1),
+        (crate::i18n::text("ui-modified"), 2),
+        (crate::i18n::text("ui-size"), 3),
+    ] {
         form.toggle(
             label,
             crate::i18n::text("ui-show-this-column-in-list-view-name-is-always-shown"),
@@ -106,18 +190,24 @@ pub(super) fn folder_defaults(
 }
 
 // Page IDs stay stable; display order is independent of routing.
-pub(super) fn pages() -> [(usize, &'static str, &'static str); 10] { [
-    (13, crate::i18n::text("startup-general"), "\u{e713}"),
-    (0, crate::i18n::text("ui-theme-materials"), "\u{e790}"),
-    (1, crate::i18n::text("ui-panel-layout"), "\u{f0e2}"),
-    (11, crate::i18n::text("ui-fonts"), "\u{e8d2}"),
-    (8, crate::i18n::text("ui-folder-panels"), "\u{e8b7}"),
-    (4, crate::i18n::text("ui-everything-search"), "\u{e721}"),
-    (3, crate::i18n::text("ui-file-preview"), "\u{e890}"),
-    (6, crate::i18n::text("ui-backup-restore"), "\u{e81c}"),
-    (12, crate::i18n::text("language-title"), "\u{e8d2}"),
-    (5, crate::i18n::text("ui-about"), "\u{e946}"),
-] }
+pub(super) fn pages() -> Vec<(usize, &'static str, &'static str)> {
+    let mut pages = vec![
+        (13, crate::i18n::text("startup-general"), "\u{e713}"),
+        (0, crate::i18n::text("ui-theme-materials"), "\u{e790}"),
+        (1, crate::i18n::text("ui-panel-layout"), "\u{f0e2}"),
+        (11, crate::i18n::text("ui-fonts"), "\u{e8d2}"),
+        (8, crate::i18n::text("ui-folder-panels"), "\u{e8b7}"),
+        (4, crate::i18n::text("ui-everything-search"), "\u{e721}"),
+        (3, crate::i18n::text("ui-file-preview"), "\u{e890}"),
+        (6, crate::i18n::text("ui-backup-restore"), "\u{e81c}"),
+        (12, crate::i18n::text("language-title"), "\u{e8d2}"),
+        (5, crate::i18n::text("ui-about"), "\u{e946}"),
+    ];
+    if monitor::available() {
+        pages.insert(4, (14, crate::i18n::text("monitor-title"), "\u{e9d9}"));
+    }
+    pages
+}
 
 pub(super) fn scene(
     width: f32,
@@ -128,8 +218,15 @@ pub(super) fn scene(
     options: luciddesk_core::PaneOptions,
 ) -> Scene {
     let version = windows_version::OsVersion::current();
-    scene_with_mica(width, _height, page, search_enabled, appearance, options,
-        version.major > 10 || (version.major == 10 && version.build >= 22000))
+    scene_with_mica(
+        width,
+        _height,
+        page,
+        search_enabled,
+        appearance,
+        options,
+        version.major > 10 || (version.major == 10 && version.build >= 22000),
+    )
 }
 
 fn scene_with_mica(
@@ -144,9 +241,15 @@ fn scene_with_mica(
     // A portable configuration may have been saved on Windows 11. Reflect the
     // downlevel acrylic fallback without rewriting the persisted preference.
     let material_strength = appearance.1.strength();
-    let appearance = if !show_mica && matches!(appearance.1.base(), Backdrop::Mica | Backdrop::MicaAlt) {
-        (appearance.0, Backdrop::Acrylic.with_strength(appearance.1.strength().unwrap_or(50)))
-    } else { appearance };
+    let appearance =
+        if !show_mica && matches!(appearance.1.base(), Backdrop::Mica | Backdrop::MicaAlt) {
+            (
+                appearance.0,
+                Backdrop::Acrylic.with_strength(appearance.1.strength().unwrap_or(50)),
+            )
+        } else {
+            appearance
+        };
     let mut s = Scene {
         material: appearance.1,
         viewport: None,
@@ -196,17 +299,30 @@ fn scene_with_mica(
         let Backdrop::Solid { color, opacity } = appearance.1 else {
             return s;
         };
-        let mut form =
-            SettingsForm::new(&mut s, width, crate::i18n::text("ui-choose-a-preset-or-adjust-rgb-changes-apply-immediately"));
+        let mut form = SettingsForm::new(
+            &mut s,
+            width,
+            crate::i18n::text("ui-choose-a-preset-or-adjust-rgb-changes-apply-immediately"),
+        );
         form.back(crate::i18n::text("ui-back"), Action::Page(0));
         form.preview(
-            &crate::i18n::format("ui-panel-preview", &[("arg0", format!("{}", (opacity * 100.0).round() as u8))]),
+            &crate::i18n::format(
+                "ui-panel-preview",
+                &[("arg0", format!("{}", (opacity * 100.0).round() as u8))],
+            ),
             color,
             opacity,
         );
         form.colors(color);
         form.section(crate::i18n::text("ui-custom-color"));
-        for (channel, name) in [crate::i18n::text("ui-red-r"), crate::i18n::text("ui-green-g"), crate::i18n::text("ui-blue-b")].into_iter().enumerate() {
+        for (channel, name) in [
+            crate::i18n::text("ui-red-r"),
+            crate::i18n::text("ui-green-g"),
+            crate::i18n::text("ui-blue-b"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
             let value = ((color >> ((2 - channel) * 8)) & 255) as u8;
             form.slider(
                 name,
@@ -239,7 +355,9 @@ fn scene_with_mica(
         let mut form = SettingsForm::new(
             &mut s,
             width,
-            crate::i18n::text("ui-adjust-the-theme-material-and-transparency-changes-apply-immediately"),
+            crate::i18n::text(
+                "ui-adjust-the-theme-material-and-transparency-changes-apply-immediately",
+            ),
         );
         form.section(crate::i18n::text("ui-appearance"));
         form.choices(
@@ -275,7 +393,9 @@ fn scene_with_mica(
                 (crate::i18n::text("ui-solid-color"), solid),
             ]
             .into_iter()
-            .filter(|(_, material)| show_mica || !matches!(material, Backdrop::Mica | Backdrop::MicaAlt))
+            .filter(|(_, material)| {
+                show_mica || !matches!(material, Backdrop::Mica | Backdrop::MicaAlt)
+            })
             .map(|(name, value)| {
                 (
                     name,
@@ -338,7 +458,9 @@ fn scene_with_mica(
         let mut form = SettingsForm::new(
             &mut s,
             width,
-            crate::i18n::text("ui-adjust-panel-shape-text-and-icon-layout-changes-apply-immediately"),
+            crate::i18n::text(
+                "ui-adjust-panel-shape-text-and-icon-layout-changes-apply-immediately",
+            ),
         );
         form.section(crate::i18n::text("ui-panel-shape"));
         form.slider(
@@ -374,24 +496,38 @@ fn scene_with_mica(
             form.toggle(title, description, value, Action::Change(event));
         }
         if show_mica {
-            form.toggle(crate::i18n::text("compact-menu-title"),
-                crate::i18n::text("compact-menu-description"), interface_flags::COMPACT_MENU.get(),
-                Action::Change(Event::ToggleCompactMenu));
+            form.toggle(
+                crate::i18n::text("compact-menu-title"),
+                crate::i18n::text("compact-menu-description"),
+                interface_flags::COMPACT_MENU.get(),
+                Action::Change(Event::ToggleCompactMenu),
+            );
         }
         form.section(crate::i18n::text("ui-text-icons"));
         form.toggle(
             crate::i18n::text("title-emoji-rendering"),
             crate::i18n::text("title-emoji-rendering-description"),
             interface_flags::TITLE_EMOJI.get(),
-            Action::Change(Event::SetTitleEmojiColor(!interface_flags::TITLE_EMOJI.get())),
+            Action::Change(Event::SetTitleEmojiColor(
+                !interface_flags::TITLE_EMOJI.get(),
+            )),
         );
         form.choices(
             crate::i18n::text("ui-panel-text"),
             crate::i18n::text("ui-automatic-mode-selects-text-brightness-for-the-background"),
             [
-                (crate::i18n::text("ui-automatic"), luciddesk_core::PanelText::Auto),
-                (crate::i18n::text("ui-light-text"), luciddesk_core::PanelText::Light),
-                (crate::i18n::text("ui-dark-text"), luciddesk_core::PanelText::Dark),
+                (
+                    crate::i18n::text("ui-automatic"),
+                    luciddesk_core::PanelText::Auto,
+                ),
+                (
+                    crate::i18n::text("ui-light-text"),
+                    luciddesk_core::PanelText::Light,
+                ),
+                (
+                    crate::i18n::text("ui-dark-text"),
+                    luciddesk_core::PanelText::Dark,
+                ),
             ]
             .into_iter()
             .map(|(label, value)| {
@@ -425,8 +561,11 @@ fn scene_with_mica(
     } else if page == 3 {
         let value = peek::settings();
         let resolved = peek::resolved(&value);
-        let mut form =
-            SettingsForm::new(&mut s, width, crate::i18n::text("ui-connect-a-preview-app-to-preview-files-with-a-shortcut"));
+        let mut form = SettingsForm::new(
+            &mut s,
+            width,
+            crate::i18n::text("ui-connect-a-preview-app-to-preview-files-with-a-shortcut"),
+        );
         form.section(crate::i18n::text("ui-preview-service"));
         form.toggle_enabled(
             crate::i18n::text("ui-enable-file-preview"),
@@ -451,7 +590,12 @@ fn scene_with_mica(
         );
         let path = resolved
             .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_else(|| crate::i18n::format("ui-not-found-select-the-app", &[("arg0", format!("{}", value.provider.name()))]));
+            .unwrap_or_else(|| {
+                crate::i18n::format(
+                    "ui-not-found-select-the-app",
+                    &[("arg0", format!("{}", value.provider.name()))],
+                )
+            });
         form.path(
             if value.active_path().is_empty() {
                 crate::i18n::text("ui-app-path-automatic")
@@ -461,7 +605,10 @@ fn scene_with_mica(
             &path,
             vec![
                 (crate::i18n::text("ui-browse"), Action::PeekBrowse),
-                (crate::i18n::text("ui-detect-automatically"), Action::PeekDetect),
+                (
+                    crate::i18n::text("ui-detect-automatically"),
+                    Action::PeekDetect,
+                ),
             ],
         );
         form.section(crate::i18n::text("ui-keyboard-shortcut"));
@@ -475,7 +622,11 @@ fn scene_with_mica(
     } else if page == 4 {
         let value = everything_settings::settings();
         let resolved = everything_settings::resolved(&value);
-        let mut form = SettingsForm::new(&mut s, width, crate::i18n::text("ui-connect-everything-to-quickly-find-local-files"));
+        let mut form = SettingsForm::new(
+            &mut s,
+            width,
+            crate::i18n::text("ui-connect-everything-to-quickly-find-local-files"),
+        );
         form.section(crate::i18n::text("ui-search-service"));
         form.toggle_enabled(
             crate::i18n::text("ui-enable-search-panel"),
@@ -496,7 +647,10 @@ fn scene_with_mica(
             &path,
             vec![
                 (crate::i18n::text("ui-browse"), Action::EverythingBrowse),
-                (crate::i18n::text("ui-detect-automatically"), Action::EverythingDetect),
+                (
+                    crate::i18n::text("ui-detect-automatically"),
+                    Action::EverythingDetect,
+                ),
                 (crate::i18n::text("ui-start"), Action::EverythingLaunch),
             ],
         );
@@ -521,18 +675,37 @@ fn scene_with_mica(
 // Shared by the live page and raster tests so status and actions use the same layout.
 #[cfg(test)]
 pub(super) fn about_status(s: &mut Scene, width: f32, status: &str, copied: bool) {
-    about_updates(s, width, status, copied, &crate::updates::Controller::default());
+    about_updates(
+        s,
+        width,
+        status,
+        copied,
+        &crate::updates::Controller::default(),
+    );
 }
 
-pub(super) fn about_updates(s: &mut Scene, width: f32, status: &str, copied: bool, updates: &crate::updates::Controller) {
-    let mut form = SettingsForm::new(s, width, crate::i18n::text("ui-turn-your-windows-desktop-into-a-workspace-that-works-for-you"));
+pub(super) fn about_updates(
+    s: &mut Scene,
+    width: f32,
+    status: &str,
+    copied: bool,
+    updates: &crate::updates::Controller,
+) {
+    let mut form = SettingsForm::new(
+        s,
+        width,
+        crate::i18n::text("ui-turn-your-windows-desktop-into-a-workspace-that-works-for-you"),
+    );
     form.brand();
     form.actions(
         crate::i18n::text("update-title"),
         &updates.status(),
         vec![
             (crate::i18n::text("update-check"), Action::Update),
-            (crate::i18n::text("update-open-page"), Action::ProjectLink(crate::updates::PAGE)),
+            (
+                crate::i18n::text("update-open-page"),
+                Action::ProjectLink(crate::updates::PAGE),
+            ),
         ],
     );
     form.button(
@@ -545,26 +718,51 @@ pub(super) fn about_updates(s: &mut Scene, width: f32, status: &str, copied: boo
         crate::i18n::text("ui-project-resources"),
         "GitHub · Yuch3nE/luciddesk",
         vec![
-            (crate::i18n::text("ui-download-releases"), Action::ProjectLink("https://github.com/Yuch3nE/luciddesk/releases")),
-            (crate::i18n::text("ui-release-history"), Action::ProjectLink(crate::i18n::text("ui-changelog-url"))),
-            (crate::i18n::text("ui-report-an-issue"), Action::ProjectLink("https://github.com/Yuch3nE/luciddesk/issues")),
+            (
+                crate::i18n::text("ui-download-releases"),
+                Action::ProjectLink("https://github.com/Yuch3nE/luciddesk/releases"),
+            ),
+            (
+                crate::i18n::text("ui-release-history"),
+                Action::ProjectLink(crate::i18n::text("ui-changelog-url")),
+            ),
+            (
+                crate::i18n::text("ui-report-an-issue"),
+                Action::ProjectLink("https://github.com/Yuch3nE/luciddesk/issues"),
+            ),
         ],
     );
     form.section(crate::i18n::text("ui-status"));
-    form.info(crate::i18n::text("ui-operating-system"), &format!("{} · {}", crate::system_info::system().summary(), std::env::consts::ARCH));
+    form.info(
+        crate::i18n::text("ui-operating-system"),
+        &format!(
+            "{} · {}",
+            crate::system_info::system().summary(),
+            std::env::consts::ARCH
+        ),
+    );
     form.actions(
         crate::i18n::text("ui-desktop-connection"),
         status,
         vec![
-            (crate::i18n::text("ui-reconnect"), Action::Change(Event::RetryDesktop)),
             (
-                if copied { crate::i18n::text("ui-copied") } else { crate::i18n::text("ui-copy-diagnostics") },
+                crate::i18n::text("ui-reconnect"),
+                Action::Change(Event::RetryDesktop),
+            ),
+            (
+                if copied {
+                    crate::i18n::text("ui-copied")
+                } else {
+                    crate::i18n::text("ui-copy-diagnostics")
+                },
                 Action::CopyDiagnostics,
             ),
         ],
     );
     for control in &mut s.controls {
-        if matches!(control.action, Action::Update) { control.enabled = !updates.busy(); }
+        if matches!(control.action, Action::Update) {
+            control.enabled = !updates.busy();
+        }
     }
 }
 
@@ -576,9 +774,16 @@ pub(super) fn backup_page(
     advanced: bool,
 ) {
     let first_control = s.controls.len();
-    let mut form = SettingsForm::new(s, width, crate::i18n::text("ui-backups-contain-settings-and-layouts-not-your-actual-files"));
+    let mut form = SettingsForm::new(
+        s,
+        width,
+        crate::i18n::text("ui-backups-contain-settings-and-layouts-not-your-actual-files"),
+    );
     if advanced {
-        form.back(crate::i18n::text("ui-back-to-backup-restore"), Action::Page(6));
+        form.back(
+            crate::i18n::text("ui-back-to-backup-restore"),
+            Action::Page(6),
+        );
         form.section(crate::i18n::text("ui-configuration-maintenance"));
         form.button(
             crate::i18n::text("ui-configuration-folder"),
@@ -605,7 +810,12 @@ pub(super) fn backup_page(
             &view.status
         };
         if view.status.contains(crate::i18n::text("ui-failed")) {
-            form.button(crate::i18n::text("ui-backup-status"), status, crate::i18n::text("ui-view-details"), Action::BackupStatus);
+            form.button(
+                crate::i18n::text("ui-backup-status"),
+                status,
+                crate::i18n::text("ui-view-details"),
+                Action::BackupStatus,
+            );
         } else {
             form.info(crate::i18n::text("ui-backup-status"), status);
         }
@@ -614,8 +824,14 @@ pub(super) fn backup_page(
             crate::i18n::text("ui-manual-actions"),
             crate::i18n::text("ui-create-a-backup-now-or-restore-an-existing-one"),
             vec![
-                (crate::i18n::text("ui-back-up-now"), Action::Change(Event::CreateBackup)),
-                (crate::i18n::text("ui-restore-from-file"), Action::Change(Event::RestoreBackup)),
+                (
+                    crate::i18n::text("ui-back-up-now"),
+                    Action::Change(Event::CreateBackup),
+                ),
+                (
+                    crate::i18n::text("ui-restore-from-file"),
+                    Action::Change(Event::RestoreBackup),
+                ),
             ],
         );
         form.link(
@@ -671,8 +887,15 @@ pub(super) fn backup_page(
     }
 }
 pub(super) fn backup_history(s: &mut Scene, width: f32, view: &recovery::View, offset: usize) {
-    let mut form = SettingsForm::new(s, width, crate::i18n::text("ui-newest-first-manual-backups-are-not-automatically-removed"));
-    form.back(crate::i18n::text("ui-back-to-backup-restore"), Action::Page(6));
+    let mut form = SettingsForm::new(
+        s,
+        width,
+        crate::i18n::text("ui-newest-first-manual-backups-are-not-automatically-removed"),
+    );
+    form.back(
+        crate::i18n::text("ui-back-to-backup-restore"),
+        Action::Page(6),
+    );
     form.button(
         crate::i18n::text("ui-backup-folder"),
         crate::i18n::text("ui-view-local-backups-in-file-explorer"),
@@ -693,14 +916,24 @@ pub(super) fn backup_history(s: &mut Scene, width: f32, view: &recovery::View, o
         );
     }
     if view.records.is_empty() {
-        form.info(crate::i18n::text("ui-no-backups"), crate::i18n::text("ui-your-backups-will-appear-here-after-the-first-one-is-created"));
+        form.info(
+            crate::i18n::text("ui-no-backups"),
+            crate::i18n::text("ui-your-backups-will-appear-here-after-the-first-one-is-created"),
+        );
     }
     if view.records.len() > 6 {
-    form.pager(
-        &crate::i18n::format("ui-total", &[("arg0", format!("{}", offset / 6 + 1)), ("arg1", format!("{}", view.records.len().div_ceil(6).max(1))), ("arg2", format!("{}", view.records.len()))]),
-        (Action::BackupPage(-1), offset > 0),
-        (Action::BackupPage(1), offset + 6 < view.records.len()),
-    );
+        form.pager(
+            &crate::i18n::format(
+                "ui-total",
+                &[
+                    ("arg0", format!("{}", offset / 6 + 1)),
+                    ("arg1", format!("{}", view.records.len().div_ceil(6).max(1))),
+                    ("arg2", format!("{}", view.records.len())),
+                ],
+            ),
+            (Action::BackupPage(-1), offset > 0),
+            (Action::BackupPage(1), offset + 6 < view.records.len()),
+        );
     }
     if view.busy {
         for c in &mut s.controls {
@@ -716,64 +949,120 @@ pub(super) fn fonts(s: &mut Scene, width: f32, choices: &[String], _offset: usiz
     fonts_status(s, width, choices, None);
 }
 
-pub(super) fn fonts_status(s: &mut Scene, width: f32, choices: &[String], status: Option<&'static str>) {
+pub(super) fn fonts_status(
+    s: &mut Scene,
+    width: f32,
+    choices: &[String],
+    status: Option<&'static str>,
+) {
     let selected = super::super::fonts::family();
     let mut form = SettingsForm::new(s, width, crate::i18n::text("font-description"));
     form.button(
         crate::i18n::text("ui-current-font"),
-        &format!("{}\n{}: {}", selected, crate::i18n::text("font-fallback"), crate::i18n::default_font()),
+        &format!(
+            "{}\n{}: {}",
+            selected,
+            crate::i18n::text("font-fallback"),
+            crate::i18n::default_font()
+        ),
         crate::i18n::text("ui-reset"),
         Action::Font(crate::i18n::default_font().into()),
     );
     form.option(crate::i18n::text("font-search"), Action::FontSearch, false);
-    form.section(&format!("{} · {}", crate::i18n::text("ui-available-fonts"), choices.len()));
+    form.section(&format!(
+        "{} · {}",
+        crate::i18n::text("ui-available-fonts"),
+        choices.len()
+    ));
     for name in choices {
         form.font_option(name, name == &selected);
     }
     if let Some(status) = status {
         form.info(crate::i18n::text(status), "");
     } else if choices.is_empty() {
-        form.info(crate::i18n::text("ui-no-fonts-available"), crate::i18n::text("font-search-empty"));
+        form.info(
+            crate::i18n::text("ui-no-fonts-available"),
+            crate::i18n::text("font-search-empty"),
+        );
     }
-
-
 }
-
 
 pub(super) fn language(s: &mut Scene, width: f32, selected: &str) {
     let mut form = SettingsForm::new(s, width, crate::i18n::text("language-description"));
     for (code, name) in crate::i18n::LANGUAGES {
-        let name = if code == "system" { crate::i18n::text("language-system") } else { name };
+        let name = if code == "system" {
+            crate::i18n::text("language-system")
+        } else {
+            name
+        };
         form.option(name, Action::Language(code), selected == code);
     }
 }
 
-
 pub(super) fn desktop_defaults(s: &mut Scene, width: f32, mode: layout_defaults::Mode) {
-    let bottom = s.cards.iter().map(|r| r.bottom)
-        .chain(s.controls.iter().filter(|c| c.bounds.left >= Tokens::content_x()).map(|c| c.bounds.bottom))
+    let bottom = s
+        .cards
+        .iter()
+        .map(|r| r.bottom)
+        .chain(
+            s.controls
+                .iter()
+                .filter(|c| c.bounds.left >= Tokens::content_x())
+                .map(|c| c.bounds.bottom),
+        )
         .fold(120.0_f32, f32::max);
     let mut form = SettingsForm::continuation(s, width, bottom + 24.0);
     form.section(crate::i18n::text("ui-icon-arrangement"));
-    form.toggle(crate::i18n::text("ui-align-icons-to-grid"),
-        crate::i18n::text("desktop-default-align-description"), mode != layout_defaults::Mode::Free,
-        Action::LayoutDefaults(mode.toggle_align()));
-    form.toggle(crate::i18n::text("ui-auto-arrange-icons"),
-        crate::i18n::text("desktop-default-arrange-description"), mode == layout_defaults::Mode::Compact,
-        Action::LayoutDefaults(mode.toggle_auto_arrange()));
+    form.toggle(
+        crate::i18n::text("ui-align-icons-to-grid"),
+        crate::i18n::text("desktop-default-align-description"),
+        mode != layout_defaults::Mode::Free,
+        Action::LayoutDefaults(mode.toggle_align()),
+    );
+    form.toggle(
+        crate::i18n::text("ui-auto-arrange-icons"),
+        crate::i18n::text("desktop-default-arrange-description"),
+        mode == layout_defaults::Mode::Compact,
+        Action::LayoutDefaults(mode.toggle_auto_arrange()),
+    );
 }
 
-pub(super) fn show_panels_shortcut(s: &mut Scene, width: f32, enabled: bool, shortcut: search_hotkey::Shortcut) {
+pub(super) fn show_panels_shortcut(
+    s: &mut Scene,
+    width: f32,
+    enabled: bool,
+    shortcut: search_hotkey::Shortcut,
+) {
     // Append below the existing panel-layout controls, retaining normal page scrolling.
-    let bottom = s.cards.iter().map(|r| r.bottom)
-        .chain(s.controls.iter().filter(|c| c.bounds.left >= Tokens::content_x()).map(|c| c.bounds.bottom))
+    let bottom = s
+        .cards
+        .iter()
+        .map(|r| r.bottom)
+        .chain(
+            s.controls
+                .iter()
+                .filter(|c| c.bounds.left >= Tokens::content_x())
+                .map(|c| c.bounds.bottom),
+        )
         .fold(120.0_f32, f32::max);
     let mut form = SettingsForm::continuation(s, width, bottom + 24.0);
     form.section(crate::i18n::text("show-panels-hotkey"));
-    form.toggle(crate::i18n::text("show-panels-enable"), crate::i18n::text("show-panels-description"),
-        enabled, Action::ShowPanelsEnable);
+    form.toggle(
+        crate::i18n::text("show-panels-enable"),
+        crate::i18n::text("show-panels-description"),
+        enabled,
+        Action::ShowPanelsEnable,
+    );
     let status = show_hotkey::status();
-    form.shortcut(crate::i18n::text("ui-global-shortcut"),
-        if status.is_empty() { crate::i18n::text("show-panels-disabled") } else { &status },
-        &search_hotkey::label(shortcut), Action::ShowPanelsShortcut, Action::ShowPanelsReset);
+    form.shortcut(
+        crate::i18n::text("ui-global-shortcut"),
+        if status.is_empty() {
+            crate::i18n::text("show-panels-disabled")
+        } else {
+            &status
+        },
+        &search_hotkey::label(shortcut),
+        Action::ShowPanelsShortcut,
+        Action::ShowPanelsReset,
+    );
 }

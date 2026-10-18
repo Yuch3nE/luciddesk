@@ -49,6 +49,12 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
     let all_fonts = context.all_fonts;
     let mut invalidate = false;
     match &c.action {
+        Action::MonitorOptions(id, options) => {
+            if let Err(error) = handle(state, *id, Event::MonitorOptions(options.clone())) {
+                window::error(&error);
+            }
+            invalidate = true;
+        }
         Action::BackupStatus => {
             let message = backup_view.status.clone();
             window::defer_action(move || {
@@ -85,7 +91,10 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
                 let loaded = recovery::Policy::load(&state.borrow().store);
                 let mut policy = match loaded {
                     Ok(policy) => policy,
-                    Err(error) => { window::error(&error); return; }
+                    Err(error) => {
+                        window::error(&error);
+                        return;
+                    }
                 };
                 if kind == 0 {
                     policy.enabled = !policy.enabled;
@@ -232,13 +241,19 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
             }
         }
         Action::CliEnabled(enabled) => {
-            let result = state.borrow().store.save_preference("cli_enabled", &enabled.to_string());
-            if let Err(error) = result { window::error(&error.to_string()); }
+            let result = state
+                .borrow()
+                .store
+                .save_preference("cli_enabled", &enabled.to_string());
+            if let Err(error) = result {
+                window::error(&error.to_string());
+            }
             invalidate = true;
         }
         Action::CopySkillPrompt => {
-            let result = agent::installation_prompt().and_then(|prompt|
-                crate::clipboard::copy(hwnd as isize, &prompt).map_err(|e| e.to_string()));
+            let result = agent::installation_prompt().and_then(|prompt| {
+                crate::clipboard::copy(hwnd as isize, &prompt).map_err(|e| e.to_string())
+            });
             match result {
                 Ok(()) => *context.skill_prompt_copied = true,
                 Err(error) => window::error(&error),

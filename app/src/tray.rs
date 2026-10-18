@@ -22,7 +22,6 @@ pub enum Action {
     Show,
     New,
     NewFolder,
-    NewMonitor,
     Exit,
 }
 
@@ -32,7 +31,8 @@ pub struct Tray {
 }
 impl Tray {
     pub fn new(
-        mut appearance: impl FnMut() -> (luciddesk_core::PanelTheme, luciddesk_core::Backdrop, bool) + 'static,
+        mut appearance: impl FnMut() -> (luciddesk_core::PanelTheme, luciddesk_core::Backdrop, bool)
+        + 'static,
         mut action: impl FnMut(Action) + 'static,
     ) -> Result<Self, String> {
         let icon = Rc::new(make_icon()?);
@@ -56,7 +56,9 @@ impl Tray {
                     return Some(0);
                 }
                 if message == crate::i18n::CHANGED {
-                    unsafe { Shell_NotifyIconW(NIM_MODIFY, &data(hwnd, callback_icon.0)); }
+                    unsafe {
+                        Shell_NotifyIconW(NIM_MODIFY, &data(hwnd, callback_icon.0));
+                    }
                     return Some(0);
                 }
                 if message == recreated {
@@ -73,7 +75,9 @@ impl Tray {
                                 // Read fresh settings after the synchronous Shell
                                 // callback has returned, before pumping menu messages.
                                 let (theme, backdrop, search_enabled) = appearance();
-                                if let Some(command) = menu(hwnd, anchor, theme, backdrop, search_enabled) {
+                                if let Some(command) =
+                                    menu(hwnd, anchor, theme, backdrop, search_enabled)
+                                {
                                     action(command);
                                 }
                             }
@@ -168,12 +172,19 @@ fn menu(
     };
     unsafe {
         if position.x == -1 && position.y == -1 {
-            let id = NOTIFYICONIDENTIFIER { cbSize: size_of::<NOTIFYICONIDENTIFIER>() as u32, hWnd: hwnd, uID: ICON_ID, ..Default::default() };
+            let id = NOTIFYICONIDENTIFIER {
+                cbSize: size_of::<NOTIFYICONIDENTIFIER>() as u32,
+                hWnd: hwnd,
+                uID: ICON_ID,
+                ..Default::default()
+            };
             let mut rect = windows_sys::Win32::Foundation::RECT::default();
             if Shell_NotifyIconGetRect(&id, &raw mut rect) >= 0 {
                 position.x = rect.left + (rect.right - rect.left) / 2;
                 position.y = rect.top;
-            } else { GetCursorPos(&raw mut position); }
+            } else {
+                GetCursorPos(&raw mut position);
+            }
         }
         // The hidden owner must use the taskbar monitor's DPI for the flyout.
         SetWindowPos(
@@ -208,20 +219,25 @@ fn menu(
         6 => Some(Action::Search),
         7 => Some(Action::Refresh),
         8 => Some(Action::OpenConfig),
-        9 => Some(Action::NewMonitor),
         _ => None,
     }
 }
 fn menu_entries(search_enabled: bool) -> Vec<crate::pane::menu::Entry> {
     use crate::pane::menu::entry;
-    let mut rows = vec![entry(1, crate::i18n::text("ui-show-panels"), "\u{e737}", "")];
-    if search_enabled { rows.push(entry(6, crate::i18n::text("tray-search"), "\u{e721}", "")); }
+    let mut rows = vec![entry(
+        1,
+        crate::i18n::text("ui-show-panels"),
+        "\u{e737}",
+        "",
+    )];
+    if search_enabled {
+        rows.push(entry(6, crate::i18n::text("tray-search"), "\u{e721}", ""));
+    }
     rows.extend([
         entry(7, crate::i18n::text("tray-refresh-all"), "\u{e72c}", ""),
         entry(0, "", "", ""),
         entry(2, crate::i18n::text("ui-new-group"), "\u{e710}", ""),
         entry(5, crate::i18n::text("ui-new-folder-panel"), "\u{e8b7}", ""),
-        entry(9, crate::i18n::text("monitor-new"), "\u{e9d9}", ""),
         entry(0, "", "", ""),
         entry(4, crate::i18n::text("ui-settings"), "\u{e713}", ""),
         entry(8, crate::i18n::text("tray-open-config"), "\u{e8b7}", ""),
@@ -248,20 +264,40 @@ mod tests {
         let exits = Rc::new(Cell::new(0));
         let observed = Rc::clone(&exits);
         let tray = Tray::new(
-            || (luciddesk_core::PanelTheme::System, luciddesk_core::Backdrop::Mica, false),
-            move |action| { if matches!(action, Action::Exit) { observed.set(observed.get() + 1); } },
-        ).unwrap();
+            || {
+                (
+                    luciddesk_core::PanelTheme::System,
+                    luciddesk_core::Backdrop::Mica,
+                    false,
+                )
+            },
+            move |action| {
+                if matches!(action, Action::Exit) {
+                    observed.set(observed.get() + 1);
+                }
+            },
+        )
+        .unwrap();
         let hwnd = tray.window.hwnd().cast();
-        unsafe { SendMessageW(hwnd, WM_CLOSE, 0, 0); }
+        unsafe {
+            SendMessageW(hwnd, WM_CLOSE, 0, 0);
+        }
         assert_eq!(exits.get(), 1);
-        assert_ne!(unsafe { IsWindow(hwnd) }, 0, "Tray stays alive until normal application teardown");
+        assert_ne!(
+            unsafe { IsWindow(hwnd) },
+            0,
+            "Tray stays alive until normal application teardown"
+        );
     }
 
     #[test]
     fn common_actions_follow_search_setting_and_exit_is_separate() {
         for enabled in [false, true] {
             let rows = menu_entries(enabled);
-            assert_eq!(rows.iter().filter(|r| r.id == 6).count(), usize::from(enabled));
+            assert_eq!(
+                rows.iter().filter(|r| r.id == 6).count(),
+                usize::from(enabled)
+            );
             for id in [1, 2, 3, 4, 5, 7, 8] {
                 assert_eq!(rows.iter().filter(|r| r.id == id).count(), 1);
             }

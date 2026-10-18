@@ -2,7 +2,7 @@
 use crate::{Backdrop, PanelId, PanelTheme, RectDip};
 use std::path::{Path, PathBuf};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 enum PanelSource {
     Desktop,
     Folder(PathBuf),
@@ -11,7 +11,7 @@ enum PanelSource {
 }
 
 /// A pane with a mutually exclusive desktop, folder, search, or monitor source.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 // These flags are independent UI preferences, not mutually exclusive states.
 #[allow(clippy::struct_excessive_bools)]
 pub struct Panel {

@@ -1285,3 +1285,11 @@ monitor-paused = 已暫停
 monitor-live = 即時
 monitor-history = 最近 60 秒
 monitor-used = 已用
+
+monitor-settings = 系統監控設定
+monitor-settings-description = 在此啟用監控面板，選擇顯示指標和裝置；每個面板獨立儲存設定。
+monitor-enable = 啟用監控面板
+monitor-enable-description = 關閉後保留版面與設定，再次開啟即可恢復。
+
+monitor-display-settings = 顯示與更新
+monitor-device-settings = 裝置來源

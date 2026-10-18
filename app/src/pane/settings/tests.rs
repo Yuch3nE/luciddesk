@@ -2,17 +2,35 @@ use super::*;
 
 #[test]
 fn desktop_layout_defaults_show_both_toggles_and_their_linked_actions() {
-    for mode in [layout_defaults::Mode::Compact, layout_defaults::Mode::Grid, layout_defaults::Mode::Free] {
-        let mut body = scene(900.0, 600.0, 1, false,
-            (PanelTheme::Dark, Backdrop::Acrylic), luciddesk_core::PaneOptions::default());
+    for mode in [
+        layout_defaults::Mode::Compact,
+        layout_defaults::Mode::Grid,
+        layout_defaults::Mode::Free,
+    ] {
+        let mut body = scene(
+            900.0,
+            600.0,
+            1,
+            false,
+            (PanelTheme::Dark, Backdrop::Acrylic),
+            luciddesk_core::PaneOptions::default(),
+        );
         layout::desktop_defaults(&mut body, 900.0, mode);
-        let controls: Vec<_> = body.controls.iter().filter(|c| matches!(c.action, Action::LayoutDefaults(_))).collect();
+        let controls: Vec<_> = body
+            .controls
+            .iter()
+            .filter(|c| matches!(c.action, Action::LayoutDefaults(_)))
+            .collect();
         assert_eq!(controls.len(), 2);
         assert!(controls.iter().all(|c| c.enabled));
         assert_eq!(controls[0].selected, mode != layout_defaults::Mode::Free);
         assert_eq!(controls[1].selected, mode == layout_defaults::Mode::Compact);
-        assert!(matches!(controls[0].action, Action::LayoutDefaults(next) if next == mode.toggle_align()));
-        assert!(matches!(controls[1].action, Action::LayoutDefaults(next) if next == mode.toggle_auto_arrange()));
+        assert!(
+            matches!(controls[0].action, Action::LayoutDefaults(next) if next == mode.toggle_align())
+        );
+        assert!(
+            matches!(controls[1].action, Action::LayoutDefaults(next) if next == mode.toggle_auto_arrange())
+        );
     }
 }
 
@@ -21,11 +39,23 @@ fn solid_defaults_follow_theme_until_a_color_is_saved() {
     let dir = tempfile::tempdir().unwrap();
     let store = luciddesk_storage::WorkspaceStore::open(&dir.path().join("workspace.db")).unwrap();
     for (dark, color) in [(true, 0x202020), (false, 0xf3f3f3)] {
-        assert_eq!(solid_style(&store, dark), Backdrop::Solid { color, opacity: 0.85 });
+        assert_eq!(
+            solid_style(&store, dark),
+            Backdrop::Solid {
+                color,
+                opacity: 0.85
+            }
+        );
     }
     store.save_preference("solid_style", "1193046|0.5").unwrap();
     for dark in [false, true] {
-        assert_eq!(solid_style(&store, dark), Backdrop::Solid { color: 0x123456, opacity: 0.5 });
+        assert_eq!(
+            solid_style(&store, dark),
+            Backdrop::Solid {
+                color: 0x123456,
+                opacity: 0.5
+            }
+        );
     }
 }
 
@@ -37,7 +67,10 @@ fn changing_font_releases_app_before_editor_destruction() {
     let mut cancelled = 0;
     actions::refresh_font_views(&state, |hwnd| {
         assert!(!hwnd.is_null());
-        assert!(state.try_borrow_mut().is_ok(), "editor destruction must allow app reentry");
+        assert!(
+            state.try_borrow_mut().is_ok(),
+            "editor destruction must allow app reentry"
+        );
         cancelled += 1;
     });
     assert_eq!(cancelled, 1);
@@ -46,9 +79,16 @@ fn changing_font_releases_app_before_editor_destruction() {
 #[test]
 fn closing_settings_retries_without_consuming_pending_styles() {
     let state = Rc::new(RefCell::new(super::super::tests::test_state()));
-    let mut pending = PendingStyles { grid: Some(100.0), ..Default::default() };
+    let mut pending = PendingStyles {
+        grid: Some(100.0),
+        ..Default::default()
+    };
     let owner = state.borrow_mut();
-    assert!(!lifecycle::close(&state, std::ptr::null_mut(), &mut pending));
+    assert!(!lifecycle::close(
+        &state,
+        std::ptr::null_mut(),
+        &mut pending
+    ));
     assert_eq!(pending.grid, Some(100.0));
     drop(owner);
 }
@@ -60,11 +100,14 @@ fn close_errors_are_reported_after_borrows_and_callback_return() {
     let observed = reported.clone();
     let callback_state = state.clone();
     let owner = state.borrow_mut();
-    report_close_errors(vec!["material failed".into(), "grid failed".into()], move |message| {
-        assert!(callback_state.try_borrow_mut().is_ok());
-        assert_eq!(message, "material failed\ngrid failed");
-        observed.set(true);
-    });
+    report_close_errors(
+        vec!["material failed".into(), "grid failed".into()],
+        move |message| {
+            assert!(callback_state.try_borrow_mut().is_ok());
+            assert_eq!(message, "material failed\ngrid failed");
+            observed.set(true);
+        },
+    );
     assert!(!reported.get());
     drop(owner);
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
@@ -756,8 +799,14 @@ fn setting_cards_scroll_without_moving_navigation_or_hitting_caption() {
                 }
                 let mut body = build();
                 let origin = if body.fixed_list() && Scene::list_row(control) {
-                    body.controls.iter().filter(|c| Scene::list_row(c)).map(|c| c.bounds.top).fold(f32::MAX, f32::min)
-                } else { TITLE_HEIGHT + 16.0 };
+                    body.controls
+                        .iter()
+                        .filter(|c| Scene::list_row(c))
+                        .map(|c| c.bounds.top)
+                        .fold(f32::MAX, f32::min)
+                } else {
+                    TITLE_HEIGHT + 16.0
+                };
                 let mut offset = (control.bounds.top - origin).max(0.0);
                 body.scroll_to(width, 560.0, &mut offset);
                 assert_eq!(body.controls[0].bounds.top, original.controls[0].bounds.top);
@@ -772,8 +821,14 @@ fn setting_cards_scroll_without_moving_navigation_or_hitting_caption() {
 #[test]
 fn settings_cards_align_and_long_paths_do_not_overlap_actions() {
     for width in [800.0, 940.0, 1440.0] {
-        let mut s = scene(width, 520.0, usize::MAX, false,
-            (PanelTheme::Dark, Backdrop::Mica), Default::default());
+        let mut s = scene(
+            width,
+            520.0,
+            usize::MAX,
+            false,
+            (PanelTheme::Dark, Backdrop::Mica),
+            Default::default(),
+        );
         let path = format!(
             r"C:\Users\测试用户\{}\Everything.exe",
             "很长的文件夹名称".repeat(20)
@@ -804,8 +859,8 @@ fn settings_cards_align_and_long_paths_do_not_overlap_actions() {
             Action::SearchShortcut,
             Action::SearchReset,
         );
-        let right =
-            Tokens::content_x() + (width - Tokens::content_x() - Tokens::MARGIN).min(Tokens::MAX_WIDTH);
+        let right = Tokens::content_x()
+            + (width - Tokens::content_x() - Tokens::MARGIN).min(Tokens::MAX_WIDTH);
         for card in &s.cards {
             assert_eq!(card.left, Tokens::content_x());
             assert_eq!(card.right, right);
@@ -840,8 +895,10 @@ fn settings_cards_align_and_long_paths_do_not_overlap_actions() {
         assert!(
             s.controls
                 .iter()
-                .filter(|c| c.bounds.left >= path_card.left && c.bounds.right <= path_card.right
-                    && c.bounds.top >= path_card.top && c.bounds.bottom <= path_card.bottom)
+                .filter(|c| c.bounds.left >= path_card.left
+                    && c.bounds.right <= path_card.right
+                    && c.bounds.top >= path_card.top
+                    && c.bounds.bottom <= path_card.bottom)
                 .all(|c| c.bounds.top >= path_bounds.bottom + 12.0)
         );
         let shortcut = s
@@ -988,12 +1045,14 @@ fn material_choices_reach_the_preview_with_their_strength() {
     }
 }
 
-
 #[test]
 fn corner_slider_drags_to_both_limits_and_saves() {
     let _sta = crate::pane::test_support::apartment();
     let state = Rc::new(RefCell::new(super::super::tests::test_state()));
-    state.borrow_mut().workspace.set_appearance(PanelTheme::Dark, Backdrop::Mica);
+    state
+        .borrow_mut()
+        .workspace
+        .set_appearance(PanelTheme::Dark, Backdrop::Mica);
     show(&state, PanelId::new(1)).unwrap();
     let hwnd = state.borrow().settings.as_ref().unwrap().hwnd().cast();
     let nav = control_position(&state, hwnd, 0, |a| matches!(a, Action::Page(1)), 0.5);
@@ -1001,15 +1060,35 @@ fn corner_slider_drags_to_both_limits_and_saves() {
         SendMessageW(hwnd, WM_LBUTTONDOWN, 0, nav);
         SendMessageW(hwnd, WM_LBUTTONUP, 0, nav);
     }
-    let radius = |fraction| control_position(&state, hwnd, 1, |a| matches!(a, Action::Radius(_)), fraction);
+    let radius = |fraction| {
+        control_position(
+            &state,
+            hwnd,
+            1,
+            |a| matches!(a, Action::Radius(_)),
+            fraction,
+        )
+    };
     let (middle, left, right) = (radius(0.5), radius(0.0), radius(1.0));
-    let saved = || state.borrow().store.load_workspace().unwrap().pane_options().corner_radius;
+    let saved = || {
+        state
+            .borrow()
+            .store
+            .load_workspace()
+            .unwrap()
+            .pane_options()
+            .corner_radius
+    };
     unsafe {
         SendMessageW(hwnd, WM_LBUTTONDOWN, 0, middle);
         assert_eq!(state.borrow().workspace.pane_options().corner_radius, 12.0);
         SendMessageW(hwnd, WM_MOUSEMOVE, 1, left);
         assert_eq!(state.borrow().workspace.pane_options().corner_radius, 0.0);
-        assert_eq!(saved(), luciddesk_core::PaneOptions::DEFAULT.corner_radius, "preview must not write storage");
+        assert_eq!(
+            saved(),
+            luciddesk_core::PaneOptions::DEFAULT.corner_radius,
+            "preview must not write storage"
+        );
         SendMessageW(hwnd, WM_MOUSEMOVE, 1, right);
         SendMessageW(hwnd, WM_LBUTTONUP, 0, right);
         assert_eq!(saved(), 24.0);
@@ -1021,8 +1100,11 @@ fn corner_slider_drags_to_both_limits_and_saves() {
 }
 
 fn control_position(
-    state: &Rc<RefCell<PaneApp>>, hwnd: windows_sys::Win32::Foundation::HWND, page: usize,
-    predicate: fn(&Action) -> bool, fraction: f32,
+    state: &Rc<RefCell<PaneApp>>,
+    hwnd: windows_sys::Win32::Foundation::HWND,
+    page: usize,
+    predicate: fn(&Action) -> bool,
+    fraction: f32,
 ) -> isize {
     unsafe {
         // Reset actual scrolling, then locate the semantic control in the current layout.
@@ -1039,15 +1121,49 @@ fn control_position(
         let w = rect.right as f32 / scale;
         let h = rect.bottom as f32 / scale;
         let s = state.borrow();
-        let appearance = s.workspace.appearance().unwrap_or((PanelTheme::System, Backdrop::Mica));
-        let mut body = with_titlebar(scene(w, h - TITLE_HEIGHT, page, false, appearance, Default::default()), w, false);
+        let appearance = s
+            .workspace
+            .appearance()
+            .unwrap_or((PanelTheme::System, Backdrop::Mica));
+        let mut content = scene(
+            w,
+            h - TITLE_HEIGHT,
+            page,
+            false,
+            appearance,
+            Default::default(),
+        );
+        if page == 14 {
+            let panels = s
+                .workspace
+                .panels()
+                .iter()
+                .filter(|p| p.is_monitor())
+                .map(|p| {
+                    monitor::Preferences::load(&s.store, p.id())
+                        .map(|options| (p.id(), p.title().into(), options))
+                })
+                .collect();
+            monitor_page::draw(&mut content, w, &panels);
+        }
+        let mut body = with_titlebar(content, w, false);
         let mut scroll = 0.0;
         body.scroll_to(w, h, &mut scroll);
-        let bounds = body.controls.iter().find(|c| predicate(&c.action)).expect("settings control missing").bounds;
+        let bounds = body
+            .controls
+            .iter()
+            .find(|c| predicate(&c.action))
+            .expect("settings control missing")
+            .bounds;
         drop(s);
         let viewport = body.viewport.unwrap();
         while bounds.bottom - scroll > viewport.bottom {
-            SendMessageW(hwnd, WM_MOUSEWHEEL, ((-120i16) as u16 as usize) << 16, screen_point);
+            SendMessageW(
+                hwnd,
+                WM_MOUSEWHEEL,
+                ((-120i16) as u16 as usize) << 16,
+                screen_point,
+            );
             let next = (scroll + 64.0).min(body.scroll_max);
             assert!(next > scroll, "control cannot be scrolled into view");
             scroll = next;
@@ -1061,7 +1177,8 @@ fn control_position(
 
 // Called by the isolated native-window scenario so composition stays on one STA.
 pub(in crate::pane) fn preference_pages_survive_reentry(
-    state: &Rc<RefCell<PaneApp>>, hwnd: windows_sys::Win32::Foundation::HWND,
+    state: &Rc<RefCell<PaneApp>>,
+    hwnd: windows_sys::Win32::Foundation::HWND,
 ) {
     for choose in [
         (|a: &Action| matches!(a, Action::Page(1))) as fn(&Action) -> bool,
@@ -1085,60 +1202,148 @@ pub(in crate::pane) fn solid_settings_edit_preview_save_and_remember_style() {
     let state = Rc::new(RefCell::new(super::super::tests::test_state()));
     show(&state, PanelId::new(1)).unwrap();
     let hwnd = state.borrow().settings.as_ref().unwrap().hwnd().cast();
-    let point = |page, predicate, fraction| control_position(&state, hwnd, page, predicate, fraction);
+    let point =
+        |page, predicate, fraction| control_position(&state, hwnd, page, predicate, fraction);
     let click = |p| unsafe {
         SendMessageW(hwnd, WM_LBUTTONDOWN, 1, p);
         SendMessageW(hwnd, WM_LBUTTONUP, 0, p);
         SendMessageW(hwnd, WM_PAINT, 0, 0);
     };
-    click(point(0, |a| matches!(a, Action::Change(Event::Material(Backdrop::Acrylic))), 0.5));
+    click(point(
+        0,
+        |a| matches!(a, Action::Change(Event::Material(Backdrop::Acrylic))),
+        0.5,
+    ));
     let before = state.borrow().store.change_count();
     let slider = point(0, |a| matches!(a, Action::Strength(_)), 0.75);
-    unsafe { SendMessageW(hwnd, WM_LBUTTONDOWN, 1, slider); }
+    unsafe {
+        SendMessageW(hwnd, WM_LBUTTONDOWN, 1, slider);
+    }
     let adjusted = state.borrow().workspace.appearance().unwrap().1;
     assert_ne!(adjusted.strength(), Some(50));
-    assert_eq!(state.borrow().store.change_count(), before, "drag must defer persistence");
-    unsafe { SendMessageW(hwnd, WM_LBUTTONUP, 0, slider); }
-    assert_eq!(state.borrow().store.load_workspace().unwrap().appearance().unwrap().1, adjusted);
-    click(point(0, |a| matches!(a, Action::Change(Event::Material(Backdrop::Mica))), 0.5));
-    assert_eq!(state.borrow().workspace.appearance().unwrap().1.strength(), Some(50));
-    click(point(0, |a| matches!(a, Action::Change(Event::Material(Backdrop::Acrylic))), 0.5));
+    assert_eq!(
+        state.borrow().store.change_count(),
+        before,
+        "drag must defer persistence"
+    );
+    unsafe {
+        SendMessageW(hwnd, WM_LBUTTONUP, 0, slider);
+    }
+    assert_eq!(
+        state
+            .borrow()
+            .store
+            .load_workspace()
+            .unwrap()
+            .appearance()
+            .unwrap()
+            .1,
+        adjusted
+    );
+    click(point(
+        0,
+        |a| matches!(a, Action::Change(Event::Material(Backdrop::Mica))),
+        0.5,
+    ));
+    assert_eq!(
+        state.borrow().workspace.appearance().unwrap().1.strength(),
+        Some(50)
+    );
+    click(point(
+        0,
+        |a| matches!(a, Action::Change(Event::Material(Backdrop::Acrylic))),
+        0.5,
+    ));
     assert_eq!(state.borrow().workspace.appearance().unwrap().1, adjusted);
     click(point(0, |a| matches!(a, Action::StrengthReset), 0.5));
-    assert_eq!(state.borrow().workspace.appearance().unwrap().1, Backdrop::Acrylic);
+    assert_eq!(
+        state.borrow().workspace.appearance().unwrap().1,
+        Backdrop::Acrylic
+    );
     click(point(0, |a| matches!(a, Action::Strength(_)), 0.5));
     for (key, value) in [(VK_HOME, 0), (VK_END, 100)] {
-        unsafe { SendMessageW(hwnd, WM_KEYDOWN, key as usize, 0); }
-        assert_eq!(state.borrow().workspace.appearance().unwrap().1.strength(), Some(value));
+        unsafe {
+            SendMessageW(hwnd, WM_KEYDOWN, key as usize, 0);
+        }
+        assert_eq!(
+            state.borrow().workspace.appearance().unwrap().1.strength(),
+            Some(value)
+        );
     }
-    click(point(0, |a| matches!(a, Action::Change(Event::Material(Backdrop::Solid { .. }))), 0.5));
+    click(point(
+        0,
+        |a| matches!(a, Action::Change(Event::Material(Backdrop::Solid { .. }))),
+        0.5,
+    ));
     click(point(0, |a| matches!(a, Action::SolidColor), 0.5));
     click(point(7, |a| matches!(a, Action::StyleInput(false)), 0.5));
     unsafe {
-        for c in "#1234AB".chars() { SendMessageW(hwnd, WM_CHAR, c as usize, 0); }
+        for c in "#1234AB".chars() {
+            SendMessageW(hwnd, WM_CHAR, c as usize, 0);
+        }
         SendMessageW(hwnd, WM_KEYDOWN, VK_RETURN as usize, 0);
     }
-    assert!(matches!(state.borrow().store.load_workspace().unwrap().appearance().unwrap().1,
-        Backdrop::Solid { color: 0x1234ab, .. }));
+    assert!(matches!(
+        state
+            .borrow()
+            .store
+            .load_workspace()
+            .unwrap()
+            .appearance()
+            .unwrap()
+            .1,
+        Backdrop::Solid {
+            color: 0x1234ab,
+            ..
+        }
+    ));
     unsafe {
         SendMessageW(hwnd, WM_KEYDOWN, VK_ESCAPE as usize, 0);
         SendMessageW(hwnd, WM_PAINT, 0, 0);
     }
-    assert!(state.borrow().settings.is_some(), "Escape should leave the picker");
+    assert!(
+        state.borrow().settings.is_some(),
+        "Escape should leave the picker"
+    );
     let before = state.borrow().store.change_count();
     let opacity = point(0, |a| matches!(a, Action::Opacity(_)), 0.5);
-    unsafe { SendMessageW(hwnd, WM_LBUTTONDOWN, 1, opacity); }
+    unsafe {
+        SendMessageW(hwnd, WM_LBUTTONDOWN, 1, opacity);
+    }
     assert_eq!(state.borrow().store.change_count(), before);
-    unsafe { SendMessageW(hwnd, WM_LBUTTONUP, 0, opacity); }
+    unsafe {
+        SendMessageW(hwnd, WM_LBUTTONUP, 0, opacity);
+    }
     let solid = state.borrow().workspace.appearance().unwrap().1;
-    assert!(matches!(solid, Backdrop::Solid { color: 0x1234ab, opacity } if (opacity - 0.5).abs() < 0.02));
-    assert_eq!(state.borrow().store.load_workspace().unwrap().appearance().unwrap().1, solid);
-    click(point(0, |a| matches!(a, Action::Change(Event::Material(Backdrop::Mica))), 0.5));
-    click(point(0, |a| matches!(a, Action::Change(Event::Material(Backdrop::Solid { .. }))), 0.5));
+    assert!(
+        matches!(solid, Backdrop::Solid { color: 0x1234ab, opacity } if (opacity - 0.5).abs() < 0.02)
+    );
+    assert_eq!(
+        state
+            .borrow()
+            .store
+            .load_workspace()
+            .unwrap()
+            .appearance()
+            .unwrap()
+            .1,
+        solid
+    );
+    click(point(
+        0,
+        |a| matches!(a, Action::Change(Event::Material(Backdrop::Mica))),
+        0.5,
+    ));
+    click(point(
+        0,
+        |a| matches!(a, Action::Change(Event::Material(Backdrop::Solid { .. }))),
+        0.5,
+    ));
     assert_eq!(state.borrow().workspace.appearance().unwrap().1, solid);
-    unsafe { SendMessageW(hwnd, WM_CLOSE, 0, 0); }
+    unsafe {
+        SendMessageW(hwnd, WM_CLOSE, 0, 0);
+    }
 }
-
 
 #[test]
 fn all_languages_layout_and_render_without_control_overflow() {
@@ -1147,44 +1352,122 @@ fn all_languages_layout_and_render_without_control_overflow() {
     for locale in 0..7 {
         crate::i18n::with_locale(locale, || {
             let painter = Painter::new().unwrap();
-            for page in [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] {
+            for page in [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] {
                 let width = 800.0;
                 let height = MIN_HEIGHT;
-                let material = if page == 7 { Backdrop::Solid { color: 0xf3f3f3, opacity: 1.0 } } else { Backdrop::Acrylic };
-                let mut body = scene(width, height - TITLE_HEIGHT, page, true,
-                    (PanelTheme::Light, material), luciddesk_core::PaneOptions::default());
+                let material = if page == 7 {
+                    Backdrop::Solid {
+                        color: 0xf3f3f3,
+                        opacity: 1.0,
+                    }
+                } else {
+                    Backdrop::Acrylic
+                };
+                let mut body = scene(
+                    width,
+                    height - TITLE_HEIGHT,
+                    page,
+                    true,
+                    (PanelTheme::Light, material),
+                    luciddesk_core::PaneOptions::default(),
+                );
                 match page {
-                    1 => layout::show_panels_shortcut(&mut body, width, false, show_hotkey::default_shortcut()),
+                    1 => layout::show_panels_shortcut(
+                        &mut body,
+                        width,
+                        false,
+                        show_hotkey::default_shortcut(),
+                    ),
                     5 => layout::about_status(&mut body, width, "桌面面板已连接", true),
-                    8 => layout::folder_defaults(&mut body, width, folder::Defaults::default(), folder::EntryMode::Inline),
+                    8 => layout::folder_defaults(
+                        &mut body,
+                        width,
+                        folder::Defaults::default(),
+                        folder::EntryMode::Inline,
+                    ),
                     9 => layout::backup_history(&mut body, width, &recovery::View::default(), 0),
-                    6 | 10 => layout::backup_page(&mut body, width, &recovery::View::default(), recovery::Policy::default(), page == 10),
+                    6 | 10 => layout::backup_page(
+                        &mut body,
+                        width,
+                        &recovery::View::default(),
+                        recovery::Policy::default(),
+                        page == 10,
+                    ),
                     11 => layout::fonts(&mut body, width, &fonts::installed(), 0),
                     12 => layout::language(&mut body, width, "system"),
-                    13 => layout::general(&mut body, width, crate::startup::Status::DisabledByWindows, false, true, false),
-                    _ => {},
+                    13 => layout::general(
+                        &mut body,
+                        width,
+                        crate::startup::Status::DisabledByWindows,
+                        false,
+                        true,
+                        false,
+                    ),
+                    14 => monitor_page::draw(
+                        &mut body,
+                        width,
+                        &Ok(vec![(
+                            PanelId::new(1),
+                            "Monitor".into(),
+                            monitor::Preferences::default(),
+                        )]),
+                    ),
+                    _ => {}
                 }
                 let mut scene = with_titlebar(body, width, false);
                 scene.scroll_to(width, height, &mut 0.0);
-                for bounds in scene.text.iter().map(|(bounds, _, _)| bounds)
+                for bounds in scene
+                    .text
+                    .iter()
+                    .map(|(bounds, _, _)| bounds)
                     .chain(scene.app_icon.iter())
                     .chain(scene.cards.iter())
                     .chain(scene.controls.iter().map(|control| &control.bounds))
                 {
-                    assert!(bounds.left >= 0.0 && bounds.right <= width, "locale={locale}, page={page}");
+                    assert!(
+                        bounds.left >= 0.0 && bounds.right <= width,
+                        "locale={locale}, page={page}"
+                    );
                 }
-                let navigation: Vec<_> = scene.controls.iter().filter(|c| matches!(c.kind, ControlKind::Navigation)).collect();
-                for pair in navigation.windows(2) { assert!(pair[0].bounds.bottom <= pair[1].bounds.top); }
+                let navigation: Vec<_> = scene
+                    .controls
+                    .iter()
+                    .filter(|c| matches!(c.kind, ControlKind::Navigation))
+                    .collect();
+                for pair in navigation.windows(2) {
+                    assert!(pair[0].bounds.bottom <= pair[1].bounds.top);
+                }
                 for c in &scene.controls {
                     if matches!(c.kind, ControlKind::Navigation) {
-                        assert!(painter.label_width(&c.label).unwrap() <= c.bounds.right - c.bounds.left - controls::Style::NAV_TEXT_INSET - 8.0, "Navigation truncated: {}", c.label);
+                        assert!(
+                            painter.label_width(&c.label).unwrap()
+                                <= c.bounds.right
+                                    - c.bounds.left
+                                    - controls::Style::NAV_TEXT_INSET
+                                    - 8.0,
+                            "Navigation truncated: {}",
+                            c.label
+                        );
                     }
                 }
                 let scale = 1.0;
                 let w = (width * scale) as u32;
                 let h = (height * scale) as u32;
                 let bitmap = super::super::canvas::Offscreen::new(&device, w, h).unwrap();
-                painter.paint(&bitmap.target, &scene, width, height, scale, false, false, None, None, &Default::default()).unwrap();
+                painter
+                    .paint(
+                        &bitmap.target,
+                        &scene,
+                        width,
+                        height,
+                        scale,
+                        false,
+                        false,
+                        None,
+                        None,
+                        &Default::default(),
+                    )
+                    .unwrap();
                 if std::env::var_os("LUCIDDESK_TEST_EXPORT_SNAPSHOTS").is_some() {
                     let pixels = bitmap.pixels().unwrap();
                     let mut bmp = vec![0u8; 54];
@@ -1197,7 +1480,12 @@ fn all_languages_layout_and_render_without_control_overflow() {
                     bmp[26..28].copy_from_slice(&1u16.to_le_bytes());
                     bmp[28..30].copy_from_slice(&32u16.to_le_bytes());
                     bmp.extend(pixels);
-                    std::fs::write(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../target/i18n-{locale}-{page}.bmp")), bmp).unwrap();
+                    std::fs::write(
+                        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                            .join(format!("../target/i18n-{locale}-{page}.bmp")),
+                        bmp,
+                    )
+                    .unwrap();
                 }
             }
         });
@@ -1208,15 +1496,30 @@ fn all_languages_layout_and_render_without_control_overflow() {
 fn show_panels_shortcut_is_off_and_accessible_in_every_language() {
     for locale in 0..7 {
         crate::i18n::with_locale(locale, || {
-            let mut body = scene(800.0, 560.0 - TITLE_HEIGHT, 1, false,
-                (PanelTheme::Light, Backdrop::Acrylic), Default::default());
+            let mut body = scene(
+                800.0,
+                560.0 - TITLE_HEIGHT,
+                1,
+                false,
+                (PanelTheme::Light, Backdrop::Acrylic),
+                Default::default(),
+            );
             layout::show_panels_shortcut(&mut body, 800.0, false, show_hotkey::default_shortcut());
             let mut s = with_titlebar(body, 800.0, false);
-            let toggle = s.controls.iter().find(|c| matches!(c.action, Action::ShowPanelsEnable)).unwrap();
+            let toggle = s
+                .controls
+                .iter()
+                .find(|c| matches!(c.action, Action::ShowPanelsEnable))
+                .unwrap();
             assert!(!toggle.selected);
             let mut offset = toggle.bounds.top - TITLE_HEIGHT - 16.0;
             s.scroll_to(800.0, 560.0, &mut offset);
-            for c in s.controls.iter().filter(|c| matches!(c.action, Action::ShowPanelsEnable | Action::ShowPanelsShortcut | Action::ShowPanelsReset)) {
+            for c in s.controls.iter().filter(|c| {
+                matches!(
+                    c.action,
+                    Action::ShowPanelsEnable | Action::ShowPanelsShortcut | Action::ShowPanelsReset
+                )
+            }) {
                 assert!(c.bounds.right <= 800.0 && c.bounds.left >= Tokens::content_x());
                 assert!(s.accepts_pointer(c, c.bounds.left + 1.0, c.bounds.top + 1.0));
             }
@@ -1227,8 +1530,11 @@ fn show_panels_shortcut_is_off_and_accessible_in_every_language() {
 #[test]
 fn font_search_uses_owned_surface_and_accepts_unicode_text() {
     use windows_sys::Win32::UI::WindowsAndMessaging::*;
-    let owner = windows_window::Window::new("Font search test").style(WS_POPUP)
-        .on_message(|_, message, _, _| (message == WM_DESTROY).then_some(0)).create().unwrap();
+    let owner = windows_window::Window::new("Font search test")
+        .style(WS_POPUP)
+        .on_message(|_, message, _, _| (message == WM_DESTROY).then_some(0))
+        .create()
+        .unwrap();
     let hwnd = super::create_font_search(owner.hwnd().cast());
     assert!(!hwnd.is_null());
     unsafe {
@@ -1238,7 +1544,10 @@ fn font_search_uses_owned_surface_and_accepts_unicode_text() {
         SetWindowTextW(hwnd, windows_sys::w!("微软雅黑 UI"));
         let mut text = [0u16; 64];
         let length = GetWindowTextW(hwnd, text.as_mut_ptr(), text.len() as i32);
-        assert_eq!(String::from_utf16_lossy(&text[..length as usize]), "微软雅黑 UI");
+        assert_eq!(
+            String::from_utf16_lossy(&text[..length as usize]),
+            "微软雅黑 UI"
+        );
         DestroyWindow(hwnd);
     }
 }
@@ -1247,22 +1556,49 @@ fn font_search_uses_owned_surface_and_accepts_unicode_text() {
 fn font_list_scroll_keeps_search_and_current_font_fixed() {
     let names: Vec<_> = (0..200).map(|i| format!("Font {i}")).collect();
     let make = || {
-        let mut body = scene(940.0, 588.0, 11, false, (PanelTheme::Dark, Backdrop::Mica), Default::default());
+        let mut body = scene(
+            940.0,
+            588.0,
+            11,
+            false,
+            (PanelTheme::Dark, Backdrop::Mica),
+            Default::default(),
+        );
         layout::fonts(&mut body, 940.0, &names, 0);
         with_titlebar(body, 940.0, false)
     };
-    let mut first = make(); first.scroll_to(940.0, 620.0, &mut 0.0);
-    let mut scrolled = make(); scrolled.scroll_to(940.0, 620.0, &mut 480.0);
-    let field = |s: &Scene| s.controls.iter().find(|c| matches!(c.action, Action::FontSearch)).unwrap().bounds;
+    let mut first = make();
+    first.scroll_to(940.0, 620.0, &mut 0.0);
+    let mut scrolled = make();
+    scrolled.scroll_to(940.0, 620.0, &mut 480.0);
+    let field = |s: &Scene| {
+        s.controls
+            .iter()
+            .find(|c| matches!(c.action, Action::FontSearch))
+            .unwrap()
+            .bounds
+    };
     assert_eq!(field(&first), field(&scrolled));
     assert_eq!(first.cards, scrolled.cards);
     assert!(scrolled.scroll_max > 0.0);
     let r = field(&scrolled);
     assert!(font_search_hit(&scrolled, r.left + 10.0, r.top + 10.0));
-    let row = scrolled.controls.iter().find(|c| Scene::list_row(c)).unwrap();
+    let row = scrolled
+        .controls
+        .iter()
+        .find(|c| Scene::list_row(c))
+        .unwrap();
     assert!(!scrolled.accepts_pointer(row, row.bounds.left + 1.0, row.bounds.top + 1.0));
-    let visible = scrolled.controls.iter().filter(|c| Scene::list_row(c)
-        && scrolled.viewport.is_some_and(|v| c.bounds.bottom > v.top && c.bounds.top < v.bottom)).count();
+    let visible = scrolled
+        .controls
+        .iter()
+        .filter(|c| {
+            Scene::list_row(c)
+                && scrolled
+                    .viewport
+                    .is_some_and(|v| c.bounds.bottom > v.top && c.bounds.top < v.bottom)
+        })
+        .count();
     assert!(visible > 0 && visible < 10);
 }
 
@@ -1275,19 +1611,37 @@ fn native_font_search_tracks_window_and_handles_clear_and_page_leave() {
     let hwnd = state.borrow().settings.as_ref().unwrap().hwnd().cast();
     unsafe {
         ShowWindow(hwnd, SW_SHOWNOACTIVATE);
-        let mut bounds = RECT::default(); GetClientRect(hwnd, &raw mut bounds);
+        let mut bounds = RECT::default();
+        GetClientRect(hwnd, &raw mut bounds);
         let scale = GetDpiForWindow(hwnd).max(96) as f32 / 96.0;
         let width = bounds.right as f32 / scale;
-        let nav = with_titlebar(scene(width, bounds.bottom as f32 / scale - TITLE_HEIGHT, 0,
-            false, (PanelTheme::Dark, Backdrop::Mica), Default::default()), width, false);
+        let nav = with_titlebar(
+            scene(
+                width,
+                bounds.bottom as f32 / scale - TITLE_HEIGHT,
+                0,
+                false,
+                (PanelTheme::Dark, Backdrop::Mica),
+                Default::default(),
+            ),
+            width,
+            false,
+        );
         let click = |rect: Rect| {
             let x = ((rect.left + rect.right) * 0.5 * scale) as u16;
             let y = ((rect.top + rect.bottom) * 0.5 * scale) as u16;
             let lp = (u32::from(x) | (u32::from(y) << 16)) as isize;
-            SendMessageW(hwnd, WM_LBUTTONDOWN, 1, lp); SendMessageW(hwnd, WM_LBUTTONUP, 0, lp);
+            SendMessageW(hwnd, WM_LBUTTONDOWN, 1, lp);
+            SendMessageW(hwnd, WM_LBUTTONUP, 0, lp);
             SendMessageW(hwnd, WM_PAINT, 0, 0);
         };
-        click(nav.controls.iter().find(|c| matches!(c.action, Action::Page(11))).unwrap().bounds);
+        click(
+            nav.controls
+                .iter()
+                .find(|c| matches!(c.action, Action::Page(11)))
+                .unwrap()
+                .bounds,
+        );
         let editor = GetPropW(hwnd, windows_sys::w!("LucidDesk.FontSearch"));
         assert!(!editor.is_null());
         assert_ne!(IsWindowVisible(editor), 0);
@@ -1296,32 +1650,65 @@ fn native_font_search_tracks_window_and_handles_clear_and_page_leave() {
         crate::i18n::with_locale(2, || {
             SendMessageW(hwnd, crate::i18n::CHANGED, 0, 0);
             SendMessageW(hwnd, WM_PAINT, 0, 0);
-            assert_eq!(GetPropW(hwnd, windows_sys::w!("LucidDesk.FontSearch")), editor);
+            assert_eq!(
+                GetPropW(hwnd, windows_sys::w!("LucidDesk.FontSearch")),
+                editor
+            );
             let mut query = [0u16; 32];
             let count = GetWindowTextW(editor, query.as_mut_ptr(), query.len() as i32);
-            assert_eq!(String::from_utf16_lossy(&query[..count as usize]), "微软雅黑");
+            assert_eq!(
+                String::from_utf16_lossy(&query[..count as usize]),
+                "微软雅黑"
+            );
         });
 
         SendMessageW(editor, WM_KEYDOWN, VK_ESCAPE as usize, 0);
         assert_eq!(GetWindowTextLengthW(editor), 0);
         SetWindowTextW(editor, windows_sys::w!("missing-font"));
         SendMessageW(hwnd, WM_PAINT, 0, 0);
-        let mut field = RECT::default(); GetWindowRect(editor, &raw mut field);
-        let mut point = windows_sys::Win32::Foundation::POINT { x: field.right + (16.0 * scale) as i32, y: (field.top + field.bottom) / 2 };
+        let mut field = RECT::default();
+        GetWindowRect(editor, &raw mut field);
+        let mut point = windows_sys::Win32::Foundation::POINT {
+            x: field.right + (16.0 * scale) as i32,
+            y: (field.top + field.bottom) / 2,
+        };
         ScreenToClient(hwnd, &raw mut point);
         let lp = (point.x as u16 as u32 | ((point.y as u16 as u32) << 16)) as isize;
-        SendMessageW(hwnd, WM_LBUTTONDOWN, 1, lp); SendMessageW(hwnd, WM_LBUTTONUP, 0, lp);
-        assert_eq!(GetWindowTextLengthW(editor), 0, "clear button must clear the native editor");
+        SendMessageW(hwnd, WM_LBUTTONDOWN, 1, lp);
+        SendMessageW(hwnd, WM_LBUTTONUP, 0, lp);
+        assert_eq!(
+            GetWindowTextLengthW(editor),
+            0,
+            "clear button must clear the native editor"
+        );
         ShowWindow(hwnd, SW_MINIMIZE);
         assert_eq!(IsWindowVisible(editor), 0);
-        ShowWindow(hwnd, SW_SHOWNOACTIVATE); SendMessageW(hwnd, WM_PAINT, 0, 0);
+        ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        SendMessageW(hwnd, WM_PAINT, 0, 0);
         assert_ne!(IsWindowVisible(editor), 0);
-        let mut before = RECT::default(); GetWindowRect(editor, &raw mut before);
-        let mut owner = RECT::default(); GetWindowRect(hwnd, &raw mut owner);
-        SetWindowPos(hwnd, std::ptr::null_mut(), owner.left + 20, owner.top + 20, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
-        let mut after = RECT::default(); GetWindowRect(editor, &raw mut after);
+        let mut before = RECT::default();
+        GetWindowRect(editor, &raw mut before);
+        let mut owner = RECT::default();
+        GetWindowRect(hwnd, &raw mut owner);
+        SetWindowPos(
+            hwnd,
+            std::ptr::null_mut(),
+            owner.left + 20,
+            owner.top + 20,
+            0,
+            0,
+            SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+        );
+        let mut after = RECT::default();
+        GetWindowRect(editor, &raw mut after);
         assert_eq!((after.left - before.left, after.top - before.top), (20, 20));
-        click(nav.controls.iter().find(|c| matches!(c.action, Action::Page(0))).unwrap().bounds);
+        click(
+            nav.controls
+                .iter()
+                .find(|c| matches!(c.action, Action::Page(0)))
+                .unwrap()
+                .bounds,
+        );
         assert_eq!(IsWindowVisible(editor), 0);
         SendMessageW(hwnd, WM_CLOSE, 0, 0);
     }
@@ -1329,8 +1716,20 @@ fn native_font_search_tracks_window_and_handles_clear_and_page_leave() {
 
 #[test]
 fn font_search_matches_words_fullwidth_and_separators() {
-    let names: Vec<String> = ["Microsoft YaHei UI", "Maple Mono NF-CN", "Noto Sans SC", "微软雅黑"].into_iter().map(String::from).collect();
-    for query in ["yahei microsoft", "ＭＩＣＲＯＳＯＦＴ　ＵＩ", "microsoftyahei"] {
+    let names: Vec<String> = [
+        "Microsoft YaHei UI",
+        "Maple Mono NF-CN",
+        "Noto Sans SC",
+        "微软雅黑",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+    for query in [
+        "yahei microsoft",
+        "ＭＩＣＲＯＳＯＦＴ　ＵＩ",
+        "microsoftyahei",
+    ] {
         assert_eq!(filter_fonts(&names, query), names[..1]);
     }
     for query in ["CN maple", "nf_cn", "MapleMono"] {
@@ -1355,29 +1754,64 @@ fn search_font_lifetime_survives_detached_callback_and_releases_on_close() {
                 use windows_sys::Win32::System::Threading::{GetCurrentProcess, GetGuiResources};
                 let process = GetCurrentProcess();
                 let before = windows_sys::Win32::System::Threading::GetGuiResources(process, 0);
-                let owner = CreateWindowExW(0, windows_sys::w!("STATIC"), windows_sys::w!("Font lifetime"),
-                    WS_POPUP, 0, 0, 1, 1, std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null());
+                let owner = CreateWindowExW(
+                    0,
+                    windows_sys::w!("STATIC"),
+                    windows_sys::w!("Font lifetime"),
+                    WS_POPUP,
+                    0,
+                    0,
+                    1,
+                    1,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    std::ptr::null(),
+                );
                 assert!(!owner.is_null());
                 windows_sys::Win32::UI::Shell::SetWindowSubclass(owner, Some(frame_proc), 1, 0);
                 let editor = create_font_search(owner);
                 assert!(!editor.is_null());
-                let font = CreateFontW(-14, 0, 0, 0, FW_NORMAL as i32, 0, 0, 0,
-                    DEFAULT_CHARSET as u32, 0, 0, ANTIALIASED_QUALITY as u32, 0, windows_sys::w!("Segoe UI"));
+                let font = CreateFontW(
+                    -14,
+                    0,
+                    0,
+                    0,
+                    FW_NORMAL as i32,
+                    0,
+                    0,
+                    0,
+                    DEFAULT_CHARSET as u32,
+                    0,
+                    0,
+                    ANTIALIASED_QUALITY as u32,
+                    0,
+                    windows_sys::w!("Segoe UI"),
+                );
                 assert!(!font.is_null());
                 let resources: SearchFontOwner = Rc::new(RefCell::new(Some(SearchFont(font))));
                 let weak = Rc::downgrade(&resources);
                 assert!(attach_search_lifetime(editor, &resources));
                 SetPropW(owner, windows_sys::w!("LucidDesk.FontSearch"), editor);
                 SendMessageW(editor, WM_SETFONT, font as usize, 0);
-                assert!(GetGuiResources(process, 0) > before, "probe must allocate GDI resources");
+                assert!(
+                    GetGuiResources(process, 0) > before,
+                    "probe must allocate GDI resources"
+                );
                 assert_eq!(Rc::strong_count(&resources), 2);
                 if detached_first {
                     drop(resources);
-                    assert!(weak.upgrade().is_some(), "editor must keep its selected font alive");
+                    assert!(
+                        weak.upgrade().is_some(),
+                        "editor must keep its selected font alive"
+                    );
                     DestroyWindow(owner);
                 } else {
                     DestroyWindow(owner);
-                    assert!(resources.borrow().is_none(), "native destruction releases the font even with a live callback");
+                    assert!(
+                        resources.borrow().is_none(),
+                        "native destruction releases the font even with a live callback"
+                    );
                     drop(resources);
                 }
                 assert_eq!(IsWindow(editor), 0);
@@ -1386,8 +1820,57 @@ fn search_font_lifetime_survives_detached_callback_and_releases_on_close() {
                 let after = windows_sys::Win32::System::Threading::GetGuiResources(process, 0);
                 // GDI can retain a deleted font in its internal cache, so a stale
                 // handle's GetObjectType is not a measure of process ownership.
-                assert_eq!(after, before, "closing the editor must restore the GDI resource count");
+                assert_eq!(
+                    after, before,
+                    "closing the editor must restore the GDI resource count"
+                );
             }
         }
+    }
+}
+
+#[test]
+fn native_monitor_settings_switch_reopens_the_saved_panel() {
+    if !monitor::available() {
+        assert!(!layout::pages().iter().any(|(id, _, _)| *id == 14));
+        return;
+    }
+    let _sta = crate::pane::test_support::apartment();
+    let state = Rc::new(RefCell::new(super::super::tests::test_state()));
+    handle(&state, PanelId::new(0), Event::NewMonitor).unwrap();
+    let id = state.borrow().workspace.panels().last().unwrap().id();
+    show(&state, id).unwrap();
+    let hwnd = state.borrow().settings.as_ref().unwrap().hwnd().cast();
+    let click = |predicate| {
+        let point = control_position(&state, hwnd, 14, predicate, 0.5);
+        unsafe {
+            SendMessageW(hwnd, WM_LBUTTONDOWN, 1, point);
+            SendMessageW(hwnd, WM_LBUTTONUP, 0, point);
+            SendMessageW(hwnd, WM_PAINT, 0, 0);
+        }
+    };
+    click(
+        |a| matches!(a, Action::MonitorOptions(_, p) if !p.metrics.contains(&monitor::Metric::Cpu)),
+    );
+    assert!(
+        !monitor::Preferences::load(&state.borrow().store, id)
+            .unwrap()
+            .metrics
+            .contains(&monitor::Metric::Cpu)
+    );
+    click(|a| matches!(a, Action::MonitorOptions(_, p) if !p.enabled));
+    assert!(!state.borrow().views.iter().any(|v| v.id == id));
+    assert!(
+        !monitor::Preferences::load(&state.borrow().store, id)
+            .unwrap()
+            .enabled
+    );
+    click(|a| matches!(a, Action::MonitorOptions(_, p) if p.enabled));
+    assert!(state.borrow().views.iter().any(|v| v.id == id));
+    let options = monitor::Preferences::load(&state.borrow().store, id).unwrap();
+    assert!(options.enabled);
+    assert!(!options.metrics.contains(&monitor::Metric::Cpu));
+    unsafe {
+        SendMessageW(hwnd, WM_CLOSE, 0, 0);
     }
 }

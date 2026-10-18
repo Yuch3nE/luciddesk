@@ -415,6 +415,9 @@ pub(super) fn supervisor(state: &Rc<RefCell<PaneApp>>) -> Result<windows_window:
             if let Some(state) = weak.upgrade() {
                 if state.try_borrow_mut().is_ok() {
                     unsafe { KillTimer(raw.cast(), 2); }
+                    if let Err(error) = monitor::process::poll(&state) {
+                        luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Error, "monitor.process", &error);
+                    }
                     if std::mem::take(&mut language_dirty) {
                         let result = (|| -> Result<(), String> {
                             let changed = {

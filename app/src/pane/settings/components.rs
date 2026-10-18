@@ -4,8 +4,11 @@ use super::*;
 pub(super) struct Tokens;
 impl Tokens {
     pub fn content_x() -> f32 {
-        super::layout::pages().iter().map(|(_, label, _)| text_width(label, 14.0) + 108.0)
-            .fold(248.0_f32, f32::max).min(344.0)
+        super::layout::pages()
+            .iter()
+            .map(|(_, label, _)| text_width(label, 14.0) + 108.0)
+            .fold(248.0_f32, f32::max)
+            .min(344.0)
     }
     pub const MARGIN: f32 = 24.0;
     pub const GAP: f32 = 8.0;
@@ -93,7 +96,12 @@ pub(super) fn navigation_colors(material: Backdrop, dark: bool) -> [ColorF; 3] {
 }
 impl<'a> SettingsForm<'a> {
     pub fn continuation(scene: &'a mut Scene, width: f32, y: f32) -> Self {
-        Self { scene, x: Tokens::content_x(), width: (width - Tokens::content_x() - Tokens::MARGIN).min(Tokens::MAX_WIDTH), y }
+        Self {
+            scene,
+            x: Tokens::content_x(),
+            width: (width - Tokens::content_x() - Tokens::MARGIN).min(Tokens::MAX_WIDTH),
+            y,
+        }
     }
     pub fn new(scene: &'a mut Scene, width: f32, description: &str) -> Self {
         let width = (width - Tokens::content_x() - Tokens::MARGIN).min(Tokens::MAX_WIDTH);
@@ -228,11 +236,16 @@ impl<'a> SettingsForm<'a> {
         actions: Vec<(&str, Action)>,
         stacked: bool,
     ) {
-        let cell = actions.iter().map(|(label, _)| text_width(label, 14.0) + 32.0).fold(112.0_f32, f32::max);
+        let cell = actions
+            .iter()
+            .map(|(label, _)| text_width(label, 14.0) + 32.0)
+            .fold(112.0_f32, f32::max);
         let width = (cell + Tokens::GAP) * actions.len() as f32 - Tokens::GAP;
         if width > self.width - 32.0 {
             self.info(title, description);
-            for (label, action) in actions { self.option(label, action, false); }
+            for (label, action) in actions {
+                self.option(label, action, false);
+            }
             return;
         }
         let r = self.card_layout(title, description, width, stacked);
@@ -276,8 +289,13 @@ impl<'a> SettingsForm<'a> {
     }
     pub fn link(&mut self, title: &str, description: &str, action: Action) {
         let r = self.card(title, description, 112.0);
-        self.scene
-            .forward_row(r.left, r.top, r.right - r.left, crate::i18n::text("ui-open"), action);
+        self.scene.forward_row(
+            r.left,
+            r.top,
+            r.right - r.left,
+            crate::i18n::text("ui-open"),
+            action,
+        );
         self.scene.controls.last_mut().unwrap().bounds = r;
     }
     pub fn combo(&mut self, title: &str, description: &str, label: &str, action: Action) {
@@ -286,9 +304,13 @@ impl<'a> SettingsForm<'a> {
             .control(ControlKind::Combo, r, label, action, false);
     }
     pub fn back(&mut self, _label: &str, action: Action) {
-        self.scene.control(ControlKind::BackButton,
+        self.scene.control(
+            ControlKind::BackButton,
             Rect::from_xywh(self.x + self.width - 86.0, 34.0, 86.0, 32.0),
-            crate::i18n::text("ui-back"), action, false);
+            crate::i18n::text("ui-back"),
+            action,
+            false,
+        );
     }
     pub fn option(&mut self, label: &str, action: Action, selected: bool) {
         self.scene.row(self.x, self.y, self.width, label, action);
@@ -300,14 +322,19 @@ impl<'a> SettingsForm<'a> {
     pub fn font_option(&mut self, name: &str, selected: bool) {
         let label = if name == crate::i18n::default_font() {
             format!("{} · {}", name, crate::i18n::text("ui-default"))
-        } else { name.into() };
+        } else {
+            name.into()
+        };
         self.option(&label, Action::Font(name.into()), selected);
     }
     pub fn pager(&mut self, label: &str, previous: (Action, bool), next: (Action, bool)) {
         let r = self.card(crate::i18n::text("ui-pages"), label, 232.0);
-        for (i, (label, (action, enabled))) in [(crate::i18n::text("ui-previous"), previous), (crate::i18n::text("ui-next"), next)]
-            .into_iter()
-            .enumerate()
+        for (i, (label, (action, enabled))) in [
+            (crate::i18n::text("ui-previous"), previous),
+            (crate::i18n::text("ui-next"), next),
+        ]
+        .into_iter()
+        .enumerate()
         {
             self.scene.button(
                 Rect::from_xywh(r.left + i as f32 * 120.0, r.top, 112.0, 32.0),
@@ -341,7 +368,11 @@ impl<'a> SettingsForm<'a> {
         self.y += 144.0;
     }
     pub fn colors(&mut self, color: u32) {
-        let r = self.card(crate::i18n::text("ui-color-presets"), crate::i18n::text("ui-preview-colors-as-you-select-them"), 352.0);
+        let r = self.card(
+            crate::i18n::text("ui-color-presets"),
+            crate::i18n::text("ui-preview-colors-as-you-select-them"),
+            352.0,
+        );
         for (i, value) in [
             0x181b20, 0xf5f6f8, 0x24364b, 0x32463d, 0x51405c, 0x5b3838, 0x745839, 0x416c78,
         ]
@@ -365,12 +396,53 @@ impl<'a> SettingsForm<'a> {
             true,
         );
     }
+    pub fn toggle_group(&mut self, title: &str, items: Vec<(&str, Action, bool)>) {
+        let min_width = items
+            .iter()
+            .map(|(label, _, _)| text_width(label, 14.0) + 94.0)
+            .fold(180.0_f32, f32::max);
+        let columns = if self.width >= min_width * 2.0 + Tokens::GAP {
+            2
+        } else {
+            1
+        };
+        let cell = (self.width - Tokens::GAP * (columns - 1) as f32) / columns as f32;
+        self.scene.text(
+            Rect::from_xywh(self.x, self.y + 8.0, self.width, 28.0),
+            title,
+            1,
+        );
+        self.y += 44.0;
+        let rows = items.len().div_ceil(columns);
+        for (index, (label, action, selected)) in items.into_iter().enumerate() {
+            let x = self.x + (index % columns) as f32 * (cell + Tokens::GAP);
+            let y = self.y + (index / columns) as f32 * 56.0;
+            self.scene.cards.push(Rect::from_xywh(x, y, cell, 48.0));
+            self.scene.text(
+                Rect::from_xywh(x + 16.0, y + 12.0, cell - 94.0, 24.0),
+                label,
+                1,
+            );
+            self.scene.toggle(
+                Rect::from_xywh(x + cell - 62.0, y + 12.0, 46.0, 24.0),
+                action,
+                selected,
+                true,
+            );
+        }
+        self.y += rows as f32 * 56.0;
+    }
     pub fn choices(&mut self, title: &str, description: &str, choices: Vec<(&str, Action, bool)>) {
-        let cell = choices.iter().map(|(label, _, _)| text_width(label, 14.0) + 32.0).fold(80.0_f32, f32::max);
+        let cell = choices
+            .iter()
+            .map(|(label, _, _)| text_width(label, 14.0) + 32.0)
+            .fold(80.0_f32, f32::max);
         let needed = (cell + Tokens::GAP) * choices.len() as f32 - Tokens::GAP;
         if needed > self.width - 32.0 {
             self.info(title, description);
-            for (label, action, selected) in choices { self.option(label, action, selected); }
+            for (label, action, selected) in choices {
+                self.option(label, action, selected);
+            }
             return;
         }
         let r = self.card(title, description, needed);
@@ -419,7 +491,13 @@ impl<'a> SettingsForm<'a> {
         );
     }
     pub fn button(&mut self, title: &str, description: &str, label: &str, action: Action) {
-        let r = self.card(title, description, (text_width(label, 14.0) + 32.0).max(112.0).min(self.width - 32.0));
+        let r = self.card(
+            title,
+            description,
+            (text_width(label, 14.0) + 32.0)
+                .max(112.0)
+                .min(self.width - 32.0),
+        );
         self.scene.button(r, label, action, false);
     }
     pub fn preview(&mut self, name: &str, color: u32, opacity: f32) {
@@ -440,7 +518,9 @@ impl<'a> SettingsForm<'a> {
         );
         let description = match material.base() {
             Backdrop::Mica => crate::i18n::text("ui-soft-wallpaper-tones-keep-content-clear"),
-            Backdrop::MicaAlt => crate::i18n::text("ui-stronger-wallpaper-tones-with-a-deeper-base"),
+            Backdrop::MicaAlt => {
+                crate::i18n::text("ui-stronger-wallpaper-tones-with-a-deeper-base")
+            }
             Backdrop::Solid { .. } => crate::i18n::text("ui-choose-a-color-and-opacity"),
             _ => crate::i18n::text("ui-frosted-glass-reveals-depth-in-the-background"),
         };
@@ -460,25 +540,40 @@ impl<'a> SettingsForm<'a> {
 
 impl Scene {
     pub fn fixed_list(&self) -> bool {
-        self.controls.iter().any(|c| matches!(c.action, Action::FontSearch))
+        self.controls
+            .iter()
+            .any(|c| matches!(c.action, Action::FontSearch))
     }
     pub fn list_row(c: &Control) -> bool {
         matches!(c.action, Action::Font(_)) && c.kind.is_row()
     }
     pub fn scroll_to(&mut self, width: f32, height: f32, offset: &mut f32) {
         if self.fixed_list() {
-            let top = self.controls.iter().filter(|c| Self::list_row(c)).map(|c| c.bounds.top)
+            let top = self
+                .controls
+                .iter()
+                .filter(|c| Self::list_row(c))
+                .map(|c| c.bounds.top)
                 .fold(height - Tokens::MARGIN, f32::min);
             let bottom = (height - Tokens::MARGIN).max(top + Tokens::ROW_HEIGHT);
-            let content_bottom = self.controls.iter().filter(|c| Self::list_row(c))
-                .map(|c| c.bounds.bottom).fold(top, f32::max);
-            self.viewport = Some(Rect::from_xywh(Tokens::content_x(), top,
-                (width - Tokens::content_x() - Tokens::MARGIN).min(Tokens::MAX_WIDTH), bottom - top));
+            let content_bottom = self
+                .controls
+                .iter()
+                .filter(|c| Self::list_row(c))
+                .map(|c| c.bounds.bottom)
+                .fold(top, f32::max);
+            self.viewport = Some(Rect::from_xywh(
+                Tokens::content_x(),
+                top,
+                (width - Tokens::content_x() - Tokens::MARGIN).min(Tokens::MAX_WIDTH),
+                bottom - top,
+            ));
             self.scroll_max = (content_bottom - bottom).max(0.0);
             *offset = offset.clamp(0.0, self.scroll_max);
             self.scroll_offset = *offset;
             for c in self.controls.iter_mut().filter(|c| Self::list_row(c)) {
-                c.bounds.top -= *offset; c.bounds.bottom -= *offset;
+                c.bounds.top -= *offset;
+                c.bounds.bottom -= *offset;
                 c.bounds.right -= 16.0;
             }
             return;
@@ -572,7 +667,6 @@ impl Drop for ContentClip<'_, '_> {
     }
 }
 
-
 fn text_width(text: &str, size: f32) -> f32 {
     measured_text(text, size, 10000.0).0
 }
@@ -589,8 +683,16 @@ pub(super) fn release_text_metrics() {
 
 fn measured_text(text: &str, size: f32, width: f32) -> (f32, f32) {
     let family = super::super::fonts::family();
-    let key = (family.clone(), crate::i18n::default_font().into(), text.to_owned(), size.to_bits(), width.to_bits());
-    if let Some(metrics) = METRICS.with(|cache| cache.borrow().get(&key).copied()) { return metrics; }
+    let key = (
+        family.clone(),
+        crate::i18n::default_font().into(),
+        text.to_owned(),
+        size.to_bits(),
+        width.to_bits(),
+    );
+    if let Some(metrics) = METRICS.with(|cache| cache.borrow().get(&key).copied()) {
+        return metrics;
+    }
     let Ok(format) = windows_canvas::TextFormat::new(&family, size) else {
         return (text.chars().count() as f32 * size, size * 2.0);
     };
@@ -603,7 +705,9 @@ fn measured_text(text: &str, size: f32, width: f32) -> (f32, f32) {
     let metrics = (metrics.width, metrics.height);
     METRICS.with(|cache| {
         let mut cache = cache.borrow_mut();
-        if cache.len() >= 2048 { cache.clear(); }
+        if cache.len() >= 2048 {
+            cache.clear();
+        }
         cache.insert(key, metrics);
     });
     metrics

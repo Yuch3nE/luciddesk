@@ -102,6 +102,7 @@ pub(super) fn close(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result<bool, S
         hybrid::sync(&mut s)?;
         return Err(error);
     }
+    s.monitors.stop(id);
     for member in members {
         s.folders.remove(&member);
         s.tab_models.remove(&member);
@@ -142,6 +143,9 @@ pub(super) fn toggle_search(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result
 pub(super) fn create(state: &Rc<RefCell<PaneApp>>, event: Event) -> Result<bool, String> {
     let search = matches!(event, Event::EnableSearch);
     let monitor = matches!(event, Event::NewMonitor);
+    if monitor && !super::monitor::available() {
+        return Err("System monitor plugin is not installed".into());
+    }
     if search && everything_settings::resolved(&everything_settings::settings()).is_none() {
         return Ok(false);
     }

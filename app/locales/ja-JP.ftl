@@ -1285,3 +1285,11 @@ monitor-paused = 一時停止中
 monitor-live = リアルタイム
 monitor-history = 直近 60 秒
 monitor-used = 使用済み
+
+monitor-settings = システムモニター設定
+monitor-settings-description = モニターパネルを有効にし、指標とデバイスを選択します。設定はパネルごとに保存されます。
+monitor-enable = モニターパネルを有効にする
+monitor-enable-description = 無効にしてもレイアウトと設定は保持されます。
+
+monitor-display-settings = 表示と更新
+monitor-device-settings = デバイスの選択

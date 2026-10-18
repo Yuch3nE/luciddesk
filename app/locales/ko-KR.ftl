@@ -1285,3 +1285,11 @@ monitor-paused = 일시 중지됨
 monitor-live = 실시간
 monitor-history = 최근 60초
 monitor-used = 사용됨
+
+monitor-settings = 시스템 모니터 설정
+monitor-settings-description = 모니터 패널을 켜고 지표와 장치를 선택하세요. 설정은 패널별로 저장됩니다.
+monitor-enable = 모니터 패널 사용
+monitor-enable-description = 끄더라도 레이아웃과 설정이 유지됩니다.
+
+monitor-display-settings = 표시 및 새로 고침
+monitor-device-settings = 장치 선택

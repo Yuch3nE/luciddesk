@@ -1,135 +1,89 @@
-use super::sampling::{Device, Frame, Snapshot};
 use super::*;
-use std::time::{Duration, Instant};
 
 #[test]
-fn native_monitor_layouts_render_in_both_themes_at_multiple_dpi() {
+fn plugin_content_draws_through_host_context_and_preserves_the_header() {
     let _sta = crate::pane::test_support::apartment();
-    let now = Instant::now();
-    let history = (0..60)
-        .map(|i| Frame {
-            at: now - Duration::from_secs(59 - i),
-            cpu: Some(24.0 + (i as f64 / 4.0).sin() * 15.0),
-            memory: Some((17_824_000_000, 34_359_738_368)),
-            networks: vec![Device {
-                id: "Wi-Fi".into(),
-                name: "Wi-Fi".into(),
-                rate: Some((12_400_000.0, 820_000.0)),
-                total: 0,
-                used: None,
-                usage: None,
-            }],
-            disks: vec![Device {
-                id: "C:\\".into(),
-                name: "C:\\".into(),
-                rate: Some((
-                    28_000_000.0 + (i as f64 / 4.0).sin() * 12_000_000.0,
-                    8_000_000.0 + (i as f64 / 6.0).sin() * 4_000_000.0,
-                )),
-                total: 1_000_000_000_000,
-                used: Some(400_000_000_000),
-                usage: None,
-            }],
-            gpus: vec![Device {
-                id: "gpu-0".into(),
-                name: "GPU 0".into(),
-                rate: None,
-                total: 8_589_934_592,
-                used: Some(2_254_857_830),
-                usage: Some(18.0 + (i as f64 / 6.0).sin() * 10.0),
-            }],
-        })
-        .collect::<std::collections::VecDeque<_>>();
-    let _fixture = sampling::fixture(Snapshot {
-        sequence: 1,
-        unavailable: false,
-        frame: history.back().unwrap().clone(),
-        history,
-    });
-    let mut model = crate::pane::tests::test_model(crate::i18n::text("monitor-title"));
-    model.native_material = false;
-    let mut renderer = crate::pane::render::Renderer::new().unwrap();
+    if let Ok(expected) = std::env::var("LUCIDDESK_TEST_MONITOR_PLUGIN") {
+        assert_eq!(available(), expected == "1");
+    }
+    if !available() {
+        return;
+    }
+    let mut client = Client::new().unwrap();
+    // Populate real history so the full layout exercises chart geometry, not only placeholders.
+    for _ in 0..10 {
+        client.tick(true, &Preferences::default());
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
+    let device = windows_canvas::GpuDevice::new_warp().unwrap();
+    let mut drawing = Drawing::new().unwrap();
     for compact in [false, true] {
-        model.monitor = Some(Preferences {
-            compact,
-            ..Default::default()
-        });
         for dark in [false, true] {
-            model.dark = dark;
-            model.backdrop = luciddesk_core::Backdrop::Translucent { opacity: 1.0 };
-            for scale in [1.0, 1.25, 1.5, 2.0] {
-                let (w, h) = if compact {
-                    (320.0, 280.0)
-                } else {
-                    (360.0, 600.0)
+            for scale in [1.0, 1.5, 2.0] {
+                let options = Preferences {
+                    compact,
+                    ..Default::default()
                 };
-                let (width, height) = ((w * scale) as u32, (h * scale) as u32);
-                let pixels = renderer.pixels(width, height, scale, &model).unwrap();
-                let repeated = renderer.pixels(width, height, scale, &model).unwrap();
-                assert_eq!(
-                    pixels, repeated,
-                    "Repeated frames must not mutate shared text alignment"
-                );
-                assert_eq!(pixels.len(), (width * height * 4) as usize);
-                // Accent marks/graphs must survive both light and dark contrast paths.
+                client.tick(true, &options);
+                let bitmap = crate::pane::canvas::Offscreen::new(
+                    &device,
+                    (360.0 * scale) as u32,
+                    (600.0 * scale) as u32,
+                )
+                .unwrap();
+                crate::pane::canvas::draw(&bitmap.target, scale, |target| {
+                    target.clear(windows_canvas::ColorF::new(1.0, 1.0, 1.0, 1.0));
+                    drawing.paint(
+                        &target,
+                        &options,
+                        windows_canvas::Rect::from_xywh(0.0, 50.0, 360.0, 550.0),
+                        dark,
+                        if dark { 1.0 } else { 0.0 },
+                    )?;
+                    target.finish()
+                })
+                .unwrap();
+                let pixels = bitmap.pixels().unwrap();
+                let header = (360.0 * scale) as usize * (50.0 * scale) as usize * 4;
                 assert!(
-                    pixels
+                    pixels[..header]
                         .chunks_exact(4)
-                        .filter(|p| p[0].abs_diff(p[2]) > 50 && p[3] > 200)
-                        .count()
-                        > 50
+                        .all(|p| p == [255, 255, 255, 255])
                 );
-                if scale == 1.0 && std::env::var_os("LUCIDDESK_MONITOR_PREVIEWS").is_some() {
-                    let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                        .join("../target/monitor-previews");
-                    std::fs::create_dir_all(&directory).unwrap();
-                    let name = format!(
-                        "{}-{}-{width}x{height}.bgra",
-                        if compact { "compact" } else { "standard" },
-                        if dark { "dark" } else { "light" }
-                    );
-                    std::fs::write(directory.join(name), pixels).unwrap();
-                }
+                assert!(
+                    pixels[header..]
+                        .chunks_exact(4)
+                        .any(|p| p != [255, 255, 255, 255])
+                );
             }
         }
     }
-}
-
-#[test]
-fn folding_monitor_content_does_not_paint_over_the_header() {
-    let _sta = crate::pane::test_support::apartment();
-    let device = crate::pane::native_graphics::gpu_device().unwrap();
-    let bitmap = crate::pane::canvas::Offscreen::new(&device, 360, 80).unwrap();
-    let mut drawing = Drawing::new().unwrap();
-    crate::pane::canvas::draw(&bitmap.target, 1.0, |target| {
-        target.clear(windows_canvas::ColorF::new(1.0, 1.0, 1.0, 1.0));
-        let text = crate::pane::native_graphics::canvas_result(
-            target.create_solid_brush(windows_canvas::ColorF::new(0.0, 0.0, 0.0, 1.0)),
-        )?;
-        drawing.paint(
-            &target,
-            &Preferences::default(),
-            windows_canvas::Rect::from_xywh(0.0, 50.0, 360.0, 2.0),
-            &text,
-            &text,
-            false,
-            0.0,
-        )?;
-        target.finish()
-    })
-    .unwrap();
-    let pixels = bitmap.pixels().unwrap();
-    assert!(
-        pixels[..360 * 50 * 4]
-            .chunks_exact(4)
-            .all(|p| p == [255, 255, 255, 255])
-    );
+    drop(drawing);
+    drop(client);
+    crate::plugins::shutdown();
 }
 
 #[test]
 fn monitor_window_reuses_native_panel_lifecycle_without_registering_shell_drop() {
     let _sta = crate::pane::test_support::apartment();
     let state = Rc::new(RefCell::new(crate::pane::tests::test_state()));
+    if !available() {
+        assert!(super::super::handle(&state, PanelId::new(0), Event::NewMonitor).is_err());
+        let id = state.borrow().workspace.panels()[0].id();
+        state
+            .borrow_mut()
+            .workspace
+            .panel_mut(id)
+            .unwrap()
+            .set_monitor(true);
+        let saved = state.borrow().workspace.clone();
+        state.borrow_mut().store.save_workspace(&saved).unwrap();
+        super::super::create_view(&state, id).unwrap();
+        assert!(state.borrow().views.is_empty());
+        assert!(state.borrow().workspace.panel(id).unwrap().is_monitor());
+        assert_eq!(state.borrow().store.load_workspace().unwrap(), saved);
+        return;
+    }
     super::super::handle(&state, PanelId::new(0), Event::NewMonitor).unwrap();
     let (id, hwnd) = {
         let s = state.borrow();
@@ -187,4 +141,176 @@ fn monitor_window_reuses_native_panel_lifecycle_without_registering_shell_drop()
             .unwrap()
             .is_none()
     );
+}
+
+#[test]
+#[ignore = "Interactive native windows; requires monitor DLL built with test-diagnostics"]
+fn single_monitor_releases_resources_after_repeated_close() {
+    use std::time::{Duration, Instant};
+    use windows_sys::Win32::{
+        System::{ProcessStatus::*, Threading::*},
+        UI::WindowsAndMessaging::*,
+    };
+    let _sta = crate::pane::test_support::apartment();
+    assert!(available());
+    let state = Rc::new(RefCell::new(crate::pane::tests::test_state()));
+    let diagnostics =
+        || crate::plugins::request(PLUGIN_ID, serde_json::json!({"op":"diagnostics"})).unwrap();
+    let pump = |duration| {
+        let end = Instant::now() + Duration::from_millis(duration);
+        while Instant::now() < end {
+            let mut message = MSG::default();
+            while unsafe { PeekMessageW(&raw mut message, std::ptr::null_mut(), 0, 0, PM_REMOVE) }
+                != 0
+            {
+                unsafe {
+                    TranslateMessage(&message);
+                    DispatchMessageW(&message);
+                }
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    };
+    let measure = |cycle, phase| unsafe {
+        let process = GetCurrentProcess();
+        let mut memory = PROCESS_MEMORY_COUNTERS_EX::default();
+        memory.cb = size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32;
+        assert_ne!(
+            GetProcessMemoryInfo(process, (&raw mut memory).cast(), memory.cb),
+            0
+        );
+        if std::env::var_os("LUCIDDESK_MEMORY_HEAPS").is_some() {
+            use windows_sys::Win32::System::Memory::*;
+            let mut heaps =
+                vec![std::ptr::null_mut(); GetProcessHeaps(0, std::ptr::null_mut()) as usize];
+            let count = GetProcessHeaps(heaps.len() as u32, heaps.as_mut_ptr());
+            heaps.truncate(count as usize);
+            let mut allocated = 0;
+            let mut committed = 0;
+            for heap in heaps {
+                let mut summary = HEAP_SUMMARY {
+                    cb: size_of::<HEAP_SUMMARY>() as u32,
+                    ..Default::default()
+                };
+                assert_ne!(HeapSummary(heap, 0, &raw mut summary), 0);
+                allocated += summary.cbAllocated;
+                committed += summary.cbCommitted;
+            }
+            println!(
+                "heaps cycle={cycle} phase={phase} allocated_kib={} committed_kib={}",
+                allocated / 1024,
+                committed / 1024
+            );
+            let mut modules = vec![std::ptr::null_mut(); 1024];
+            let mut needed = 0;
+            if EnumProcessModulesEx(
+                process,
+                modules.as_mut_ptr(),
+                (modules.len() * size_of::<usize>()) as u32,
+                &raw mut needed,
+                LIST_MODULES_ALL,
+            ) != 0
+            {
+                modules.truncate(needed as usize / size_of::<usize>());
+                let names: Vec<_> = modules
+                    .into_iter()
+                    .map(|module| {
+                        let mut name = [0u16; 512];
+                        let len = GetModuleBaseNameW(
+                            process,
+                            module,
+                            name.as_mut_ptr(),
+                            name.len() as u32,
+                        );
+                        String::from_utf16_lossy(&name[..len as usize])
+                    })
+                    .collect();
+                println!("modules cycle={cycle} phase={phase} {names:?}");
+            }
+        }
+        let mut handles = 0;
+        assert_ne!(GetProcessHandleCount(process, &raw mut handles), 0);
+        println!(
+            "cycle={cycle} phase={phase} private_kib={} working_kib={} handles={} gdi={} user={} plugin={}",
+            memory.PrivateUsage / 1024,
+            memory.WorkingSetSize / 1024,
+            handles,
+            GetGuiResources(process, GR_GDIOBJECTS),
+            GetGuiResources(process, GR_USEROBJECTS),
+            diagnostics()
+        );
+    };
+    // Warm the same host window/graphics path without starting monitoring.
+    super::super::handle(&state, PanelId::new(0), Event::New).unwrap();
+    let ordinary = state.borrow().views[0].id;
+    pump(500);
+    super::super::handle(&state, ordinary, Event::ClosePane).unwrap();
+    pump(300);
+    measure(0, "host-warm");
+    let trace_wait = std::env::var("LUCIDDESK_MEMORY_TRACE_WAIT_MS")
+        .map(|value| value.parse::<u64>().unwrap()).unwrap_or(0);
+    pump(trace_wait);
+    let metrics: Vec<Metric> = std::env::var("LUCIDDESK_MEMORY_METRICS")
+        .map(|s| serde_json::from_str(&s).unwrap())
+        .unwrap_or_else(|_| Preferences::default().metrics);
+    let cycles: u32 = std::env::var("LUCIDDESK_MEMORY_CYCLES")
+        .map(|s| s.parse().unwrap())
+        .unwrap_or(10);
+    let first_ms: u64 = std::env::var("LUCIDDESK_MEMORY_FIRST_MS")
+        .map(|s| s.parse().unwrap())
+        .unwrap_or(63000);
+    for cycle in 1..=cycles {
+        super::super::handle(&state, PanelId::new(0), Event::NewMonitor).unwrap();
+        let (id, hwnd, model) = {
+            let s = state.borrow();
+            assert_eq!(s.views.len(), 1);
+            let view = &s.views[0];
+            (
+                view.id,
+                view.window.hwnd().cast(),
+                Rc::downgrade(&view.model),
+            )
+        };
+        {
+            let s = state.borrow();
+            s.views[0]
+                .model
+                .borrow_mut()
+                .monitor
+                .as_mut()
+                .unwrap()
+                .metrics = metrics.clone();
+        }
+        pump(if cycle == 1 { first_ms } else { 2200 });
+        let active = diagnostics();
+        assert_eq!(active["clients"], 1);
+        assert_eq!(active["drawings"], 1);
+        assert_eq!(active["service"], true);
+        assert!(metrics.is_empty() || active["frames"].as_u64().unwrap() > 0);
+        measure(cycle, "open");
+        if cycle % 2 == 0 {
+            super::super::handle(
+                &state,
+                id,
+                Event::MonitorOptions(Preferences {
+                    enabled: false,
+                    ..Default::default()
+                }),
+            )
+            .unwrap();
+        } else {
+            assert_ne!(unsafe { PostMessageW(hwnd, WM_CLOSE, 0, 0) }, 0);
+        }
+        pump(400);
+        measure(cycle, "closed");
+        pump(trace_wait);
+        assert_eq!(unsafe { IsWindow(hwnd) }, 0);
+        assert!(model.upgrade().is_none(), "closed model is still retained");
+        assert_eq!(
+            diagnostics(),
+            serde_json::json!({"clients":0,"drawings":0,"service":false,"frames":0})
+        );
+        // Disabling preserves configuration; remove it only after checking teardown.
+        super::super::handle(&state, id, Event::ClosePane).unwrap();
+    }
 }

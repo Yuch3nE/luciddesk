@@ -253,13 +253,13 @@ dependencies = [
  "luciddesk-diagnostics",
  "luciddesk-explorer",
  "luciddesk-graphics",
+ "luciddesk-plugin-api",
  "luciddesk-shell",
  "luciddesk-storage",
  "luciddesk-window",
  "semver",
  "serde",
  "serde_json",
- "sysinfo",
  "tempfile",
  "unic-langid",
  "windows",
@@ -294,6 +294,9 @@ dependencies = [
 [[package]]
 name = "luciddesk-core"
 version = "0.1.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "luciddesk-diagnostics"

@@ -1,22 +1,27 @@
 #![windows_subsystem = "windows"]
 
+mod plugins;
+
 mod app_icon;
-mod desktop_component;
 mod clipboard;
-mod system_info;
+mod desktop_component;
 mod i18n;
 mod pane;
-mod tray;
-mod window_visibility;
-mod updates;
 mod startup;
+mod system_info;
+mod tray;
+mod updates;
+mod window_visibility;
 
 use luciddesk_shell::{ShellApartment, local_app_data_path};
 use std::{ffi::OsString, fs, path::PathBuf};
 
 fn main() -> Result<(), String> {
     // Installer preflight only: no COM, application windows, data access or hooks.
-    if std::env::args_os().skip(1).eq([OsString::from("--check-desktop-component")]) {
+    if std::env::args_os()
+        .skip(1)
+        .eq([OsString::from("--check-desktop-component")])
+    {
         std::process::exit(match luciddesk_explorer::desktop_component_released() {
             Ok(true) => 0,
             Ok(false) => 1,
@@ -33,11 +38,14 @@ fn main() -> Result<(), String> {
     // Match the installer shortcuts; keep independent of version and install path.
     // Set before creating any UI, including when launched directly from the EXE.
     unsafe {
-        windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID(
-            windows::core::w!("Yuchen95.LucidDesk"),
-        )
+        windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID(windows::core::w!(
+            "Yuchen95.LucidDesk"
+        ))
     }
     .map_err(|error| format!("failed to set application identity: {error}"))?;
+    if arguments == [OsString::from("--monitor-child")] {
+        return pane::run_monitor_child();
+    }
     let startup = arguments.iter().any(|argument| argument == "--startup");
     let title = parse_options(arguments)?;
     let Some(_instance) = Instance::acquire(!startup)? else {
@@ -146,7 +154,9 @@ fn default_data_directory(root: &std::path::Path) -> PathBuf {
 }
 
 fn portable_data_directory(executable_directory: &std::path::Path) -> Option<PathBuf> {
-    executable_directory.join("portable").is_file()
+    executable_directory
+        .join("portable")
+        .is_file()
         .then(|| executable_directory.join("data"))
 }
 
@@ -158,7 +168,10 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         assert_eq!(portable_data_directory(root.path()), None);
         std::fs::write(root.path().join("portable"), "").unwrap();
-        assert_eq!(portable_data_directory(root.path()), Some(root.path().join("data")));
+        assert_eq!(
+            portable_data_directory(root.path()),
+            Some(root.path().join("data"))
+        );
         assert!(!root.path().join("data").exists());
     }
     #[test]

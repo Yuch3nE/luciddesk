@@ -26,7 +26,7 @@ impl GridPosition {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, PartialEq)]
 pub struct RectDip {
     pub x: f32,
     pub y: f32,

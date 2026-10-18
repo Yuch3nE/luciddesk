@@ -2,7 +2,7 @@
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PanelId(u64);
 
 impl PanelId {

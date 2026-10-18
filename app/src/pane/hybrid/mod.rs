@@ -10,10 +10,13 @@ use super::assets::RECYCLE_BIN_PARSING_NAME;
 use super::search::{everything_settings, hotkey as search_hotkey};
 use super::*;
 use audit::DesktopAudit;
-use luciddesk_explorer::{filter::FilterSession, notifications::{DESKTOP_INPUT_MESSAGE, DESKTOP_EXIT_MESSAGE}};
 pub(super) use icons::refresh_icons;
 use icons::{queue_pane_icons, retain_pane_images};
 use inventory::Inventory;
+use luciddesk_explorer::{
+    filter::FilterSession,
+    notifications::{DESKTOP_EXIT_MESSAGE, DESKTOP_INPUT_MESSAGE},
+};
 pub(super) use rename_transaction::commit as rename_item;
 use std::{
     cell::Cell,
@@ -60,16 +63,39 @@ pub(super) struct Session {
 struct OleApartment;
 /// Desired Explorer-hidden names, independent of image loading and submitted IPC.
 pub(super) fn desired_membership(s: &PaneApp) -> Vec<String> {
-    let mut names:Vec<_>=s.workspace.desktop_items().iter()
-        .filter(|item|matches!(item.placement(),DesktopPlacement::Pane{..}))
-        .map(|item|item.identity().activation_name().to_string_lossy().into_owned()).collect();
-    names.sort(); names.dedup(); names
+    let mut names: Vec<_> = s
+        .workspace
+        .desktop_items()
+        .iter()
+        .filter(|item| matches!(item.placement(), DesktopPlacement::Pane { .. }))
+        .map(|item| {
+            item.identity()
+                .activation_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    names.sort();
+    names.dedup();
+    names
 }
 pub(super) fn membership_status(s: &PaneApp) -> &'static str {
-    let Some(session)=&s.session else {return "disconnected";};
-    if !session.hook.is_alive() {return "disconnected";}
-    if session.menu_active.get() {return "deferred";}
-    if session.membership_pending.is_some() || session.published.borrow().as_ref()!=Some(&desired_membership(s)) {"pending"} else {"applied"}
+    let Some(session) = &s.session else {
+        return "disconnected";
+    };
+    if !session.hook.is_alive() {
+        return "disconnected";
+    }
+    if session.menu_active.get() {
+        return "deferred";
+    }
+    if session.membership_pending.is_some()
+        || session.published.borrow().as_ref() != Some(&desired_membership(s))
+    {
+        "pending"
+    } else {
+        "applied"
+    }
 }
 pub(super) fn is_alive(session: &Session) -> bool {
     session.hook.is_alive()
@@ -120,7 +146,9 @@ pub fn run(path: &Path, title: Option<String>) -> Result<(), String> {
     if workspace.panels().is_empty() && first_run {
         let mut pane = Panel::new(
             PanelId::new(1),
-            title.clone().unwrap_or_else(|| crate::i18n::text("ui-new-group").into()),
+            title
+                .clone()
+                .unwrap_or_else(|| crate::i18n::text("ui-new-group").into()),
             display_layout::new_pane(&workspace, false),
         );
         pane.set_backdrop(luciddesk_core::Backdrop::Acrylic);
@@ -132,6 +160,8 @@ pub fn run(path: &Path, title: Option<String>) -> Result<(), String> {
     }
     let (_, receiver) = mpsc::channel();
     let state = Rc::new(RefCell::new(PaneApp {
+        monitors: Default::default(),
+        monitor_child: false,
         sorting: Default::default(),
         wake: Default::default(),
         folders: HashMap::new(),
@@ -146,10 +176,7 @@ pub fn run(path: &Path, title: Option<String>) -> Result<(), String> {
         images: HashMap::new(),
         receiver,
     }));
-    display_layout::initialize(
-        &mut state.borrow_mut(),
-        monitors,
-    )?;
+    display_layout::initialize(&mut state.borrow_mut(), monitors)?;
     {
         let mut s = state.borrow_mut();
         let workspace = s.workspace.clone();
@@ -166,7 +193,8 @@ pub fn run(path: &Path, title: Option<String>) -> Result<(), String> {
         .iter()
         .filter(|p| {
             (!p.is_search() || search_enabled)
-                && (tabs::independent(&state.borrow().workspace, p.id()) || state.borrow().session.is_some())
+                && (tabs::independent(&state.borrow().workspace, p.id())
+                    || state.borrow().session.is_some())
         })
         .map(Panel::id)
         .collect();
@@ -187,8 +215,15 @@ pub fn run(path: &Path, title: Option<String>) -> Result<(), String> {
                             .first()
                             .map(|p| (p.theme(), p.backdrop()))
                     });
-                    let (theme, backdrop) = appearance.unwrap_or((luciddesk_core::PanelTheme::System, luciddesk_core::Backdrop::Mica));
-                    Some((theme, backdrop, search::everything_settings::enabled(&s.store).unwrap_or(false)))
+                    let (theme, backdrop) = appearance.unwrap_or((
+                        luciddesk_core::PanelTheme::System,
+                        luciddesk_core::Backdrop::Mica,
+                    ));
+                    Some((
+                        theme,
+                        backdrop,
+                        search::everything_settings::enabled(&s.store).unwrap_or(false),
+                    ))
                 })
                 .unwrap_or((
                     luciddesk_core::PanelTheme::System,
@@ -202,11 +237,15 @@ pub fn run(path: &Path, title: Option<String>) -> Result<(), String> {
             };
             match action {
                 crate::tray::Action::Search => search::hotkey::activate(&state),
-                crate::tray::Action::OpenConfig => recovery::request(&state, &Event::OpenConfigDirectory),
+                crate::tray::Action::OpenConfig => {
+                    recovery::request(&state, &Event::OpenConfigDirectory)
+                }
                 crate::tray::Action::Refresh => {
                     let mut s = state.borrow_mut();
                     refresh_icons(&mut s);
-                    for source in s.folders.values() { source.refresh(); }
+                    for source in s.folders.values() {
+                        source.refresh();
+                    }
                     for view in &s.views {
                         if s.workspace.panel(view.id).is_some_and(Panel::is_search) {
                             search::refresh(view.window.hwnd().cast());
@@ -216,11 +255,6 @@ pub fn run(path: &Path, title: Option<String>) -> Result<(), String> {
                 }
                 crate::tray::Action::NewFolder => {
                     if let Err(error) = handle(&state, PanelId::new(0), Event::NewFolder) {
-                        window::error(&error);
-                    }
-                }
-                crate::tray::Action::NewMonitor => {
-                    if let Err(error) = handle(&state, PanelId::new(0), Event::NewMonitor) {
                         window::error(&error);
                     }
                 }
@@ -245,6 +279,7 @@ pub fn run(path: &Path, title: Option<String>) -> Result<(), String> {
     // Settings are opened only by an explicit user action, including offline startup.
     windows_window::run();
     crate::pane::render_debug::render_trace(format_args!("shutdown: stop supervisor"));
+    state.borrow_mut().monitors = Default::default();
     drop(control);
     drop(supervisor);
     drop(tray);
@@ -290,7 +325,11 @@ pub(super) fn connect(state: &Rc<RefCell<PaneApp>>, _path: &Path) -> Result<(), 
                 notify.set(true);
                 work_ready.notify();
                 if luciddesk_diagnostics::enabled(luciddesk_diagnostics::Level::Debug) {
-                    luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Debug, "pane.hybrid", &format!("icon-notify event={:x}", lparam));
+                    luciddesk_diagnostics::log(
+                        luciddesk_diagnostics::Level::Debug,
+                        "pane.hybrid",
+                        &format!("icon-notify event={:x}", lparam),
+                    );
                 }
                 icon_notify
                     .borrow_mut()
@@ -299,7 +338,11 @@ pub(super) fn connect(state: &Rc<RefCell<PaneApp>>, _path: &Path) -> Result<(), 
             } else if message == RECYCLE_CHANGE_MESSAGE {
                 work_ready.notify();
                 if luciddesk_diagnostics::enabled(luciddesk_diagnostics::Level::Debug) {
-                    luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Debug, "pane.hybrid", &format!("recycle-notify event={:x}", lparam));
+                    luciddesk_diagnostics::log(
+                        luciddesk_diagnostics::Level::Debug,
+                        "pane.hybrid",
+                        &format!("recycle-notify event={:x}", lparam),
+                    );
                 }
                 icon_notify
                     .borrow_mut()
@@ -339,11 +382,7 @@ pub(super) fn connect(state: &Rc<RefCell<PaneApp>>, _path: &Path) -> Result<(), 
     }
     let hook_dll = crate::desktop_component::prepare()
         .map_err(|error| format!("桌面连接准备失败 (Component): {error}"))?;
-    let hook = FilterSession::connect(
-        view,
-        controller.hwnd() as isize,
-        &hook_dll.path,
-    )?;
+    let hook = FilterSession::connect(view, controller.hwnd() as isize, &hook_dll.path)?;
     let (sender, receiver) = mpsc::channel();
     let session = Session {
         wake: state.borrow().wake.clone(),
@@ -571,16 +610,27 @@ fn reconcile_inventory(s: &mut PaneApp) -> Result<(), String> {
     Ok(())
 }
 
-fn persist_pending(pending: &mut bool, save: impl FnOnce() -> Result<(), String>) -> Result<bool, String> {
-    if !*pending { return Ok(false); }
+fn persist_pending(
+    pending: &mut bool,
+    save: impl FnOnce() -> Result<(), String>,
+) -> Result<bool, String> {
+    if !*pending {
+        return Ok(false);
+    }
     save()?;
     *pending = false;
     Ok(true)
 }
 
-fn retry_save(pending: &mut bool, due: &mut Option<Instant>, now: Instant,
-    save: impl FnOnce() -> Result<(), String>) -> Result<bool, String> {
-    if due.is_some_and(|deadline| now < deadline) { return Ok(false); }
+fn retry_save(
+    pending: &mut bool,
+    due: &mut Option<Instant>,
+    now: Instant,
+    save: impl FnOnce() -> Result<(), String>,
+) -> Result<bool, String> {
+    if due.is_some_and(|deadline| now < deadline) {
+        return Ok(false);
+    }
     let result = persist_pending(pending, save);
     *due = result.is_err().then_some(now + Duration::from_secs(5));
     result
@@ -588,9 +638,16 @@ fn retry_save(pending: &mut bool, due: &mut Option<Instant>, now: Instant,
 
 fn persist_workspace(s: &mut PaneApp) -> Result<bool, String> {
     let h = s.session.as_mut().unwrap();
-    retry_save(&mut h.pending_workspace_save, &mut h.save_due, Instant::now(), || {
-        s.store.save_workspace(&s.workspace).map_err(|error| error.to_string())
-    })
+    retry_save(
+        &mut h.pending_workspace_save,
+        &mut h.save_due,
+        Instant::now(),
+        || {
+            s.store
+                .save_workspace(&s.workspace)
+                .map_err(|error| error.to_string())
+        },
+    )
 }
 /// Hide a managed item only after its Pane image is available. Both normal
 /// synchronization and committed renames must publish the same complete set.
@@ -650,7 +707,8 @@ pub(super) fn sync(s: &mut PaneApp) -> Result<(), String> {
                 h.membership_pending = None;
                 h.audit.invalidate();
                 crate::pane::render_debug::render_trace(format_args!(
-                    "membership confirmed elapsed={}ms", started.elapsed().as_millis()
+                    "membership confirmed elapsed={}ms",
+                    started.elapsed().as_millis()
                 ));
             }
             Err(error) => {
@@ -661,7 +719,9 @@ pub(super) fn sync(s: &mut PaneApp) -> Result<(), String> {
             }
         }
     }
-    if h.pending_workspace_save { return Ok(()); }
+    if h.pending_workspace_save {
+        return Ok(());
+    }
     if h.dirty.get() || !h.icons_dirty.borrow().is_empty() {
         h.image_retention.invalidate(&mut s.images);
     }
@@ -677,7 +737,10 @@ pub(super) fn sync(s: &mut PaneApp) -> Result<(), String> {
         h.hook.submit_hidden(names)?;
         h.audit.membership_changed();
         h.membership_pending = Some(Instant::now());
-        crate::pane::render_debug::render_trace(format_args!("membership submitted count={}", names.len()));
+        crate::pane::render_debug::render_trace(format_args!(
+            "membership submitted count={}",
+            names.len()
+        ));
         Ok(())
     }) {
         // A failed immediate rollback may meet the same busy Explorer. Ensure
@@ -751,7 +814,10 @@ pub(super) fn pause_for_preview(s: &PaneApp, allow: bool) -> Result<(), String> 
 }
 
 pub(super) fn begin_item_menu(s: &PaneApp) -> Result<Rc<FilterSession>, String> {
-    let h = s.session.as_ref().ok_or(crate::i18n::text("ui-desktop-filter-is-not-ready"))?;
+    let h = s
+        .session
+        .as_ref()
+        .ok_or(crate::i18n::text("ui-desktop-filter-is-not-ready"))?;
     if h.membership_pending.is_some() {
         return Err(crate::i18n::text("ui-desktop-groups-are-syncing-try-again-shortly").into());
     }
@@ -785,7 +851,11 @@ pub(super) fn tick(s: &mut PaneApp) -> Result<(), String> {
         Err(error) => {
             let h = s.session.as_mut().unwrap();
             if h.last_failure.as_ref() != Some(&error) {
-                luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Warn, "pane.hybrid", &format!("Hybrid synchronization deferred: {error}"));
+                luciddesk_diagnostics::log(
+                    luciddesk_diagnostics::Level::Warn,
+                    "pane.hybrid",
+                    &format!("Hybrid synchronization deferred: {error}"),
+                );
                 h.last_failure = Some(error);
             }
             // Sorting can invalidate the inventory while it is being read. Leave
@@ -799,9 +869,15 @@ pub(super) fn tick(s: &mut PaneApp) -> Result<(), String> {
 
 // Failed optional subscriptions retry on a bounded deadline. Callers also refresh
 // the affected icon after each attempt, covering the notification gap.
-fn retry_subscription<T>(slot: &mut Option<T>, due: &mut Instant, now: Instant,
-    register: impl FnOnce() -> Result<T, String>) -> Result<bool, String> {
-    if slot.is_some() || now < *due { return Ok(false); }
+fn retry_subscription<T>(
+    slot: &mut Option<T>,
+    due: &mut Instant,
+    now: Instant,
+    register: impl FnOnce() -> Result<T, String>,
+) -> Result<bool, String> {
+    if slot.is_some() || now < *due {
+        return Ok(false);
+    }
     *due = now + Duration::from_secs(30);
     *slot = Some(register()?);
     Ok(true)
@@ -818,15 +894,29 @@ fn tick_once(s: &mut PaneApp) -> Result<(), String> {
     {
         let h = s.session.as_mut().unwrap();
         let owner = h._controller.hwnd() as isize;
-        let attempted = retry_subscription(&mut h.recycle_subscription, &mut h.recycle_retry, Instant::now(), || {
-            luciddesk_shell::DesktopChangeSubscription::register_recycle_bin(owner, RECYCLE_CHANGE_MESSAGE)
+        let attempted = retry_subscription(
+            &mut h.recycle_subscription,
+            &mut h.recycle_retry,
+            Instant::now(),
+            || {
+                luciddesk_shell::DesktopChangeSubscription::register_recycle_bin(
+                    owner,
+                    RECYCLE_CHANGE_MESSAGE,
+                )
                 .map_err(|error| error.to_string())
-        });
+            },
+        );
         if !matches!(attempted, Ok(false)) {
-            h.icons_dirty.borrow_mut().add([icon_changes::Change::Name(RECYCLE_BIN_PARSING_NAME.into())]);
+            h.icons_dirty
+                .borrow_mut()
+                .add([icon_changes::Change::Name(RECYCLE_BIN_PARSING_NAME.into())]);
         }
         if let Err(error) = attempted {
-            luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Warn, "pane.hybrid.recycle", &format!("Recycle notification unavailable; retrying in 30s: {error}"));
+            luciddesk_diagnostics::log(
+                luciddesk_diagnostics::Level::Warn,
+                "pane.hybrid.recycle",
+                &format!("Recycle notification unavailable; retrying in 30s: {error}"),
+            );
         }
     }
     match persist_workspace(s) {
@@ -834,8 +924,11 @@ fn tick_once(s: &mut PaneApp) -> Result<(), String> {
             s.session.as_ref().unwrap().dirty.set(true);
             refresh_views(s);
         }
-        Err(error) => luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Warn,
-            "pane.hybrid.save", &format!("Workspace save pending; retrying in 5s: {error}")),
+        Err(error) => luciddesk_diagnostics::log(
+            luciddesk_diagnostics::Level::Warn,
+            "pane.hybrid.save",
+            &format!("Workspace save pending; retrying in 5s: {error}"),
+        ),
         Ok(false) => {}
     }
     let h = s.session.as_mut().unwrap();
@@ -854,16 +947,13 @@ fn tick_once(s: &mut PaneApp) -> Result<(), String> {
     urgent |= s.session.as_ref().unwrap().membership_pending.is_some();
     // The Hook repairs its retained desired set. Publish only when application
     // state changed, rather than duplicating its watchdog with periodic SETs.
-    if urgent {
-        sync(s)
-    } else {
-        Ok(())
-    }
+    if urgent { sync(s) } else { Ok(()) }
 }
 
 fn poll_inventory(s: &mut PaneApp, urgent: bool) -> Result<bool, String> {
     let h = s.session.as_ref().unwrap();
-    if h.pending_workspace_save || h.membership_pending.is_some() || h.published.borrow().is_none() {
+    if h.pending_workspace_save || h.membership_pending.is_some() || h.published.borrow().is_none()
+    {
         return Ok(false);
     }
     if h.audit.due(h.last_reconcile.elapsed()) {
@@ -926,19 +1016,29 @@ pub(super) fn next_work(s: &PaneApp) -> Option<u32> {
         .filter(|_| h.initial_batches == 0 && h.icon_reload.is_none());
     icon_due
         .into_iter()
-        .chain((!h.pending_workspace_save).then(|| h.audit.remaining(h.last_reconcile.elapsed())).flatten().map(|delay| now + delay))
-        .chain(h.pending_workspace_save.then_some(h.save_due.unwrap_or(now)))
-        .chain(h.image_retention.deadline().filter(|_| !h.pending_workspace_save))
-        .chain(h.recycle_subscription.is_none().then_some(h.recycle_retry))
         .chain(
-            icons::retry_deadline(
-                h.initial_batches != 0 || h.icon_reload.is_some(),
-                h.last_icon_scan,
-                &s.images,
-                &h.requested,
-                &h.icon_failures,
-            ),
+            (!h.pending_workspace_save)
+                .then(|| h.audit.remaining(h.last_reconcile.elapsed()))
+                .flatten()
+                .map(|delay| now + delay),
         )
+        .chain(
+            h.pending_workspace_save
+                .then_some(h.save_due.unwrap_or(now)),
+        )
+        .chain(
+            h.image_retention
+                .deadline()
+                .filter(|_| !h.pending_workspace_save),
+        )
+        .chain(h.recycle_subscription.is_none().then_some(h.recycle_retry))
+        .chain(icons::retry_deadline(
+            h.initial_batches != 0 || h.icon_reload.is_some(),
+            h.last_icon_scan,
+            &s.images,
+            &h.requested,
+            &h.icon_failures,
+        ))
         .min()
         .map(|due| {
             due.saturating_duration_since(now)
@@ -951,7 +1051,9 @@ pub(super) fn next_work(s: &PaneApp) -> Option<u32> {
 // A slow Shell operation must not roll back a successfully saved user action.
 fn save_placement(s: &mut PaneApp) -> Result<(), String> {
     s.workspace.sync_tab_windows();
-    s.store.save_workspace(&s.workspace).map_err(|error| error.to_string())?;
+    s.store
+        .save_workspace(&s.workspace)
+        .map_err(|error| error.to_string())?;
     refresh_views(s);
     if let Some(h) = &mut s.session {
         h.audit.membership_changed();
@@ -1003,7 +1105,12 @@ mod tests {
         let now = Instant::now();
         let mut due = now;
         let mut slot = None;
-        assert!(retry_subscription(&mut slot, &mut due, now, || Err::<u8, _>("unavailable".into())).is_err());
+        assert!(
+            retry_subscription(&mut slot, &mut due, now, || Err::<u8, _>(
+                "unavailable".into()
+            ))
+            .is_err()
+        );
         assert!(slot.is_none());
         assert_eq!(due, now + Duration::from_secs(30));
         assert!(!retry_subscription(&mut slot, &mut due, now, || panic!("early retry")).unwrap());
@@ -1011,24 +1118,41 @@ mod tests {
         assert!(retry_subscription(&mut slot, &mut due, next, || Ok(7)).unwrap());
         assert_eq!(slot, Some(7));
         let next = due;
-        assert!(!retry_subscription(&mut slot, &mut due, next, || panic!("already subscribed")).unwrap());
+        assert!(
+            !retry_subscription(&mut slot, &mut due, next, || panic!("already subscribed"))
+                .unwrap()
+        );
     }
     #[test]
     fn drag_round_trip_saves_all_placements_without_shell_confirmation() {
         let mut s = crate::pane::tests::test_state();
         let id = PanelId::new(1);
-        let identities: Vec<_> = s.workspace.desktop_items().iter()
-            .map(|item| item.identity().clone()).collect();
+        let identities: Vec<_> = s
+            .workspace
+            .desktop_items()
+            .iter()
+            .map(|item| item.identity().clone())
+            .collect();
         for identity in &identities {
-            s.workspace.desktop_item_mut(identity).unwrap().set_placement(DesktopPlacement::default());
+            s.workspace
+                .desktop_item_mut(identity)
+                .unwrap()
+                .set_placement(DesktopPlacement::default());
         }
         save_placement(&mut s).unwrap();
-        assert!(items_for(&s, id).is_empty(), "released items must leave the pane immediately");
+        assert!(
+            items_for(&s, id).is_empty(),
+            "released items must leave the pane immediately"
+        );
         assert_eq!(s.store.load_workspace().unwrap(), s.workspace);
         for (index, identity) in identities.iter().enumerate() {
-            s.workspace.desktop_item_mut(identity).unwrap().set_placement(DesktopPlacement::Pane {
-                pane_id: id, position: GridPosition::new(index as u32, 0),
-            });
+            s.workspace
+                .desktop_item_mut(identity)
+                .unwrap()
+                .set_placement(DesktopPlacement::Pane {
+                    pane_id: id,
+                    position: GridPosition::new(index as u32, 0),
+                });
         }
         save_placement(&mut s).unwrap();
         assert_eq!(items_for(&s, id).len(), identities.len());
@@ -1042,15 +1166,21 @@ mod tests {
                 let published = RefCell::new(Some(original.clone()));
                 let requested = vec!["A".to_string(), "B".to_string(), "C".to_string()];
                 let mut native = original.clone();
-                assert!(publish_membership(&published, requested.clone(), |names| {
-                    native = names[..applied].to_vec();
-                    Err("injected timeout after accepting SET".into())
-                }).is_err());
+                assert!(
+                    publish_membership(&published, requested.clone(), |names| {
+                        native = names[..applied].to_vec();
+                        Err("injected timeout after accepting SET".into())
+                    })
+                    .is_err()
+                );
                 assert!(published.borrow().is_none());
                 // The first rollback can be rejected while that SET is pending.
-                assert!(publish_membership(&published, original.clone(), |_| {
-                    Err("Explorer still busy".into())
-                }).is_err());
+                assert!(
+                    publish_membership(&published, original.clone(), |_| {
+                        Err("Explorer still busy".into())
+                    })
+                    .is_err()
+                );
                 // The timed-out SET completes later, after the app rolled back.
                 native = requested;
                 let mut sent = false;
@@ -1058,12 +1188,14 @@ mod tests {
                     sent = true;
                     native = names.to_vec();
                     Ok(())
-                }).unwrap();
+                })
+                .unwrap();
                 assert!(sent, "rollback must not be skipped by the old cache");
                 assert_eq!(native, original);
                 publish_membership(&published, original.clone(), |_| {
                     panic!("an acknowledged unchanged set must not be resent")
-                }).unwrap();
+                })
+                .unwrap();
             }
         }
     }
@@ -1073,21 +1205,43 @@ mod tests {
         let mut s = crate::pane::tests::test_state();
         s.images.clear();
         assert!(hidden_names(&s).is_empty());
-        let identities: Vec<_> = s.workspace.desktop_items().iter()
+        let identities: Vec<_> = s
+            .workspace
+            .desktop_items()
+            .iter()
             .filter(|item| matches!(item.placement(), DesktopPlacement::Pane { .. }))
-            .map(|item| item.identity().clone()).collect();
+            .map(|item| item.identity().clone())
+            .collect();
         assert!(identities.len() > 1);
-        let image = Arc::new(assets::Pixels { width: 1, height: 1, data: vec![0; 4] });
-        s.images.insert(identities[0].persistent_key(), image.clone());
-        assert_eq!(hidden_names(&s), vec![identities[0].activation_name().to_string_lossy().into_owned()]);
+        let image = Arc::new(assets::Pixels {
+            width: 1,
+            height: 1,
+            data: vec![0; 4],
+        });
+        s.images
+            .insert(identities[0].persistent_key(), image.clone());
+        assert_eq!(
+            hidden_names(&s),
+            vec![
+                identities[0]
+                    .activation_name()
+                    .to_string_lossy()
+                    .into_owned()
+            ]
+        );
         for identity in &identities {
             s.images.insert(identity.persistent_key(), image.clone());
         }
         assert_eq!(hidden_names(&s).len(), identities.len());
-        s.workspace.desktop_item_mut(&identities[0]).unwrap()
+        s.workspace
+            .desktop_item_mut(&identities[0])
+            .unwrap()
             .set_placement(DesktopPlacement::default());
-        assert_eq!(hidden_names(&s).len(), identities.len() - 1,
-            "cached pixels must not cause an item released to Explorer to be hidden");
+        assert_eq!(
+            hidden_names(&s).len(),
+            identities.len() - 1,
+            "cached pixels must not cause an item released to Explorer to be hidden"
+        );
     }
 
     #[test]
@@ -1096,7 +1250,11 @@ mod tests {
         let mut presented = 0;
         for fails in [true, true, false, false] {
             let result = persist_pending(&mut pending, || {
-                if fails { Err("injected database busy".into()) } else { Ok(()) }
+                if fails {
+                    Err("injected database busy".into())
+                } else {
+                    Ok(())
+                }
             });
             if fails {
                 assert!(result.is_err());
@@ -1118,7 +1276,12 @@ mod tests {
         assert!(pending);
         assert_eq!(due, Some(now + Duration::from_secs(5)));
         assert!(!retry_save(&mut pending, &mut due, now, || panic!("early write")).unwrap());
-        assert!(retry_save(&mut pending, &mut due, now + Duration::from_secs(5), || Ok(())).unwrap());
+        assert!(
+            retry_save(&mut pending, &mut due, now + Duration::from_secs(5), || Ok(
+                ()
+            ))
+            .unwrap()
+        );
         assert!(!pending);
         assert!(due.is_none());
     }
@@ -1130,7 +1293,11 @@ mod tests {
         let desired = vec!["existing".to_string(), "new".to_string()];
         for fails in [true, true, false] {
             let saved = persist_pending(&mut pending, || {
-                if fails { Err("injected disk write failure".into()) } else { Ok(()) }
+                if fails {
+                    Err("injected disk write failure".into())
+                } else {
+                    Ok(())
+                }
             });
             if saved.is_err() {
                 assert!(pending);
@@ -1141,7 +1308,8 @@ mod tests {
             publish_membership(&published, desired.clone(), |names| {
                 native = names.to_vec();
                 Ok(())
-            }).unwrap();
+            })
+            .unwrap();
         }
         assert!(!pending);
         assert_eq!(native, desired);

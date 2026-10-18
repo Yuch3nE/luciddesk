@@ -1,11 +1,11 @@
 //! Interoperation between application bindings and the Canvas/generated graphics ABI.
 use canvas_core::Interface as _;
-use luciddesk_graphics::dwm;
 pub use dwm::{
     DWMNCRP_DISABLED, DWMSBT_NONE, DWMWA_BORDER_COLOR, DWMWA_NCRENDERING_POLICY,
     DWMWA_SYSTEMBACKDROP_TYPE, DWMWA_USE_HOSTBACKDROPBRUSH, DWMWA_USE_IMMERSIVE_DARK_MODE,
     DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND, DWMWCP_ROUND, MARGINS,
 };
+use luciddesk_graphics::dwm;
 use windows::Win32::Foundation::HWND;
 use windows::core::{Error, HRESULT, IUnknown, Interface, Result};
 
@@ -21,6 +21,7 @@ pub(super) struct GraphicsLifetime;
 impl Drop for GraphicsLifetime {
     fn drop(&mut self) {
         crate::pane::render_debug::render_trace(format_args!("shutdown: graphics caches begin"));
+        crate::plugins::shutdown();
         super::acrylic::clear_thread_cache();
         luciddesk_graphics::clear_thread_cache();
         let device = DEVICE.with(|slot| slot.borrow_mut().take());
@@ -46,7 +47,11 @@ pub fn gpu_device() -> Result<windows_canvas::GpuDevice> {
             canvas_result(windows_canvas::GpuDevice::new_warp())?
         } else {
             canvas_result(windows_canvas::GpuDevice::new().or_else(|error| {
-                luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Warn, "pane.native_graphics", &format!("Hardware rendering unavailable, using WARP: {error}"));
+                luciddesk_diagnostics::log(
+                    luciddesk_diagnostics::Level::Warn,
+                    "pane.native_graphics",
+                    &format!("Hardware rendering unavailable, using WARP: {error}"),
+                );
                 windows_canvas::GpuDevice::new_warp()
             }))?
         };
@@ -116,15 +121,19 @@ mod shutdown_tests {
             for shared in [false, true] {
                 use windows_sys::Win32::UI::WindowsAndMessaging::*;
                 let window = windows_window::Window::new("Graphics shutdown regression")
-                    .size(96, 64).style(WS_POPUP).ex_style(WS_EX_NOREDIRECTIONBITMAP)
+                    .size(96, 64)
+                    .style(WS_POPUP)
+                    .ex_style(WS_EX_NOREDIRECTIONBITMAP)
                     .on_message(|_, msg, _, _| (msg == WM_DESTROY).then_some(0))
-                    .create().unwrap();
+                    .create()
+                    .unwrap();
                 let hwnd = HWND(window.hwnd().cast());
                 let mut surface = if shared {
                     super::super::composition::Surface::new_settings(hwnd)
                 } else {
                     super::super::composition::Surface::new_pane(hwnd)
-                }.unwrap();
+                }
+                .unwrap();
                 surface.material(hwnd, luciddesk_core::Backdrop::Acrylic);
                 surface.present(96, 64, &[255; 96 * 64 * 4]).unwrap();
             }
@@ -141,8 +150,13 @@ mod shutdown_tests {
                     "--test-threads=1", "--nocapture"])
                 .env(CHILD, "1").env("LUCIDDESK_SHARED_PANE_TREE", "0")
                 .output().unwrap();
-            assert!(output.status.success(), "graphics shutdown failed: {:?}\n{}\n{}",
-                output.status, String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+            assert!(
+                output.status.success(),
+                "graphics shutdown failed: {:?}\n{}\n{}",
+                output.status,
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
         }
     }
 }

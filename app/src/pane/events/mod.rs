@@ -2,12 +2,12 @@
 use super::search::everything_settings;
 use super::*;
 mod appearance;
-mod panel;
 mod lifecycle;
+mod panel;
 mod shell;
 mod tab_events;
-pub(super) use appearance::{preview_grid, preview_radius, preview_material};
-pub(super) use appearance::{commit_grid, commit_radius, commit_material};
+pub(super) use appearance::{commit_grid, commit_material, commit_radius};
+pub(super) use appearance::{preview_grid, preview_material, preview_radius};
 pub(super) use shell::activate_item_with;
 
 pub(super) fn handle(
@@ -17,24 +17,63 @@ pub(super) fn handle(
 ) -> Result<bool, String> {
     if let Event::MonitorOptions(options) = &event {
         let s = state.borrow();
-        if !s.workspace.panel(id).is_some_and(Panel::is_monitor) { return Ok(false); }
+        if !s.workspace.panel(id).is_some_and(Panel::is_monitor) {
+            return Ok(false);
+        }
         options.save(&s.store, id)?;
+        if !s.monitor_child {
+            drop(s);
+            return monitor::process::configure(state, id).map(|_| false);
+        }
+        let has_view = s.views.iter().any(|view| view.id == id);
+        if !options.enabled || !has_view {
+            drop(s);
+            if options.enabled {
+                create_view(state, id)?;
+            } else {
+                let removed = {
+                    let mut s = state.borrow_mut();
+                    s.views
+                        .iter()
+                        .position(|v| v.id == id)
+                        .map(|at| s.views.remove(at))
+                };
+                if let Some(view) = &removed {
+                    window::prepare_close(view.window.hwnd().cast());
+                }
+                drop(removed);
+            }
+            return Ok(false);
+        }
         let mut resize = None;
         if let Some(view) = s.views.iter().find(|v| v.id == id) {
-            if !view.model.borrow().collapsed && view.model.borrow().monitor.as_ref().is_some_and(|old| old.compact != options.compact) {
+            if !view.model.borrow().collapsed
+                && view
+                    .model
+                    .borrow()
+                    .monitor
+                    .as_ref()
+                    .is_some_and(|old| old.compact != options.compact)
+            {
                 resize = Some(view.window.hwnd() as isize);
             }
             view.model.borrow_mut().monitor = Some(options.clone());
-            unsafe { InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0); }
+            unsafe {
+                InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0);
+            }
         }
         drop(s);
         if let Some(hwnd) = resize {
             let weak = Rc::downgrade(state);
             let compact = options.compact;
             window::post_action(hwnd as _, move || {
-                let Some(state) = weak.upgrade() else { return; };
+                let Some(state) = weak.upgrade() else {
+                    return;
+                };
                 if let Some(rect) = monitor::resize_layout(hwnd as _, compact) {
-                    if let Err(error) = handle(&state, id, Event::Geometry(rect)) { window::error(&error); }
+                    if let Err(error) = handle(&state, id, Event::Geometry(rect)) {
+                        window::error(&error);
+                    }
                 }
             });
         }
@@ -42,34 +81,51 @@ pub(super) fn handle(
     }
     if matches!(event, Event::ResetPaneOptions) {
         let s = state.borrow();
-        s.store.save_metadata_preferences(&[
-            ("pane_title_emoji_color", "true"),
-            ("pane_compact_menu", "true"),
-            ("pane_header_divider", "true"),
-            ("desktop_panel_layout", "compact"),
-        ]).map_err(|e| e.to_string())?;
+        s.store
+            .save_metadata_preferences(&[
+                ("pane_title_emoji_color", "true"),
+                ("pane_compact_menu", "true"),
+                ("pane_header_divider", "true"),
+                ("desktop_panel_layout", "compact"),
+            ])
+            .map_err(|e| e.to_string())?;
         interface_flags::TITLE_EMOJI.load(&s.store)?;
         interface_flags::COMPACT_MENU.load(&s.store)?;
         interface_flags::HEADER_DIVIDER.load(&s.store)?;
-        for view in &s.views { unsafe { InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0); } }
+        for view in &s.views {
+            unsafe {
+                InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0);
+            }
+        }
     }
     if let Event::SetTitleEmojiColor(color) = event {
         let s = state.borrow();
         interface_flags::TITLE_EMOJI.save(&s.store, color)?;
-        for view in &s.views { unsafe { InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0); } }
+        for view in &s.views {
+            unsafe {
+                InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0);
+            }
+        }
         return Ok(false);
     }
     if matches!(event, Event::ToggleCompactMenu) {
-        interface_flags::COMPACT_MENU.save(&state.borrow().store, !interface_flags::COMPACT_MENU.get())?;
+        interface_flags::COMPACT_MENU
+            .save(&state.borrow().store, !interface_flags::COMPACT_MENU.get())?;
         return Ok(false);
     }
     if matches!(event, Event::ToggleHeaderDivider) {
         let s = state.borrow();
         interface_flags::HEADER_DIVIDER.save(&s.store, !interface_flags::HEADER_DIVIDER.get())?;
-        for view in &s.views { unsafe { InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0); } }
+        for view in &s.views {
+            unsafe {
+                InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0);
+            }
+        }
         return Ok(false);
     }
-    if let Some(result) = tab_events::route(state, id, &event)? { return Ok(result); }
+    if let Some(result) = tab_events::route(state, id, &event)? {
+        return Ok(result);
+    }
     if let Event::SortPaneColumn(target, column) = event {
         sorting::request(&mut state.borrow_mut(), target, column)?;
         return Ok(false);
@@ -135,7 +191,10 @@ pub(super) fn handle(
     if matches!(event, Event::ToggleListView) {
         let mut s = state.borrow_mut();
         let old = s.workspace.clone();
-        let panel = s.workspace.panel_mut(id).ok_or(crate::i18n::text("ui-panel-closed"))?;
+        let panel = s
+            .workspace
+            .panel_mut(id)
+            .ok_or(crate::i18n::text("ui-panel-closed"))?;
         if panel.is_search() || panel.is_monitor() {
             return Ok(false);
         }
@@ -154,7 +213,17 @@ pub(super) fn handle(
         refresh_changed_views(&mut s, true);
         return Ok(false);
     }
-    if matches!(event, Event::FileDrag(_) | Event::NewFolder | Event::ChangeFolder | Event::SetFolder(_) | Event::OpenFolder | Event::Peek | Event::FileCommand(_) | Event::ActivateSelection) {
+    if matches!(
+        event,
+        Event::FileDrag(_)
+            | Event::NewFolder
+            | Event::ChangeFolder
+            | Event::SetFolder(_)
+            | Event::OpenFolder
+            | Event::Peek
+            | Event::FileCommand(_)
+            | Event::ActivateSelection
+    ) {
         return shell::route(state, id, event);
     }
     if matches!(event, Event::RenameTitle | Event::SetTitle(_))
@@ -253,10 +322,16 @@ pub(super) fn handle(
         };
         if let Some((owner, label, model)) = target {
             let weak = Rc::downgrade(state);
-            rename::show_managed(owner, &identity, &label, model, Rc::new(move |identity, name| {
-                let state = weak.upgrade().ok_or(crate::i18n::text("ui-group-closed"))?;
-                hybrid::rename_item(&state, owner, identity, name)
-            }))?;
+            rename::show_managed(
+                owner,
+                &identity,
+                &label,
+                model,
+                Rc::new(move |identity, name| {
+                    let state = weak.upgrade().ok_or(crate::i18n::text("ui-group-closed"))?;
+                    hybrid::rename_item(&state, owner, identity, name)
+                }),
+            )?;
         }
         return Ok(false);
     }
@@ -274,12 +349,27 @@ pub(super) fn handle(
 
 /// Animate effective visibility without changing saved window preferences.
 pub(super) fn show_collapsed(state: &PaneApp, id: PanelId, collapsed: bool) {
-    let Some(panel) = state.workspace.panel(id) else { return; };
-    let Some(view) = state.views.iter().find(|v| v.id == id) else { return; };
-    if view.model.borrow().collapsed == collapsed { return; }
+    let Some(panel) = state.workspace.panel(id) else {
+        return;
+    };
+    let Some(view) = state.views.iter().find(|v| v.id == id) else {
+        return;
+    };
+    if view.model.borrow().collapsed == collapsed {
+        return;
+    }
     view.model.borrow_mut().collapsed = collapsed;
-    let height = if collapsed { layout::HEADER } else { panel.rect().height };
+    let height = if collapsed {
+        layout::HEADER
+    } else {
+        panel.rect().height
+    };
     unsafe {
-        PostMessageW(view.window.hwnd().cast(), window::ANIMATE_FOLD, 0, height.round() as isize);
+        PostMessageW(
+            view.window.hwnd().cast(),
+            window::ANIMATE_FOLD,
+            0,
+            height.round() as isize,
+        );
     }
 }

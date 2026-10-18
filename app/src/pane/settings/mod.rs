@@ -49,6 +49,7 @@ use windows_sys::Win32::UI::Controls::WM_MOUSELEAVE;
 
 #[derive(Clone)]
 enum Action {
+    MonitorOptions(PanelId, monitor::Preferences),
     Startup(bool),
     CliEnabled(bool),
     CopySkillPrompt,
@@ -104,10 +105,10 @@ use appearance::*;
 mod frame;
 use frame::*;
 
-mod controls;
 mod components;
+mod controls;
 mod preview;
-use components::{Tokens, SettingsForm, ContentClip};
+use components::{ContentClip, SettingsForm, Tokens};
 use controls::{Control, ControlKind, Slider, Style};
 struct Scene {
     material: Backdrop,
@@ -126,6 +127,7 @@ fn contains(r: &Rect, x: f32, y: f32) -> bool {
     x >= r.left && x < r.right && y >= r.top && y < r.bottom
 }
 mod layout;
+mod monitor_page;
 use layout::scene;
 
 const TOGGLE_TIMER: usize = 0x4c5054;
@@ -133,8 +135,8 @@ use super::animation::Motion as ToggleMotion;
 mod painter;
 use painter::Painter;
 
-mod agent;
 mod actions;
+mod agent;
 mod host;
 pub(super) use host::show;
 

@@ -258,6 +258,7 @@ pub(super) fn apply(
                 s.workspace = previous;
                 return Err(error.to_string());
             }
+            if s.monitor_child { monitor::process::publish_panel(s.workspace.panel(id).unwrap()); }
         }
         Event::AutoHideCollapsed(collapsed) => {
             // Hover state belongs to the live window, never to the persisted panel.

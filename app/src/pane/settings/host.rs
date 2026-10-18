@@ -37,8 +37,16 @@ pub(in crate::pane) fn show(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result
     let mut folder_entry_mode = folder::EntryMode::load(&state.borrow().store)?;
     let (mut show_panels_enabled, mut show_panels_shortcut, mut chosen_language) = {
         let owner = state.borrow();
-        (show_hotkey::enabled(&owner.store), show_hotkey::settings(&owner.store),
-            owner.store.preference("language").ok().flatten().unwrap_or_else(|| "system".into()))
+        (
+            show_hotkey::enabled(&owner.store),
+            show_hotkey::settings(&owner.store),
+            owner
+                .store
+                .preference("language")
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| "system".into()),
+        )
     };
     let mut font_choices = Vec::<String>::new();
     let mut all_fonts = Vec::<String>::new();
@@ -53,7 +61,18 @@ pub(in crate::pane) fn show(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result
     let mut paint_recovery = composition::PaintRecovery::default();
     let mut reveal: Option<PendingReveal> = None;
     // Navigation belongs to this window, not the saved workspace or connection state.
-    let mut page = 0;
+    let mut page = if monitor::available()
+        && state
+            .borrow()
+            .workspace
+            .panel(id)
+            .is_some_and(Panel::is_monitor)
+    {
+        14
+    } else {
+        0
+    };
+    let mut monitor_panels = Ok(Vec::new());
     let mut recording_peek = false;
     let mut recording_search = false;
     let mut recording_show_panels = false;
@@ -254,6 +273,9 @@ pub(in crate::pane) fn show(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result
             if msg == SELECT_PANEL {
                 if wp != 0 {
                     selected = PanelId::new(wp as u64);
+                    if monitor::available() && state.borrow().workspace.panel(selected).is_some_and(Panel::is_monitor) {
+                        page = 14;
+                    }
                 }
                 unsafe {
                     InvalidateRect(hwnd, std::ptr::null(), 0);
@@ -388,6 +410,14 @@ pub(in crate::pane) fn show(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result
                     panels = state.workspace.panels().to_vec();
                     snapshot_changed = true;
                 }
+                if page == 14 {
+                    let fresh = state.workspace.panels().iter().filter(|p| p.is_monitor())
+                        .map(|p| monitor::Preferences::load(&state.store, p.id())
+                            .map(|options| (p.id(), p.title().to_owned(), options)))
+                        .collect::<Result<Vec<_>, String>>();
+                    snapshot_changed |= monitor_panels != fresh;
+                    monitor_panels = fresh;
+                }
                 let fresh_cli = control::enabled(&state.store);
                 snapshot_changed |= cli_enabled != fresh_cli;
                 cli_enabled = fresh_cli;
@@ -445,7 +475,8 @@ pub(in crate::pane) fn show(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result
                     show_panels_shortcut, show_hotkey::status()),
                 unsafe { IsZoomed(hwnd) } != 0,
                 search_visible,
-                (desktop_status.clone(), interface_flags::HEADER_DIVIDER.get(), interface_flags::COMPACT_MENU.get(), updates.status(), startup.status(), startup.busy()),
+                (desktop_status.clone(), interface_flags::HEADER_DIVIDER.get(), interface_flags::COMPACT_MENU.get(), updates.status(), startup.status(), startup.busy(),
+                    (page == 14).then(|| [monitor::devices(monitor::Metric::Network), monitor::devices(monitor::Metric::Disk), monitor::devices(monitor::Metric::Gpu)])),
             );
             if scroll_page != page { scroll_offset = 0.0; scroll_page = page; }
             let scene_changed = snapshot_changed || scene_key.as_ref() != Some(&key);
@@ -458,6 +489,7 @@ pub(in crate::pane) fn show(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result
                         appearance,
                         options,
                     );
+                if page == 14 { monitor_page::draw(&mut body, w, &monitor_panels); }
                 if page == 12 {
                     layout::language(&mut body, w, &chosen_language);
                 }
