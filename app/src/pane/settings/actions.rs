@@ -82,7 +82,11 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
                 ClientToScreen(hwnd, &raw mut point);
             }
             window::defer_action(move || {
-                let mut policy = recovery::Policy::load(&state.borrow().store);
+                let loaded = recovery::Policy::load(&state.borrow().store);
+                let mut policy = match loaded {
+                    Ok(policy) => policy,
+                    Err(error) => { window::error(&error); return; }
+                };
                 if kind == 0 {
                     policy.enabled = !policy.enabled;
                 } else {

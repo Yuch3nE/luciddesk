@@ -22,28 +22,21 @@ impl Default for Policy {
     }
 }
 impl Policy {
-    pub fn load(store: &WorkspaceStore) -> Self {
-        let value = store
-            .preference("backup_policy")
-            .ok()
-            .flatten()
-            .unwrap_or_default();
-        let parts: Vec<_> = value.split(',').collect();
-        if parts.len() != 3 {
-            return Self::default();
+    pub fn load(store: &WorkspaceStore) -> Result<Self, String> {
+        Self::decode(store.preference("backup_policy").map_err(|e| e.to_string()))
+    }
+    fn decode(raw: Result<Option<String>, String>) -> Result<Self, String> {
+        let raw = raw?;
+        let Some(raw) = raw else { return Ok(Self::default()); };
+        let parts: Vec<_> = raw.split(',').collect();
+        if parts.len() != 3 || !matches!(parts[0], "0" | "1") {
+            return Err("Invalid backup policy".into());
         }
-        Self {
-            enabled: parts[0] != "0",
-            minutes: parts[1]
-                .parse()
-                .ok()
-                .filter(|v| [5, 15, 30, 60].contains(v))
-                .unwrap_or(5),
-            keep: parts[2]
-                .parse()
-                .ok()
-                .filter(|v| [10, 20, 50].contains(v))
-                .unwrap_or(10),
+        let minutes = parts[1].parse().ok().filter(|v| [5, 15, 30, 60].contains(v));
+        let keep = parts[2].parse().ok().filter(|v| [10, 20, 50].contains(v));
+        match (minutes, keep) {
+            (Some(minutes), Some(keep)) => Ok(Self { enabled: parts[0] == "1", minutes, keep }),
+            _ => Err("Invalid backup policy".into()),
         }
     }
     pub fn save(self, store: &WorkspaceStore) -> Result<(), String> {
@@ -344,7 +337,14 @@ pub(super) fn maintain(state: &Rc<RefCell<PaneApp>>) {
     }
     let due = {
         let mut s = state.borrow_mut();
-        let policy = Policy::load(&s.store);
+        let policy = match Policy::load(&s.store) {
+            Ok(policy) => policy,
+            Err(error) => {
+                drop(s);
+                set_status(state, &format!("Backup policy unavailable: {error}"));
+                return;
+            }
+        };
         let changes = s.store.change_count();
         let Some(r) = s.runtime.as_mut() else {
             return;
@@ -387,10 +387,10 @@ pub(super) fn deadline(s: &PaneApp) -> Option<Instant> {
     if manager.view.busy {
         return None; // Completion is delivered by Wake.
     }
+    let policy = Policy::load(&s.store).ok()?;
     if !manager.initialized {
         return Some(Instant::now());
     }
-    let policy = Policy::load(&s.store);
     (policy.enabled && manager.checked != Some(s.store.change_count())).then(|| {
         (manager.changed + Duration::from_secs(10))
             .max(manager.attempted + Duration::from_secs(policy.minutes * 60))
@@ -419,7 +419,7 @@ pub(super) fn create(state: &Rc<RefCell<PaneApp>>, automatic: bool) -> Result<()
         let s = state.borrow();
         (
             s.store.backup_snapshot().map_err(|e| e.to_string())?,
-            Policy::load(&s.store),
+            Policy::load(&s.store)?,
             s.store.change_count(),
         )
     };
@@ -757,6 +757,18 @@ fn execute(state: &Rc<RefCell<PaneApp>>, event: &Event) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn backup_defaults_only_apply_to_missing_preferences() {
+        assert_eq!(super::Policy::decode(Ok(None)).unwrap(), super::Policy::default());
+        assert!(super::Policy::decode(Err("database read failed".into())).is_err());
+        for raw in ["", "bad", "1,5,1", "x,5,10"] {
+            assert!(super::Policy::decode(Ok(Some(raw.into()))).is_err());
+        }
+        let policy = super::Policy::decode(Ok(Some("0,30,50".into()))).unwrap();
+        assert!(!policy.enabled);
+        assert_eq!(policy.keep, 50);
+    }
+
+    #[test]
     fn completion_reaches_runtime_without_dispatching_timers() {
         use windows_sys::Win32::UI::WindowsAndMessaging::*;
         let root = tempfile::tempdir().unwrap();
@@ -868,7 +880,7 @@ mod tests {
         );
         let policy = Policy { enabled: false, minutes: 30, keep: 20 };
         policy.save(&state.borrow().store).unwrap();
-        assert_eq!(Policy::load(&state.borrow().store), policy);
+        assert_eq!(Policy::load(&state.borrow().store).unwrap(), policy);
     }
     #[test]
     fn retention_preserves_manual_snapshots_and_reports_cleanup_failure_separately() {

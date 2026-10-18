@@ -57,11 +57,7 @@ pub(super) fn read(store: &WorkspaceStore) -> Result<BTreeMap<String, SettingVal
             .into(),
         ),
     );
-    // Surface database errors instead of interpreting an unreadable policy as defaults.
-    store
-        .preference("backup_policy")
-        .map_err(|e| e.to_string())?;
-    let policy = recovery::Policy::load(store);
+    let policy = recovery::Policy::load(store)?;
     values.insert("backup.enabled".into(), Boolean(policy.enabled));
     values.insert(
         "backup.interval_minutes".into(),
@@ -199,6 +195,6 @@ mod tests {
         assert_eq!(notifications.load(std::sync::atomic::Ordering::Relaxed), 1);
         let defaults = folder::Defaults::load(&store).unwrap();
         assert_eq!(defaults.columns, 11);
-        assert_eq!(recovery::Policy::load(&store).minutes, 30);
+        assert_eq!(recovery::Policy::load(&store).unwrap().minutes, 30);
     }
 }

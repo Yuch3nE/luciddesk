@@ -394,7 +394,7 @@ pub(in crate::pane) fn show(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result
                 search_visible = state.views.iter().any(|v| state.workspace.panel(v.id).is_some_and(Panel::is_search));
                 desktop_status = runtime::status(&state);
                 let fresh = recovery::view(&state);
-                let policy = recovery::Policy::load(&state.store);
+                let policy = recovery::Policy::load(&state.store).unwrap_or(backup_policy);
                 snapshot_changed |= fresh != backup_view || policy != backup_policy;
                 backup_view = fresh; backup_policy = policy;
                 if backup_offset >= backup_view.records.len() {backup_offset = 0;}
