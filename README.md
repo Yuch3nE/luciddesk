@@ -12,7 +12,7 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Build CI](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml/badge.svg)](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml)
-[![版本](https://img.shields.io/badge/version-0.21.1-087EA4?style=flat-square)](CHANGELOG.md)
+[![版本](https://img.shields.io/badge/version-0.21.2-087EA4?style=flat-square)](CHANGELOG.md)
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square)](#系统与兼容性)
 [![架构](https://img.shields.io/badge/arch-x64-475569?style=flat-square)](docs/portable.md)
 
@@ -59,9 +59,9 @@ LucidDesk 是使用 Rust 开发的 Windows 桌面整理工具。把零散图标�
 
 普通面板右键菜单可切换“自动排列图标”和“对齐到网格”：关闭自动排列后允许保留空位，关闭网格对齐后可以自由放置图标；增删内容时保留其他图标的位置。排序只执行一次，再次选择同一排序字段切换升降序。“设置 → 面板布局 → 图标排列”可调整默认选项（仅影响新建面板）。Agent 也能通过 CLI 与配套 Skill 调整排列模式、定位图标并预览改动。
 
-未收纳的图标继续由原生 Explorer 桌面管理。关闭“显示桌面图标”不会单独阻止连接；连接仍取决于实际窗口和 Shell 接口状态。0.20.5 改善了连接诊断与逐项恢复，具体变更见[更新记录](CHANGELOG.md)。
+未收纳的图标继续由原生 Explorer 桌面管理。关闭“显示桌面图标”不会单独阻止连接；连接仍取决于实际窗口和 Shell 接口状态。0.21.2 改善了连接诊断与逐项恢复，具体变更见[更新记录](CHANGELOG.md)。
 
-0.21.1 默认安装包和 ZIP 不包含插件，开发中的插件列表暂不显示设置入口。可选插件的构建和配置归属见[插件指南](docs/development/plugins.md)。
+0.21.2 默认安装包和 ZIP 不包含插件，开发中的插件列表暂不显示设置入口。可选插件的构建和配置归属见[插件指南](docs/development/plugins.md)。
 
 软件更新时，同一路径的已收纳快捷方式在消失后 5 分钟内重建，可恢复原分组和位置。仅在当前桌面会话内保留，不写数据库、不跨重启恢复。0.19.1～0.20.4 正式版可直接升级；安装版沿用原安装格式与范围，便携版保留 `data`。升级前建议备份。
 

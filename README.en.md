@@ -12,7 +12,7 @@ Desktop panels · Folder panels · Everything search · Spacebar preview · Agen
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Build CI](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml/badge.svg)](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml)
-[![Version](https://img.shields.io/badge/version-0.21.1-087EA4?style=flat-square)](CHANGELOG.en.md)
+[![Version](https://img.shields.io/badge/version-0.21.2-087EA4?style=flat-square)](CHANGELOG.en.md)
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square)](#compatibility)
 [![Architecture](https://img.shields.io/badge/arch-x64-475569?style=flat-square)](docs/portable.md)
 
@@ -164,11 +164,11 @@ Language changes update open windows in place while preserving panels, item sele
 
 Translations are embedded in the executable. Saved panel names and file names are unchanged. Native Windows Shell menus follow the system language. Translation contributions and corrections are welcome.
 
-Version 0.21.1 installers and ZIPs exclude plugins, and the plugin list remains hidden in Settings while under development. See the [plugin guide](docs/development/plugins.md) (Chinese) for optional builds and plugin-owned configuration.
+Version 0.21.2 installers and ZIPs exclude plugins, and the plugin list remains hidden in Settings while under development. See the [plugin guide](docs/development/plugins.md) (Chinese) for optional builds and plugin-owned configuration.
 
 Managed shortcuts recreated at the same path within five minutes recover their group and position in the current desktop session. Retention is memory-only and does not survive restart. Official 0.19.1–0.20.4 installations can upgrade directly: keep the installation format and scope, or preserve `data` for portable builds. Back up before upgrading.
 
-Unmanaged icons remain on the native Explorer desktop. Turning off Show desktop icons alone does not prevent a connection; the actual desktop windows and Shell interfaces must still be available. Version 0.20.5 improves connection diagnostics and per-item recovery. See the [changelog](CHANGELOG.en.md).
+Unmanaged icons remain on the native Explorer desktop. Turning off Show desktop icons alone does not prevent a connection; the actual desktop windows and Shell interfaces must still be available. Version 0.21.2 improves connection diagnostics and per-item recovery. See the [changelog](CHANGELOG.en.md).
 
 <a id="compatibility"></a>
 

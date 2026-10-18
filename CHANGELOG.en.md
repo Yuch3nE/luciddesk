@@ -2,66 +2,43 @@
 
 [简体中文](CHANGELOG.md) · English
 
-Current version: **0.21.1**. Features and fixes by release.
+Current version: **0.21.2**. Features and fixes by release.
 
 Exit the app before upgrading a portable installation and preserve its `data` folder. See the [portable guide](docs/portable.md) (Chinese).
 
-## 0.21.1 · 2026-10-19
+## 0.21.2 · 2026-10-19
 
-Default packages exclude plugins, and the plugin list remains hidden in Settings while under development. The database schema matches released 0.20.4; required upgrades from official versions starting with 0.19.1 remain supported.
+This section consolidates changes since the latest official Release, **0.20.4**, replacing intermediate unreleased entries. Explorer continues to manage unmanaged desktop icons. The database schema matches 0.20.4, and required upgrades from official historical versions remain supported.
 
 ### fix
 
-- Retain missing managed shortcuts in memory for five minutes per desktop session. Restore their group and position when recreated at the same path; repeated missing notifications do not extend the deadline. Discard records on exit or session recreation, without recovery across restarts.
-- Store monitoring options and window settings in plugin-owned configuration instead of workspace panel records. The host manages a single monitor child process.
+- Improve native desktop icon recovery with per-item verification and retention of unfinished work. One failed item no longer blocks others, and positioning errors after membership recovery no longer trigger a full refresh.
+- Respect Explorer's Show desktop icons setting without rejecting a connection solely because icons are hidden; add connection-stage, item-count, and original-error diagnostics.
+- Retry Recycle Bin subscriptions and workspace saves independently instead of treating their failures as desktop connection failures; retain acknowledgements for committed requests awaiting persistence.
+- Restore the group and position of managed shortcuts recreated at the same path within five minutes during software updates. Retention is limited to the current desktop session, is not extended by repeated missing notifications, and is neither persisted nor restored across restarts.
+- Stop automatic backup cleanup when the retention policy cannot be read or is invalid, instead of substituting default rules.
+- Keep existing items, caches, and valid watchers when folder refresh fails; use Windows enumeration attributes for type, hidden state, size, and timestamps.
 
 ### perf
 
-- Release workspace copies and preview payloads after successful CLI commits, and avoid cloning unchanged workspaces on queries. Preserve failed-save retries and request replay semantics.
-- Decode the settings application icon only when uploading its texture, then release CPU pixels. Add native lifecycle measurements for settings windows, pane icons and rendering resources.
+- Release workspace copies and preview payloads after successful CLI commits, and avoid cloning unchanged workspaces while retaining retry and duplicate-request behavior.
+- Decode the Settings app icon on demand and release CPU pixels after upload; add native lifecycle measurements for Settings windows, group icons, and rendering resources.
+
+### ui
+
+- Streamline About with consolidated version, author, and license information; reorganize updates, system details, desktop connection actions, and project links, removing duplicate text and actions.
+- Simplify diagnostic logging controls and remove redundant headings and explanations.
 
 ### refactor
 
-- Remove shortcut-history schema creation, upgrades and persistence, together with experimental monitor database logic. Do not migrate experimental databases.
-- Remove unreleased folder-tab migration, obsolete preview parsing and an unused material alias; simplify Everything path routing. Cover historical database upgrades, backups and reopening.
-- Simplify diagnostic log settings by removing redundant headings and explanations.
-
-## 0.21.0 · 2026-10-19
-
-Default installers and ZIPs still exclude plugins. System monitoring requires an explicitly built and deployed DLL. Native Explorer desktop management is unchanged.
-
-### feat
-
-- Add an optional DLL plugin host, versioned C ABI, Rust SDK and development guide. Discover plugins beside the EXE in `plugins`; retain configuration and hide their entries when absent.
-- Move monitor content, settings descriptions and translations into the plugin. Manage panel switches, metrics and sampling devices in Settings.
-- Run the monitor feature window, rendering and PDH sampling in a separate child process. See 0.21.1 for current configuration ownership and lifecycle behavior.
-
-### perf
-
-- Close monitor panels by normally exiting their child processes, releasing sampling, graphics and runtime resources without trimming working sets or manually unloading DLLs. The main process retains its settings plugin and configuration; memory is not promised to return byte-for-byte to the initial value.
+- Consolidate folder sorting, executable selection, and display preferences; remove obsolete events and unused interfaces, with tests exercising production menu dispatch.
+- Remove unreleased experimental database access and compatibility branches without adding development-data migrations; cover upgrades, backups, and reopening official historical databases.
 
 ### build
 
-- Add independent plugin builds and explicit package selection. CI tests plugin boundaries and missing-plugin behavior, and explicitly excludes plugins from release packages.
-- Cover monitor child shutdown, faults and re-enabling through real execution paths. Update documentation to the PDH child-process design and remove V2 experiment guidance.
-
-## 0.20.5 · 2026-10-18
-
-The default 0.20.5 distribution does not include the system monitor plugin. Its panel content, settings and sampling remain under development as an optional DLL for a later release.
-
-### fix
-
-- Preserve panel membership and position when an updater deletes and recreates a desktop shortcut at the same path within five minutes in the same desktop session. Retention is memory-only and does not survive a restart.
-- Verify native desktop icon recovery per item and retain unfinished records so one failure does not block other items. Layout errors after membership recovery no longer trigger a full refresh.
-- Respect Explorer's Show desktop icons setting without rejecting a connection solely because icons are hidden. Include connection stages, item counts and original errors in diagnostics.
-- Retry recycle-bin subscriptions and workspace saves independently instead of treating their failures as desktop connection failures. Continue acknowledging submitted requests while a save is pending.
-- Stop automatic backup cleanup when its policy cannot be read or is invalid, rather than applying default retention rules.
-- Keep existing folder items, caches and valid watchers after a refresh failure. Use Windows enumeration attributes for item type, hidden state, size and modification time.
-
-### refactor
-
-- Remove obsolete sorting events and an unused interface; consolidate folder sorting, executable selection and display preferences. Test sorting through the production menu dispatcher.
-- Simplify recovery iteration while retaining the native Explorer desktop and panel management model.
+- Exclude plugins from default installers and ZIPs, and hide the plugin list in Settings while it is under development.
+- Retain an optional DLL plugin host, versioned C ABI, Rust SDK, and development guide in source. The monitor plugin owns its configuration; its single panel window, rendering, and PDH sampling run in a child process that exits normally when closed, releasing that process's resources.
+- Improve explicit plugin builds, plugin-free package validation, and child-process fault tests; consolidate CI test builds to reduce repeated compilation.
 
 ## 0.20.4 · 2026-10-10
 
