@@ -77,20 +77,28 @@ jobs:
         run: cargo fetch --locked --target x86_64-pc-windows-msvc
       - name: Test app rules and WARP emoji rendering
         timeout-minutes: 15
-        run: cargo test -p luciddesk --bin luciddesk --locked --offline -- i18n::tests pane::settings::agent::tests pane::marquee::tests pane::title_emoji::tests updates::tests --test-threads=1 --skip marquee_window_messages_commit_cancel_and_ignore_mapped_folders
+        run: >-
+          cargo test -p luciddesk --bin luciddesk --locked --offline --
+          i18n::tests pane::settings::agent::tests pane::marquee::tests pane::title_emoji::tests updates::tests
+          pane::display_layout::tests::removed_monitor_moves_panes_into_work_area_without_minimum_width
+          pane::snap::tests::desktop_corners_respect_work_area_and_negative_monitor_coordinates
+          --test-threads=1 --skip marquee_window_messages_commit_cancel_and_ignore_mapped_folders
       - name: Compile all targets
         run: cargo check --workspace --all-targets --locked --offline
-      - name: Test CLI commands and control protocol
-        run: cargo test -p luciddesk-cli -p luciddesk-api --locked --offline -- --test-threads=1
+      - name: Test CLI, protocol, workspace rules, storage and diagnostics
+        run: >-
+          cargo test -p luciddesk-cli -p luciddesk-api -p luciddesk-core -p luciddesk-storage -p luciddesk-diagnostics
+          --lib --bins --tests --locked --offline -- --test-threads=1
       - name: Test layout defaults, sorting, caches and deferred task reentry
         timeout-minutes: 15
         run: python tools/validation/test-control-ci.py --offline
-      - name: Test workspace data, layout rules and shared diagnostics
-        run: cargo test -p luciddesk-core -p luciddesk-storage -p luciddesk-diagnostics --locked --offline --lib --tests
       - name: Test drag image alpha conversion
         run: cargo test -p luciddesk-shell --lib drag_image::tests::alpha_conversion_preserves_transparency_and_edge_colors --locked --offline -- --exact
       - name: Test Canvas compatibility with WARP
         run: cargo test -p luciddesk --test canvas_compat --locked --offline -- --test-threads=1
+      - name: Test plugin DLL boundary and optional loading
+        timeout-minutes: 10
+        run: ./tools/validation/test-plugins.ps1 -TargetDirectory target/ci-tests -Offline
       - name: Test workspace documentation examples
         run: cargo test --workspace --doc --locked --offline
       - name: Verify complete Skill directory in MSI payload
@@ -106,7 +114,7 @@ jobs:
       - name: Package EXE and ZIPs and verify static VC runtime imports
         shell: pwsh
         timeout-minutes: 30
-        run: ./tools/package.ps1 -All -InstallerFormat Exe -Offline
+        run: ./tools/package.ps1 -All -InstallerFormat Exe -Offline -NoPlugins
       - name: Summarize release binary sizes
         run: |
           $lines = @('### Release binaries', '', '| File | Bytes | MiB |', '| --- | ---: | ---: |')
