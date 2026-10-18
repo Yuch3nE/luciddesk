@@ -8,37 +8,26 @@ Exit the app before upgrading a portable installation and preserve its `data` fo
 
 ## 0.21.2 · 2026-10-19
 
-This section consolidates changes since the latest official Release, **0.20.4**, replacing intermediate unreleased entries. Explorer continues to manage unmanaged desktop icons. The database schema matches 0.20.4, and required upgrades from official historical versions remain supported.
+Changes since official version 0.20.4. Users of official releases can upgrade with their existing data. Unmanaged icons remain on the native Explorer desktop.
 
-### fix
+### Fixes
 
-- Improve native desktop icon recovery with per-item verification and retention of unfinished work. One failed item no longer blocks others, and positioning errors after membership recovery no longer trigger a full refresh.
-- Respect Explorer's Show desktop icons setting without rejecting a connection solely because icons are hidden; add connection-stage, item-count, and original-error diagnostics.
-- Retry Recycle Bin subscriptions and workspace saves independently instead of treating their failures as desktop connection failures; retain acknowledgements for committed requests awaiting persistence.
-- Restore the group and position of managed shortcuts recreated at the same path within five minutes during software updates. Retention is limited to the current desktop session, is not extended by repeated missing notifications, and is neither persisted nor restored across restarts.
-- Stop automatic backup cleanup when the retention policy cannot be read or is invalid, instead of substituting default rules.
-- Keep existing items, caches, and valid watchers when folder refresh fails; use Windows enumeration attributes for type, hidden state, size, and timestamps.
+- Improve desktop icon recovery so a failed item does not block others, and reduce unnecessary desktop refreshes.
+- No longer reject a connection solely because Show desktop icons is turned off; improve connection failure diagnostics.
+- Reduce desktop disconnections caused by Recycle Bin notification and data-saving errors, allowing independent retries.
+- Restore the group and position of managed shortcuts recreated at the same path within five minutes during software updates. Recovery is limited to the current desktop session and does not persist across restarts.
+- Pause automatic backup cleanup when retention settings cannot be read, avoiding deletion under unintended default rules.
+- Preserve existing folder contents when refresh fails, and improve detection of file type, hidden state, size, and timestamps.
 
-### perf
+### Performance
 
-- Release workspace copies and preview payloads after successful CLI commits, and avoid cloning unchanged workspaces while retaining retry and duplicate-request behavior.
-- Decode the Settings app icon on demand and release CPU pixels after upload; add native lifecycle measurements for Settings windows, group icons, and rendering resources.
+- Reduce memory usage during repeated CLI layout commits and workspace queries.
+- Reduce memory used by the Settings app icon.
 
-### ui
+### Interface
 
-- Streamline About with consolidated version, author, and license information; reorganize updates, system details, desktop connection actions, and project links, removing duplicate text and actions.
+- Streamline About with consolidated version, author, and license information, and reorganize updates, desktop connection actions, and project links.
 - Simplify diagnostic logging controls and remove redundant headings and explanations.
-
-### refactor
-
-- Consolidate folder sorting, executable selection, and display preferences; remove obsolete events and unused interfaces, with tests exercising production menu dispatch.
-- Remove unreleased experimental database access and compatibility branches without adding development-data migrations; cover upgrades, backups, and reopening official historical databases.
-
-### build
-
-- Exclude plugins from default installers and ZIPs, and hide the plugin list in Settings while it is under development.
-- Retain an optional DLL plugin host, versioned C ABI, Rust SDK, and development guide in source. The monitor plugin owns its configuration; its single panel window, rendering, and PDH sampling run in a child process that exits normally when closed, releasing that process's resources.
-- Improve explicit plugin builds, plugin-free package validation, and child-process fault tests; consolidate CI test builds to reduce repeated compilation.
 
 ## 0.20.4 · 2026-10-10
 
