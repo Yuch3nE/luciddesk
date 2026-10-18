@@ -278,6 +278,7 @@ where
     let menu_active = Rc::new(std::cell::Cell::new(false));
     let mut paint_recovery = super::composition::PaintRecovery::default();
     let model_init = Rc::clone(&model);
+    let mut monitor = model.borrow().monitor.as_ref().map(|_| super::monitor::Client::new()).transpose()?;
     let inspect = std::env::var_os("LUCIDDESK_INSPECT").is_some();
     let window_title = format!("LucidDesk — {}", model.borrow().title);
     let prepared = Rc::new(std::cell::Cell::new(false));
@@ -531,6 +532,16 @@ where
                     clip_drag(hwnd, false, &mut drag_clipped);
                     Some(0)
                 }
+                WM_TIMER if wparam == super::monitor::TIMER => {
+                    if let Some(client) = &mut monitor {
+                        let m = model.borrow();
+                        if let Some(options) = &m.monitor {
+                            let visible = unsafe { IsWindowVisible(hwnd) != 0 && IsIconic(hwnd) == 0 } && !m.collapsed;
+                            if client.tick(visible, options) { invalidate(hwnd); }
+                        }
+                    }
+                    Some(0)
+                }
                 WM_TIMER if wparam == 5 => {
                     if pane_moved {
                         event(Event::PreviewPaneMove);
@@ -635,6 +646,12 @@ where
                     let m = model.borrow();
                     let cell = m.resize_cell();
                     let s = scale(hwnd);
+                    if let Some(options) = &m.monitor {
+                        let (width, height) = options.minimum(m.collapsed);
+                        info.ptMinTrackSize.x = (width * s).ceil() as i32;
+                        info.ptMinTrackSize.y = (height * s).ceil() as i32;
+                        return Some(0);
+                    }
                     let first_row = m.minimum_row_content(grid(hwnd, &m));
                     let (width, height) = super::layout::pane_minimum(
                         cell, m.collapsed, m.tabs.len() > 1, first_row);
@@ -824,6 +841,10 @@ where
                 WM_LBUTTONDOWN => {
                     let p = point(lparam);
                     let s = scale(hwnd);
+                    if model.borrow().monitor.is_some() && p.y as f32 / s >= HEADER {
+                        unsafe { SetFocus(hwnd); }
+                        return Some(0);
+                    }
                     let r = client(hwnd);
                     let hit = super::tabs::hit(&model.borrow(), r.right as f32 / s, p.x as f32 / s, p.y as f32 / s);
                     if let Some(hit) = hit {
@@ -1439,6 +1460,9 @@ where
         .create()
         .map_err(|e| e.to_string())?;
     let hwnd = window.hwnd().cast();
+    if model_init.borrow().monitor.is_some() {
+        unsafe { SetTimer(hwnd, super::monitor::TIMER, 250, None); }
+    }
     crate::app_icon::apply(hwnd)?;
     let s = scale(hwnd);
     unsafe {

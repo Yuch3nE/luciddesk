@@ -701,6 +701,7 @@ mod tests {
     fn inline_editor_tracks_label_and_escape_cleans_up_without_a_dialog() {
         let identity = identity("网易云音乐.lnk");
         let model = Rc::new(RefCell::new(GroupModel {
+            monitor: None,
             merge_preview: Vec::new(),
         merge_occluded: false,
             tabs: Vec::new(),

@@ -141,6 +141,7 @@ pub(super) fn toggle_search(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result
 }
 pub(super) fn create(state: &Rc<RefCell<PaneApp>>, event: Event) -> Result<bool, String> {
     let search = matches!(event, Event::EnableSearch);
+    let monitor = matches!(event, Event::NewMonitor);
     if search && everything_settings::resolved(&everything_settings::settings()).is_none() {
         return Ok(false);
     }
@@ -186,6 +187,12 @@ pub(super) fn create(state: &Rc<RefCell<PaneApp>>, event: Event) -> Result<bool,
             display_layout::new_pane(&s.workspace, search),
         );
         panel.set_folder(path.clone());
+        if monitor {
+            panel.set_monitor(true);
+            panel.set_title(crate::i18n::text("monitor-title"));
+            let r = panel.rect();
+            panel.set_rect(RectDip::from_bounds(r.x, r.y, 360.0, 600.0));
+        }
         if path.is_some() {
             folder::Defaults::load(&s.store)?.apply(&s.store, &mut panel)?;
         }

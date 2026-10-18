@@ -20,6 +20,7 @@ pub(super) fn validate_and_upgrade(connection: &Connection) -> Result<(), StoreE
     let mut layout_index = None;
     let mut folder_view = None;
     let mut shortcut_history = None;
+    let mut monitor_settings = None;
     for (name, expected) in definitions {
         let actual: Option<String> = connection
             .query_row(
@@ -40,6 +41,10 @@ pub(super) fn validate_and_upgrade(connection: &Connection) -> Result<(), StoreE
         }
         if name == "shortcut_history" && actual.is_none() {
             shortcut_history = Some(expected);
+            continue;
+        }
+        if name == "panel_monitor_settings" && actual.is_none() {
+            monitor_settings = Some(expected);
             continue;
         }
         if name == "panel_folder_view" && actual.is_none() {
@@ -89,6 +94,7 @@ pub(super) fn validate_and_upgrade(connection: &Connection) -> Result<(), StoreE
         super::folder_view::absorb(&transaction)?;
     }
     if let Some(create) = shortcut_history { transaction.execute_batch(&create)?; }
+    if let Some(create) = monitor_settings { transaction.execute_batch(&create)?; }
     transaction.commit()?;
     Ok(())
 }
@@ -116,6 +122,9 @@ CREATE TABLE panel_folder_settings (
     view TEXT NOT NULL DEFAULT 'list' CHECK(view IN ('list','icons')),
     sort_column INTEGER NOT NULL DEFAULT 0 CHECK(sort_column BETWEEN 0 AND 3),
     sort_direction TEXT NOT NULL DEFAULT 'asc' CHECK(sort_direction IN ('asc','desc'))
+);
+CREATE TABLE panel_monitor_settings (
+    panel_id INTEGER PRIMARY KEY REFERENCES panels(id) ON DELETE CASCADE
 );
 CREATE TABLE desktop_items (
     identity_key TEXT PRIMARY KEY NOT NULL,

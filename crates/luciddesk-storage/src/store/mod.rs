@@ -10,6 +10,8 @@ mod folder_view;
 pub use folder_view::FolderPreferences;
 mod geometry;
 mod monitor_layout;
+#[cfg(test)]
+mod system_monitor_tests;
 mod recovery;
 mod schema;
 mod tabs;
@@ -229,7 +231,15 @@ impl WorkspaceStore {
             panel.set_always_on_top(top);
             panel.set_auto_hide(hide);
             panel.set_search(kind == "search");
-            if kind == "desktop" {
+            let monitor: bool = self.connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM panel_monitor_settings WHERE panel_id=?1)",
+                [panel.id().get()], |r| r.get(0),
+            )?;
+            if monitor {
+                if kind != "desktop" { return Err(StoreError::InvalidData("invalid monitor source".into())); }
+                panel.set_monitor(true);
+            }
+            if kind == "desktop" && !monitor {
                 panel.set_fixed_grid(self.preference(&format!("panel_fixed_grid:{}", panel.id().get()))?.as_deref() == Some("1"));
                 panel.set_free_layout(self.preference(&format!("panel_free_layout:{}", panel.id().get()))?.as_deref() == Some("1"));
                 panel.set_list_view(self.preference(&format!("panel_desktop_list:{}", panel.id().get()))?.as_deref() == Some("1"));
@@ -406,7 +416,7 @@ impl WorkspaceStore {
 
         for panel in workspace.panels() {
             let key = format!("panel_desktop_list:{}", panel.id().get());
-            if panel.folder().is_none() && !panel.is_search() && panel.list_view() {
+            if panel.supports_tabs() && panel.list_view() {
                 transaction.prepare_cached("INSERT INTO metadata(key,value) VALUES (?1,'1') ON CONFLICT(key) DO UPDATE SET value='1' WHERE value != '1'")?.execute( [&key])?;
             } else {
                 transaction.prepare_cached("DELETE FROM metadata WHERE key=?1")?.execute( [&key])?;
@@ -439,13 +449,14 @@ impl WorkspaceStore {
             if !live_panels.contains(&id) {
                 transaction.prepare_cached("DELETE FROM panels WHERE id=?1")?.execute( [id])?;
                 transaction.prepare_cached(
-                    "DELETE FROM metadata WHERE key IN (?1,?2,?3,?4,?5)",
+                    "DELETE FROM metadata WHERE key IN (?1,?2,?3,?4,?5,?6)",
                 )?.execute(params![
                     format!("panel_fixed_grid:{id}"),
                     format!("panel_free_layout:{id}"),
                     format!("panel_desktop_list:{id}"),
                     format!("panel_folder_columns:{id}"),
                     format!("panel_folder_visible_columns:{id}"),
+                    format!("monitor:{id}"),
                 ])?;
             }
         }
@@ -522,6 +533,11 @@ fn insert_panel(
             defaults.is_some_and(|(_,backdrop)| equivalent_backdrop(panel.backdrop(),backdrop)),
         ],
     )?;
+    if panel.is_monitor() {
+        transaction.prepare_cached("INSERT OR IGNORE INTO panel_monitor_settings(panel_id) VALUES (?1)")?.execute([id])?;
+    } else {
+        transaction.prepare_cached("DELETE FROM panel_monitor_settings WHERE panel_id=?1")?.execute([id])?;
+    }
     if let Some(path) = panel.folder() {
         transaction.prepare_cached("INSERT INTO panel_folder_settings(panel_id,path,view) VALUES (?1,?2,?3) ON CONFLICT(panel_id) DO UPDATE SET path=excluded.path,view=excluded.view WHERE path IS NOT excluded.path OR view IS NOT excluded.view")?.execute(params![id,path.to_string_lossy(),if panel.list_view(){"list"}else{"icons"}])?;
     } else {

@@ -11,6 +11,14 @@ pub(super) fn show<F: FnMut(Event) -> bool>(
     let event = |value| (events.borrow_mut())(value);
     let mut anchor = point(lparam);
     let viewport = input::Viewport::read(hwnd);
+    if model.borrow().monitor.is_some() {
+        if lparam == -1 {
+            anchor = POINT { x: client(hwnd).right - (10.0 * viewport.scale) as i32, y: ((HEADER + 4.0) * viewport.scale) as i32 };
+            unsafe { ClientToScreen(hwnd, &raw mut anchor); }
+        }
+        crate::pane::monitor::show_menu(hwnd, anchor, lparam == -1, model, |value| { event(value); });
+        return;
+    }
     let mut tab_context = None;
     if lparam != -1 {
         let mut p = anchor;

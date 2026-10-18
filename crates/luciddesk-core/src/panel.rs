@@ -7,9 +7,10 @@ enum PanelSource {
     Desktop,
     Folder(PathBuf),
     Search,
+    Monitor,
 }
 
-/// A pane with a mutually exclusive desktop, folder, or search content source.
+/// A pane with a mutually exclusive desktop, folder, search, or monitor source.
 #[derive(Clone, Debug, PartialEq)]
 // These flags are independent UI preferences, not mutually exclusive states.
 #[allow(clippy::struct_excessive_bools)]
@@ -27,6 +28,29 @@ pub struct Panel {
     collapsed: bool,
     locked: bool,
     backdrop: Backdrop,
+}
+
+#[cfg(test)]
+mod monitor_tests {
+    use super::*;
+    #[test]
+    fn monitor_source_is_exclusive_and_cannot_share_tabs_or_icon_layout() {
+        let mut panel = Panel::new(PanelId::new(1), "Monitor", RectDip::default());
+        panel.set_folder(Some("C:/test".into()));
+        panel.set_monitor(true);
+        assert!(panel.is_monitor());
+        assert!(panel.folder().is_none());
+        assert!(!panel.is_search());
+        assert!(!panel.supports_tabs());
+        assert!(!panel.list_view());
+        panel.set_fixed_grid(true);
+        assert!(!panel.fixed_grid());
+        panel.set_search(true);
+        assert!(!panel.is_monitor());
+        panel.set_monitor(true);
+        panel.set_monitor(false);
+        assert!(panel.supports_tabs());
+    }
 }
 
 impl Panel {
@@ -60,7 +84,7 @@ impl Panel {
     pub fn folder(&self) -> Option<&Path> {
         match &self.source {
             PanelSource::Folder(path) => Some(path),
-            PanelSource::Desktop | PanelSource::Search => None,
+            PanelSource::Desktop | PanelSource::Search | PanelSource::Monitor => None,
         }
     }
 
@@ -92,6 +116,23 @@ impl Panel {
     #[must_use]
     pub const fn is_search(&self) -> bool {
         matches!(self.source, PanelSource::Search)
+    }
+
+    /// A system monitor contains live metrics, never Shell items or tabs.
+    #[must_use]
+    pub const fn is_monitor(&self) -> bool {
+        matches!(self.source, PanelSource::Monitor)
+    }
+
+    pub fn set_monitor(&mut self, enabled: bool) {
+        if enabled {
+            self.source = PanelSource::Monitor;
+            self.list_view = false;
+            self.fixed_grid = false;
+            self.free_layout = false;
+        } else if self.is_monitor() {
+            self.source = PanelSource::Desktop;
+        }
     }
 
     /// Enables search and clears the folder, list view, collapsed state, and auto-hide flag.

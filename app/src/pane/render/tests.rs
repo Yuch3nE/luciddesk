@@ -391,6 +391,7 @@ fn placeholders_render_without_textures_then_yield_to_loaded_icons() {
 
 fn sample_model() -> GroupModel {
     GroupModel {
+        monitor: None,
         focused: true,
         backdrop: luciddesk_core::Backdrop::Acrylic,
         native_material: true,

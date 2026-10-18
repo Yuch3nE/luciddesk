@@ -17,6 +17,7 @@ mod wake;
 mod folder;
 mod folder_context;
 mod search;
+mod monitor;
 mod settings;
 mod tabs;
 mod sorting;
@@ -204,6 +205,8 @@ enum Event {
     Sizing(*mut RECT, RECT, u32),
     Material(luciddesk_core::Backdrop),
     New,
+    NewMonitor,
+    MonitorOptions(monitor::Preferences),
     EnableSearch,
     ToggleSearch,
     NewFolder,
@@ -235,7 +238,7 @@ enum Event {
 }
 
 fn items_for(state: &PaneApp, id: PanelId) -> Vec<Item> {
-    if state.workspace.panel(id).is_some_and(Panel::is_search) {
+    if state.workspace.panel(id).is_some_and(|p| p.is_search() || p.is_monitor()) {
         return Vec::new();
     }
     if state
@@ -304,6 +307,7 @@ fn create_model(state: &PaneApp, id: PanelId) -> Result<GroupModel, String> {
     let panel = state.workspace.panel(id).ok_or(crate::i18n::text("ui-tab-closed"))?;
     let items = items_for(state, id);
     Ok(GroupModel {
+        monitor: panel.is_monitor().then(|| monitor::Preferences::load(&state.store, id)).transpose()?,
         merge_preview: Vec::new(),
         merge_occluded: false,
         tabs: Vec::new(),
@@ -400,7 +404,7 @@ fn create_view(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result<(), String> 
     state.borrow().wake.watch_window(window.hwnd() as isize)?;
     state.borrow_mut().views.push(View { id, target, window, model });
     display_layout::place(&state.borrow(), id);
-    if state.borrow().session.is_some() || panel.folder().is_some() {
+    if !panel.is_monitor() && (state.borrow().session.is_some() || panel.folder().is_some()) {
         hybrid::register_drop(state, id)?;
     }
     Ok(())
@@ -514,7 +518,7 @@ fn remove_panel(workspace: &mut Workspace, id: PanelId) {
 fn set_order(workspace: &mut Workspace, id: PanelId, items: &[Item]) {
     if workspace
         .panel(id)
-        .is_some_and(|panel| panel.folder().is_some() || panel.is_search())
+        .is_some_and(|panel| !panel.supports_tabs())
     {
         return;
     }

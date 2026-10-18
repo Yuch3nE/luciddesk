@@ -140,7 +140,7 @@ impl Snapshot {
                     let effective = state.views.iter().find(|v| v.id == panel.id()).map(|v| v.model.borrow().collapsed)
                         .or_else(|| state.workspace.tab_group(panel.id()).and_then(|g| state.views.iter().find(|v| v.id == g.active)).map(|v| v.model.borrow().collapsed));
                     json!({"id":panel.id().get().to_string(),"title":panel.title(),
-                        "kind":if panel.is_search(){"search"} else if panel.folder().is_some(){"folder"} else {"desktop"},
+                        "kind":if panel.is_monitor(){"monitor"} else if panel.is_search(){"search"} else if panel.folder().is_some(){"folder"} else {"desktop"},
                         "content_layout":content_layout::live_query(state,panel.id()),"geometry":geometry::query(state,panel,&monitors),"window_bounds_px":geometry::window_bounds(state,panel.id()),"folder_path":panel.folder(),"locked":panel.locked(),"auto_hide":panel.auto_hide(),
                         "manual_collapsed":panel.collapsed(),"effective_collapsed":effective,
                         "list_view":panel.list_view(),"fixed_icon_positions":panel.fixed_grid(),"auto_compact":!panel.fixed_grid(),"align_icons_to_grid":!panel.free_layout(),"always_on_top":panel.always_on_top()})

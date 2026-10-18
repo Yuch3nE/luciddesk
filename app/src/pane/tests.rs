@@ -238,6 +238,7 @@ fn reconcile(workspace: &mut Workspace, inventory: Vec<DesktopItem>) {
 
 pub(super) fn test_model(title: &str) -> GroupModel {
     GroupModel {
+        monitor: None,
         merge_preview: Vec::new(),
         merge_occluded: false,
         tabs: Vec::new(),

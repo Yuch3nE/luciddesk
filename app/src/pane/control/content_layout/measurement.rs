@@ -95,8 +95,8 @@ pub(super) fn size_with_folders(
     }
     for member in members(w, id) {
         let p = w.panel(member).ok_or("panel does not exist")?;
-        if p.is_search() {
-            return Err("content fitting does not support dynamic search panels".into());
+        if p.is_search() || p.is_monitor() {
+            return Err("content fitting supports desktop and folder panels only".into());
         }
         if p.locked() {
             return Err("explicitly unlock the panel before fitting or arranging".into());
@@ -165,6 +165,7 @@ pub(super) fn content_height(w: &Workspace, id: PanelId, columns: usize, folders
 pub(in crate::pane::control) fn minimum(w: &Workspace, id: PanelId, width: f32, folders: &FolderSnapshots) -> (f32, f32) {
     let panel = w.panel(id).unwrap();
     if panel.is_search() { return (RectDip::MIN_WIDTH, RectDip::MIN_HEIGHT); }
+    if panel.is_monitor() { return (300.0, 400.0); }
     let g = metrics(w);
     let columns = ((width - layout::PADDING * 2.0) / g.cell_width).floor().max(1.0) as usize;
     let cell = if panel.list_view() { (layout::LIST_CELL_WIDTH, layout::LIST_ROW) } else { (g.cell_width, g.cell_height) };
@@ -177,7 +178,7 @@ pub(in crate::pane::control) fn minimum(w: &Workspace, id: PanelId, width: f32, 
 
 pub(in crate::pane::control) fn query(w: &Workspace, id: PanelId) -> serde_json::Value {
     let p = w.panel(id).unwrap();
-    if p.is_search() || p.folder().is_some() {
+    if p.is_search() || p.is_monitor() || p.folder().is_some() {
         return json!({"supported":false,"reason":"desktop panels only"});
     }
     let g = metrics(w);

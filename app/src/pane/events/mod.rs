@@ -15,6 +15,31 @@ pub(super) fn handle(
     id: PanelId,
     event: Event,
 ) -> Result<bool, String> {
+    if let Event::MonitorOptions(options) = &event {
+        let s = state.borrow();
+        if !s.workspace.panel(id).is_some_and(Panel::is_monitor) { return Ok(false); }
+        options.save(&s.store, id)?;
+        let mut resize = None;
+        if let Some(view) = s.views.iter().find(|v| v.id == id) {
+            if !view.model.borrow().collapsed && view.model.borrow().monitor.as_ref().is_some_and(|old| old.compact != options.compact) {
+                resize = Some(view.window.hwnd() as isize);
+            }
+            view.model.borrow_mut().monitor = Some(options.clone());
+            unsafe { InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0); }
+        }
+        drop(s);
+        if let Some(hwnd) = resize {
+            let weak = Rc::downgrade(state);
+            let compact = options.compact;
+            window::post_action(hwnd as _, move || {
+                let Some(state) = weak.upgrade() else { return; };
+                if let Some(rect) = monitor::resize_layout(hwnd as _, compact) {
+                    if let Err(error) = handle(&state, id, Event::Geometry(rect)) { window::error(&error); }
+                }
+            });
+        }
+        return Ok(false);
+    }
     if matches!(event, Event::ResetPaneOptions) {
         let s = state.borrow();
         s.store.save_metadata_preferences(&[
@@ -116,7 +141,7 @@ pub(super) fn handle(
         let mut s = state.borrow_mut();
         let old = s.workspace.clone();
         let panel = s.workspace.panel_mut(id).ok_or(crate::i18n::text("ui-panel-closed"))?;
-        if panel.is_search() {
+        if panel.is_search() || panel.is_monitor() {
             return Ok(false);
         }
         let enabled = !panel.list_view();
@@ -245,7 +270,7 @@ pub(super) fn handle(
     }
     if matches!(
         event,
-        Event::New | Event::EnableSearch | Event::MapFolder(_)
+        Event::New | Event::NewMonitor | Event::EnableSearch | Event::MapFolder(_)
     ) {
         return lifecycle::create(state, event);
     }

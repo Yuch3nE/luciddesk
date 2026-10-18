@@ -42,6 +42,8 @@ pub(super) fn apply(
         | Event::ToggleListView
         | Event::ToggleSearch
         | Event::EnableSearch
+        | Event::NewMonitor
+        | Event::MonitorOptions(_)
         | Event::FileDrag(_)
         | Event::NewFolder
         | Event::MapFolder(_)
@@ -311,7 +313,7 @@ pub(super) fn apply(
                 .unwrap_or_else(|| vec![index]);
             let target_window = unsafe { WindowFromPoint(point) };
             let target = s.views.iter().rev().find_map(|view| {
-                if s.workspace.panel(view.id).is_some_and(Panel::is_search) {
+                if s.workspace.panel(view.id).is_some_and(|p| p.is_search() || p.is_monitor()) {
                     return None;
                 }
                 let hwnd = view.window.hwnd().cast();

@@ -22,6 +22,7 @@ pub enum Action {
     Show,
     New,
     NewFolder,
+    NewMonitor,
     Exit,
 }
 
@@ -207,6 +208,7 @@ fn menu(
         6 => Some(Action::Search),
         7 => Some(Action::Refresh),
         8 => Some(Action::OpenConfig),
+        9 => Some(Action::NewMonitor),
         _ => None,
     }
 }
@@ -219,6 +221,7 @@ fn menu_entries(search_enabled: bool) -> Vec<crate::pane::menu::Entry> {
         entry(0, "", "", ""),
         entry(2, crate::i18n::text("ui-new-group"), "\u{e710}", ""),
         entry(5, crate::i18n::text("ui-new-folder-panel"), "\u{e8b7}", ""),
+        entry(9, crate::i18n::text("monitor-new"), "\u{e9d9}", ""),
         entry(0, "", "", ""),
         entry(4, crate::i18n::text("ui-settings"), "\u{e713}", ""),
         entry(8, crate::i18n::text("tray-open-config"), "\u{e8b7}", ""),

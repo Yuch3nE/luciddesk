@@ -7,7 +7,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::*;
 pub(super) fn independent(workspace: &Workspace, id: PanelId) -> bool {
     workspace
         .panel(id)
-        .is_some_and(|p| p.folder().is_some() || p.is_search())
+        .is_some_and(|p| !p.supports_tabs())
         || workspace.tab_group(id).is_some_and(|group| {
             group
                 .members

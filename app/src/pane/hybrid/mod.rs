@@ -217,6 +217,11 @@ pub fn run(path: &Path, title: Option<String>) -> Result<(), String> {
                         window::error(&error);
                     }
                 }
+                crate::tray::Action::NewMonitor => {
+                    if let Err(error) = handle(&state, PanelId::new(0), Event::NewMonitor) {
+                        window::error(&error);
+                    }
+                }
                 crate::tray::Action::Settings => {
                     if let Err(error) = handle(&state, PanelId::new(0), Event::Settings) {
                         window::error(&error);
@@ -391,7 +396,7 @@ pub(super) fn register_drop(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result
         .borrow()
         .workspace
         .panel(id)
-        .is_some_and(Panel::is_search)
+        .is_some_and(|p| p.is_search() || p.is_monitor())
     {
         return Ok(());
     }

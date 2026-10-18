@@ -14,6 +14,7 @@ pub(super) struct GeometryCache {
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Clone)]
 pub struct GroupModel {
+    pub(super) monitor: Option<super::monitor::Preferences>,
     pub sort_orders: Rc<RefCell<HashMap<PanelId, (u8, bool)>>>,
     pub merge_preview: Vec<(PanelId, String)>,
     pub merge_occluded: bool,

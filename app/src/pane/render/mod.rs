@@ -56,6 +56,7 @@ struct TitleLayout {
 }
 
 pub struct Renderer {
+    monitor: Option<super::monitor::Drawing>,
     family: String,
     language: &'static str,
     #[cfg(test)]
@@ -254,6 +255,7 @@ impl Renderer {
             ))?.metrics().width_including_trailing_whitespace;
         }
         Ok(Self {
+            monitor: None,
             family: family.clone(),
             language: crate::i18n::language(),
             #[cfg(test)]
@@ -415,6 +417,9 @@ impl Renderer {
 
     #[allow(clippy::too_many_lines)]
     fn draw(&mut self, width: u32, height: u32, scale: f32, model: &GroupModel, grid: super::layout::Grid) -> Result<()> {
+        if model.monitor.is_some() && self.monitor.is_none() {
+            self.monitor = Some(super::monitor::Drawing::new()?);
+        }
         if self.family != super::fonts::family() || self.language != crate::i18n::language() {
             let fresh = Self::new()?;
             self.family = fresh.family;
@@ -469,7 +474,14 @@ impl Renderer {
                 let [background, outline, white, dim, placeholder_fill, placeholder_edge, selection, hover, inactive] =
                     canvas_result(brushes.get(context, &target, [
                         if !model.native_material { super::theme::mica_fallback(model.backdrop, model.dark) } else { None }
-                            .unwrap_or(ColorF::new(base, base, base, opacity)),
+                            .unwrap_or_else(|| {
+                                if model.monitor.is_some() && !model.native_material
+                                    && matches!(model.backdrop, luciddesk_core::Backdrop::Translucent { .. })
+                                {
+                                    if model.dark { ColorF::new(0.075, 0.082, 0.10, opacity) }
+                                    else { ColorF::new(0.985, 0.987, 0.99, opacity) }
+                                } else { ColorF::new(base, base, base, opacity) }
+                            }),
                         super::theme::panel_border(model.dark, model.backdrop),
                         ColorF::new(ink, ink, ink, 1.0),
                         ColorF::new(ink, ink, ink, 0.85),
@@ -634,7 +646,11 @@ impl Renderer {
                     let divider_y = ((model.content_header() - inset + 4.0) * scale).round() / scale;
                     target.fill_rect(&Rect::from_xywh(inset, divider_y, (w - inset * 2.0).max(0.0), 1.0 / scale), &divider);
                 }
-                if h > model.content_header() + 1.0 {
+                if let Some(options) = model.monitor.as_ref().filter(|_| h > model.content_header() + 1.0) {
+                    self.monitor.as_mut().unwrap().paint(&target, options,
+                        Rect::from_xywh(6.0, model.content_header() + 6.0, (w - 12.0).max(1.0), (h - model.content_header() - 12.0).max(1.0)),
+                        white, dim, model.dark, ink)?;
+                } else if h > model.content_header() + 1.0 {
                     target.push_clip(&{
                         Rect::from_xywh(6.0, model.content_header(), w - 12.0, (h - model.horizontal_inset(w) - model.content_header() - 6.0).max(0.0))
                     });

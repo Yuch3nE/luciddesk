@@ -24,6 +24,7 @@
 | 设置页、语言或字体布局 | [设置组件](settings-components.md) → [多语言](localization.md) → [绘图](rendering.md) |
 | 配置、数据兼容或备份恢复 | [配置与工作区存储](storage.md) → [API 与提交边界](rust-api-review.md) → [验证要求](validation.md) |
 | 托盘入口或任务栏重建 | [运行时托盘](tray.md) → [架构说明](architecture.md) |
+| 系统监控与后台采样 | [原生系统监控面板](system-monitor.md) → [绘图与绑定](rendering.md) → [存储](storage.md) |
 
 ## 文档索引
 
