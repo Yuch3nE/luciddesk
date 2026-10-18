@@ -1,6 +1,8 @@
 [workspace]
 members = [
     "app",
+    "crates/luciddesk-plugin-api",
+    "plugins/system-monitor",
     "cli",
     "crates/luciddesk-api",
     "crates/luciddesk-diagnostics",
