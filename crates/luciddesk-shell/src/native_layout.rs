@@ -55,6 +55,27 @@ fn validate_revision(
     Ok(())
 }
 
+fn entry_error(
+    error: crate::ShellError,
+    index: i32,
+    count: i32,
+    parsing_name: Option<&str>,
+) -> windows::core::Error {
+    // Preserve COM retry semantics and the original diagnostic. Non-COM
+    // decoding failures are not evidence that Explorer changed its contents.
+    let code = match &error {
+        crate::ShellError::Com(error) => error.code(),
+        _ => windows::Win32::Foundation::E_FAIL,
+    };
+    windows::core::Error::new(
+        code,
+        format!(
+            "Shell item metadata failed: index={index}, count={count}, parsing_name={:?}: {error}",
+            parsing_name.unwrap_or("<unavailable>")
+        ),
+    )
+}
+
 /// Explorer-owned item IDs and view metrics, without opening desktop files.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct NativeDesktopRevision {
@@ -213,24 +234,29 @@ fn capture_desktop_snapshot() -> Result<NativeDesktopSnapshot, String> {
                     read_error(error, "IFolderView2::GetItemPosition", index, count)
                 })?;
                 let item: windows::Win32::UI::Shell::IShellItem =
-                    windows::Win32::UI::Shell::SHCreateItemWithParent(
-                        None,
-                        &parent,
-                        pidl.as_ptr(),
-                    )?;
-                if let Ok(mut entry) = crate::namespace::shell_entry(&item) {
-                    // Known-folder desktop objects can expose a filesystem path but have a
-                    // different icon and verbs from the underlying directory (e.g. User Files).
-                    if let Ok(parsing_name) = crate::namespace::shell_item_name(
+                    windows::Win32::UI::Shell::SHCreateItemWithParent(None, &parent, pidl.as_ptr())
+                        .map_err(|error| {
+                            read_error(error, "SHCreateItemWithParent", index, count)
+                        })?;
+                let mut entry = crate::namespace::shell_entry(&item).map_err(|error| {
+                    let name = crate::namespace::shell_item_name(
                         &item,
                         windows::Win32::UI::Shell::SIGDN_DESKTOPABSOLUTEPARSING,
-                    ) && parsing_name.starts_with("::{")
-                    {
-                        entry.identity = luciddesk_core::ShellIdentity::Namespace { parsing_name };
-                    }
-                    items.push((entry, position.x + origin.x, position.y + origin.y));
-                    view_indices.push(index);
+                    )
+                    .ok();
+                    entry_error(error, index, count, name.as_deref())
+                })?;
+                // Known-folder desktop objects can expose a filesystem path but have a
+                // different icon and verbs from the underlying directory (e.g. User Files).
+                if let Ok(parsing_name) = crate::namespace::shell_item_name(
+                    &item,
+                    windows::Win32::UI::Shell::SIGDN_DESKTOPABSOLUTEPARSING,
+                ) && parsing_name.starts_with("::{")
+                {
+                    entry.identity = luciddesk_core::ShellIdentity::Namespace { parsing_name };
                 }
+                items.push((entry, position.x + origin.x, position.y + origin.y));
+                view_indices.push(index);
             }
             validate_revision(&revision, &capture_revision(&shell)?)?;
             Ok(NativeDesktopSnapshot {
@@ -250,7 +276,9 @@ fn capture_desktop_snapshot() -> Result<NativeDesktopSnapshot, String> {
                     luciddesk_core::ShellIdentity::FileSystem { path, .. } => {
                         path.to_string_lossy().into_owned()
                     }
-                    luciddesk_core::ShellIdentity::Namespace { parsing_name } => parsing_name.clone(),
+                    luciddesk_core::ShellIdentity::Namespace { parsing_name } => {
+                        parsing_name.clone()
+                    }
                 };
                 (name, index)
             },
@@ -262,6 +290,49 @@ fn capture_desktop_snapshot() -> Result<NativeDesktopSnapshot, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn metadata_failure_preserves_cause_and_rejects_partial_capture() {
+        let mut attempts = 0;
+        let result = retry_snapshot(|| {
+            attempts += 1;
+            let mut captured = Vec::new();
+            for index in 0..3 {
+                if index == 1 {
+                    return Err(entry_error(
+                        crate::ShellError::Com(windows::core::Error::from_hresult(
+                            windows::Win32::Foundation::E_ACCESSDENIED,
+                        )),
+                        index,
+                        3,
+                        Some("::{test-item}"),
+                    ));
+                }
+                captured.push(index);
+            }
+            Ok(captured)
+        });
+        let error = result.unwrap_err();
+        assert_eq!(attempts, 1);
+        assert_eq!(error.code(), windows::Win32::Foundation::E_ACCESSDENIED);
+        let message = error.to_string();
+        assert!(message.contains("index=1, count=3"));
+        assert!(message.contains("::{test-item}"));
+        assert!(message.contains("Windows Shell COM error"));
+    }
+
+    #[test]
+    fn undecodable_metadata_is_not_reported_as_a_snapshot_race() {
+        let error = entry_error(
+            crate::ShellError::Utf16(String::from_utf16(&[0xD800]).unwrap_err()),
+            0,
+            1,
+            None,
+        );
+        assert_eq!(error.code(), windows::Win32::Foundation::E_FAIL);
+        assert!(error.to_string().contains("invalid UTF-16"));
+        assert!(error.to_string().contains("<unavailable>"));
+    }
 
     #[test]
     fn retries_bounds_and_changed_snapshots_without_returning_partial_data() {
