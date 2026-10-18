@@ -39,8 +39,14 @@ impl State {
 struct ConnectionNotice {
     unavailable: bool,
     generation: u64,
+    last_error: Option<String>,
 }
 impl ConnectionNotice {
+    fn error_changed(&mut self, error: Option<&str>) -> bool {
+        if self.last_error.as_deref() == error { return false; }
+        self.last_error = error.map(str::to_owned);
+        true
+    }
     fn transition(&mut self, unavailable: bool) -> bool {
         if self.unavailable == unavailable { return false; }
         self.unavailable = unavailable;
@@ -64,13 +70,20 @@ fn desktop_connection_log(database: &std::path::Path, error: Option<&str>) -> st
 }
 
 fn notify_connection(state: &Rc<RefCell<PaneApp>>) {
-    let (path, error, generation) = {
+    let (path, error, generation, notify) = {
         let mut s = state.borrow_mut();
         let Some(runtime) = &mut s.runtime else { return; };
-        if !runtime.notice.transition(runtime.desktop_error.is_some()) { return; }
-        (runtime.path.clone(), runtime.desktop_error.clone(), runtime.notice.generation)
+        let notify = runtime.notice.transition(runtime.desktop_error.is_some());
+        let changed = runtime.notice.error_changed(runtime.desktop_error.as_deref());
+        if !notify && !changed { return; }
+        (runtime.path.clone(), runtime.desktop_error.clone(), runtime.notice.generation, notify)
     };
     let logged = desktop_connection_log(&path, error.as_deref());
+    // Changed failure reasons are logged without repeating the modal warning.
+    if !notify {
+        if let Err(error) = logged { luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Error, "desktop.connection", &format!("Desktop connection log: {error}")); }
+        return;
+    }
     let Some(error) = error else {
         if let Err(error) = logged { luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Error, "desktop.connection", &format!("Desktop connection log: {error}")); }
         return;
@@ -507,6 +520,20 @@ pub(super) fn supervisor(state: &Rc<RefCell<PaneApp>>) -> Result<windows_window:
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn changed_failure_is_logged_without_a_second_notification() {
+        let mut notice = super::ConnectionNotice::default();
+        assert!(notice.transition(true));
+        assert!(notice.error_changed(Some("snapshot")));
+        assert!(!notice.transition(true));
+        assert!(!notice.error_changed(Some("snapshot")));
+        assert!(notice.error_changed(Some("hook")));
+        assert_eq!(notice.generation, 1);
+        assert!(notice.transition(false));
+        assert!(notice.error_changed(None));
+        assert!(!notice.error_changed(None));
+    }
+
     #[test]
     fn saved_language_notifies_open_windows_without_restart() {
         let _apartment = crate::pane::test_support::apartment();

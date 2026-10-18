@@ -49,6 +49,15 @@ impl AttachTarget {
     }
 }
 
+// Capture the native error before cleanup or diagnostic calls can overwrite it.
+fn attach_os_error(view: HWND, stage: diagnostics::Stage) -> String {
+    let error = std::io::Error::last_os_error();
+    let code = error.raw_os_error().unwrap_or(0) as u32;
+    let hr = if code == 0 { windows::Win32::Foundation::E_FAIL } else { windows::core::HRESULT::from_win32(code) };
+    diagnostics::failure(view, stage, hr);
+    format!("{error}; {}", diagnostics::summary(view))
+}
+
 fn wait_for_attach(target: &AttachTarget, owner: HWND) -> Result<(), String> {
     let started = Instant::now();
     let mut next_discovery = Duration::ZERO;
@@ -84,7 +93,10 @@ fn wait_for_attach(target: &AttachTarget, owner: HWND) -> Result<(), String> {
             MsgWaitForMultipleObjectsEx(0, std::ptr::null(), 10, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
         }
     }
-    Err("Explorer 未确认桌面过滤连接".into())
+    diagnostics::attach_failure(target.view, windows::core::HRESULT::from_win32(
+        windows_sys::Win32::Foundation::ERROR_TIMEOUT,
+    ));
+    Err(format!("Explorer 在 3 秒内未确认桌面过滤连接; {}", diagnostics::summary(target.view)))
 }
 impl FilterSession {
     /// # Errors
@@ -106,7 +118,7 @@ impl FilterSession {
             if !crate::discovery::component_released_in(target.process)? {
                 return Err("Explorer 中的旧桌面组件尚未释放。请稍后重试；若持续出现，请重启资源管理器后再启动 LucidDesk。".into());
             }
-            let path = std::fs::canonicalize(dll).map_err(|e| e.to_string())?;
+            let path = std::fs::canonicalize(dll).map_err(|e| format!("桌面组件路径解析失败 ({}): {e}", dll.display()))?;
             let path: Vec<u16> = path
                 .to_string_lossy()
                 .encode_utf16()
@@ -120,13 +132,14 @@ impl FilterSession {
                 LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32,
             );
             if module.is_null() {
-                let error = std::io::Error::last_os_error();
-                return Err(format!("{error}; {}", diagnostics::summary(view)));
+                let error = attach_os_error(view, diagnostics::Stage::LoadLibrary);
+                return Err(error);
             }
             diagnostics::stage(view, diagnostics::Stage::Export);
             let Some(proc) = GetProcAddress(module, windows_sys::s!("LucidDeskFilterHook")) else {
+                let error = attach_os_error(view, diagnostics::Stage::Export);
                 FreeLibrary(module);
-                return Err("Hook DLL 缺少视图过滤入口".into());
+                return Err(error);
             };
             let callback = std::mem::transmute::<
                 unsafe extern "system" fn() -> isize,
@@ -140,9 +153,9 @@ impl FilterSession {
                 target.thread,
             );
             if hook.is_null() {
-                let error = std::io::Error::last_os_error();
+                let error = attach_os_error(view, diagnostics::Stage::Hook);
                 FreeLibrary(module);
-                return Err(format!("{error}; {}", diagnostics::summary(view)));
+                return Err(error);
             }
             let mut session = Self {
                 view,
@@ -157,7 +170,7 @@ impl FilterSession {
             RemovePropW(view, ERROR);
             diagnostics::stage(view, diagnostics::Stage::PostAttach);
             if PostMessageW(view, message(), owner as usize, MAGIC as isize) == 0 {
-                return Err("无法请求桌面过滤连接".into());
+                return Err(attach_os_error(view, diagnostics::Stage::PostAttach));
             }
             wait_for_attach(&target, owner)?;
             session.explorer_watch = Some(explorer::ExplorerWatch::new(target.process, owner)?);
@@ -454,6 +467,19 @@ mod attach_tests {
         }
     }
     impl Drop for Window { fn drop(&mut self) { unsafe { DestroyWindow(self.0); } } }
+    #[test]
+    fn native_attach_errors_keep_stage_and_hresult() {
+        let view = Window::new();
+        for stage in [diagnostics::Stage::LoadLibrary, diagnostics::Stage::Export,
+            diagnostics::Stage::Hook, diagnostics::Stage::PostAttach] {
+            unsafe { windows_sys::Win32::Foundation::SetLastError(5); }
+            let error = attach_os_error(view.0, stage);
+            assert!(error.contains("HRESULT=0x80070005"));
+            assert!(error.contains(&format!("({})", stage as usize)));
+        }
+        unsafe { windows_sys::Win32::Foundation::SetLastError(0); }
+        assert!(attach_os_error(view.0, diagnostics::Stage::Hook).contains("HRESULT=0x80004005"));
+    }
     #[test]
     fn destroyed_attach_target_aborts_without_waiting_for_timeout() {
         let view = Window::new();

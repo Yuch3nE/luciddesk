@@ -16,6 +16,9 @@ pub struct ApplyError {
     pub stage: Stage,
 }
 impl ApplyError {
+    pub fn retryable(&self) -> bool {
+        self.before_write || matches!(self.stage, Stage::VerifyAdd | Stage::VerifyRemove)
+    }
     fn at(error: windows::core::Error, stage: Stage) -> Self {
         Self { error, before_write: false, stage }
     }
@@ -37,6 +40,7 @@ impl From<windows::core::Error> for ApplyError {
 // view in tests. No test-only branch changes the recovery decisions.
 trait View {
     fn snapshot(&mut self) -> Result<Vec<Item>>;
+    fn present(&mut self, targets: &[&Item]) -> Result<BTreeSet<String>>;
     fn exists(&mut self, name: &str) -> Result<bool>;
     fn add(&mut self, row: &Item) -> Result<()>;
     fn remove(&mut self, row: &Item) -> Result<()>;
@@ -45,6 +49,22 @@ trait View {
 struct ShellView<'a> { folder: &'a IFolderView2, objects: &'a IShellFolderView }
 impl View for ShellView<'_> {
     fn snapshot(&mut self) -> Result<Vec<Item>> { snapshot(self.folder) }
+    fn present(&mut self, targets: &[&Item]) -> Result<BTreeSet<String>> {
+        // Verify identities without invoking unrelated metadata or layout reads.
+        unsafe {
+            let count = self.folder.ItemCount(SVGIO_ALLVIEW)?;
+            let mut present = BTreeSet::new();
+            for index in 0..count {
+                let row = Item { pidl: self.folder.Item(index)?, name: String::new(), position: POINT::default() };
+                if row.pidl.is_null() { return Err(changed_snapshot()); }
+                for target in targets {
+                    if ILIsEqual(row.pidl, target.pidl).as_bool() { present.insert(target.name.clone()); }
+                }
+            }
+            if self.folder.ItemCount(SVGIO_ALLVIEW)? != count { return Err(changed_snapshot()); }
+            Ok(present)
+        }
+    }
     fn exists(&mut self, name: &str) -> Result<bool> { exists(name) }
     fn add(&mut self, row: &Item) -> Result<()> { unsafe { self.objects.AddObject(row.pidl).map(|_| ()) } }
     fn remove(&mut self, row: &Item) -> Result<()> { unsafe { self.objects.RemoveObject(Some(row.pidl)).map(|_| ()) } }
@@ -234,14 +254,6 @@ impl Membership {
         }
         Ok(())
     }
-    pub fn apply(
-        &mut self,
-        folder: &IFolderView2,
-        object_view: &IShellFolderView,
-        paused: bool,
-    ) -> std::result::Result<(), ApplyError> {
-        self.apply_before_write(folder, object_view, paused, || {})
-    }
     pub fn apply_before_write(
         &mut self,
         folder: &IFolderView2,
@@ -266,13 +278,9 @@ impl Membership {
             stage: Stage::Snapshot,
         })?;
 
-        let layout: BTreeMap<_, _> = current
-            .iter()
-            .map(|row| (row.name.clone(), row.position))
-            .collect();
         if self.baseline.is_empty() && !self.desired.is_empty() && !paused {
             self.baseline_order = current.iter().map(|row| row.name.clone()).collect();
-            self.baseline = layout;
+            self.baseline = current.iter().map(|row| (row.name.clone(), row.position)).collect();
             self.user_layout_changed = false;
         }
         let release: Vec<_> = self
@@ -291,13 +299,16 @@ impl Membership {
                 added = true;
             }
         }
-        if added {
-            current = view.snapshot().map_err(|e| ApplyError::at(e, Stage::VerifyAdd))?;
-        }
+        let present = if added {
+            let targets: Vec<_> = release.iter().map(|name| &self.hidden[name]).collect();
+            view.present(&targets).map_err(|e| ApplyError::at(e, Stage::VerifyAdd))?
+        } else {
+            current.iter().map(|row| row.name.clone()).collect()
+        };
         // Do not discard recovery PIDLs merely because AddObject returned S_OK.
         // Keep the entire release set until all surviving targets are observed.
         for name in &release {
-            if !current.iter().any(|row| &row.name == name)
+            if !present.contains(name)
                 && view.exists(name).map_err(|e| ApplyError::at(e, Stage::Existence))? {
                 return Err(ApplyError::at(changed_snapshot(), Stage::VerifyAdd));
             }
@@ -313,6 +324,9 @@ impl Membership {
             && !self.user_layout_changed
             && self.needs_position_restore(&current, added)
         {
+            if added {
+                current = view.snapshot().map_err(|e| ApplyError::at(e, Stage::Position))?;
+            }
             // With auto-arrange enabled, the batch order influences insertion.
             // Reapply in the original view order, not the order AddObject produced.
             let positioned: Vec<_> = self
@@ -348,8 +362,9 @@ impl Membership {
                 removed.insert(name);
             }
             if !removed.is_empty() {
-                let observed = view.snapshot().map_err(|e| ApplyError::at(e, Stage::VerifyRemove))?;
-                if observed.iter().any(|row| removed.contains(&row.name)) {
+                let targets: Vec<_> = removed.iter().map(|name| &self.hidden[name]).collect();
+                let observed = view.present(&targets).map_err(|e| ApplyError::at(e, Stage::VerifyRemove))?;
+                if !observed.is_empty() {
                     return Err(ApplyError::at(changed_snapshot(), Stage::VerifyRemove));
                 }
             }
@@ -362,9 +377,61 @@ impl Membership {
         Ok(())
     }
     pub fn restore(&mut self, folder: &IFolderView2, object_view: &IShellFolderView) -> std::result::Result<(), ApplyError> {
-        self.desired.clear();
-        self.apply(folder, object_view, false)
+        self.restore_view(&mut ShellView { folder, objects: object_view })
     }
+    fn restore_view(&mut self, view: &mut impl View) -> std::result::Result<(), ApplyError> {
+        self.desired.clear();
+        // Verify the batch once, but release each completed identity independently.
+        let targets: Vec<_> = self.hidden.values().collect();
+        let mut added = false;
+        let mut failure = None;
+        if !targets.is_empty() {
+            let present = view.present(&targets).map_err(|e| ApplyError::at(e, Stage::VerifyAdd))?;
+            let names: Vec<_> = self.hidden.keys().cloned().collect();
+            for name in names {
+                if present.contains(&name) {
+                    self.hidden.remove(&name);
+                    continue;
+                }
+                match view.exists(&name) {
+                    Ok(false) => { self.hidden.remove(&name); }
+                    Ok(true) => {
+                        added = true; // A failed COM call may still have inserted it.
+                        if let Err(error) = view.add(&self.hidden[&name]) {
+                            failure.get_or_insert_with(|| ApplyError::at(error, Stage::Add));
+                        }
+                    }
+                    Err(error) => { failure.get_or_insert_with(|| ApplyError::at(error, Stage::Existence)); }
+                }
+            }
+            if added {
+                let targets: Vec<_> = self.hidden.values().collect();
+                let observed = view.present(&targets).map_err(|e| ApplyError::at(e, Stage::VerifyAdd))?;
+                self.hidden.retain(|name, _| !observed.contains(name));
+            }
+            if !self.hidden.is_empty() {
+                return Err(failure.unwrap_or_else(|| ApplyError::at(changed_snapshot(), Stage::VerifyAdd)));
+            }
+        }
+        // Layout is best effort once visibility has been verified. The recovery
+        // coordinator records Position as a warning and completes without refresh.
+        let layout = (|| -> Result<()> {
+            if self.baseline.is_empty() || self.user_layout_changed { return Ok(()); }
+            let current = view.snapshot()?;
+            if !self.needs_position_restore(&current, added) { return Ok(()); }
+            let positions: Vec<_> = self.baseline_order.iter().filter_map(|name| {
+                let row = current.iter().find(|row| &row.name == name)?;
+                Some((row.pidl.cast_const(), *self.baseline.get(name)?))
+            }).collect();
+            if !positions.is_empty() { view.position(&positions)?; }
+            Ok(())
+        })();
+        self.baseline.clear();
+        self.baseline_order.clear();
+        self.user_layout_changed = false;
+        layout.map_err(|e| ApplyError::at(e, Stage::Position))
+    }
+
     pub fn user_changed_layout(&mut self) {
         self.user_layout_changed = true;
     }
@@ -406,28 +473,39 @@ mod tests {
         visible: BTreeSet<String>,
         missing: BTreeSet<String>,
         unknown: bool,
+        unknown_names: BTreeSet<String>,
+        failed_add_names: BTreeSet<String>,
         add_error: bool,
         add_noop: bool,
         remove_error_after_write: bool,
         remove_noop: bool,
         reads: usize,
         fail_read: Option<usize>,
+        fail_verify: bool,
+        verify_reads: usize,
+        fail_verify_at: Option<usize>,
+        fail_position: bool,
     }
     fn row(name: &str) -> Item {
         Item { name: name.into(), pidl: std::ptr::null_mut(), position: POINT::default() }
     }
     impl View for FaultView {
+        fn present(&mut self, targets: &[&Item]) -> Result<BTreeSet<String>> {
+            self.verify_reads += 1;
+            if self.fail_verify || self.fail_verify_at == Some(self.verify_reads) { return Err(windows::Win32::Foundation::E_FAIL.into()); }
+            Ok(targets.iter().filter(|row| self.visible.contains(&row.name)).map(|row| row.name.clone()).collect())
+        }
         fn snapshot(&mut self) -> Result<Vec<Item>> {
             self.reads += 1;
             if self.fail_read == Some(self.reads) { return Err(windows::Win32::Foundation::E_FAIL.into()); }
             Ok(self.visible.iter().map(|name| row(name)).collect())
         }
         fn exists(&mut self, name: &str) -> Result<bool> {
-            if self.unknown { return Err(windows::Win32::Foundation::E_ACCESSDENIED.into()); }
+            if self.unknown || self.unknown_names.contains(name) { return Err(windows::Win32::Foundation::E_ACCESSDENIED.into()); }
             Ok(!self.missing.contains(name))
         }
         fn add(&mut self, row: &Item) -> Result<()> {
-            if self.add_error { return Err(windows::Win32::Foundation::E_FAIL.into()); }
+            if self.add_error || self.failed_add_names.contains(&row.name) { return Err(windows::Win32::Foundation::E_FAIL.into()); }
             if !self.add_noop { self.visible.insert(row.name.clone()); }
             Ok(())
         }
@@ -436,7 +514,10 @@ mod tests {
             if self.remove_error_after_write { return Err(windows::Win32::Foundation::E_FAIL.into()); }
             Ok(())
         }
-        fn position(&mut self, _: &[(*const ITEMIDLIST, POINT)]) -> Result<()> { Ok(()) }
+        fn position(&mut self, _: &[(*const ITEMIDLIST, POINT)]) -> Result<()> {
+            if self.fail_position { return Err(windows::Win32::Foundation::E_FAIL.into()); }
+            Ok(())
+        }
     }
     fn hidden() -> Membership {
         let mut membership = Membership::default();
@@ -504,7 +585,7 @@ mod tests {
     #[test]
     fn read_failure_after_add_retains_release_records() {
         let mut membership = hidden();
-        let mut view = FaultView { fail_read: Some(2), ..Default::default() };
+        let mut view = FaultView { fail_verify: true, ..Default::default() };
         let error = membership.apply_view(&mut view, false, || {}).unwrap_err();
         assert_eq!(error.stage, Stage::VerifyAdd);
         assert!(!error.before_write);
@@ -512,6 +593,102 @@ mod tests {
         assert!(view.visible.contains("a"));
         membership.apply_view(&mut view, false, || {}).unwrap();
         assert!(membership.hidden.is_empty());
+    }
+    #[test]
+    fn layout_failure_does_not_keep_visibility_recovery_alive() {
+        for fail_read in [None, Some(1)] {
+            let mut membership = hidden();
+            membership.baseline.insert("a".into(), POINT { x: 20, y: 30 });
+            membership.baseline_order.push("a".into());
+            let mut view = FaultView { fail_position: true, fail_read, ..Default::default() };
+            assert_eq!(membership.restore_view(&mut view).unwrap_err().stage, Stage::Position);
+            assert!(membership.hidden.is_empty());
+            assert!(view.visible.contains("a"));
+            membership.restore_view(&mut view).unwrap();
+        }
+    }
+    #[test]
+    fn recovery_restores_members_even_when_all_layout_reads_fail() {
+        let mut membership = hidden();
+        let mut view = FaultView { fail_read: Some(1), ..Default::default() };
+        membership.restore_view(&mut view).unwrap();
+        assert!(view.visible.contains("a"));
+        assert!(membership.hidden.is_empty());
+        assert_eq!(view.reads, 0);
+    }
+    #[test]
+    fn recovery_keeps_unverified_members_and_can_retry() {
+        for (unknown, noop, verify) in [(true, false, false), (false, true, false), (false, false, true)] {
+            let mut membership = hidden();
+            let mut view = FaultView { unknown, add_noop: noop, fail_verify: verify, ..Default::default() };
+            assert!(membership.restore_view(&mut view).is_err());
+            assert!(membership.hidden.contains_key("a"));
+            view.unknown = false;
+            view.add_noop = false;
+            view.fail_verify = false;
+            membership.restore_view(&mut view).unwrap();
+            assert!(membership.hidden.is_empty());
+            assert!(view.visible.contains("a"));
+        }
+    }
+    #[test]
+    fn recovery_retains_records_when_verification_fails_after_add() {
+        let mut membership = hidden();
+        let mut view = FaultView { fail_verify_at: Some(2), ..Default::default() };
+        assert_eq!(membership.restore_view(&mut view).unwrap_err().stage, Stage::VerifyAdd);
+        assert!(view.visible.contains("a"));
+        assert!(membership.hidden.contains_key("a"));
+        membership.restore_view(&mut view).unwrap();
+        assert!(membership.hidden.is_empty());
+    }
+    #[test]
+    fn one_failed_member_does_not_block_healthy_or_deleted_members() {
+        for existence_error in [false, true] {
+            let mut membership = hidden();
+            for name in ["b", "c", "d"] { membership.hidden.insert(name.into(), row(name)); }
+            let mut view = FaultView { visible: ["d".into()].into(), missing: ["c".into()].into(), ..Default::default() };
+            if existence_error { view.unknown_names.insert("a".into()); }
+            else { view.failed_add_names.insert("a".into()); }
+            assert!(membership.restore_view(&mut view).is_err());
+            assert_eq!(membership.hidden.keys().cloned().collect::<Vec<_>>(), vec!["a"]);
+            assert_eq!(view.visible, ["b".into(), "d".into()].into());
+            view.unknown_names.clear();
+            view.failed_add_names.clear();
+            membership.restore_view(&mut view).unwrap();
+            assert!(membership.hidden.is_empty());
+            assert_eq!(view.visible, ["a".into(), "b".into(), "d".into()].into());
+        }
+    }
+    #[test]
+    fn empty_recovery_does_not_wait_for_unreadable_layout() {
+        let mut membership = Membership::default();
+        membership.baseline.insert("a".into(), POINT::default());
+        let mut view = FaultView { fail_read: Some(1), ..Default::default() };
+        assert_eq!(membership.restore_view(&mut view).unwrap_err().stage, Stage::Position);
+        membership.restore_view(&mut view).unwrap();
+        assert_eq!(view.reads, 1);
+    }
+    #[test]
+    fn removal_verification_does_not_read_layout_again() {
+        let mut membership = Membership::default();
+        membership.desired.insert("a".into());
+        let mut view = FaultView { visible: ["a".into(), "unrelated".into()].into(), fail_read: Some(2), ..Default::default() };
+        membership.apply_view(&mut view, false, || {}).unwrap();
+        assert_eq!(view.reads, 1);
+        assert_eq!(view.visible, ["unrelated".into()].into());
+    }
+    #[test]
+    fn verification_failure_retains_desired_membership_for_retry() {
+        let mut membership = Membership::default();
+        membership.desired.insert("a".into());
+        let mut view = FaultView { visible: ["a".into()].into(), fail_verify: true, ..Default::default() };
+        let error = membership.apply_view(&mut view, false, || {}).unwrap_err();
+        assert!(error.retryable());
+        assert!(!error.before_write);
+        view.fail_verify = false;
+        membership.apply_view(&mut view, false, || {}).unwrap();
+        assert!(membership.hidden.contains_key("a"));
+        assert!(membership.desired.contains("a"));
     }
     #[test]
     fn batch_validation_allows_unrelated_items_and_preserves_other_members() {

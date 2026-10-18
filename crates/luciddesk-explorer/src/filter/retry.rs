@@ -6,8 +6,8 @@ pub(super) struct ReadRetry {
     due: Option<Instant>,
 }
 impl ReadRetry {
-    pub fn failed(&mut self, before_write: bool, now: Instant) -> bool {
-        if !before_write || self.failures >= 3 {
+    pub fn failed(&mut self, retryable: bool, now: Instant) -> bool {
+        if !retryable || self.failures >= 3 {
             return false;
         }
         self.failures += 1;

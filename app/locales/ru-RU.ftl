@@ -79,7 +79,6 @@ ui-font-not-installed-or-missing-required-chinese-latin-glyphs = { "Шрифт �
 ui-close-other-desktop-organizers-first = { "Сначала закройте другие программы организации рабочего стола" }
 
 # 请先退出旧的全桌面接管版本，恢复桌面图标显示
-ui-exit-the-legacy-desktop-replacement-to-restore-desktop-icons = { "Закройте старую версию управления рабочим столом для восстановления значков" }
 
 # 读取清单期间桌面视图已替换，将重新定位
 ui-desktop-view-changed-while-reading-reconnecting = { "Вид рабочего стола изменился при чтении; переподключение" }

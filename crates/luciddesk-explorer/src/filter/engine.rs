@@ -76,6 +76,19 @@ pub fn attach(hwnd: HWND, owner: HWND) {
         }
     }
 }
+// Bounded read-only sampling; never sleep or pump messages inside Explorer COM.
+fn verify_counts(mut read: impl FnMut() -> Result<(u32, i32)>) -> Result<()> {
+    let mut last = (0, 0);
+    for _ in 0..3 {
+        last = read()?;
+        if i64::from(last.0) == i64::from(last.1) { return Ok(()); }
+    }
+    Err(windows::core::Error::new(
+        windows::core::HRESULT::from_win32(windows_sys::Win32::Foundation::ERROR_RETRY),
+        format!("桌面项目数量连续不一致: object_count={}, folder_count={}", last.0, last.1),
+    ))
+}
+
 fn attach_inner(hwnd: HWND, owner: HWND) -> Result<()> {
     unsafe {
         if IsWindow(owner) == 0
@@ -117,16 +130,15 @@ fn attach_inner(hwnd: HWND, owner: HWND) -> Result<()> {
         let folder: IFolderView2 = view.cast()?;
         diagnostics::stage(hwnd, diagnostics::Stage::ObjectView);
         let object_view: IShellFolderView = view.cast()?;
-        diagnostics::stage(hwnd, diagnostics::Stage::ObjectCount);
-        let object_count = object_view.GetObjectCount()? as i32;
-        diagnostics::stage(hwnd, diagnostics::Stage::FolderCount);
-        let folder_count = folder.ItemCount(SVGIO_ALLVIEW)?;
-        diagnostics::stage(hwnd, diagnostics::Stage::CountMatch);
-        if object_count != folder_count {
-            return Err(windows::core::Error::from_hresult(
-                windows::Win32::Foundation::E_FAIL,
-            ));
-        }
+        verify_counts(|| {
+            diagnostics::stage(hwnd, diagnostics::Stage::ObjectCount);
+            let objects = object_view.GetObjectCount()?;
+            diagnostics::stage(hwnd, diagnostics::Stage::FolderCount);
+            let items = folder.ItemCount(SVGIO_ALLVIEW)?;
+            diagnostics::stage(hwnd, diagnostics::Stage::CountMatch);
+            diagnostics::counts(hwnd, objects, items);
+            Ok((objects, items))
+        })?;
         let mut pid = 0;
         GetWindowThreadProcessId(owner, &raw mut pid);
         diagnostics::stage(hwnd, diagnostics::Stage::OwnerProcess);
@@ -239,7 +251,7 @@ impl State {
         let report = self.recovery.attempt(std::time::Instant::now(),
             || self.membership.restore(&self.folder, &self.object_view).map_err(|e| {
                 diagnostics::restore_failure(self.hwnd, e.stage, e.code());
-                e.error
+                e
             }),
             || unsafe { self.view.Refresh() });
         diagnostics::recovery(self.hwnd, if report.complete { 2 } else { 1 }, report.restore_error, report.refresh_error);
@@ -396,10 +408,9 @@ impl State {
                 diagnostics::failure(self.hwnd, error.stage, error.code());
                 if !self
                     .read_retry
-                    .failed(error.before_write, std::time::Instant::now())
+                    .failed(error.retryable(), std::time::Instant::now())
                 {
                     self.restore();
-                    self.failed = true;
                     unsafe {
                         SetPropW(self.hwnd, ERROR, error.code().0 as u32 as usize as _);
                     }
@@ -443,7 +454,8 @@ fn remove_registration(hwnd: HWND) {
 }
 
 // Every filtering entry point gates COM-reentrant painting, even during reads.
-// Only actual writes disable native redraw and invalidate the view on release.
+// Only actual writes invalidate the view on release. The subclass suppresses
+// painting without WM_SETREDRAW, which would change native window visibility.
 // Peek/rename transactions retain their gate until their explicit end request.
 struct MembershipRedraw<'a> {
     hwnd: HWND,
@@ -472,7 +484,6 @@ fn set_redraw(hwnd: HWND, paused: &mut bool, enabled: bool) {
     unsafe {
         if enabled && *paused {
             FROZEN_VIEW.with(|view| view.set(null_mut()));
-            SendMessageW(hwnd, WM_SETREDRAW, 1, 0);
             windows_sys::Win32::Graphics::Gdi::RedrawWindow(
                 hwnd,
                 std::ptr::null(),
@@ -483,7 +494,6 @@ fn set_redraw(hwnd: HWND, paused: &mut bool, enabled: bool) {
             *paused = false;
         } else if !enabled && !*paused {
             FROZEN_VIEW.with(|view| view.set(hwnd));
-            SendMessageW(hwnd, WM_SETREDRAW, 0, 0);
             *paused = true;
         }
     }
@@ -508,11 +518,12 @@ unsafe extern "system" fn subclass(
             }
         }
     }
-    // AddObject, selection and menu activation can each enable redraw again.
+    // Shell calls can toggle redraw reentrantly. While our paint gate owns the
+    // transaction, do not forward either value: DefWindowProc changes WS_VISIBLE.
     // Run before the RefCell guard, including during those nested COM calls.
     if frozen == hwnd {
         match msg {
-            WM_SETREDRAW if wp != 0 => return 0,
+            WM_SETREDRAW => return 0,
             WM_PAINT => {
                 unsafe {
                     windows_sys::Win32::Graphics::Gdi::ValidateRect(hwnd, std::ptr::null());
@@ -780,6 +791,21 @@ fn filter_before_paint(msg: u32, has_members: bool, pending: bool, paused: bool,
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn count_mismatch_retries_but_preserves_interface_errors() {
+        let mut reads = 0;
+        super::verify_counts(|| { reads += 1; Ok((2, if reads == 1 { 1 } else { 2 })) }).unwrap();
+        assert_eq!(reads, 2);
+        reads = 0;
+        let error = super::verify_counts(|| { reads += 1; Ok((2, 1)) }).unwrap_err();
+        assert_eq!(reads, 3);
+        assert_eq!(error.code(), windows::core::HRESULT::from_win32(1237));
+        reads = 0;
+        let error = super::verify_counts(|| { reads += 1; Err(windows::Win32::Foundation::E_NOINTERFACE.into()) }).unwrap_err();
+        assert_eq!(reads, 1);
+        assert_eq!(error.code(), windows::Win32::Foundation::E_NOINTERFACE);
+    }
+
     use super::*;
     use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 
@@ -801,8 +827,8 @@ mod tests {
     #[test]
     fn menu_redraw_gate_survives_reentrant_calls_and_releases() {
         unsafe {
-            // Use DefWindowProc's observable SysSetRedraw flag. Common controls
-            // have their own redraw state and need not expose that flag.
+            // DefWindowProc exposes accidental native redraw toggles through
+            // SysSetRedraw. Our paint gate must never disable native redraw.
             let class = windows_sys::w!("LucidDeskRedrawGateTest");
             let instance = GetModuleHandleW(std::ptr::null());
             let definition = WNDCLASSW {
@@ -864,7 +890,7 @@ mod tests {
             let error: Result<()> = (|| {
                 let mut redraw = MembershipRedraw::new(hwnd, &mut paused, false);
                 redraw.before_write();
-                assert!(disabled());
+                assert!(!disabled());
                 Err(windows::Win32::Foundation::E_FAIL.into())
             })();
             assert!(error.is_err());
@@ -886,14 +912,14 @@ mod tests {
                 redraw.before_write();
             }
             assert!(paused);
-            assert!(disabled());
+            assert!(!disabled());
             assert_eq!(FROZEN_VIEW.with(Cell::get), hwnd);
             // Match synchronous callbacks made while State::apply_request owns
             // the mutable state borrow, then the later menu message loop.
             STATE.with(|slot| {
                 let _borrow = slot.borrow_mut();
                 SendMessageW(hwnd, WM_SETREDRAW, 1, 0);
-                assert!(disabled());
+                assert!(!disabled());
                 let draw = NMCUSTOMDRAW {
                     hdr: NMHDR {
                         hwndFrom: hwnd,
@@ -909,7 +935,7 @@ mod tests {
                 );
             });
             SendMessageW(hwnd, WM_SETREDRAW, 1, 0);
-            assert!(disabled());
+            assert!(!disabled());
             set_redraw(hwnd, &mut paused, true);
             assert!(!disabled());
             assert!(!paused);
@@ -918,6 +944,32 @@ mod tests {
                 0,
                 "membership writes still require a repaint when released"
             );
+            // Both initial visibility states and changes while frozen must survive.
+            for initially_visible in [false, true] {
+                for final_visible in [false, true] {
+                    ShowWindow(hwnd, if initially_visible { SW_SHOWNOACTIVATE } else { SW_HIDE });
+                    {
+                        let mut redraw = MembershipRedraw::new(hwnd, &mut paused, false);
+                        redraw.before_write();
+                        assert_eq!(IsWindowVisible(hwnd) != 0, initially_visible);
+                        SendMessageW(hwnd, WM_SETREDRAW, 0, 0);
+                        SendMessageW(hwnd, WM_SETREDRAW, 1, 0);
+                        assert_eq!(IsWindowVisible(hwnd) != 0, initially_visible);
+                        ShowWindow(hwnd, if final_visible { SW_SHOWNOACTIVATE } else { SW_HIDE });
+                    }
+                    assert_eq!(IsWindowVisible(hwnd) != 0, final_visible);
+                    assert!(!disabled());
+                    assert!(!paused);
+                }
+            }
+            // A retained gate (Peek/rename) must also preserve a hidden window.
+            ShowWindow(hwnd, SW_HIDE);
+            {
+                let mut redraw = MembershipRedraw::new(hwnd, &mut paused, true);
+                redraw.before_write();
+            }
+            set_redraw(hwnd, &mut paused, true);
+            assert_eq!(IsWindowVisible(hwnd), 0);
             RemoveWindowSubclass(hwnd, Some(subclass), MAGIC);
             DestroyWindow(hwnd);
             UnregisterClassW(class, instance);

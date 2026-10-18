@@ -26,7 +26,8 @@ pub(super) struct Session {
     // Drop the Hook before its owner HWND and before the pane windows.
     hook: Rc<FilterSession>,
     _icon_subscription: luciddesk_shell::DesktopChangeSubscription,
-    _recycle_subscription: luciddesk_shell::DesktopChangeSubscription,
+    recycle_subscription: Option<luciddesk_shell::DesktopChangeSubscription>,
+    recycle_retry: Instant,
     _controller: windows_window::Window,
     icons_dirty: Rc<RefCell<icon_changes::Pending>>,
     icon_due: Option<Instant>,
@@ -53,6 +54,7 @@ pub(super) struct Session {
     retry_after: Option<Instant>,
     last_failure: Option<String>,
     pending_workspace_save: bool,
+    save_due: Option<Instant>,
 }
 
 struct OleApartment;
@@ -259,9 +261,8 @@ pub(super) fn connect(state: &Rc<RefCell<PaneApp>>, _path: &Path) -> Result<(), 
     if luciddesk_explorer::conflicting_desktop_extension() {
         return Err(crate::i18n::text("ui-close-other-desktop-organizers-first").into());
     }
-    if luciddesk_shell::desktop_icons_hidden() {
-        return Err(crate::i18n::text("ui-exit-the-legacy-desktop-replacement-to-restore-desktop-icons").into());
-    }
+    // Hidden icons are a display preference, not evidence of an unusable Shell
+    // view. Validate discovery, enumeration and COM capabilities below.
     let view = luciddesk_explorer::desktop_view()?;
     let dirty = Rc::new(Cell::new(false));
     let notify = Rc::clone(&dirty);
@@ -327,20 +328,17 @@ pub(super) fn connect(state: &Rc<RefCell<PaneApp>>, _path: &Path) -> Result<(), 
         ICON_CHANGE_MESSAGE,
     )
     .map_err(|error| error.to_string())?;
-    let recycle_subscription = luciddesk_shell::DesktopChangeSubscription::register_recycle_bin(
-        controller.hwnd() as isize,
-        RECYCLE_CHANGE_MESSAGE,
-    )
-    .map_err(|error| error.to_string())?;
     // Warm and validate the Shell view from the client before injecting work
     // into Explorer's STA. During startup, the HWND can exist before ShellWindows
     // is ready; asking Explorer to initialize it from its own callback can stall.
     // Reuse this snapshot below instead of performing a second enumeration.
-    let snapshot = inventory::capture(&managed_identities(&state.borrow()))?;
+    let snapshot = inventory::capture(&managed_identities(&state.borrow()))
+        .map_err(|error| format!("桌面连接准备失败 (Inventory): {error}"))?;
     if luciddesk_explorer::desktop_view()? != view {
         return Err(crate::i18n::text("ui-desktop-view-changed-while-reading-reconnecting").into());
     }
-    let hook_dll = crate::desktop_component::prepare()?;
+    let hook_dll = crate::desktop_component::prepare()
+        .map_err(|error| format!("桌面连接准备失败 (Component): {error}"))?;
     let hook = FilterSession::connect(
         view,
         controller.hwnd() as isize,
@@ -351,7 +349,8 @@ pub(super) fn connect(state: &Rc<RefCell<PaneApp>>, _path: &Path) -> Result<(), 
         wake: state.borrow().wake.clone(),
         hook: Rc::new(hook),
         _icon_subscription: icon_subscription,
-        _recycle_subscription: recycle_subscription,
+        recycle_subscription: None,
+        recycle_retry: Instant::now(),
         _controller: controller,
         icons_dirty,
         icon_due: None,
@@ -378,6 +377,7 @@ pub(super) fn connect(state: &Rc<RefCell<PaneApp>>, _path: &Path) -> Result<(), 
         retry_after: None,
         last_failure: None,
         pending_workspace_save: false,
+        save_due: None,
     };
     let mut s = state.borrow_mut();
     s.receiver = receiver;
@@ -566,7 +566,7 @@ fn reconcile_inventory(s: &mut PaneApp) -> Result<(), String> {
     h.last_reconcile = Instant::now();
     queue_pane_icons(s, true);
     s.session.as_mut().unwrap().pending_workspace_save = true;
-    persist_workspace(s)?;
+    // Persistence is retried by tick before any new membership is published.
     refresh_views(s);
     Ok(())
 }
@@ -578,8 +578,17 @@ fn persist_pending(pending: &mut bool, save: impl FnOnce() -> Result<(), String>
     Ok(true)
 }
 
+fn retry_save(pending: &mut bool, due: &mut Option<Instant>, now: Instant,
+    save: impl FnOnce() -> Result<(), String>) -> Result<bool, String> {
+    if due.is_some_and(|deadline| now < deadline) { return Ok(false); }
+    let result = persist_pending(pending, save);
+    *due = result.is_err().then_some(now + Duration::from_secs(5));
+    result
+}
+
 fn persist_workspace(s: &mut PaneApp) -> Result<bool, String> {
-    persist_pending(&mut s.session.as_mut().unwrap().pending_workspace_save, || {
+    let h = s.session.as_mut().unwrap();
+    retry_save(&mut h.pending_workspace_save, &mut h.save_due, Instant::now(), || {
         s.store.save_workspace(&s.workspace).map_err(|error| error.to_string())
     })
 }
@@ -652,6 +661,7 @@ pub(super) fn sync(s: &mut PaneApp) -> Result<(), String> {
             }
         }
     }
+    if h.pending_workspace_save { return Ok(()); }
     if h.dirty.get() || !h.icons_dirty.borrow().is_empty() {
         h.image_retention.invalidate(&mut s.images);
     }
@@ -787,14 +797,46 @@ pub(super) fn tick(s: &mut PaneApp) -> Result<(), String> {
     Ok(())
 }
 
+// Failed optional subscriptions retry on a bounded deadline. Callers also refresh
+// the affected icon after each attempt, covering the notification gap.
+fn retry_subscription<T>(slot: &mut Option<T>, due: &mut Instant, now: Instant,
+    register: impl FnOnce() -> Result<T, String>) -> Result<bool, String> {
+    if slot.is_some() || now < *due { return Ok(false); }
+    *due = now + Duration::from_secs(30);
+    *slot = Some(register()?);
+    Ok(true)
+}
+
+pub(super) fn workspace_save_pending(s: &PaneApp) -> bool {
+    s.session.as_ref().is_some_and(|h| h.pending_workspace_save)
+}
+
 fn tick_once(s: &mut PaneApp) -> Result<(), String> {
     if s.session.as_ref().unwrap().menu_active.get() {
         return Ok(());
     }
-    if persist_workspace(s)? {
-        // The accepted inventory may already compare equal after a failed save.
-        // Complete its presentation independently of the next audit result.
-        refresh_views(s);
+    {
+        let h = s.session.as_mut().unwrap();
+        let owner = h._controller.hwnd() as isize;
+        let attempted = retry_subscription(&mut h.recycle_subscription, &mut h.recycle_retry, Instant::now(), || {
+            luciddesk_shell::DesktopChangeSubscription::register_recycle_bin(owner, RECYCLE_CHANGE_MESSAGE)
+                .map_err(|error| error.to_string())
+        });
+        if !matches!(attempted, Ok(false)) {
+            h.icons_dirty.borrow_mut().add([icon_changes::Change::Name(RECYCLE_BIN_PARSING_NAME.into())]);
+        }
+        if let Err(error) = attempted {
+            luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Warn, "pane.hybrid.recycle", &format!("Recycle notification unavailable; retrying in 30s: {error}"));
+        }
+    }
+    match persist_workspace(s) {
+        Ok(true) => {
+            s.session.as_ref().unwrap().dirty.set(true);
+            refresh_views(s);
+        }
+        Err(error) => luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Warn,
+            "pane.hybrid.save", &format!("Workspace save pending; retrying in 5s: {error}")),
+        Ok(false) => {}
     }
     let h = s.session.as_mut().unwrap();
     if h.last_tick.elapsed() < Duration::from_millis(20) {
@@ -821,7 +863,7 @@ fn tick_once(s: &mut PaneApp) -> Result<(), String> {
 
 fn poll_inventory(s: &mut PaneApp, urgent: bool) -> Result<bool, String> {
     let h = s.session.as_ref().unwrap();
-    if h.membership_pending.is_some() || h.published.borrow().is_none() {
+    if h.pending_workspace_save || h.membership_pending.is_some() || h.published.borrow().is_none() {
         return Ok(false);
     }
     if h.audit.due(h.last_reconcile.elapsed()) {
@@ -875,7 +917,7 @@ pub(super) fn next_work(s: &PaneApp) -> Option<u32> {
         || h.membership_pending.is_some()
         || h.dirty.get()
         || h.pending_desktop_input.get().is_some()
-        || h.audit.due(Duration::ZERO)
+        || (!h.pending_workspace_save && h.audit.due(Duration::ZERO))
     {
         return Some(25);
     }
@@ -884,8 +926,10 @@ pub(super) fn next_work(s: &PaneApp) -> Option<u32> {
         .filter(|_| h.initial_batches == 0 && h.icon_reload.is_none());
     icon_due
         .into_iter()
-        .chain(h.audit.remaining(h.last_reconcile.elapsed()).map(|delay| now + delay))
-        .chain(h.image_retention.deadline())
+        .chain((!h.pending_workspace_save).then(|| h.audit.remaining(h.last_reconcile.elapsed())).flatten().map(|delay| now + delay))
+        .chain(h.pending_workspace_save.then_some(h.save_due.unwrap_or(now)))
+        .chain(h.image_retention.deadline().filter(|_| !h.pending_workspace_save))
+        .chain(h.recycle_subscription.is_none().then_some(h.recycle_retry))
         .chain(
             icons::retry_deadline(
                 h.initial_batches != 0 || h.icon_reload.is_some(),
@@ -954,6 +998,21 @@ pub(super) fn release(
 mod tests {
     use super::*;
 
+    #[test]
+    fn optional_subscription_failure_retries_without_busy_loop_or_replacing_success() {
+        let now = Instant::now();
+        let mut due = now;
+        let mut slot = None;
+        assert!(retry_subscription(&mut slot, &mut due, now, || Err::<u8, _>("unavailable".into())).is_err());
+        assert!(slot.is_none());
+        assert_eq!(due, now + Duration::from_secs(30));
+        assert!(!retry_subscription(&mut slot, &mut due, now, || panic!("early retry")).unwrap());
+        let next = due;
+        assert!(retry_subscription(&mut slot, &mut due, next, || Ok(7)).unwrap());
+        assert_eq!(slot, Some(7));
+        let next = due;
+        assert!(!retry_subscription(&mut slot, &mut due, next, || panic!("already subscribed")).unwrap());
+    }
     #[test]
     fn drag_round_trip_saves_all_placements_without_shell_confirmation() {
         let mut s = crate::pane::tests::test_state();
@@ -1049,6 +1108,43 @@ mod tests {
         assert_eq!(presented, 1);
         assert!(!pending);
         assert!(!persist_pending(&mut pending, || panic!("already saved")).unwrap());
+    }
+    #[test]
+    fn failed_save_has_its_own_deadline_and_does_not_clear_pending_state() {
+        let now = Instant::now();
+        let mut pending = true;
+        let mut due = None;
+        assert!(retry_save(&mut pending, &mut due, now, || Err("disk full".into())).is_err());
+        assert!(pending);
+        assert_eq!(due, Some(now + Duration::from_secs(5)));
+        assert!(!retry_save(&mut pending, &mut due, now, || panic!("early write")).unwrap());
+        assert!(retry_save(&mut pending, &mut due, now + Duration::from_secs(5), || Ok(())).unwrap());
+        assert!(!pending);
+        assert!(due.is_none());
+    }
+    #[test]
+    fn database_failure_preserves_published_members_until_save_recovers() {
+        let mut pending = true;
+        let published = RefCell::new(Some(vec!["existing".into()]));
+        let mut native = vec!["existing".to_string()];
+        let desired = vec!["existing".to_string(), "new".to_string()];
+        for fails in [true, true, false] {
+            let saved = persist_pending(&mut pending, || {
+                if fails { Err("injected disk write failure".into()) } else { Ok(()) }
+            });
+            if saved.is_err() {
+                assert!(pending);
+                assert_eq!(native, vec!["existing"]);
+                assert_eq!(*published.borrow(), Some(native.clone()));
+                continue;
+            }
+            publish_membership(&published, desired.clone(), |names| {
+                native = names.to_vec();
+                Ok(())
+            }).unwrap();
+        }
+        assert!(!pending);
+        assert_eq!(native, desired);
     }
     #[test]
     fn desktop_input_order_preserves_newer_pane_selection() {

@@ -79,7 +79,6 @@ ui-font-not-installed-or-missing-required-chinese-latin-glyphs = { "Font not ins
 ui-close-other-desktop-organizers-first = { "Close other desktop organizers first" }
 
 # 请先退出旧的全桌面接管版本，恢复桌面图标显示
-ui-exit-the-legacy-desktop-replacement-to-restore-desktop-icons = { "Exit the legacy desktop replacement to restore desktop icons" }
 
 # 读取清单期间桌面视图已替换，将重新定位
 ui-desktop-view-changed-while-reading-reconnecting = { "Desktop view changed while reading; reconnecting" }

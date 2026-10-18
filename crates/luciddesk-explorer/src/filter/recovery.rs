@@ -16,7 +16,7 @@ pub(super) struct Report {
 }
 impl Recovery {
     pub fn deadline(&self) -> Option<Instant> { self.due }
-    pub fn attempt(&mut self, now: Instant, mut restore: impl FnMut() -> Result<()>, mut refresh: impl FnMut() -> Result<()>) -> Report {
+    pub fn attempt(&mut self, now: Instant, mut restore: impl FnMut() -> std::result::Result<(), super::items::ApplyError>, mut refresh: impl FnMut() -> Result<()>) -> Report {
         let mut report = Report { complete: self.complete, restore_error: None, refresh_error: None };
         if self.complete || self.due.is_some_and(|due| now < due) { return report; }
         match restore() {
@@ -26,7 +26,16 @@ impl Recovery {
                 report.complete = true;
                 return report;
             }
-            Err(error) => report.restore_error = Some(error.code()),
+            Err(error) => {
+                report.restore_error = Some(error.code());
+                if error.stage == super::diagnostics::Stage::Position {
+                    // Membership is already verified; layout is only a warning.
+                    self.complete = true;
+                    self.due = None;
+                    report.complete = true;
+                    return report;
+                }
+            },
         }
         // Refresh success is not recovery success. Verify on a later STA turn
         // so asynchronous enumeration can finish; never pump/sleep inside COM.
@@ -47,6 +56,16 @@ impl Recovery {
 mod tests {
     use super::*;
     use windows::Win32::Foundation::E_FAIL;
+    #[test]
+    fn layout_warning_completes_without_refresh_or_retry() {
+        let mut recovery = Recovery::default();
+        let report = recovery.attempt(Instant::now(), || Err(super::super::items::ApplyError {
+            error: E_FAIL.into(), before_write: false, stage: super::super::diagnostics::Stage::Position,
+        }), || panic!("layout must not refresh the desktop"));
+        assert!(report.complete);
+        assert_eq!(report.restore_error, Some(E_FAIL));
+        assert!(recovery.deadline().is_none());
+    }
     #[test]
     fn refresh_success_requires_later_verified_restore() {
         let mut recovery = Recovery::default();

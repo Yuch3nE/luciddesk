@@ -20,6 +20,15 @@ const RESTORE_CODE: windows_sys::core::PCWSTR = windows_sys::w!("LucidDesk.Filte
 const RESTORE_STAGE: windows_sys::core::PCWSTR = windows_sys::w!("LucidDesk.Filter.RestoreStage.v1");
 const REFRESH_CODE: windows_sys::core::PCWSTR = windows_sys::w!("LucidDesk.Filter.RefreshError.v1");
 
+const OBJECT_COUNT: windows_sys::core::PCWSTR = windows_sys::w!("LucidDesk.Filter.ObjectCount.v1");
+const FOLDER_COUNT: windows_sys::core::PCWSTR = windows_sys::w!("LucidDesk.Filter.FolderCount.v1");
+pub(super) fn counts(hwnd: HWND, objects: u32, items: i32) {
+    // Offset by one so a valid zero count is distinguishable from no sample.
+    unsafe {
+        SetPropW(hwnd, OBJECT_COUNT, (u64::from(objects) + 1) as usize as _);
+        SetPropW(hwnd, FOLDER_COUNT, (i64::from(items) + 1) as usize as _);
+    }
+}
 pub(super) fn stage(hwnd: HWND, value: Stage) {
     unsafe { SetPropW(hwnd, STAGE, value as usize as _); }
 }
@@ -44,7 +53,7 @@ pub(super) fn restore_failure(hwnd: HWND, value: Stage, code: windows::core::HRE
     }
 }
 pub(super) fn reset(hwnd: HWND) {
-    unsafe { for name in [STAGE, CODE, RECOVERY, RESTORE_CODE, RESTORE_STAGE, REFRESH_CODE] { RemovePropW(hwnd, name); } }
+    unsafe { for name in [STAGE, CODE, RECOVERY, RESTORE_CODE, RESTORE_STAGE, REFRESH_CODE, OBJECT_COUNT, FOLDER_COUNT] { RemovePropW(hwnd, name); } }
 }
 fn stage_name(id: usize) -> &'static str {
     // Unknown/new DLL stage IDs remain visible as numbers in summary().
@@ -74,7 +83,9 @@ pub(super) fn summary(hwnd: HWND) -> String {
         GetWindowThreadProcessId(hwnd, &raw mut pid);
         let id = GetPropW(hwnd, STAGE) as usize;
         let status = match GetPropW(hwnd, RECOVERY) as usize { 1 => "pending", 2 => "verified", _ => "none" };
-        format!("stage={}({id}), HRESULT=0x{:08x}, build={build}, explorer_pid={pid}, view=0x{:x}, recovery={status}, restore_stage={}, restore=0x{:08x}, refresh=0x{:08x}",
+        let object_count = (GetPropW(hwnd, OBJECT_COUNT) as usize).checked_sub(1);
+        let folder_count = (GetPropW(hwnd, FOLDER_COUNT) as usize).checked_sub(1);
+        format!("object_count={object_count:?}, folder_count={folder_count:?}, stage={}({id}), HRESULT=0x{:08x}, build={build}, explorer_pid={pid}, view=0x{:x}, recovery={status}, restore_stage={}, restore=0x{:08x}, refresh=0x{:08x}",
             stage_name(id), GetPropW(hwnd, CODE) as usize as u32, hwnd as usize,
             stage_name(GetPropW(hwnd, RESTORE_STAGE) as usize),
             GetPropW(hwnd, RESTORE_CODE) as usize as u32, GetPropW(hwnd, REFRESH_CODE) as usize as u32)
@@ -120,6 +131,8 @@ mod tests {
             let hwnd = CreateWindowExW(0, windows_sys::w!("STATIC"), windows_sys::w!("filter diagnostic test"), WS_POPUP,
                 0, 0, 1, 1, std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null());
             assert!(!hwnd.is_null());
+            counts(hwnd, 0, 2);
+            assert!(summary(hwnd).contains("object_count=Some(0), folder_count=Some(2)"));
             failure(hwnd, Stage::ObjectView, windows::Win32::Foundation::E_NOINTERFACE);
             restore_failure(hwnd, Stage::Add, windows::Win32::Foundation::E_ACCESSDENIED);
             recovery(hwnd, 1, None, Some(windows::Win32::Foundation::E_FAIL));
@@ -134,6 +147,7 @@ mod tests {
             recovery(hwnd, 2, None, None);
             assert!(summary(hwnd).contains("recovery=verified"));
             reset(hwnd);
+            assert!(summary(hwnd).contains("object_count=None, folder_count=None"));
             assert!(summary(hwnd).contains("HRESULT=0x00000000"));
             assert!(summary(hwnd).contains("recovery=none"));
             DestroyWindow(hwnd);

@@ -79,7 +79,6 @@ ui-font-not-installed-or-missing-required-chinese-latin-glyphs = { "글꼴이 �
 ui-close-other-desktop-organizers-first = { "다른 바탕 화면 정리 프로그램을 먼저 종료하세요" }
 
 # 请先退出旧的全桌面接管版本，恢复桌面图标显示
-ui-exit-the-legacy-desktop-replacement-to-restore-desktop-icons = { "이전 바탕 화면 관리 버전을 종료하여 아이콘을 복원하세요" }
 
 # 读取清单期间桌面视图已替换，将重新定位
 ui-desktop-view-changed-while-reading-reconnecting = { "읽는 동안 바탕 화면 보기가 변경되어 다시 연결합니다" }
