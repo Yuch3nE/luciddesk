@@ -24,7 +24,8 @@
 | 设置页、语言或字体布局 | [设置组件](settings-components.md) → [多语言](localization.md) → [绘图](rendering.md) |
 | 配置、数据兼容或备份恢复 | [配置与工作区存储](storage.md) → [API 与提交边界](rust-api-review.md) → [验证要求](validation.md) |
 | 托盘入口或任务栏重建 | [运行时托盘](tray.md) → [架构说明](architecture.md) |
-| 系统监控与后台采样 | [原生系统监控面板](system-monitor.md) → [绘图与绑定](rendering.md) → [存储](storage.md) |
+| 插件接口与新插件 | [插件开发指南](plugins.md) → [SDK 示例](../../crates/luciddesk-plugin-api/examples/minimal.rs) |
+| 可选监控插件（未随 0.20.5 发布） | [原生系统监控面板](system-monitor.md) → [绘图与绑定](rendering.md) → [存储](storage.md) |
 
 ## 文档索引
 
@@ -83,3 +84,5 @@
 - 文档中的命令是执行入口，不是已经通过的证明。区分自动测试、快照检查与真实桌面结论，不将调度参数写成性能保证。
 - 新增、重命名或移除文档时更新索引，核对本地链接与锚点；新增页面、语言或测试范围时核对代码中的显式枚举。
 - 文档优化按专题逐份核对源码，保留最终实现方式；测试日志与一次性验收结果放在提交、问题报告或本地产物中。
+
+插件源码目录和统一构建入口见 [plugins/README.md](../../plugins/README.md)；`tools/validation/test-plugins.ps1` 覆盖 SDK、DLL 与宿主有/无插件两种路径。

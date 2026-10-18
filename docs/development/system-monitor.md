@@ -1,37 +1,116 @@
-# 原生系统监控面板
+# 可选系统监控插件（PDH 子进程方案）
 
-系统监控是独立的面板内容类型，使用现有原生窗口、Canvas 绘制、材质、DPI、吸附、锁定、置顶和折叠机制。托盘右键菜单中的“新建系统监控面板”创建该面板，不依赖 Explorer 成员过滤连接。监控面板不接收 Shell 项目，也不参与面板标签合并。
+0.20.5 默认安装包和 ZIP 不含监控 DLL。源码支持可选构建；监控插件位于 EXE 同级 `plugins` 目录，每个启用的监控面板由独立子进程承载。
 
-## 第一版功能
+## 主进程、子进程与插件
 
-- CPU 总占用、物理内存已用与总量。
-- 网卡上传与下载、磁盘卷读写速率。
-- GPU 最忙引擎占用、专用显存使用与容量。不包含温度、风扇和功耗。
-- 标准纵向与紧凑双列布局；指标显隐、移到首位；1/2/5 秒刷新；暂停和恢复。
-- 网卡、磁盘、显卡手动选择。自动网卡选择当前最活跃接口，磁盘优先系统盘，GPU 优先能读取计数器且专用显存最大的适配器。
+- 主进程提供设置窗口，保存面板配置，管理监控子进程的启动、配置同步与退出。
+- 每个监控面板启动同目录的 `luciddesk.exe --monitor-child`，复用原生窗口、标题栏、拖动、缩放、层级、折叠、DPI 和材质代码。子进程不启动托盘、Explorer Hook、控制 API 或单实例入口。
+- `plugins/system-monitor` DLL 定义设置页内容和动作；在子进程中负责监控绘图、字体、曲线、采样线程、设备查询及快照。主进程加载 DLL 不会自动启动采样或创建监控绘图对象。
+- `crates/luciddesk-plugin-api` 定义版本化 C ABI 和设置描述协议，不跨 DLL 传递 Rust 对象。绘图借用子进程宿主的 `ID2D1DeviceContext`，宿主负责 BeginDraw/EndDraw，插件不持有该指针。
+- `app/src/plugins.rs` 枚举 EXE 旁 `plugins` 的顶层 DLL，校验 ABI、清单与能力；监控适配器要求 ID `system-monitor` 和能力 `system-monitor.v1`。详见[插件开发指南](plugins.md)。
 
-## 数据和生命周期
+设置页通过插件返回的描述构建，动作交给主进程保存配置或启用面板。子进程回传设备清单，设置页不在主进程执行设备采样。字体和语言由宿主传入；插件调用在各进程的 UI 线程进行，回复缓冲区仅在同步回调期间有效。
 
-`app/src/pane/monitor/sampling.rs` 使用 `sysinfo` 的 system/network/disk 功能，关闭其他默认功能，明确只刷新 CPU、RAM、网络与磁盘，不加载进程清单。磁盘容量和设备清单低频刷新，速率由累计字节差与实际经过时间计算。
+缺少插件时不显示监控设置入口、不创建已保存的监控窗口，保留配置供以后恢复。添加或移除 DLL 后需重启程序；当前不支持热插拔。已接受的 DLL 在所属进程退出前保持加载。
 
-所有监控窗口通过弱引用共享一个后台采样服务。窗口定时器只发送订阅与读取快照，耗时采样不在 UI 线程执行。采样服务合并可见且未暂停窗口的指标，以最短订阅间隔采集；全部隐藏、折叠或暂停时停止采样。最后一个窗口释放后，通道关闭，线程退出。恢复时重新建立 CPU/网络/磁盘基线，第一份速率显示“采集中”，历史空档不连线。
+## 构建与使用
 
-`gpu.rs` 通过 DXGI 获取适配器名称、LUID 和专用显存容量；使用英文 PDH 路径读取 GPU Engine 与 GPU Adapter Memory 通配实例。按 LUID 匹配，进程贡献先按引擎相加，再取最忙引擎，不能把不同引擎简单相加或平均。缺失与无效计数器显示“暂不可用”；定期重试失败数据源。核显的专用显存容量可能为零，UI 不用该值作除数。
+在仓库根目录运行：
 
-历史保留最近 60 秒，只存在内存中。CPU/GPU 的 Y 轴固定为 0–100%；网络曲线显示双向吞吐合计；磁盘分别显示读取、写入曲线，用两者峰值计算共享速率刻度，不把两个方向相加。速率单位为 B/s、KiB/s、MiB/s、GiB/s。磁盘容量使用同一设备的 sysinfo 已有采样，不新增高频查询。手动选定的设备消失时显示不可用，不自动换到另一设备。`sysinfo` Windows 磁盘后端不会传播所有 I/O 查询错误，因此未观察到有效累计计数之前不展示零速率；后续驱动查询失败仍可能表现为保持原计数，这是当前库的限制。
+```powershell
+# 默认发行包，不包含监控插件
+./tools/package.ps1 -Installer
+# 显式加入监控插件的开发预览包
+./tools/package.ps1 -Plugins system-monitor
+# 单独构建插件，部署到 target/production/release/plugins
+./tools/build-plugins.ps1 -Release -TargetDirectory target/production
+```
+
+自定义部署位置使用 `-Destination <EXE目录>/plugins`。不需要额外分发 helper EXE；主程序与子进程使用同一个可执行文件。
+
+设置 → 系统监控提供面板开关、各指标开关、指标顺序、标准/紧凑布局、1/2/5 秒刷新、暂停和设备选择。关闭面板保留配置；禁用指标、隐藏、折叠或暂停会停止相应采样，但只有关闭面板才退出子进程并回收其进程级状态。
+
+## 指标与采样
+
+CPU/GPU 使用 `plugins/system-monitor/src/counters.rs` 的 PDH 查询，查询由采样线程持有并通过 `PdhCloseQuery` 正常关闭。使用英文计数器路径，避免依赖系统显示语言。
+
+| 指标 | 数据来源与含义 |
+| --- | --- |
+| CPU | `\Processor(_Total)\% Idle Time` 的补值，表示忙碌时间百分比 |
+| GPU 占用 | `\GPU Engine(*)\Utilization Percentage`；按适配器 LUID 匹配，同一引擎的进程贡献求和，再取最忙引擎 |
+| GPU 专用显存 | `\GPU Adapter Memory(*)\Dedicated Usage`；DXGI 提供适配器名称、LUID 和专用显存容量 |
+| 物理内存 | `sysinfo` 的 RAM 已用量与总量 |
+| 网络 | 累计接收/发送字节差除以实际采样间隔 |
+| 磁盘 | 卷累计读取/写入字节差除以实际采样间隔，容量与设备清单低频刷新 |
+
+`sampling.rs` 只用 `sysinfo` 刷新 RAM、网络和磁盘，不加载进程清单，不调用其 CPU 采样。CPU/GPU 指标组合改变时重建 PDH 查询；两者都关闭时释放查询。查询创建或计数器添加失败保留既有重试间隔，缺失或无效数据不伪装成零占用。
+
+每个子进程有自己的后台采样服务，耗时查询不在 UI 线程执行。窗口定时器更新订阅并读取快照；暂停时保留当前快照。恢复采样时重新建立速率基线，首份差分数据未就绪时显示“采集中”，历史空档不连线。
+
+历史保留最近 60 秒，仅存在内存中；采样线程、当前快照与历史通过 `Arc<Frame>` 共享不可变帧。CPU/GPU 的 Y 轴固定为 0–100%；网络曲线显示双向吞吐合计；磁盘分别绘制读写曲线，使用两者峰值计算共享刻度。速率单位为 B/s、KiB/s、MiB/s、GiB/s。
+
+自动网卡选择当前最活跃接口，磁盘优先系统盘，GPU 优先能读取计数器且专用显存最大的适配器。手动选定的设备消失时显示不可用，不自动换设备。核显专用显存容量可能为零，不用该值作除数。目前不采集温度、风扇或功耗。`sysinfo` Windows 磁盘后端不能传播所有 I/O 查询错误，因此未观察到有效累计计数之前不显示零速率；后续驱动查询失败仍可能表现为保持原计数。
+
+## 通信、关闭与恢复
+
+`app/src/pane/monitor/process.rs` 使用继承的匿名管道传输按行 JSON。这是同一 EXE 构建之间的私有协议，不是第三方插件 ABI。
+
+主进程发送配置快照；子进程回传窗口就绪、面板变更、设备清单、设置请求与关闭状态。采样帧和曲线不跨进程传输。子进程只使用内存数据库，正式配置由主进程持久化。
+
+- 设置开关关闭：主进程关闭输入管道，子进程收到 EOF 后退出消息循环，销毁窗口、释放绘图和采样客户端、等待采样线程，正常退出。
+- 窗口关闭按钮：子进程回传关闭状态，主进程禁用该面板并保留配置。
+- 主进程退出或异常终止：管道断开，子进程使用相同的退出路径。
+- 已启动的子进程初始化失败、协议错误或退出：主进程禁用对应面板，错误回复或非零退出码写入诊断，不自动循环拉起。重新启用时启动新进程。
+
+关闭一个面板不影响其他监控子进程。图表借用子进程宿主的 Direct2D factory，不另建 GPU 设备；绘图目标及相关图形缓存随该子进程退出回收。
+
+进程隔离使 PDH 名称表和图形驱动的进程级保留不再留在主进程。关闭流程不清空工作集、不执行全局性能注册表清理、不主动卸载 DLL，也不强制终止子进程。主进程仍可能保留线程创建、设置页和分配器的少量可复用容量，不保证内存逐字节回到首次打开前。
 
 ## 保存和兼容
 
-核心 `PanelSource::Monitor` 区分监控内容。SQLite 通过 `panel_monitor_settings` 的外键行标记来源，基础 `panels.kind` 保留已有约束；读取时恢复完整逻辑类型。已知升级仅添加标记表，不重建现有 panels 表或外键。布局、窗口选项沿用已有保存机制，指标顺序、布局模式、设备和采样偏好保存为 `metadata` 中的 `monitor:<panel_id>` JSON。删除面板同步清理偏好和外键标记。
+核心 `PanelSource::Monitor` 区分监控内容。SQLite 的 `panel_monitor_settings` 外键行标记来源，基础 `panels.kind` 保留已有约束；布局和窗口选项沿用已有保存机制。指标顺序、布局模式、设备和采样偏好保存为 `metadata` 中的 `monitor:<panel_id>` JSON。关闭面板保留配置，删除面板才清理偏好和来源标记。
 
-CLI 工作区查询返回 `kind=monitor`，通用几何和窗口选项仍可用；图标内容适配、排序、标签与拖放不适用。第一版创建入口在托盘，尚未新增专用 CLI 创建或监控数据查询命令。
+CLI 工作区查询返回 `kind=monitor`；图标内容适配、排序、标签和拖放不适用。创建入口在插件设置页，目前没有专用 CLI 创建或监控数据查询命令。
 
 ## 验证
 
 ```powershell
-cargo test -p luciddesk-core -p luciddesk-storage --lib --locked --offline -- --test-threads=1
-cargo test -p luciddesk --bin luciddesk --locked --offline pane::monitor:: -- --test-threads=1 --nocapture
-python tools/validation/check-locales.py
+# 插件、SDK、宿主设置与绘图回归，分别覆盖有/无插件
+./tools/validation/test-plugins.ps1 -TargetDirectory target/review-validation -Offline
+# 当前生产路径：实际 EXE 子进程、原生窗口、PDH 与关闭后的内存
+./tools/validation/test-monitor-process.ps1 -Offline
+# 快速生命周期及故障复测
+./tools/validation/test-monitor-process.ps1 -Offline -Cycles 2 -FirstSampleMilliseconds 2500
 ```
 
-监控测试覆盖真实采样、速率时间与计数重置、共享服务与隐藏暂停、GPU 引擎聚合、配置恢复、原生窗口生命周期，以及深浅主题和多 DPI 的离屏渲染。设置 `LUCIDDESK_MONITOR_PREVIEWS=1` 可将固定示例数据的四种布局 BGRA 输出到 `target/monitor-previews`，用于视觉检查；它们不是本机实际性能截图。
+子进程测试 `isolated_monitor_closes_process_and_keeps_host_sampling_empty` 需要交互桌面，不进入普通无界面测试。默认先暖机普通宿主窗口与设置描述，再开关一个监控面板 10 次：首次采样 63 秒，其余每轮 2.2 秒。覆盖关闭按钮、设置禁用、紧凑布局尺寸回传、管道断开、无效输入及重新启用。
+
+测试检查子进程正常退出、HWND 失效、主进程没有监控客户端/绘图实例/采样服务，同时记录 Private Bytes、Working Set、句柄与 GDI/USER 数量。输出位于 `target/review-validation/monitor-process-memory.log`。内存数值用于观察趋势，不采用固定阈值或强制清空工作集来制造通过结果。
+
+脚本构建实际 EXE 与带 `test-diagnostics` 的 DLL，结束时恢复普通 DLL。诊断功能仅查询资源状态，不主动释放资源；测试使用独立内存工作区，不改已安装程序的布局。原有进程内窗口测试仍用于检查组件释放，不替代上述子进程验收。
+
+需要单独研究 PDH 查询关闭后的保留时，可使用现有 `pdh-memory-probe.cpp`（Windows SDK Developer PowerShell）：
+
+```powershell
+./tools/use-windows-toolchain.ps1
+cl.exe /nologo /EHsc /MT /O2 tools/validation/pdh-memory-probe.cpp /Fetarget/pdh-memory-probe.exe /Fotarget/pdh-memory-probe.obj /link pdh.lib psapi.lib
+./target/pdh-memory-probe.exe cpu
+./target/pdh-memory-probe.exe gpu
+```
+
+## PDH 子进程实现实测（2026-10-19）
+
+使用 `test-monitor-process.ps1`，真实 EXE、原生窗口和 PDH 数据源；主进程测试宿主先暖机普通分组窗口和设置描述，然后第一次启动监控。单面板开关 10 轮，首次采样 63 秒，其余每轮 2.2 秒。
+
+| 阶段 | 主进程私有内存 | 主进程工作集 | 句柄 | GDI / USER |
+| --- | ---: | ---: | ---: | ---: |
+| 首次打开前 | 69,240 KiB | 76,532 KiB | 709 | 13 / 19 |
+| 第 10 轮打开 | 69,148 KiB | 77,568 KiB | 716 | 13 / 19 |
+| 第 10 轮关闭 | 69,096 KiB | 77,544 KiB | 708 | 13 / 19 |
+
+第 10 轮监控子进程私有内存为 79,020 KiB，关闭后进程正常退出（退出码 0），该进程资源由 Windows 回收。主进程监控采样客户端、绘图实例始终为 0，采样服务为 false。关闭后没有累计增长；主进程工作集仍比首次基线高约 0.99 MiB，包含已经触碰的代码页和缓存，不等于仍持有监控采样或图形对象。
+
+两轮故障回归的关闭后私有内存比该次基线高 88 KiB；最终构建的两轮复测为 +204 KiB，第二轮均不再增长。已验证：窗口关闭、设置禁用、紧凑布局尺寸回传、主进程管道断开、无效管道输入后的面板禁用与重新启用。原插件测试 15 项、SDK 6 项、核心 11 项，以及有插件/无插件的宿主测试 8/6 项通过。历史 9 MiB 增量不再留在主进程，但不承诺所有机器上的工作集或分配器容量逐字节回归。
+
+完整 10 轮记录：`target/process-memory-10-cycles.log`。故障验证记录：`target/process-fault-validation.log`、`target/process-final-validation.log`。本轮仅构建和测试工作区 EXE，没有替换当前安装程序。

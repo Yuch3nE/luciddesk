@@ -2,15 +2,27 @@
 
 [简体中文](CHANGELOG.md) · English
 
-Current version: **0.20.4**. Features and fixes by release.
+Current version: **0.20.5**. Features and fixes by release.
 
 Exit the app before upgrading a portable installation and preserve its `data` folder. See the [portable guide](docs/portable.md) (Chinese).
 
-## Unreleased
+## 0.20.5 · 2026-10-18
+
+The default 0.20.5 distribution does not include the system monitor plugin. Its panel content, settings and sampling remain under development as an optional DLL for a later release.
 
 ### fix
 
 - Preserve panel membership and position when an updater deletes and recreates a desktop shortcut at the same path, including across restarts.
+- Verify native desktop icon recovery per item and retain unfinished records so one failure does not block other items. Layout errors after membership recovery no longer trigger a full refresh.
+- Respect Explorer's Show desktop icons setting without rejecting a connection solely because icons are hidden. Include connection stages, item counts and original errors in diagnostics.
+- Retry recycle-bin subscriptions and workspace saves independently instead of treating their failures as desktop connection failures. Continue acknowledging submitted requests while a save is pending.
+- Stop automatic backup cleanup when its policy cannot be read or is invalid, rather than applying default retention rules.
+- Keep existing folder items, caches and valid watchers after a refresh failure. Use Windows enumeration attributes for item type, hidden state, size and modification time.
+
+### refactor
+
+- Remove obsolete sorting events and an unused interface; consolidate folder sorting, executable selection and display preferences. Test sorting through the production menu dispatcher.
+- Simplify recovery iteration while retaining the native Explorer desktop and panel management model.
 
 ## 0.20.4 · 2026-10-10
 

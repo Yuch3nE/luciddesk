@@ -150,3 +150,24 @@ PowerShell 侧载更新与 App Installer、Microsoft Store 自动更新分开记
 崩溃分析保留同次构建的 EXE、DLL 和 PDB；重新构建可能覆盖 `target/production` 中的符号。日志、转储和临时产物留在本地 `target` 或报告附件中，数据与隐私要求见[贡献指南](../../CONTRIBUTING.md)。
 
 诊断包提供 A（当前渲染路径）、B（共享合成树）、C（禁用背景特效）入口，开关与日志见[渲染诊断说明](../../tools/render-diagnostics/RENDER-TEST.md)；崩溃采集与恢复见[崩溃转储说明](../../tools/render-diagnostics/CRASH-DUMPS.md)。这些脚本不随常规便携包分发，诊断变体的结果应标明入口，不能直接当作默认发布路径的结论。
+
+## 0.20.5 回归范围
+
+- 桌面过滤：逐项恢复、存在性未知、操作后核验、坐标警告及保存/订阅独立重试。
+- 排序：正式菜单 `dispatch_sort_menu` → `SortPaneColumn`/`SortFolder` → 事件处理器；覆盖右键目标与当前活动页签不同、持久化顺序及回调前释放模型借用。旧 `SortPane` 事件已移除。
+- 显示偏好：正式设置事件保存与恢复默认，以及彩色 emoji 和分隔线绘制回归。
+- 文件选择：共用 `executable_picker`，覆盖取消、系统错误、文件名校验与 Unicode 路径；此项自动测试不代表人工操作过系统文件对话框。
+- 文件夹：失败快照保留、原生枚举属性。
+- 可选插件：无 DLL 时不注册监控入口、不创建旧监控窗口；有 DLL 时验证 ABI、设置动作、绘图、采样和退出释放。默认 0.20.5 安装包不含该 DLL。
+
+这些自动回归不能证明 Windows 11 26H2 的所有构建及 Shell 扩展组合均兼容；仍需记录实际 Windows Build 和原生桌面实机结果。
+
+### CI 插件验证与编译复用
+
+`tools/validation/test-plugins.ps1` 从 Cargo JSON 构建产物中取得测试 EXE，编译一次后直接运行有、无插件两轮测试，避免第二轮重新调用 Cargo。测试筛选限定为监控适配器、设置页和插件加载器，每个筛选组必须实际存在；不再通过 `monitor` 模糊匹配显示器测试。窗口几何等测试保留在普通宿主与独立进程控制测试中。
+
+Windows GUI 子系统的测试 EXE 通过 PowerShell 管道同步等待退出，再检查返回码；两轮之间先确保进程结束再移动 DLL。CI 在其他宿主测试结束后执行插件验证。CLI、协议、核心、存储和诊断测试合并一次 Cargo 调用，共享依赖构建；文档测试仍由 workspace doctest 步骤统一执行。调试测试和生产包继续使用独立 target 目录，发布触发条件、安装包种类和默认不含插件的约定不变。
+
+### 监控子进程生命周期与内存
+
+在交互桌面运行 `./tools/validation/test-monitor-process.ps1 -Offline`：构建实际 EXE 与诊断 DLL，先暖机普通窗口，再开关单个监控窗口 10 次（首次 63 秒，其余 2.2 秒）。测试窗口关闭、设置禁用、紧凑布局回传、主进程管道断开，以及无效输入后的禁用与重新启用；断言子进程正常退出、HWND 消失、主进程没有监控采样或绘图实例。输出各阶段私有内存、工作集、句柄与 GDI/USER 资源到 `target/review-validation/monitor-process-memory.log`。脚本结束恢复普通 DLL，不触碰已安装程序，不清空工作集或卸载 DLL。
