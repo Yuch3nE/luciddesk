@@ -19,6 +19,7 @@ pub(super) fn validate_and_upgrade(connection: &Connection) -> Result<(), StoreE
     let mut folder_upgrade = None;
     let mut layout_index = None;
     let mut folder_view = None;
+    let mut shortcut_history = None;
     for (name, expected) in definitions {
         let actual: Option<String> = connection
             .query_row(
@@ -35,6 +36,10 @@ pub(super) fn validate_and_upgrade(connection: &Connection) -> Result<(), StoreE
         if name == "desktop_items" && actual.as_deref() == Some(normalized_expected.replace(
             "((xisnullandyisnull)or(xisnotnullandyisnotnullandx>=0andy>=0))", "xisnullandyisnull").as_str()) {
             desktop_upgrade = Some(expected);
+            continue;
+        }
+        if name == "shortcut_history" && actual.is_none() {
+            shortcut_history = Some(expected);
             continue;
         }
         if name == "panel_folder_view" && actual.is_none() {
@@ -83,6 +88,7 @@ pub(super) fn validate_and_upgrade(connection: &Connection) -> Result<(), StoreE
         transaction.execute_batch(&create)?;
         super::folder_view::absorb(&transaction)?;
     }
+    if let Some(create) = shortcut_history { transaction.execute_batch(&create)?; }
     transaction.commit()?;
     Ok(())
 }
@@ -123,6 +129,13 @@ CREATE TABLE desktop_items (
        OR (placement_kind='pane' AND pane_id IS NOT NULL AND grid_column>=0 AND grid_column IS NOT NULL AND grid_row>=0 AND grid_row IS NOT NULL AND monitor_id IS NULL AND ((x IS NULL AND y IS NULL) OR (x IS NOT NULL AND y IS NOT NULL AND x>=0 AND y>=0))))
 );
 CREATE INDEX desktop_items_pane ON desktop_items(pane_id);
+CREATE TABLE shortcut_history (
+    path TEXT PRIMARY KEY NOT NULL, display_name TEXT NOT NULL,
+    pane_id INTEGER NOT NULL REFERENCES panels(id) ON DELETE CASCADE,
+    grid_column INTEGER NOT NULL CHECK(grid_column>=0), grid_row INTEGER NOT NULL CHECK(grid_row>=0),
+    x REAL, y REAL,
+    CHECK((x IS NULL AND y IS NULL) OR (x>=0 AND y>=0 AND x IS NOT NULL AND y IS NOT NULL))
+);
 CREATE TABLE monitor_layouts (
     topology TEXT NOT NULL, panel_id INTEGER NOT NULL REFERENCES panels(id) ON DELETE CASCADE,
     x REAL NOT NULL, y REAL NOT NULL, width REAL NOT NULL CHECK(width>0), height REAL NOT NULL CHECK(height>0),

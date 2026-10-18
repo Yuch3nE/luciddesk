@@ -6,6 +6,12 @@ Current version: **0.20.4**. Features and fixes by release.
 
 Exit the app before upgrading a portable installation and preserve its `data` folder. See the [portable guide](docs/portable.md) (Chinese).
 
+## Unreleased
+
+### fix
+
+- Preserve panel membership and position when an updater deletes and recreates a desktop shortcut at the same path, including across restarts.
+
 ## 0.20.4 · 2026-10-10
 
 ### feat

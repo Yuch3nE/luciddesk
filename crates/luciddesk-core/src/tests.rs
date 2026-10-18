@@ -135,6 +135,58 @@ fn stable_file_identity_preserves_placement_across_a_rename() {
     assert_eq!(renamed.placement(), &placement);
     assert_eq!(renamed.identity(), &after);
 }
+
+#[test]
+fn recreated_shortcut_recovers_only_its_original_path_and_can_be_released() {
+    let identity = |path: &str, id| ShellIdentity::FileSystem {
+        path: path.into(), volume_id: Some(11), file_id: Some(id),
+    };
+    let old = identity(r"C:\Public\Desktop\Music.lnk", 22);
+    let new = identity(r"C:\Public\Desktop\Music.lnk", 33);
+    let placement = DesktopPlacement::Pane {
+        pane_id: PanelId::new(7), position: GridPosition::new(2, 3),
+    };
+    let mut item = DesktopItem::new(old, "Music");
+    item.set_placement(placement.clone());
+    item.set_pane_position(Some(crate::PointDip::new(45.0, 67.0)));
+    let mut workspace = Workspace::from_panels(vec![panel(7)]).unwrap();
+    workspace.reconcile_desktop_items([item]);
+    workspace.reconcile_desktop_items([]);
+    workspace.reconcile_desktop_items([]);
+    assert_eq!(workspace.desktop_items(), []);
+    assert_eq!(workspace.shortcut_history().len(), 1);
+    // Neither a recycled ID nor an identical label at another path inherits membership.
+    let unrelated = identity(r"C:\User\Desktop\Music.lnk", 22);
+    workspace.reconcile_desktop_items([DesktopItem::new(unrelated.clone(), "Music")]);
+    assert!(matches!(workspace.desktop_item(&unrelated).unwrap().placement(), DesktopPlacement::FreeDesktop { .. }));
+    workspace.reconcile_desktop_items([DesktopItem::new(new.clone(), "Music")]);
+    assert_eq!(workspace.desktop_item(&new).unwrap().placement(), &placement);
+    assert_eq!(workspace.desktop_item(&new).unwrap().pane_position(), Some(crate::PointDip::new(45.0, 67.0)));
+    assert_eq!(workspace.shortcut_history(), []);
+    workspace.desktop_item_mut(&new).unwrap().set_placement(DesktopPlacement::default());
+    workspace.reconcile_desktop_items([]);
+    workspace.reconcile_desktop_items([DesktopItem::new(new, "Music")]);
+    assert!(matches!(workspace.desktop_items()[0].placement(), DesktopPlacement::FreeDesktop { .. }));
+}
+
+#[test]
+fn missing_files_are_not_remembered_and_removing_panel_forgets_shortcuts() {
+    let mut workspace = Workspace::from_panels(vec![panel(7)]).unwrap();
+    let items = ["Music.lnk", "Notes.txt"].map(|path| {
+        let mut item = DesktopItem::new(ShellIdentity::FileSystem {
+            path: path.into(), volume_id: None, file_id: None,
+        }, path);
+        item.set_placement(DesktopPlacement::Pane {
+            pane_id: PanelId::new(7), position: GridPosition::new(0, 0),
+        });
+        item
+    });
+    workspace.reconcile_desktop_items(items);
+    workspace.reconcile_desktop_items([]);
+    assert_eq!(workspace.shortcut_history().len(), 1);
+    workspace.remove_panel(PanelId::new(7));
+    assert_eq!(workspace.shortcut_history(), []);
+}
 #[test]
 fn tab_groups_validate_members_and_preserve_content_on_activation_and_removal() {
     let mut workspace = Workspace::new();

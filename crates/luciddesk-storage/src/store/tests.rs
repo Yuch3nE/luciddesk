@@ -250,6 +250,82 @@ use luciddesk_core::{
 use rusqlite::Connection;
 
 #[test]
+fn shortcut_update_survives_restart_without_displaying_missing_items() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("workspace.db");
+    let mut store = WorkspaceStore::open(&path).unwrap();
+    let mut workspace = Workspace::from_panels(vec![Panel::new(
+        PanelId::new(42), "Music", RectDip::new(0.0, 0.0, 540.0, 480.0),
+    )]).unwrap();
+    let identity = |id| ShellIdentity::FileSystem {
+        path: r"C:\Public\Desktop\Music.lnk".into(), volume_id: Some(1), file_id: Some(id),
+    };
+    let mut item = DesktopItem::new(identity(1), "Music");
+    item.set_placement(DesktopPlacement::Pane { pane_id: PanelId::new(42), position: GridPosition::new(2, 3) });
+    item.set_pane_position(Some(luciddesk_core::PointDip::new(10.0, 20.0)));
+    workspace.reconcile_desktop_items([item.clone()]);
+    store.save_workspace(&workspace).unwrap();
+    workspace.reconcile_desktop_items([]);
+    store.save_workspace(&workspace).unwrap();
+    let changes = store.raw_change_count();
+    store.save_workspace(&workspace).unwrap();
+    assert_eq!(store.raw_change_count(), changes);
+    let backup = directory.path().join("missing-shortcut.db");
+    store.export_backup(&backup).unwrap();
+    assert_eq!(WorkspaceStore::read_backup(&backup).unwrap().load_workspace().unwrap(), workspace);
+    drop(store);
+    let mut store = WorkspaceStore::open(&path).unwrap();
+    let mut workspace = store.load_workspace().unwrap();
+    assert_eq!(workspace.desktop_items(), []);
+    assert_eq!(workspace.shortcut_history().len(), 1);
+    workspace.reconcile_desktop_items([DesktopItem::new(identity(2), "Music")]);
+    assert_eq!(workspace.desktop_items()[0].placement(), item.placement());
+    assert_eq!(workspace.desktop_items()[0].pane_position(), item.pane_position());
+    assert_eq!(workspace.shortcut_history(), []);
+    store.save_workspace(&workspace).unwrap();
+    assert_eq!(store.load_workspace().unwrap(), workspace);
+    workspace.reconcile_desktop_items([]);
+    store.save_workspace(&workspace).unwrap();
+    workspace.remove_panel(PanelId::new(42));
+    store.save_workspace(&workspace).unwrap();
+    assert_eq!(store.load_workspace().unwrap().shortcut_history(), []);
+}
+
+#[test]
+fn existing_database_gains_shortcut_history_without_resetting_layout() {
+    let connection = Connection::open_in_memory().unwrap();
+    connection.execute_batch(super::schema::SCHEMA).unwrap();
+    let mut store = WorkspaceStore::from_connection(connection).unwrap();
+    let workspace = Workspace::from_panels(vec![Panel::new(
+        PanelId::new(42), "Existing layout", RectDip::new(10.0, 20.0, 540.0, 480.0),
+    )]).unwrap();
+    store.save_workspace(&workspace).unwrap();
+    store.connection.execute_batch("DROP TABLE shortcut_history; INSERT INTO metadata VALUES ('sample','preserved');").unwrap();
+    let store = WorkspaceStore::from_connection(store.connection).unwrap();
+    assert_eq!(store.preference("sample").unwrap().as_deref(), Some("preserved"));
+    assert_eq!(store.load_workspace().unwrap(), workspace);
+}
+
+#[test]
+fn failed_shortcut_history_save_preserves_live_membership() {
+    let mut store = WorkspaceStore::open_in_memory().unwrap();
+    let mut workspace = Workspace::from_panels(vec![Panel::new(
+        PanelId::new(42), "Music", RectDip::new(0.0, 0.0, 540.0, 480.0),
+    )]).unwrap();
+    let mut item = DesktopItem::new(ShellIdentity::FileSystem {
+        path: "Music.lnk".into(), volume_id: None, file_id: None,
+    }, "Music");
+    item.set_placement(DesktopPlacement::Pane { pane_id: PanelId::new(42), position: GridPosition::new(2, 3) });
+    workspace.reconcile_desktop_items([item]);
+    store.save_workspace(&workspace).unwrap();
+    let previous = workspace.clone();
+    store.connection.execute_batch("CREATE TRIGGER reject_history BEFORE INSERT ON shortcut_history BEGIN SELECT RAISE(ABORT,'test failure'); END;").unwrap();
+    workspace.reconcile_desktop_items([]);
+    assert!(store.save_workspace(&workspace).is_err());
+    assert_eq!(store.load_workspace().unwrap(), previous);
+}
+
+#[test]
 fn workspace_round_trips() {
     let mut panel = Panel::new(
         PanelId::new(42),
