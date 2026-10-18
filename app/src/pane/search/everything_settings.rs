@@ -86,34 +86,10 @@ pub(in crate::pane) fn launch() -> Result<(), String> {
     Ok(())
 }
 pub(in crate::pane) fn browse(owner: isize) -> Result<Option<String>, String> {
-    use windows_sys::Win32::UI::Controls::Dialogs::*;
-    let mut file = [0u16; 32768];
-    let mut dialog = OPENFILENAMEW {
-        lStructSize: size_of::<OPENFILENAMEW>() as u32,
-        hwndOwner: owner as _,
-        lpstrFilter: windows_sys::w!("Everything\0Everything.exe\0\0"),
-        lpstrFile: file.as_mut_ptr(),
-        nMaxFile: file.len() as u32,
-        Flags: OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR,
-        ..Default::default()
-    };
-    if unsafe { GetOpenFileNameW(&raw mut dialog) } == 0 {
-        let error = unsafe { CommDlgExtendedError() };
-        return if error == 0 {
-            Ok(None)
-        } else {
-            Err(crate::i18n::format("ui-could-not-select-everything", &[("error", format!("{}", error))]))
-        };
-    }
-    let path =
-        String::from_utf16_lossy(&file[..file.iter().position(|c| *c == 0).unwrap_or(file.len())]);
-    if !PathBuf::from(&path)
-        .file_name()
-        .is_some_and(|n| n.eq_ignore_ascii_case("Everything.exe"))
-    {
-        return Err(crate::i18n::text("ui-select-everything-exe").into());
-    }
-    Ok(Some(path))
+    super::super::executable_picker::browse(
+        owner, "Everything", "Everything.exe", "ui-could-not-select-everything",
+        crate::i18n::text("ui-select-everything-exe"),
+    )
 }
 
 #[cfg(test)]

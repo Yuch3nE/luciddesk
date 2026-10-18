@@ -125,12 +125,6 @@ impl MonitorId {
     pub fn as_str(&self) -> &str {
         &self.0
     }
-
-    /// Returns the underlying identifier without allocating or copying it.
-    #[must_use]
-    pub fn into_inner(self) -> String {
-        self.0
-    }
 }
 
 impl From<u64> for PanelId {

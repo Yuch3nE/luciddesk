@@ -48,35 +48,30 @@ pub(super) fn handle(
             ("pane_header_divider", "true"),
             ("desktop_panel_layout", "compact"),
         ]).map_err(|e| e.to_string())?;
-        title_emoji::load(&s.store)?;
-        compact_menu::load(&s.store)?;
-        header_divider::load(&s.store)?;
+        interface_flags::TITLE_EMOJI.load(&s.store)?;
+        interface_flags::COMPACT_MENU.load(&s.store)?;
+        interface_flags::HEADER_DIVIDER.load(&s.store)?;
         for view in &s.views { unsafe { InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0); } }
     }
-    if matches!(event, Event::SetTitleEmojiColor(_)) {
-        let color = if let Event::SetTitleEmojiColor(color) = event { color } else { true };
+    if let Event::SetTitleEmojiColor(color) = event {
         let s = state.borrow();
-        title_emoji::save(&s.store, color)?;
+        interface_flags::TITLE_EMOJI.save(&s.store, color)?;
         for view in &s.views { unsafe { InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0); } }
-        if matches!(event, Event::SetTitleEmojiColor(_)) { return Ok(false); }
+        return Ok(false);
     }
     if matches!(event, Event::ToggleCompactMenu) {
-        compact_menu::save(&state.borrow().store, !compact_menu::enabled())?;
-        if matches!(event, Event::ToggleCompactMenu) { return Ok(false); }
+        interface_flags::COMPACT_MENU.save(&state.borrow().store, !interface_flags::COMPACT_MENU.get())?;
+        return Ok(false);
     }
     if matches!(event, Event::ToggleHeaderDivider) {
         let s = state.borrow();
-        header_divider::save(&s.store, !header_divider::enabled())?;
+        interface_flags::HEADER_DIVIDER.save(&s.store, !interface_flags::HEADER_DIVIDER.get())?;
         for view in &s.views { unsafe { InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0); } }
-        if matches!(event, Event::ToggleHeaderDivider) { return Ok(false); }
+        return Ok(false);
     }
     if let Some(result) = tab_events::route(state, id, &event)? { return Ok(result); }
     if let Event::SortPaneColumn(target, column) = event {
         sorting::request(&mut state.borrow_mut(), target, column)?;
-        return Ok(false);
-    }
-    if let Event::SortFolderMenu(column) = event {
-        folder::sort(&mut state.borrow_mut(), id, column)?;
         return Ok(false);
     }
     if let Event::SortFolder(column) = event {

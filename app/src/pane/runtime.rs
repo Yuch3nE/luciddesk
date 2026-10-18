@@ -279,9 +279,9 @@ pub(super) fn reload(state: &Rc<RefCell<PaneApp>>) -> Result<(), String> {
         let workspace = s.store.load_workspace().map_err(|e| e.to_string())?;
         peek::load(&s.store)?;
     fonts::load(&s.store)?;
-    header_divider::load(&s.store)?;
-    compact_menu::load(&s.store)?;
-    title_emoji::load(&s.store)?;
+    interface_flags::HEADER_DIVIDER.load(&s.store)?;
+    interface_flags::COMPACT_MENU.load(&s.store)?;
+    interface_flags::TITLE_EMOJI.load(&s.store)?;
         search_hotkey::load(&s.store)?;
         everything_settings::load(&s.store)?;
         s.session.take();

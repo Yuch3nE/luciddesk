@@ -109,7 +109,7 @@ pub(super) fn show<F: FnMut(Event) -> bool>(
             }
         }
         invalidate(hwnd);
-        if model.borrow().folder.is_some() || !crate::pane::compact_menu::enabled() {
+        if model.borrow().folder.is_some() || !crate::pane::interface_flags::COMPACT_MENU.get() {
             let result = luciddesk_shell::show_file_items_menu(
                 windows::Win32::Foundation::HWND(hwnd),
                 &identities,
@@ -231,12 +231,7 @@ pub(super) fn show<F: FnMut(Event) -> bool>(
         54 => { event(Event::ToggleFixedGrid); },
         55 => { event(Event::ToggleGridAlignment); },
         60..=63 => {
-            let column = (command - 60) as u8;
-            if is_folder.0 { event(Event::SortFolderMenu(column)); }
-            else {
-                let id = tab_context.unwrap_or_else(|| model.borrow().active_tab);
-                event(Event::SortPaneColumn(id, column));
-            }
+            super::dispatch_sort_menu(&model, tab_context, (command - 60) as u8, |action| { event(action); });
         },
         49 => {
             let id = tab_context.unwrap_or(model.borrow().active_tab);

@@ -39,7 +39,7 @@ fn menu_sort_saves_once_and_preserves_other_panes() {
     create_view(&state, PanelId::new(1)).unwrap();
     let model = state.borrow().views[0].model.clone();
     let before = state.borrow().store.change_count();
-    window::dispatch_sort_menu(&model, None, false, |event| {
+    window::dispatch_sort_menu(&model, None, 0, |event| {
         assert!(model.try_borrow_mut().is_ok(), "menu must release the model before dispatch");
         handle(&state, PanelId::new(1), event).unwrap();
     });
@@ -48,13 +48,17 @@ fn menu_sort_saves_once_and_preserves_other_panes() {
     assert!(count > before);
     assert!(matches!(state.borrow().workspace.desktop_items()[1].placement(), DesktopPlacement::Pane { pane_id, position } if pane_id.get()==1 && position.column==0));
     assert!(matches!(state.borrow().workspace.desktop_items()[2].placement(), DesktopPlacement::Pane { pane_id, position } if pane_id.get()==2 && position.column==2));
-    handle(&state, PanelId::new(2), Event::SortPane(PanelId::new(1), false)).unwrap();
+    assert!(!sorting::apply(&mut state.borrow_mut().workspace, PanelId::new(1), false).unwrap());
     assert_eq!(state.borrow().store.change_count(),count);
-    window::dispatch_sort_menu(&model, Some(PanelId::new(1)), true, |event| {
+    model.borrow_mut().active_tab = PanelId::new(2);
+    window::dispatch_sort_menu(&model, Some(PanelId::new(1)), 0, |event| {
         assert!(model.try_borrow_mut().is_ok());
-        handle(&state, PanelId::new(1), event).unwrap();
+        handle(&state, PanelId::new(2), event).unwrap();
     });
-    assert_eq!(model.borrow().items[0].label, "File10");
+    let s = state.borrow();
+    let saved = s.store.load_workspace().unwrap();
+    assert_eq!(ordered_desktop_items(&saved, PanelId::new(1))[0].display_name(), "File10");
+    assert_eq!(saved.desktop_items(), s.workspace.desktop_items());
 }
 
 #[test]

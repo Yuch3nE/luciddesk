@@ -29,16 +29,19 @@ mod input;
 mod scheduling;
 pub(super) use scheduling::{post_action, defer_action};
 use input::*;
-#[cfg(test)]
 pub(super) fn dispatch_sort_menu(
     model: &RefCell<GroupModel>,
     tab_context: Option<luciddesk_core::PanelId>,
-    descending: bool,
+    column: u8,
     event: impl FnOnce(Event),
 ) {
     // End the read before dispatch: sorting refreshes this same model synchronously.
-    let id = tab_context.unwrap_or_else(|| model.borrow().active_tab);
-    event(Event::SortPane(id, descending));
+    let action = {
+        let model = model.borrow();
+        if model.folder.is_some() { Event::SortFolder(column) }
+        else { Event::SortPaneColumn(tab_context.unwrap_or(model.active_tab), column) }
+    };
+    event(action);
 }
 pub(super) fn round_flyout(hwnd: HWND, width: i32, height: i32, radius: f32, scale: f32) {
     shape::WindowShape::default().update(hwnd, width, height, radius, scale);

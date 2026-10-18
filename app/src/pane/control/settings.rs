@@ -48,9 +48,9 @@ pub(super) fn workspace_values(store: &WorkspaceStore) -> Result<serde_json::Map
 pub(super) fn runtime(state: &PaneApp) -> serde_json::Value {
     json!({
         "font_family":fonts::family(),
-        "title_emoji_color":title_emoji::color(),
-        "compact_menu":compact_menu::enabled(),
-        "header_divider":header_divider::enabled(),
+        "title_emoji_color":interface_flags::TITLE_EMOJI.get(),
+        "compact_menu":interface_flags::COMPACT_MENU.get(),
+        "header_divider":interface_flags::HEADER_DIVIDER.get(),
         "diagnostics_level":format!("{:?}", luciddesk_diagnostics::level()).to_ascii_lowercase(),
         "search_visible":state.views.iter().any(|v| state.workspace.panel(v.id).is_some_and(Panel::is_search)),
         "preview_enabled":peek::settings().enabled,
@@ -86,9 +86,9 @@ pub(super) fn present(state: &Rc<RefCell<PaneApp>>) -> Result<(), String> {
         search_hotkey::load(&s.store)?;
         let language_changed = crate::i18n::initialize(&s.store)?;
         fonts::load(&s.store)?;
-        title_emoji::load(&s.store)?;
-        compact_menu::load(&s.store)?;
-        header_divider::load(&s.store)?;
+        interface_flags::TITLE_EMOJI.load(&s.store)?;
+        interface_flags::COMPACT_MENU.load(&s.store)?;
+        interface_flags::HEADER_DIVIDER.load(&s.store)?;
         for view in &s.views {
             if let Some(panel) = s.workspace.panel(view.id) {
                 let mut model = view.model.borrow_mut();

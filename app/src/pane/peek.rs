@@ -313,37 +313,13 @@ pub(super) fn resolved(s: &Settings) -> Option<PathBuf> {
     running_quicklook()
 }
 pub(super) fn browse(owner: isize, provider: Provider) -> Result<Option<String>, String> {
-    use windows_sys::Win32::UI::Controls::Dialogs::*;
-    let mut file = [0u16; 32768];
-    let mut dialog = OPENFILENAMEW {
-        lStructSize: size_of::<OPENFILENAMEW>() as u32,
-        hwndOwner: owner as _,
-        lpstrFilter: match provider {
-            Provider::Peek => windows_sys::w!("PowerToys Peek\0PowerToys.Peek.UI.exe\0\0"),
-            Provider::QuickLook => windows_sys::w!("QuickLook\0QuickLook.exe\0\0"),
-        },
-        lpstrFile: file.as_mut_ptr(),
-        nMaxFile: file.len() as u32,
-        Flags: OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR,
-        ..Default::default()
-    };
-    if unsafe { GetOpenFileNameW(&raw mut dialog) } == 0 {
-        let error = unsafe { CommDlgExtendedError() };
-        return if error == 0 {
-            Ok(None)
-        } else {
-            Err(crate::i18n::format("ui-could-not-select-preview-app", &[("error", format!("{}", error))]))
-        };
-    }
-    let path =
-        String::from_utf16_lossy(&file[..file.iter().position(|c| *c == 0).unwrap_or(file.len())]);
-    if !PathBuf::from(&path)
-        .file_name()
-        .is_some_and(|n| n.eq_ignore_ascii_case(provider.executable()))
-    {
-        return Err(crate::i18n::format("ui-select", &[("arg0", format!("{}", provider.executable()))]));
-    }
-    Ok(Some(path))
+    super::executable_picker::browse(
+        owner,
+        match provider { Provider::Peek => "PowerToys Peek", Provider::QuickLook => "QuickLook" },
+        provider.executable(),
+        "ui-could-not-select-preview-app",
+        &crate::i18n::format("ui-select", &[("arg0", provider.executable().into())]),
+    )
 }
 
 struct Signal(windows_sys::Win32::Foundation::HANDLE);

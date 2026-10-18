@@ -640,7 +640,7 @@ impl Renderer {
                     target.clipped_color_text(&text, &self.tab_title, &Rect::from_xywh(rect.left + 10.0, rect.top,
                         (bounds.width - 20.0).max(1.0), bounds.height), if active || incoming { white } else { dim })?;
                 }
-                if super::header_divider::enabled() && !model.collapsed && h > model.content_header() + 1.0 {
+                if super::interface_flags::HEADER_DIVIDER.get() && !model.collapsed && h > model.content_header() + 1.0 {
                     let divider = canvas_result(target.create_solid_brush(super::theme::panel_divider(model.dark, model.backdrop)))?;
                     let inset = super::layout::HEADER_INSET;
                     let divider_y = ((model.content_header() - inset + 4.0) * scale).round() / scale;

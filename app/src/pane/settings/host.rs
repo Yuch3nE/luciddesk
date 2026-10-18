@@ -445,7 +445,7 @@ pub(in crate::pane) fn show(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result
                     show_panels_shortcut, show_hotkey::status()),
                 unsafe { IsZoomed(hwnd) } != 0,
                 search_visible,
-                (desktop_status.clone(), header_divider::enabled(), compact_menu::enabled(), updates.status(), startup.status(), startup.busy()),
+                (desktop_status.clone(), interface_flags::HEADER_DIVIDER.get(), interface_flags::COMPACT_MENU.get(), updates.status(), startup.status(), startup.busy()),
             );
             if scroll_page != page { scroll_offset = 0.0; scroll_page = page; }
             let scene_changed = snapshot_changed || scene_key.as_ref() != Some(&key);

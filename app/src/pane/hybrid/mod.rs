@@ -94,9 +94,9 @@ pub fn run(path: &Path, title: Option<String>) -> Result<(), String> {
     crate::i18n::initialize(&store)?;
     super::peek::load(&store)?;
     fonts::load(&store)?;
-    header_divider::load(&store)?;
-    compact_menu::load(&store)?;
-    title_emoji::load(&store)?;
+    interface_flags::HEADER_DIVIDER.load(&store)?;
+    interface_flags::COMPACT_MENU.load(&store)?;
+    interface_flags::TITLE_EMOJI.load(&store)?;
     search_hotkey::load(&store)?;
     everything_settings::load(&store)?;
     let mut workspace = store.load_workspace().map_err(|e| e.to_string())?;

@@ -641,14 +641,20 @@ fn menu_sort_uses_loaded_and_externally_updated_folder_rule() {
     app.store.save_preference("panel_folder_sort:2", "0:asc").unwrap();
     ensure(&mut app, id).unwrap();
     let state = Rc::new(RefCell::new(app));
-    super::super::handle(&state, id, super::super::Event::SortFolderMenu(0)).unwrap();
+    let model = RefCell::new(super::super::create_model(&state.borrow(), id).unwrap());
+    super::super::window::dispatch_sort_menu(&model, None, 0, |event| {
+        assert!(model.try_borrow_mut().is_ok());
+        super::super::handle(&state, id, event).unwrap();
+    });
     assert_eq!(state.borrow().folders[&id].sort, (0, true));
     {
         let mut s = state.borrow_mut();
         s.store.save_preference("panel_folder_sort:2", "2:desc").unwrap();
         apply_saved_preferences(&mut s, id).unwrap();
     }
-    super::super::handle(&state, id, super::super::Event::SortFolderMenu(2)).unwrap();
+    super::super::window::dispatch_sort_menu(&model, None, 2, |event| {
+        super::super::handle(&state, id, event).unwrap();
+    });
     assert_eq!(state.borrow().folders[&id].sort, (2, false));
 }
 

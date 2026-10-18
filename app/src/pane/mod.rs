@@ -31,6 +31,7 @@ mod drag_drop;
 mod keyboard;
 mod rename;
 mod peek;
+mod executable_picker;
 mod marquee;
 mod columns;
 mod layout;
@@ -54,10 +55,8 @@ mod acrylic;
 mod animation;
 mod theme;
 mod fonts;
+mod interface_flags;
 mod label;
-mod title_emoji;
-mod header_divider;
-mod compact_menu;
 mod shell_menu;
 
 pub(crate) mod menu;
@@ -215,8 +214,6 @@ enum Event {
     SetFolder(std::path::PathBuf),
     OpenFolder,
     SortFolder(u8),
-    SortFolderMenu(u8),
-    SortPane(PanelId, bool),
     SortPaneColumn(PanelId, u8),
     ToggleFixedGrid,
     ToggleGridAlignment,

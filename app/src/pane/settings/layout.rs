@@ -367,7 +367,7 @@ fn scene_with_mica(
             (
                 crate::i18n::text("ui-header-divider"),
                 crate::i18n::text("ui-show-a-thin-line-between-the-header-and-content"),
-                header_divider::enabled(),
+                interface_flags::HEADER_DIVIDER.get(),
                 Event::ToggleHeaderDivider,
             ),
         ] {
@@ -375,15 +375,15 @@ fn scene_with_mica(
         }
         if show_mica {
             form.toggle(crate::i18n::text("compact-menu-title"),
-                crate::i18n::text("compact-menu-description"), compact_menu::enabled(),
+                crate::i18n::text("compact-menu-description"), interface_flags::COMPACT_MENU.get(),
                 Action::Change(Event::ToggleCompactMenu));
         }
         form.section(crate::i18n::text("ui-text-icons"));
         form.toggle(
             crate::i18n::text("title-emoji-rendering"),
             crate::i18n::text("title-emoji-rendering-description"),
-            title_emoji::color(),
-            Action::Change(Event::SetTitleEmojiColor(!title_emoji::color())),
+            interface_flags::TITLE_EMOJI.get(),
+            Action::Change(Event::SetTitleEmojiColor(!interface_flags::TITLE_EMOJI.get())),
         );
         form.choices(
             crate::i18n::text("ui-panel-text"),

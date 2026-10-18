@@ -110,7 +110,7 @@ impl DrawPass<'_> {
                 DWRITE_LINE_METRICS, DWRITE_LINE_SPACING_METHOD_UNIFORM},
         };
         let native_layout: IDWriteTextLayout = native_interface(layout.raw())?;
-        let text_options = if super::title_emoji::color() { D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT } else { D2D1_DRAW_TEXT_OPTIONS_NONE };
+        let text_options = if super::interface_flags::TITLE_EMOJI.get() { D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT } else { D2D1_DRAW_TEXT_OPTIONS_NONE };
         let native_brush: ID2D1Brush = native_interface(brush.as_raw_brush())?;
         let metrics = layout.metrics();
         self.push_clip(&c::Rect::from_xywh(x, y, metrics.layout_width, metrics.layout_height));

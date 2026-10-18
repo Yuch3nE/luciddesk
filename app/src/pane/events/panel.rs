@@ -22,7 +22,6 @@ pub(super) fn apply(
         | Event::CloseTabId(_)
         | Event::MoveTab(_) => unreachable!("Tabs handled before borrowing PaneApp"),
         Event::SortPaneColumn(..)
-        | Event::SortFolderMenu(_)
         | Event::SortFolder(_)
         | Event::FolderItemCreated(_)
         | Event::SetFolderColumns(_)
@@ -199,16 +198,6 @@ pub(super) fn apply(
             fixed_grid::toggle(&mut s.workspace, id)?;
             if let Err(error) = save(&mut s) { s.workspace = previous; return Err(error); }
             refresh_views(&mut s);
-        }
-        Event::SortPane(target, descending) => {
-            let previous = s.workspace.clone();
-            if sorting::apply(&mut s.workspace, target, descending)? {
-                if let Err(error) = save(&mut s) {
-                    s.workspace = previous;
-                    return Err(error);
-                }
-                refresh_views(&mut s);
-            }
         }
         Event::ToggleAutoHide => {
             if s.workspace.panel(id).is_none() {
