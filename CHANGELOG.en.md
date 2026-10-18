@@ -2,9 +2,28 @@
 
 [简体中文](CHANGELOG.md) · English
 
-Current version: **0.20.5**. Features and fixes by release.
+Current version: **0.21.0**. Features and fixes by release.
 
 Exit the app before upgrading a portable installation and preserve its `data` folder. See the [portable guide](docs/portable.md) (Chinese).
+
+## 0.21.0 · 2026-10-19
+
+Default installers and ZIPs still exclude plugins. System monitoring requires an explicitly built and deployed DLL. Native Explorer desktop management is unchanged.
+
+### feat
+
+- Add an optional DLL plugin host, versioned C ABI, Rust SDK and development guide. Discover plugins beside the EXE in `plugins`; retain configuration and hide their entries when absent.
+- Move monitor content, settings descriptions and translations into the plugin. Manage panel switches, metrics and sampling devices in Settings.
+- Run each enabled monitor panel's native window, rendering and PDH sampling in a separate child process. The main process owns settings, persistence and lifecycle management.
+
+### perf
+
+- Close monitor panels by normally exiting their child processes, releasing sampling, graphics and runtime resources without trimming working sets or manually unloading DLLs. The main process retains its settings plugin and configuration; memory is not promised to return byte-for-byte to the initial value.
+
+### build
+
+- Add independent plugin builds and explicit package selection. CI tests plugin boundaries and missing-plugin behavior, and explicitly excludes plugins from release packages.
+- Cover monitor child shutdown, faults and re-enabling through real execution paths. Update documentation to the PDH child-process design and remove V2 experiment guidance.
 
 ## 0.20.5 · 2026-10-18
 

@@ -15,6 +15,8 @@ flowchart LR
         UI <-->|"请求与结果通知"| Workers
         UI --> Session
     end
+    Monitor["可选监控子进程：窗口、绘图、PDH 采样"]
+    UI <-->|"配置、设备清单与窗口事件"| Monitor
     Store["config.toml / workspace.db"]
     UI <--> Store
     subgraph Explorer["explorer.exe"]
@@ -30,6 +32,7 @@ flowchart LR
 | 执行位置 | 负责的状态与操作 | 边界 |
 | --- | --- | --- |
 | 主程序 UI STA | `PaneApp`、工作区、窗口模型、选择、布局、绘制与存储操作 | `Rc<RefCell<PaneApp>>` 留在所属线程；调用可能重入窗口消息的操作前释放可变借用 |
+| 可选监控子进程 | 每个启用的监控面板的窗口、绘图与 PDH 采样 | 同一 EXE 的私有入口；关闭面板后正常退出，不负责桌面 Hook 或持久化 |
 | 主程序后台任务 | Shell 清单审计、图标加载、目录与搜索结果 | 通过请求、结果和唤醒通知交接；Shell/COM 对象在所属线程使用，UI 接收前校验结果是否过时 |
 | Explorer 桌面 STA | 原生桌面视图、过滤名单应用、成员恢复与输入通知 | 由桌面组件执行视图操作；不维护完整工作区和应用配置 |
 | Explorer 菜单 STA | 独立 Shell 宿主、原生命令与菜单生命周期 | 普通命令由 Shell 执行；重命名动词返回主程序，输入仍由面板负责 |
@@ -37,6 +40,8 @@ flowchart LR
 Explorer 继续负责未收纳图标的绘制、排列、命中和原生交互。桌面组件调用 `IShellFolderView::RemoveObject` 将已收纳项目从视图集合移除；开启系统自动排列时，由 Explorer 补位。主程序使用独立窗口自绘面板内容。
 
 菜单宿主的窗口区域为空，不显示图标。文件身份、命令转发与释放规则见[精简菜单技术文档](../win11-compact-menu-command-routing.md)。
+
+主进程可加载监控 DLL 生成设置描述，但不创建采样客户端；设备清单由子进程同步。关闭面板会关闭管道并等待子进程正常退出，主进程仍保留配置和设置能力。该隔离机制属于监控适配器，不是所有第三方插件自动获得的通用进程沙箱。详见[插件协议](plugins.md)和[监控生命周期](system-monitor.md)。
 
 ## 模块职责
 

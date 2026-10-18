@@ -33,6 +33,23 @@ Release 在工作区 `Cargo.toml` 中统一启用 Thin LTO 和 `codegen-units = 
 Remove-Item Env:LUCIDDESK_DATA_DIR -ErrorAction SilentlyContinue
 ```
 
+## 可选插件
+
+默认安装包和 ZIP 不附带插件；`cargo build --workspace` 会编译插件 crate，但不会自动部署 DLL。主程序重启后从 EXE 同级 `plugins` 目录加载插件。
+
+```powershell
+# 编译监控 DLL 并部署到 target/debug/plugins
+./tools/build-plugins.ps1 -Offline
+# 显式生成带监控插件的开发包
+./tools/package.ps1 -SystemMonitorPlugin -Offline
+# 验证真实 DLL 加载与缺失插件行为
+./tools/validation/test-plugins.ps1 -Offline
+# 交互桌面下验证监控子进程关闭和故障恢复
+./tools/validation/test-monitor-process.ps1 -Offline
+```
+
+插件无需额外 helper EXE；主程序使用同一构建的私有 `--monitor-child` 入口承载监控。SDK 与 DLL 的 `0.1.0` 包版本独立于应用版本，C ABI 和 JSON 协议当前均为 1。接口和部署约束见[插件开发指南](plugins.md)。
+
 ## 诊断构建
 
 | Feature | 所属包 | 用途 |
@@ -100,7 +117,7 @@ cargo build -p luciddesk -p luciddesk-explorer --locked --offline --target-dir t
 .\tools\package.ps1 -All -Offline
 ```
 
-`-InnoCompiler <ISCC.exe>` 可指定已有的 Inno 编译器。未传 `-Installer` 或 `-All` 时仍只生成 ZIP。`-All` 默认生成普通 ZIP、便携 ZIP、EXE 及各自 SHA256。CI 显式使用 `-All -InstallerFormat Exe`，只准备 Inno Setup，不生成 MSI。本地需要同时生成 MSI 时使用 `-All -InstallerFormat Both` 并先准备 WiX。
+`-InnoCompiler <ISCC.exe>` 可指定已有的 Inno 编译器。未传 `-Installer` 或 `-All` 时仍只生成 ZIP。`-All` 默认生成普通 ZIP、便携 ZIP、EXE 及各自 SHA256。CI 显式使用 `-All -InstallerFormat Exe -NoPlugins`，只准备 Inno Setup，不生成 MSI。本地需要同时生成 MSI 时使用 `-All -InstallerFormat Both` 并先准备 WiX。
 
 EXE 由 `tools/packaging/build-exe.ps1` 编译，MSI 由 `tools/packaging/build-msi.ps1` 编译。两个生产入口均核对传入版本与 `build.json`，并验证完整 Skill 文件、清单哈希及内嵌导出的一致性；安装后的目录固定为 `skills/luciddesk-control/`。独立打包使用同样检查，MSI 隔离测试产品仍可使用 `-TestFixture`。
 

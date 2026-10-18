@@ -5,6 +5,7 @@
 | 位置 | 用途 |
 | --- | --- |
 | `package.ps1` | 构建生产版本，生成 ZIP、便携包和 EXE/MSI |
+| `build-plugins.ps1` | 独立构建可选插件并部署到运行目录 |
 | `package-msix.ps1` | 从生产包生成 MSIX |
 | `use-windows-toolchain.ps1`、`windows-toolchain.json` | 选择并记录 Windows 构建工具链 |
 | `ensure-inno.ps1`、`ensure-wix.ps1` | 准备安装包编译器 |
@@ -35,5 +36,7 @@ CLI Schema 校验依赖见 `validation/requirements-ci.txt`。安装、桌面交
 `validation/support/cli-idle.ps1` 和 `cli-desktop-items.ps1` 是 CLI 验收的内部步骤，依赖主脚本的进程、数据目录和函数。通过 `validation/test-cli-plan.ps1 -IdleSeconds N` 或 `-LiveDesktopItems` 调用，不独立执行。
 
 `assets/Refresh-App-Icon.ps1` 会复制到发行包根目录，在包内仍以同目录的 `luciddesk.exe` 为默认目标。`render-diagnostics/` 内部文件保持相对路径，便于独立分发。
+
+`validation/test-plugins.ps1` 验证 SDK、DLL 和宿主有/无插件的真实路径；`validation/test-monitor-process.ps1` 在交互桌面验证监控子进程退出、内存记录和故障恢复。后者不会强制清空工作集或卸载 DLL。
 
 完整构建和验收说明见[构建指南](../docs/development/build.md)与[验证指南](../docs/development/validation.md)。
