@@ -721,7 +721,7 @@ impl Plans {
                     if let Err(error) = state.store.save_workspace_with_folder_preferences(&plan.next, plan.layout.as_ref().map(|(key,entries)|(key.as_str(),entries.as_slice())), &plan.folders) {
                         return fail("PERSISTENCE_ERROR", &error.to_string());
                     }
-                    state.workspace = plan.next.clone();
+                    state.workspace = std::mem::take(&mut plan.next);
                     if let Some(runtime) = &mut state.runtime {
                         runtime.layouts.positions.retain(|id,_|state.workspace.panel(*id).is_some());
                     }
@@ -741,12 +741,21 @@ impl Plans {
             }
             self.receipts.push_back(Receipt {
                 desktop_membership: (plan.membership && changed).then(||hybrid::desired_membership(state)),
-                runtime_action:plan.runtime_action.clone(),
+                runtime_action:plan.runtime_action.take(),
                 id: request.request_id.clone(),
                 signature,
                 response: response.clone(),
                 expires: now + Duration::from_secs(600),
             });
+            // Only the token is needed to reject a second commit. Receipts own
+            // retry responses; committed workspace and preview data can be dropped.
+            plan.next = Workspace::new();
+            plan.refs = HashMap::new();
+            plan.diff = serde_json::Value::Null;
+            plan.settings = None;
+            plan.layout = None;
+            plan.layout_observation = None;
+            plan.folders = Vec::new();
             response
         }
     }
@@ -1320,6 +1329,55 @@ mod tests {
         );
         assert_eq!(state.store.change_count(), committed);
     }
+    #[test]
+    fn committed_plans_release_workspace_and_preview_payload() {
+        let mut state = super::super::super::tests::test_state();
+        let inventory: Vec<_> = (0..512).map(|index| DesktopItem::new(
+            ShellIdentity::Namespace { parsing_name: format!("memory-test:{index}") },
+            format!("Item {index}"),
+        )).collect();
+        state.workspace.reconcile_desktop_items(inventory);
+        let mut snapshot = Snapshot::new();
+        for index in 0..32 {
+            let preview = preview(
+                &mut snapshot,
+                &mut state,
+                json!([{"op":"pane.update","pane_id":"1","title":format!("Group {index}")}]),
+            );
+            let request = apply(&preview);
+            let response = snapshot.respond(&mut state, &request);
+            assert!(response.ok, "{response:?}");
+            assert_eq!(
+                serde_json::to_value(snapshot.respond(&mut state, &request)).unwrap(),
+                serde_json::to_value(&response).unwrap(),
+            );
+            let second_commit = apply(&preview);
+            assert_eq!(
+                snapshot.respond(&mut state, &second_commit).error.unwrap().code,
+                "PLAN_ALREADY_APPLIED",
+            );
+        }
+        assert_eq!(snapshot.plans.pending.len(), 32);
+        for plan in &snapshot.plans.pending {
+            assert!(plan.applied);
+            assert_eq!(plan.next, Workspace::new());
+            assert!(plan.refs.is_empty());
+            assert!(plan.diff.is_null());
+            assert!(plan.settings.is_none());
+            assert!(plan.layout.is_none());
+            assert!(plan.layout_observation.is_none());
+            assert!(plan.folders.is_empty());
+            assert!(plan.runtime_action.is_none());
+        }
+        assert_eq!(state.workspace.desktop_items().len(), 512);
+        let saved = state.store.load_workspace().unwrap();
+        assert_eq!(saved.panels(), state.workspace.panels());
+        assert_eq!(saved.desktop_items().len(), state.workspace.desktop_items().len());
+        for item in state.workspace.desktop_items() {
+            assert!(saved.desktop_items().contains(item));
+        }
+    }
+
     #[test]
     fn expired_plan_and_evicted_receipt_are_reported_without_writes() {
         let mut state = super::super::super::tests::test_state();

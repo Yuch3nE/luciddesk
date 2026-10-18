@@ -79,15 +79,16 @@ impl Snapshot {
         self.plans.refresh_desktop(state);
         if let Some((id,data)) = self.startup.poll() {self.plans.system_result(&id,data);}
         let monitors = luciddesk_window::enumerate_monitors();
-        let observed = (
-            state.workspace.clone(),
-            state.store.change_count(),
-            format!("{monitors:?}"),
-            transient::fingerprint(state),
-        );
-        if self.seen.as_ref() != Some(&observed) {
+        let changes = state.store.change_count();
+        let topology = format!("{monitors:?}");
+        let runtime = transient::fingerprint(state);
+        let unchanged = self.seen.as_ref().is_some_and(|(workspace, count, monitors, fingerprint)| {
+            workspace == &state.workspace && *count == changes
+                && monitors == &topology && fingerprint == &runtime
+        });
+        if !unchanged {
             self.version += 1;
-            self.seen = Some(observed);
+            self.seen = Some((state.workspace.clone(), changes, topology, runtime));
         }
         let version = self.version.to_string();
         let base = luciddesk_api::Context {
