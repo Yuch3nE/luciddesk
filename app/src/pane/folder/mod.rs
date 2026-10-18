@@ -29,6 +29,20 @@ pub(super) struct Source {
     pending_rename: Option<PathBuf>,
 }
 
+impl Source {
+    fn apply_scan(&mut self, result: Result<Vec<Item>, String>) {
+        self.loading = false;
+        match result {
+            Ok(items) => {
+                self.items = items;
+                sort_items(&mut self.items, self.sort);
+                self.status = None;
+            }
+            Err(error) => self.status = Some(error),
+        }
+    }
+}
+
 struct Commands {
     event: isize,
     stop: std::sync::atomic::AtomicBool,
@@ -182,6 +196,7 @@ impl Source {
                     if commands.stop.load(std::sync::atomic::Ordering::Acquire) {
                         break;
                     }
+                    let mut scan_failed = false;
                     if commands.active.load(std::sync::atomic::Ordering::Acquire) {
                         let mut jobs = Vec::new();
                         let result = luciddesk_shell::enumerate_folder(&root)
@@ -212,10 +227,7 @@ impl Source {
                             .map_err(|error| {
                                 crate::i18n::format("ui-cannot-read-folder-check-the-path-and-permissions-n", &[("error", format!("{}", error))])
                             });
-                        if result.is_err() {
-                            cache.lock().unwrap().retain_folder(&root, &Default::default());
-                            watch = None;
-                        }
+                        scan_failed = result.is_err();
                         commands.images_pending.store(!jobs.is_empty(), std::sync::atomic::Ordering::Release);
                         if sender.send(result.clone()).is_err() {
                             break;
@@ -240,7 +252,7 @@ impl Source {
                     ];
                     let result = wait_for_change(
                         &handles[..if watch.is_some() { 2 } else { 1 }],
-                        if watch.is_some() || !commands.active.load(std::sync::atomic::Ordering::Acquire) { INFINITE } else { 2000 },
+                        if (watch.is_some() && !scan_failed) || !commands.active.load(std::sync::atomic::Ordering::Acquire) { INFINITE } else { 2000 },
                     );
                     if commands.stop.load(std::sync::atomic::Ordering::Acquire) {
                         break;
@@ -329,18 +341,7 @@ pub(super) fn poll(state: &mut PaneApp) -> Vec<(PanelId, ShellIdentity)> {
         // Each update is a complete snapshot. Sort and publish only the newest
         // one when the UI was busy while several scans completed.
         if let Some(result) = latest {
-            source.loading = false;
-            match result {
-                Ok(items) => {
-                    source.items = items;
-                    sort_items(&mut source.items, source.sort);
-                    source.status = None;
-                }
-                Err(error) => {
-                    source.items.clear();
-                    source.status = Some(error);
-                }
-            }
+            source.apply_scan(result);
             changed = true;
         }
         let mut patches = HashMap::new();

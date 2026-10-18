@@ -148,45 +148,52 @@ pub fn desktop_source_revision() -> Result<Vec<Vec<u8>>, ShellError> {
 /// # Errors
 /// Returns an I/O error if the folder cannot be opened or enumerated.
 pub fn enumerate_folder(path: &Path) -> Result<Vec<ShellEntry>, ShellError> {
-    use std::os::windows::fs::MetadataExt;
-    use windows_sys::Win32::Storage::FileSystem::{
-        FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_HIDDEN,
-    };
-
-    // Directory metadata is supplied by the Windows enumeration. Do not open
-    // every child for a persistent file ID or resolve it through Shell handlers.
-    // Folder mappings use path identities and do not own desktop membership.
-    fs::read_dir(path)?
-        .map(|entry| {
-            let entry = entry?;
-            let path = entry.path();
-            let metadata = entry.metadata().ok();
-            let attributes = metadata.as_ref().map_or(0, MetadataExt::file_attributes);
-            Ok(ShellEntry {
-                display_name: entry.file_name().to_string_lossy().into_owned(),
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::{Foundation::{INVALID_HANDLE_VALUE, ERROR_FILE_NOT_FOUND, ERROR_NO_MORE_FILES, GetLastError}, Storage::FileSystem::*};
+    // Find data contains type/hidden attributes and timestamps in the same read.
+    // No per-child metadata fallback can turn an unknown directory into a file.
+    let pattern: Vec<_> = path.join("*").as_os_str().encode_wide().chain(Some(0)).collect();
+    let mut data = WIN32_FIND_DATAW::default();
+    let handle = unsafe { FindFirstFileW(pattern.as_ptr(), &raw mut data) };
+    if handle == INVALID_HANDLE_VALUE {
+        let code = unsafe { GetLastError() };
+        if code == ERROR_FILE_NOT_FOUND && path.is_dir() { return Ok(Vec::new()); }
+        return Err(std::io::Error::from_raw_os_error(code as i32).into());
+    }
+    struct Search(windows_sys::Win32::Foundation::HANDLE);
+    impl Drop for Search { fn drop(&mut self) { unsafe { FindClose(self.0); } } }
+    let _search = Search(handle);
+    let mut items = Vec::new();
+    loop {
+        let end = data.cFileName.iter().position(|c| *c == 0).unwrap_or(data.cFileName.len());
+        let name = std::ffi::OsString::from_wide(&data.cFileName[..end]);
+        if name != "." && name != ".." {
+            let child = path.join(&name);
+            let folder = data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY != 0;
+            let ticks = (u64::from(data.ftLastWriteTime.dwHighDateTime) << 32) | u64::from(data.ftLastWriteTime.dwLowDateTime);
+            let epoch_ticks = 116_444_736_000_000_000u64;
+            let duration = std::time::Duration::from_nanos(ticks.abs_diff(epoch_ticks) % 10_000_000 * 100)
+                + std::time::Duration::from_secs(ticks.abs_diff(epoch_ticks) / 10_000_000);
+            let modified = if ticks >= epoch_ticks { std::time::UNIX_EPOCH.checked_add(duration) } else { std::time::UNIX_EPOCH.checked_sub(duration) };
+            items.push(ShellEntry {
+                display_name: name.to_string_lossy().into_owned(),
                 attributes: ShellAttributes {
-                    folder: attributes & FILE_ATTRIBUTE_DIRECTORY != 0,
-                    hidden: attributes & FILE_ATTRIBUTE_HIDDEN != 0,
-                    file_system: true,
-                    link: path
-                        .extension()
-                        .is_some_and(|ext| ext.eq_ignore_ascii_case("lnk")),
-                    can_rename: true,
-                    can_delete: true,
+                    folder, hidden: data.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN != 0,
+                    file_system: true, link: child.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("lnk")),
+                    can_rename: true, can_delete: true,
                 },
-                size: metadata
-                    .as_ref()
-                    .filter(|value| value.is_file())
-                    .map(fs::Metadata::len),
-                modified: metadata.and_then(|value| value.modified().ok()),
-                identity: ShellIdentity::FileSystem {
-                    path,
-                    volume_id: None,
-                    file_id: None,
-                },
-            })
-        })
-        .collect()
+                size: (!folder).then_some((u64::from(data.nFileSizeHigh) << 32) | u64::from(data.nFileSizeLow)),
+                modified,
+                identity: ShellIdentity::FileSystem { path: child, volume_id: None, file_id: None },
+            });
+        }
+        if unsafe { FindNextFileW(handle, &raw mut data) } == 0 {
+            let code = unsafe { GetLastError() };
+            if code != ERROR_NO_MORE_FILES { return Err(std::io::Error::from_raw_os_error(code as i32).into()); }
+            break;
+        }
+    }
+    Ok(items)
 }
 
 fn enumerate_shell_folder(

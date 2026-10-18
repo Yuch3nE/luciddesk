@@ -651,3 +651,40 @@ fn menu_sort_uses_loaded_and_externally_updated_folder_rule() {
     super::super::handle(&state, id, super::super::Event::SortFolderMenu(2)).unwrap();
     assert_eq!(state.borrow().folders[&id].sort, (2, false));
 }
+
+#[test]
+fn transient_scan_error_keeps_last_snapshot_until_success() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("kept.txt"), b"data").unwrap();
+    let mut source = Source::start(root.path().to_path_buf(), Default::default()).unwrap();
+    let first = source.updates.recv_timeout(Duration::from_secs(5)).unwrap();
+    source.apply_scan(first);
+    assert_eq!(source.items.len(), 1);
+    source.apply_scan(Err("temporary network error".into()));
+    assert_eq!(source.items[0].label, "kept.txt");
+    assert!(source.status.is_some());
+    source.apply_scan(Ok(Vec::new()));
+    assert!(source.items.is_empty());
+    assert!(source.status.is_none());
+}
+
+#[test]
+fn enumeration_preserves_native_type_hidden_and_size_attributes() {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::*;
+    let root = tempfile::tempdir().unwrap();
+    std::fs::create_dir(root.path().join("dir")).unwrap();
+    let file = root.path().join("hidden.txt");
+    std::fs::write(&file, b"data").unwrap();
+    let wide: Vec<_> = file.as_os_str().encode_wide().chain(Some(0)).collect();
+    assert_ne!(unsafe { SetFileAttributesW(wide.as_ptr(), FILE_ATTRIBUTE_HIDDEN) }, 0);
+    let entries = luciddesk_shell::enumerate_folder(root.path()).unwrap();
+    let hidden = entries.iter().find(|e| e.display_name == "hidden.txt").unwrap();
+    assert!(hidden.attributes.hidden);
+    assert!(!hidden.attributes.folder);
+    assert_eq!(hidden.size, Some(4));
+    assert!(hidden.modified.is_some());
+    assert!(entries.iter().find(|e| e.display_name == "dir").unwrap().attributes.folder);
+    assert_eq!(entries.len(), 2);
+    assert!(luciddesk_shell::enumerate_folder(&root.path().join("missing")).is_err());
+}
