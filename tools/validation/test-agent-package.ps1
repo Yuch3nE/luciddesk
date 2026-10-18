@@ -1,11 +1,28 @@
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$Directory)
+param([Parameter(Mandatory)][string]$Directory, [switch]$NoPlugins)
 $ErrorActionPreference = 'Stop'
 $Directory = (Resolve-Path -LiteralPath $Directory).Path
 # Inspect imports before executing the CLI; a missing CRT can otherwise open a
 # loader error dialog even when the installer or command is running silently.
 & (Join-Path $PSScriptRoot 'test-runtime-dependencies.ps1') -Directory $Directory
 $build = Get-Content -LiteralPath (Join-Path $Directory 'build.json') -Raw | ConvertFrom-Json
+$pluginPath = 'plugins/luciddesk_monitor.dll'
+$hasPlugin = Test-Path -LiteralPath (Join-Path $Directory $pluginPath) -PathType Leaf
+if ($hasPlugin -ne [bool]$build.systemMonitorPlugin) { throw 'Plugin payload does not match build manifest' }
+$pluginEntries = @($build.files | Where-Object { $_.file -like 'plugins/*' })
+$actualPlugins = @(if (Test-Path -LiteralPath (Join-Path $Directory 'plugins')) {
+    Get-ChildItem -LiteralPath (Join-Path $Directory 'plugins') -File -Filter '*.dll'
+})
+if ($NoPlugins -and ($build.plugins.Count -or $build.systemMonitorPlugin -or $actualPlugins.Count -or $pluginEntries.Count)) {
+    throw 'Release payload must not contain plugins.'
+}
+if ($actualPlugins.Count -ne $pluginEntries.Count) { throw 'Plugin file count does not match build manifest' }
+foreach ($plugin in $actualPlugins) {
+    $entries = @($pluginEntries | Where-Object file -eq ('plugins/' + $plugin.Name))
+    if ($entries.Count -ne 1 -or (Get-FileHash -LiteralPath $plugin.FullName -Algorithm SHA256).Hash -ne $entries[0].sha256) {
+        throw "Plugin payload hash mismatch: $($plugin.Name)"
+    }
+}
 $required = @('luciddesk-cli.exe', 'cli.md', 'protocol.schema.json', 'skills/luciddesk-control/SKILL.md')
 foreach ($file in $required) {
     $entry = @($build.files | Where-Object file -eq $file)

@@ -19,6 +19,9 @@ class MsiPayloadTests(unittest.TestCase):
                             '-SourceRoot', str(ROOT), '-Destination', str(source)],
                            check=True, capture_output=True)
             output = root / 'payload.wxs'
+            plugin = source / 'plugins' / 'example.dll'
+            plugin.parent.mkdir()
+            plugin.write_bytes(b'plugin-payload-fixture')
             subprocess.run(['pwsh', '-NoProfile', '-File', str(ROOT / 'tools/packaging/msi-payload.ps1'),
                             '-SourcePath', str(source), '-RepoRoot', str(ROOT), '-OutputFile', str(output)],
                            check=True, capture_output=True)
@@ -46,6 +49,7 @@ class MsiPayloadTests(unittest.TestCase):
                 if file.is_file():
                     relative = file.relative_to(ROOT)
                     self.assertEqual(installed[relative].read_bytes(), file.read_bytes())
+            self.assertEqual(installed[Path('plugins/example.dll')].read_bytes(), plugin.read_bytes())
 
 
 if __name__ == '__main__':

@@ -88,3 +88,7 @@ Windows 10 的用户反馈不等于每个构建均完成验收；ARM64 和远程
 包内包含同版本的 `luciddesk-cli.exe`、`cli.md`、`protocol.schema.json` 和 `skills/luciddesk-control/SKILL.md`。主程序运行后，在程序目录执行 `./luciddesk-cli.exe status --json` 验证连接。`./luciddesk-cli.exe skill show` 离线显示配套 Skill，Agent 可使用 `skill show --json` 获取结构化结果。
 
 需要让 Agent 自动发现 Skill 时，将完整 `skills/luciddesk-control` 文件夹复制到该 Agent 配置的技能目录；若已有同名技能，先比较内容，保留本地定制。安装程序不会修改 Agent 的配置、技能目录或系统 PATH。程序移动或升级后，使用新目录中的 CLI 与 Skill。操作命令和恢复规则见 `cli.md`。
+
+## 可选插件
+
+0.20.5 默认包不包含系统监控。开发构建可通过 `tools/package.ps1 -SystemMonitorPlugin` 添加 `plugins/luciddesk_monitor.dll`；主程序重启时检测加载。插件不存在时不显示对应面板及设置页，已有配置保留。详细边界见 [插件开发说明](development/system-monitor.md)。

@@ -1,11 +1,15 @@
 ﻿[CmdletBinding()]
 param(
-    [switch]$Offline, [switch]$Portable, [switch]$RenderDiagnostics, [switch]$Installer, [switch]$All,
+    [switch]$Offline, [switch]$Portable, [switch]$RenderDiagnostics, [switch]$Installer, [switch]$All, [switch]$SystemMonitorPlugin, [switch]$NoPlugins,
     [ValidateSet('Exe', 'Msi', 'Both')][string]$InstallerFormat = 'Exe',
     [ValidateSet('Fast', 'Normal', 'Max')][string]$ExeCompression = 'Fast',
+    [string[]]$Plugins = @(),
     [string]$InnoCompiler
 )
 $ErrorActionPreference = 'Stop'
+if ($NoPlugins -and ($SystemMonitorPlugin -or $Plugins.Count)) {
+    throw '-NoPlugins cannot be combined with plugin selection.'
+}
 if ($All) {
     if ($Portable -or $RenderDiagnostics) {
         throw '-All generates both ZIPs and the selected installer format; do not combine it with -Portable or -RenderDiagnostics.'
@@ -66,9 +70,15 @@ try {
     # Keep release artifacts separate from explicitly enabled diagnostic backends.
     $productionTarget = Join-Path $repoRoot 'target\production'
     $buildArgs = @('build', '--release', '--locked', '--no-default-features', '--target-dir', $productionTarget, '-p', 'luciddesk', '-p', 'luciddesk-explorer', '-p', 'luciddesk-cli')
+    if ($SystemMonitorPlugin) { $Plugins += 'system-monitor' }
+    $Plugins = @($Plugins | Select-Object -Unique)
     if ($Offline) { $buildArgs += '--offline' }
     & cargo @buildArgs
     if ($LASTEXITCODE -ne 0) { throw 'Release build failed.' }
+    $pluginArtifacts = @()
+    if ($Plugins.Count) {
+        $pluginArtifacts = @(& (Join-Path $PSScriptRoot 'build-plugins.ps1') -Plugins $Plugins -Release -Offline:$Offline -TargetDirectory $productionTarget -NoStage)
+    }
     & (Join-Path $PSScriptRoot 'assets/verify-app-icon.ps1') -Executable (Join-Path $productionTarget 'release/luciddesk.exe')
     # All package modes share these exact binaries and build provenance.
     $binaryFiles = @('luciddesk.exe', 'luciddesk_explorer.dll', 'luciddesk-cli.exe')
@@ -93,6 +103,15 @@ try {
         New-Item -ItemType Directory -Path $stage | Out-Null
         foreach ($file in $binaryFiles) {
             Copy-Item -LiteralPath (Join-Path $productionTarget "release\$file") -Destination $stage
+        }
+        $pluginFiles = @()
+        if ($pluginArtifacts.Count) {
+            $pluginDir = Join-Path $stage 'plugins'
+            New-Item -ItemType Directory -Path $pluginDir | Out-Null
+            foreach ($pluginDll in $pluginArtifacts) {
+                Copy-Item -LiteralPath $pluginDll -Destination $pluginDir
+                $pluginFiles += [ordered]@{ file = 'plugins/' + [IO.Path]::GetFileName($pluginDll); sha256 = (Get-FileHash -LiteralPath $pluginDll -Algorithm SHA256).Hash.ToLowerInvariant() }
+            }
         }
         $agentFiles = & (Join-Path $PSScriptRoot 'packaging/stage-agent-payload.ps1') -SourceRoot $repoRoot -Destination $stage
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'assets/Refresh-App-Icon.ps1') -Destination $stage
@@ -121,12 +140,14 @@ try {
         [ordered]@{
             version = $version; channel = 'release'; revision = $revision; uncommittedChanges = $dirty
             portable = [bool]$isPortable
+            plugins = @($Plugins)
+            systemMonitorPlugin = $Plugins -contains 'system-monitor'
             renderingDiagnostics = [bool]$RenderDiagnostics
             builtAt = $builtAt; architecture = 'windows-x64'
             buildEnvironment = $buildEnvironment
-            files = @($files) + @($agentFiles)
+            files = @($files) + @($agentFiles) + @($pluginFiles)
         } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $stage 'build.json') -Encoding UTF8
-        $null = & (Join-Path $PSScriptRoot 'validation/test-agent-package.ps1') -Directory $stage
+        $null = & (Join-Path $PSScriptRoot 'validation/test-agent-package.ps1') -Directory $stage -NoPlugins:$NoPlugins
         $archive = Join-Path $outRoot "$name.zip"
         Compress-Archive -LiteralPath $stage -DestinationPath $archive -CompressionLevel Optimal
         $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()

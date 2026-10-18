@@ -18,10 +18,13 @@ def validate(script):
     sections = re.findall(r"(?ms)^\[Files\]\s*\n(.*?)(?=^\[|\Z)", script)
     if len(sections) != 1:
         raise ValueError("Expected exactly one [Files] section")
+    plugin_line = 'Source: "{#SourcePath}\\plugins\\*.dll"; DestDir: "{app}\\plugins"; Flags: ignoreversion skipifsourcedoesntexist'
+    if sections[0].splitlines().count(plugin_line) != 1:
+        raise ValueError("Expected one optional plugin DLL directive")
     installed = set()
     for line in sections[0].splitlines():
         line = line.strip()
-        if not line or line.startswith(";"):
+        if not line or line.startswith(";") or line == plugin_line:
             continue
         match = re.fullmatch(r'Source: "([^"]+)"; DestDir: "([^"]+)"; Flags: ignoreversion', line)
         if not match:
@@ -60,6 +63,15 @@ class InstallerPayloadTests(unittest.TestCase):
                                if not line.startswith('Source: "{#SourcePath}\\luciddesk-cli.exe"')))
         with self.assertRaises(ValueError):
             validate(self.script.replace('DestDir: "{app}\\skills\\luciddesk-control"', 'DestDir: "{app}"'))
+
+    def test_plugins_only_copy_optional_dlls_into_the_plugin_directory(self):
+        for script in [
+            self.script.replace('plugins\\*.dll', 'plugins\\*'),
+            self.script.replace('DestDir: "{app}\\plugins"', 'DestDir: "{app}"'),
+            self.script.replace('ignoreversion skipifsourcedoesntexist', 'ignoreversion'),
+        ]:
+            with self.subTest(script=script), self.assertRaises(ValueError):
+                validate(script)
 
     def test_rejects_each_missing_skill_reference(self):
         for path in sorted(PAYLOAD):
