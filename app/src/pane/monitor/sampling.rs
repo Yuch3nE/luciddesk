@@ -60,14 +60,24 @@ struct Service {
     sender: mpsc::Sender<Request>,
     data: Arc<Mutex<Arc<Snapshot>>>,
 }
+impl Service {
+    fn is_alive(&self) -> bool {
+        self.alive.load(std::sync::atomic::Ordering::Acquire)
+    }
+}
 static SHARED: Mutex<Weak<Service>> = Mutex::new(Weak::new());
 static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 pub(super) fn snapshot() -> Arc<Snapshot> {
-    SHARED.lock().unwrap().upgrade().map_or_else(
-        || Arc::new(Snapshot::default()),
-        |s| if s.alive.load(std::sync::atomic::Ordering::Acquire) { s.data.lock().unwrap().clone() } else { Arc::new(Snapshot { unavailable: true, ..Default::default() }) },
-    )
+    let shared = SHARED.lock().unwrap();
+    let Some(service) = shared.upgrade() else {
+        return Arc::new(Snapshot::default());
+    };
+    if service.is_alive() {
+        service.data.lock().unwrap().clone()
+    } else {
+        Arc::new(Snapshot { unavailable: true, ..Default::default() })
+    }
 }
 pub(in crate::pane) struct Client {
     id: u64,
@@ -80,7 +90,7 @@ pub(in crate::pane) struct Client {
 impl Client {
     pub(in crate::pane) fn new() -> Result<Self, String> {
         let mut shared = SHARED.lock().unwrap();
-        let service = if let Some(service) = shared.upgrade().filter(|s| s.alive.load(std::sync::atomic::Ordering::Acquire)) {
+        let service = if let Some(service) = shared.upgrade().filter(|s| s.is_alive()) {
             service
         } else {
             let (sender, requests) = mpsc::channel();
@@ -94,7 +104,10 @@ impl Client {
             });
             std::thread::Builder::new()
                 .name("system-monitor".into())
-                .spawn(move || { let _exit = WorkerAlive(worker_alive); run(requests, data); })
+                .spawn(move || {
+                    let _exit = WorkerAlive(worker_alive);
+                    run(requests, data);
+                })
                 .map_err(|e| e.to_string())?;
             *shared = Arc::downgrade(&service);
             service
@@ -109,10 +122,12 @@ impl Client {
         })
     }
     pub(in crate::pane) fn tick(&mut self, visible: bool, options: &Preferences) -> bool {
-        if !self.service.alive.load(std::sync::atomic::Ordering::Acquire) {
-            let replacement = SHARED.lock().unwrap().upgrade().filter(|s| s.alive.load(std::sync::atomic::Ordering::Acquire));
-            if let Some(service) = replacement { self.service = service; self.options.clear(); }
-            else {
+        if !self.service.is_alive() {
+            let replacement = SHARED.lock().unwrap().upgrade().filter(|s| s.is_alive());
+            if let Some(service) = replacement {
+                self.service = service;
+                self.options.clear();
+            } else {
                 let changed = self.sequence != u64::MAX;
                 self.sequence = u64::MAX;
                 return changed;

@@ -387,23 +387,22 @@ impl Membership {
         let mut failure = None;
         if !targets.is_empty() {
             let present = view.present(&targets).map_err(|e| ApplyError::at(e, Stage::VerifyAdd))?;
-            let names: Vec<_> = self.hidden.keys().cloned().collect();
-            for name in names {
-                if present.contains(&name) {
-                    self.hidden.remove(&name);
-                    continue;
+            self.hidden.retain(|name, item| {
+                if present.contains(name) {
+                    return false;
                 }
-                match view.exists(&name) {
-                    Ok(false) => { self.hidden.remove(&name); }
+                match view.exists(name) {
+                    Ok(false) => return false,
                     Ok(true) => {
                         added = true; // A failed COM call may still have inserted it.
-                        if let Err(error) = view.add(&self.hidden[&name]) {
+                        if let Err(error) = view.add(item) {
                             failure.get_or_insert_with(|| ApplyError::at(error, Stage::Add));
                         }
                     }
                     Err(error) => { failure.get_or_insert_with(|| ApplyError::at(error, Stage::Existence)); }
                 }
-            }
+                true // Keep attempted additions until their presence is verified.
+            });
             if added {
                 let targets: Vec<_> = self.hidden.values().collect();
                 let observed = view.present(&targets).map_err(|e| ApplyError::at(e, Stage::VerifyAdd))?;
