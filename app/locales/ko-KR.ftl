@@ -1231,8 +1231,6 @@ ui-desktop-log-saved = Diagnostic log: { $path }
 ui-desktop-log-failed = Could not write diagnostic log: { $error }
 
 diagnostics-section = Diagnostic logging
-diagnostics-level = Log level
-diagnostics-level-description = Default: ERROR, errors only. Higher levels help troubleshooting and increase log writes. Changes apply immediately.
 
 ui-sort-by-name = 이름순 정렬
 ui-sort-ascending = 오름차순
@@ -1291,9 +1289,9 @@ monitor-settings-description = 모니터 패널을 켜고 지표와 장치를 �
 monitor-enable = 모니터 패널 사용
 monitor-enable-description = 끄더라도 레이아웃과 설정이 유지됩니다.
 
+monitor-display-settings = 표시 및 새로 고침
+monitor-device-settings = 장치 선택
 
 plugins-title = 플러그인
 plugins-description = 설치된 플러그인을 관리합니다. 변경 사항은 즉시 적용되며 설정은 유지됩니다. DLL 추가 또는 업데이트 후 다시 시작하세요.
 plugins-empty = 설치된 플러그인이 없습니다. 앱 옆의 plugins 폴더에 DLL을 넣고 다시 시작하세요.
-monitor-display-settings = 표시 및 새로 고침
-monitor-device-settings = 장치 선택

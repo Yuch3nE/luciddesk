@@ -1231,8 +1231,6 @@ ui-desktop-log-saved = Diagnostic log: { $path }
 ui-desktop-log-failed = Could not write diagnostic log: { $error }
 
 diagnostics-section = Diagnostic logging
-diagnostics-level = Log level
-diagnostics-level-description = Default: ERROR, errors only. Higher levels help troubleshooting and increase log writes. Changes apply immediately.
 
 ui-sort-by-name = Sort by name
 ui-sort-ascending = Ascending
@@ -1291,9 +1289,9 @@ monitor-settings-description = Enable monitor panels and choose metrics and devi
 monitor-enable = Enable monitor panel
 monitor-enable-description = Turning this off preserves the layout and settings for the next time you enable it.
 
+monitor-display-settings = Display and refresh
+monitor-device-settings = Device sources
 
 plugins-title = Plugins
 plugins-description = Manage installed plugins. Changes apply immediately and preserve configuration. Restart after adding or updating DLLs.
 plugins-empty = No plugins installed. Place plugin DLLs in the plugins folder beside the app and restart.
-monitor-display-settings = Display and refresh
-monitor-device-settings = Device sources

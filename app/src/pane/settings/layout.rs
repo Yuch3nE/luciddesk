@@ -44,22 +44,7 @@ pub(super) fn general(
         }),
         Action::CopySkillPrompt,
     );
-    use luciddesk_diagnostics::{Level, level};
-    form.section(crate::i18n::text("diagnostics-section"));
-    form.choices(
-        crate::i18n::text("diagnostics-level"),
-        crate::i18n::text("diagnostics-level-description"),
-        [
-            Level::Error,
-            Level::Warn,
-            Level::Info,
-            Level::Debug,
-            Level::Trace,
-        ]
-        .into_iter()
-        .map(|value| (value.label(), Action::LogLevel(value), value == level()))
-        .collect(),
-    );
+    form.diagnostics();
 }
 
 #[cfg(test)]
@@ -257,7 +242,6 @@ fn scene_with_mica(
         scroll_offset: 0.0,
         text: vec![],
         cards: vec![],
-        let navigation_height = (stride - 2.0).min(38.0);
         separators: vec![],
         controls: vec![],
         previews: vec![],
@@ -273,6 +257,7 @@ fn scene_with_mica(
         };
         let stride = ((_height - 136.0) / (pages().len() - 1) as f32).clamp(34.0, 42.0);
         let y = 78.0 + position as f32 * stride + gap;
+        let navigation_height = (stride - 2.0).min(38.0);
         s.control(
             ControlKind::Navigation,
             Rect::from_xywh(12.0, y, Tokens::content_x() - 48.0, navigation_height),

@@ -432,6 +432,23 @@ impl<'a> SettingsForm<'a> {
         }
         self.y += rows as f32 * 56.0;
     }
+    pub fn diagnostics(&mut self) {
+        use luciddesk_diagnostics::{Level, level};
+        let r = self.card_layout(
+            crate::i18n::text("diagnostics-section"),
+            "",
+            self.width - 2.0 * Tokens::INSET,
+            true,
+        );
+        let levels = [Level::Error, Level::Warn, Level::Info, Level::Debug, Level::Trace];
+        let width = (r.right - r.left - 4.0 * Tokens::GAP) / 5.0;
+        for (index, value) in levels.into_iter().enumerate() {
+            self.scene.button(
+                Rect::from_xywh(r.left + index as f32 * (width + Tokens::GAP), r.top, width, Tokens::CONTROL_HEIGHT),
+                value.label(), Action::LogLevel(value), value == level(),
+            );
+        }
+    }
     pub fn choices(&mut self, title: &str, description: &str, choices: Vec<(&str, Action, bool)>) {
         let cell = choices
             .iter()

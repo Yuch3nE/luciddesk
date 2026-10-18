@@ -491,7 +491,7 @@ fn settings_layout_and_rendering_at_multiple_scales() {
         for (viewport_width, viewport_height) in [(800.0, 560.0), (940.0, 620.0)] {
             for at_bottom in [false, true] {
                 for scale in [1.0, 1.5, 2.0] {
-                    for page in [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11] {
+                    for page in [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13] {
                         for dark in [false, true] {
                             let mut body = scene(
                                 viewport_width,
@@ -563,6 +563,10 @@ fn settings_layout_and_rendering_at_multiple_scales() {
                                     false,
                                 );
                             }
+                            if page == 13 {
+                                layout::general(&mut body, viewport_width,
+                                    crate::startup::Status::DisabledByWindows, false, true, false);
+                            }
                             let mut s = with_titlebar(body, viewport_width, false);
                             s.scroll_to(
                                 viewport_width,
@@ -621,6 +625,8 @@ fn settings_layout_and_rendering_at_multiple_scales() {
                                 let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                                     .join("../target")
                                     .join(match (page, dark) {
+                                        (13, true) => "settings-general-dark.bmp",
+                                        (13, false) => "settings-general-light.bmp",
                                         (11, true) => "settings-fonts-dark.bmp",
                                         (11, false) => "settings-fonts-light.bmp",
                                         (8, true) => "settings-folder-dark.bmp",
@@ -731,7 +737,7 @@ fn font_picker_fits_minimum_window_and_exposes_list_and_reset() {
 
 #[test]
 fn setting_cards_scroll_without_moving_navigation_or_hitting_caption() {
-    for page in [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11] {
+    for page in [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13] {
         for width in [800.0, 940.0, 1440.0] {
             let build = || {
                 let mut body = scene(

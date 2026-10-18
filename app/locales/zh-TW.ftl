@@ -1231,8 +1231,6 @@ ui-desktop-log-saved = Diagnostic log: { $path }
 ui-desktop-log-failed = Could not write diagnostic log: { $error }
 
 diagnostics-section = Diagnostic logging
-diagnostics-level = Log level
-diagnostics-level-description = Default: ERROR, errors only. Higher levels help troubleshooting and increase log writes. Changes apply immediately.
 
 ui-sort-by-name = 依名稱排序
 ui-sort-ascending = 遞增
@@ -1291,9 +1289,9 @@ monitor-settings-description = 在此啟用監控面板，選擇顯示指標和�
 monitor-enable = 啟用監控面板
 monitor-enable-description = 關閉後保留版面與設定，再次開啟即可恢復。
 
+monitor-display-settings = 顯示與更新
+monitor-device-settings = 裝置來源
 
 plugins-title = 外掛程式
 plugins-description = 管理已安裝外掛；開關立即生效並保留設定。新增或更新 DLL 後請重新啟動。
 plugins-empty = 未安裝外掛。將 DLL 放入程式目錄的 plugins 資料夾後重新啟動。
-monitor-display-settings = 顯示與更新
-monitor-device-settings = 裝置來源

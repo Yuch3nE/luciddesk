@@ -1231,8 +1231,6 @@ ui-desktop-log-saved = Diagnostic log: { $path }
 ui-desktop-log-failed = Could not write diagnostic log: { $error }
 
 diagnostics-section = Diagnostic logging
-diagnostics-level = Log level
-diagnostics-level-description = Default: ERROR, errors only. Higher levels help troubleshooting and increase log writes. Changes apply immediately.
 
 ui-sort-by-name = Сортировка по имени
 ui-sort-ascending = По возрастанию
@@ -1291,9 +1289,9 @@ monitor-settings-description = Включайте панели и выбирай
 monitor-enable = Включить панель монитора
 monitor-enable-description = При отключении расположение и настройки сохраняются.
 
+monitor-display-settings = Отображение и обновление
+monitor-device-settings = Источники данных
 
 plugins-title = Плагины
 plugins-description = Управление установленными плагинами. Изменения применяются сразу, настройки сохраняются. После обновления DLL перезапустите приложение.
 plugins-empty = Плагины не установлены. Поместите DLL в папку plugins рядом с приложением и перезапустите его.
-monitor-display-settings = Отображение и обновление
-monitor-device-settings = Источники данных
