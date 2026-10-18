@@ -25,7 +25,7 @@
 | 配置、数据兼容或备份恢复 | [配置与工作区存储](storage.md) → [API 与提交边界](rust-api-review.md) → [验证要求](validation.md) |
 | 托盘入口或任务栏重建 | [运行时托盘](tray.md) → [架构说明](architecture.md) |
 | 插件接口与新插件 | [插件开发指南](plugins.md) → [SDK 示例](../../crates/luciddesk-plugin-api/examples/minimal.rs) |
-| 可选监控插件（未随 0.21.0 发布） | [原生系统监控面板](system-monitor.md) → [绘图与绑定](rendering.md) → [存储](storage.md) |
+| 可选监控插件（未随 0.21.1 发布） | [原生系统监控面板](system-monitor.md) → [绘图与绑定](rendering.md) → [存储](storage.md) |
 
 ## 文档索引
 

@@ -91,4 +91,4 @@ Windows 10 的用户反馈不等于每个构建均完成验收；ARM64 和远程
 
 ## 可选插件
 
-0.21.0 默认包不包含系统监控。开发构建可通过 `tools/package.ps1 -SystemMonitorPlugin` 添加 `plugins/luciddesk_monitor.dll`；主程序重启时检测加载。插件不存在时不显示对应面板及设置页，已有配置保留。详细边界见 [插件开发说明](development/system-monitor.md)。
+0.21.1 默认包不包含系统监控。开发构建可通过 `tools/package.ps1 -SystemMonitorPlugin` 添加 `plugins/luciddesk_monitor.dll`；主程序重启时检测加载。插件不存在时不显示对应面板及设置页，已有配置保留。详细边界见 [插件开发说明](development/system-monitor.md)。

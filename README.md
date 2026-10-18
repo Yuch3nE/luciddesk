@@ -12,7 +12,7 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Build CI](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml/badge.svg)](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml)
-[![版本](https://img.shields.io/badge/version-0.21.0-087EA4?style=flat-square)](CHANGELOG.md)
+[![版本](https://img.shields.io/badge/version-0.21.1-087EA4?style=flat-square)](CHANGELOG.md)
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square)](#系统与兼容性)
 [![架构](https://img.shields.io/badge/arch-x64-475569?style=flat-square)](docs/portable.md)
 
@@ -61,7 +61,9 @@ LucidDesk 是使用 Rust 开发的 Windows 桌面整理工具。把零散图标�
 
 未收纳的图标继续由原生 Explorer 桌面管理。关闭“显示桌面图标”不会单独阻止连接；连接仍取决于实际窗口和 Shell 接口状态。0.20.5 改善了连接诊断与逐项恢复，具体变更见[更新记录](CHANGELOG.md)。
 
-0.21.0 新增可选 DLL 插件支持。默认安装包和 ZIP 不含系统监控；开发者可按[插件指南](docs/development/plugins.md)构建并部署。安装监控插件后，在设置页控制面板和各项指标；关闭面板时其监控子进程正常退出。
+0.21.1 默认安装包和 ZIP 不包含插件，开发中的插件列表暂不显示设置入口。可选插件的构建和配置归属见[插件指南](docs/development/plugins.md)。
+
+软件更新时，同一路径的已收纳快捷方式在消失后 5 分钟内重建，可恢复原分组和位置。仅在当前桌面会话内保留，不写数据库、不跨重启恢复。0.19.1～0.20.4 正式版可直接升级；安装版沿用原安装格式与范围，便携版保留 `data`。升级前建议备份。
 
 **面板不会搬动你的文件。** 将图标拖入面板只改变桌面上的收纳方式；拖回桌面即可移出，关闭面板也不会删除原文件。文件菜单中的删除、重命名和剪切，以及文件夹面板中的拖入、粘贴，会操作真实文件。
 

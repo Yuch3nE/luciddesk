@@ -2,23 +2,29 @@
 
 [简体中文](CHANGELOG.md) · English
 
-Current version: **0.21.0**. Features and fixes by release.
+Current version: **0.21.1**. Features and fixes by release.
 
 Exit the app before upgrading a portable installation and preserve its `data` folder. See the [portable guide](docs/portable.md) (Chinese).
 
-## Unreleased
+## 0.21.1 · 2026-10-19
 
-### feat
+Default packages exclude plugins, and the plugin list remains hidden in Settings while under development. The database schema matches released 0.20.4; required upgrades from official versions starting with 0.19.1 remain supported.
 
-- Remove unreleased folder-tab migration, obsolete preview parsing and an unused material alias; simplify Everything path routing while retaining released-data upgrades.
+### fix
 
-- Remove experimental monitor database markers, persistence and upgrade logic; monitor windows are not persisted as workspace records.
+- Retain missing managed shortcuts in memory for five minutes per desktop session. Restore their group and position when recreated at the same path; repeated missing notifications do not extend the deadline. Discard records on exit or session recreation, without recovery across restarts.
+- Store monitoring options and window settings in plugin-owned configuration instead of workspace panel records. The host manages a single monitor child process.
 
-- Let plugins own their configuration. Store monitor options and window settings in the plugin config.toml without creating or updating workspace panel records.
+### perf
 
-- Treat system monitoring as a plugin feature controlled from Settings. Remove the creation button and preserve configuration when closed.
+- Release workspace copies and preview payloads after successful CLI commits, and avoid cloning unchanged workspaces on queries. Preserve failed-save retries and request replay semantics.
+- Decode the settings application icon only when uploading its texture, then release CPU pixels. Add native lifecycle measurements for settings windows, pane icons and rendering resources.
 
-- Keep the plugin list under development and hide its Settings entry. Default release packages exclude plugins.
+### refactor
+
+- Remove shortcut-history schema creation, upgrades and persistence, together with experimental monitor database logic. Do not migrate experimental databases.
+- Remove unreleased folder-tab migration, obsolete preview parsing and an unused material alias; simplify Everything path routing. Cover historical database upgrades, backups and reopening.
+- Simplify diagnostic log settings by removing redundant headings and explanations.
 
 ## 0.21.0 · 2026-10-19
 
@@ -28,7 +34,7 @@ Default installers and ZIPs still exclude plugins. System monitoring requires an
 
 - Add an optional DLL plugin host, versioned C ABI, Rust SDK and development guide. Discover plugins beside the EXE in `plugins`; retain configuration and hide their entries when absent.
 - Move monitor content, settings descriptions and translations into the plugin. Manage panel switches, metrics and sampling devices in Settings.
-- Run each enabled monitor panel's native window, rendering and PDH sampling in a separate child process. The main process owns settings, persistence and lifecycle management.
+- Run the monitor feature window, rendering and PDH sampling in a separate child process. See 0.21.1 for current configuration ownership and lifecycle behavior.
 
 ### perf
 
