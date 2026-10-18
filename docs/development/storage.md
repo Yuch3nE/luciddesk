@@ -34,6 +34,7 @@ CLI 设置接口显式写入缺省的纯色值时也要保存这个选择；之�
 | `panel_defaults` | 圆角、图标网格缩放、边框、吸附、文字模式、底色保护 |
 | `show_panels` | 显示面板快捷键的启用状态与组合键 |
 | `search` | Everything 开关、路径、可读快捷键 |
+| `plugins` | `disabled`：以空格分隔的禁用插件 ID，默认空字符串；保留未安装插件的选择 |
 | `preview` | Peek / QuickLook 开关、路径、快捷键 |
 
 颜色使用 `#RRGGBB`，不透明度使用 0–1，材质强度使用整数 0–100（50 对应界面的默认，界面显示值为该值减 50）。路径可以使用 TOML 单引号字符串，例如 `'C:\Apps\Everything.exe'`。快捷键支持 Ctrl、Shift、Alt 与空格、字母、数字、F1–F24，保留文件操作和系统组合不能使用。
@@ -233,3 +234,7 @@ cargo test -p luciddesk --bin luciddesk --locked --offline normal_interactions_d
 `pane/interface_flags.rs` 集中管理标题彩色 emoji、精简菜单和标题分隔线三个开关。每个开关先持久化再更新缓存；读取失败保留错误，缺失或非 `false` 值沿用默认开启语义。设置、重载和恢复默认共用这份实现，不保留单独的包装模块。
 
 备份 `Policy::load` 区分未配置与读取失败/无效配置：仅未配置使用默认值。错误阻止自动备份和清理，设置界面保留已有显示值；不得将失败转换成默认保留数量后执行删除。
+
+插件配置由各插件自行保存到数据目录的 `plugins/<plugin-id>/`。系统监控使用 `plugins/system-monitor/config.toml`，不创建工作区面板记录。主 `config.toml` 只记录插件激活状态；工作区 `.db` 备份不含插件配置，需另行复制该目录。
+
+兼容分支的版本依据及已删除的实验格式见[兼容逻辑清理记录](compatibility-audit.md)。

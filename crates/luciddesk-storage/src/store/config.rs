@@ -308,7 +308,7 @@ pub(super) fn decode(doc: &DocumentMut) -> Result<BTreeMap<String, String>, Stor
     );
     map.insert(
         "everything".into(),
-        format!("0\n{}", s(&["search", "everything_path"])?),
+        s(&["search", "everything_path"])?,
     );
     let (key, bits) = shortcut(&s(&["search", "shortcut"])?, true)?;
     map.insert("search_hotkey".into(), format!("{key}:{bits}"));
@@ -437,12 +437,7 @@ fn update(doc: &mut DocumentMut, key: &str, raw: &str) -> Result<(), StoreError>
         "search_enabled" if ["0", "1"].contains(&raw) => {
             set(doc, &["search", "enabled"], value(raw == "1"));
         }
-        "everything" => {
-            let (_, path) = raw
-                .split_once('\n')
-                .ok_or_else(|| error("invalid legacy Everything settings"))?;
-            set(doc, &["search", "everything_path"], value(path));
-        }
+        "everything" => set(doc, &["search", "everything_path"], value(raw)),
         "search_hotkey" | "show_panels_hotkey" => {
             let section = if key == "show_panels_hotkey" { "show_panels" } else { "search" };
             let (key, bits) = raw
@@ -455,9 +450,9 @@ fn update(doc: &mut DocumentMut, key: &str, raw: &str) -> Result<(), StoreError>
             );
         }
         "peek" => {
-            let (raw, v2) = raw.strip_prefix("v2\n").map_or((raw, false), |r| (r, true));
-            let p: Vec<_> = raw.splitn(if v2 { 6 } else { 4 }, '\n').collect();
-            if p.len() != if v2 { 6 } else { 4 } || !["0", "1"].contains(&p[0]) {
+            let raw = raw.strip_prefix("v2\n").ok_or_else(|| error("invalid preview settings"))?;
+            let p: Vec<_> = raw.splitn(6, '\n').collect();
+            if p.len() != 6 || !["0", "1"].contains(&p[0]) {
                 return Err(error("invalid preview settings"));
             }
             set(doc, &["preview", "enabled"], value(p[0] == "1"));
@@ -469,21 +464,17 @@ fn update(doc: &mut DocumentMut, key: &str, raw: &str) -> Result<(), StoreError>
             set(
                 doc,
                 &["preview", "provider"],
-                value(if v2 {
-                    p[3].to_ascii_lowercase()
-                } else {
-                    "peek".into()
-                }),
+                value(p[3].to_ascii_lowercase()),
             );
             set(
                 doc,
                 &["preview", "peek_path"],
-                value(p[if v2 { 4 } else { 3 }]),
+                value(p[4]),
             );
             set(
                 doc,
                 &["preview", "quicklook_path"],
-                value(if v2 { p[5] } else { "" }),
+                value(p[5]),
             );
         }
         _ => return Err(error(format!("invalid configuration value for {key}"))),

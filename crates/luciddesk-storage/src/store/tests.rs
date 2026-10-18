@@ -77,12 +77,7 @@ fn material_strength_round_trips_and_remembers_each_material() {
         store.load_workspace().unwrap().appearance().unwrap().1,
         Backdrop::Mica.with_strength(100)
     );
-    for opacity in [0.0, 0.5, 1.0] {
-        assert_eq!(
-            super::decode_backdrop("mica_alt_tuned", Some(opacity), None).unwrap(),
-            Backdrop::MicaAlt
-        );
-    }
+    assert!(super::decode_backdrop("mica_alt_tuned", Some(0.5), None).is_err());
     assert_eq!(Backdrop::MicaAlt.strength(), None);
     assert_eq!(Backdrop::MicaAlt.strength_key(), None);
     assert!(super::decode_backdrop("mica_tuned", Some(f32::NAN), None).is_err());
@@ -879,4 +874,31 @@ fn measured_small_panel_bounds_survive_database_roundtrip() {
     let count = store.change_count();
     store.save_workspace(&store.load_workspace().unwrap()).unwrap();
     assert_eq!(store.change_count(), count);
+}
+
+#[test]
+fn released_schemas_preserve_workspace_and_upgrade_once() {
+    for schema in [include_str!("fixtures/v0.8.1.sql"), include_str!("fixtures/v0.19.1.sql"), include_str!("fixtures/v0.20.4.sql")] {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("workspace.db");
+        let db = Connection::open(&path).unwrap();
+        db.execute_batch(schema).unwrap();
+        db.execute_batch("INSERT INTO panels(id,title,x,y,width,height,collapsed,locked,backdrop_kind,kind)
+            VALUES(1,'Files',10,20,400,300,0,0,'mica','folder');
+            INSERT INTO panel_folder_settings(panel_id,path,sort_column) VALUES(1,'C:/Files',2);
+            INSERT INTO metadata VALUES('keep','original');").unwrap();
+        drop(db);
+        let store = WorkspaceStore::open_database(&path).unwrap();
+        let workspace = store.load_workspace().unwrap();
+        assert_eq!(workspace.panels().len(), 1);
+        assert_eq!(workspace.panels()[0].title(), "Files");
+        assert_eq!(workspace.panels()[0].folder(), Some(std::path::Path::new("C:/Files")));
+        assert_eq!(store.preference("keep").unwrap().as_deref(), Some("original"));
+        assert_eq!(store.preference("panel_folder_sort:1").unwrap().as_deref(), Some("2:asc"));
+        drop(store);
+        let bytes = std::fs::read(&path).unwrap();
+        let reopened = WorkspaceStore::open_database(&path).unwrap();
+        assert_eq!(reopened.load_workspace().unwrap(), workspace);
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
 }

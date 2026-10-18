@@ -6,6 +6,20 @@ Current version: **0.21.0**. Features and fixes by release.
 
 Exit the app before upgrading a portable installation and preserve its `data` folder. See the [portable guide](docs/portable.md) (Chinese).
 
+## Unreleased
+
+### feat
+
+- Remove unreleased folder-tab migration, obsolete preview parsing and an unused material alias; simplify Everything path routing while retaining released-data upgrades.
+
+- Remove experimental monitor database markers, persistence and upgrade logic; monitor windows are not persisted as workspace records.
+
+- Let plugins own their configuration. Store monitor options and window settings in the plugin config.toml without creating or updating workspace panel records.
+
+- Treat system monitoring as a plugin feature controlled from Settings. Remove the creation button and preserve configuration when closed.
+
+- Keep the plugin list under development and hide its Settings entry. Default release packages exclude plugins.
+
 ## 0.21.0 · 2026-10-19
 
 Default installers and ZIPs still exclude plugins. System monitoring requires an explicitly built and deployed DLL. Native Explorer desktop management is unchanged.

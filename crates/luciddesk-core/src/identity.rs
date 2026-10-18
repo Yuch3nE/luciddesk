@@ -49,8 +49,8 @@ impl ShellIdentity {
         }
     }
 
-    /// Compares two Shell identities using file IDs when available and paths as a migration
-    /// fallback for records created before stable file identity was captured.
+    /// Compares Shell identities by stable file ID or path. Path matching also handles
+    /// filesystems without file IDs and files recreated at the same location.
     #[must_use]
     pub fn equivalent_to(&self, other: &Self) -> bool {
         match (self, other) {

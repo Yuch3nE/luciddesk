@@ -86,7 +86,6 @@ pub(super) fn decode_backdrop(
     Ok(match kind {
         "acrylic_tuned" => Backdrop::Acrylic.with_strength((opacity * 100.0).round() as u8),
         "mica_tuned" => Backdrop::Mica.with_strength((opacity * 100.0).round() as u8),
-        "mica_alt_tuned" => Backdrop::MicaAlt, // Normalize legacy adjustable Alt to the fixed preset.
         "mica" => Backdrop::Mica,
         "mica_alt" => Backdrop::MicaAlt,
         "acrylic" => Backdrop::Acrylic,

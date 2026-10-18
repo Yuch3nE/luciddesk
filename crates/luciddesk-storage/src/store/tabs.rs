@@ -22,7 +22,7 @@ pub(super) fn load(connection: &Connection, workspace: &mut Workspace) -> Result
             .map(PanelId::new)
             .ok_or_else(invalid)
     };
-    let mut groups = raw
+    let groups = raw
         .split(';')
         .map(|group| {
             let (active, members) = group.split_once(':').ok_or_else(invalid)?;
@@ -32,22 +32,6 @@ pub(super) fn load(connection: &Connection, workspace: &mut Workspace) -> Result
             })
         })
         .collect::<Result<Vec<_>, StoreError>>()?;
-    // Validate legacy data before migration so corrupt references still fail loudly.
-    let mut seen = std::collections::HashSet::new();
-    if groups.iter().any(|group| group.members.len() < 2
-        || !group.members.contains(&group.active)
-        || group.members.iter().any(|id| !seen.insert(*id)
-            || workspace.panel(*id).is_none_or(|panel| panel.is_search()))) {
-        return Err(invalid());
-    }
-    // Old folder tabs become independent panels, retaining their content and settings.
-    for group in &mut groups {
-        group.members.retain(|id| workspace.panel(*id).is_some_and(|panel| panel.supports_tabs()));
-        if !group.members.contains(&group.active) {
-            if let Some(first) = group.members.first() { group.active = *first; }
-        }
-    }
-    groups.retain(|group| group.members.len() > 1);
     workspace
         .set_tab_groups(groups)
         .map_err(|error| StoreError::InvalidData(error.to_string()))
@@ -86,34 +70,6 @@ mod tests {
     use luciddesk_core::{Panel, RectDip};
 
     #[test]
-    fn legacy_folder_tabs_restore_independently_without_losing_panels() {
-        let mut store = WorkspaceStore::open_in_memory().unwrap();
-        let mut workspace = Workspace::new();
-        for id in 1..=4 {
-            let mut panel = Panel::new(PanelId::new(id), format!("Panel {id}"), RectDip::default());
-            if id >= 3 { panel.set_folder(Some(format!("C:/folder{id}").into())); }
-            workspace.add_panel(panel).unwrap();
-        }
-        store.save_workspace(&workspace).unwrap();
-        for raw in ["3:3,1,2,4", "1:1,3;4:4,2", "3:3,4"] {
-            store.save_preference("pane_tabs_v1", raw).unwrap();
-            let loaded = store.load_workspace().unwrap();
-            assert_eq!(loaded.panels(), workspace.panels());
-            for id in [3, 4] {
-                assert!(loaded.tab_group(PanelId::new(id)).is_none());
-                assert!(loaded.tab_visible(PanelId::new(id)));
-            }
-            if raw == "3:3,1,2,4" {
-                assert_eq!(loaded.tab_groups(), &[PaneTabs {
-                    members: vec![PanelId::new(1), PanelId::new(2)], active: PanelId::new(1),
-                }]);
-            } else { assert!(loaded.tab_groups().is_empty()); }
-            store.save_workspace(&loaded).unwrap();
-            assert_eq!(store.load_workspace().unwrap(), loaded);
-        }
-    }
-
-    #[test]
     fn tabs_round_trip_without_rewriting_unchanged_groups_and_reject_bad_references() {
         let mut store = WorkspaceStore::open_in_memory().unwrap();
         let mut workspace = Workspace::new();
@@ -141,6 +97,11 @@ mod tests {
             store.backup_snapshot().unwrap().load_workspace().unwrap(),
             workspace
         );
+        workspace.panel_mut(PanelId::new(3)).unwrap().set_folder(Some("C:/Files".into()));
+        store.save_workspace(&workspace).unwrap();
+        store.save_preference("pane_tabs_v1", "1:1,3").unwrap();
+        assert!(store.load_workspace().is_err());
+        assert_eq!(store.preference("pane_tabs_v1").unwrap().as_deref(), Some("1:1,3"));
         store.save_preference("pane_tabs_v1", "1:1,99").unwrap();
         assert!(store.load_workspace().is_err());
     }

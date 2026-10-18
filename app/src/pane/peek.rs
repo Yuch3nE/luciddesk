@@ -76,33 +76,16 @@ fn encode(s: &Settings) -> String {
     )
 }
 fn decode(raw: &str) -> Option<Settings> {
-    let (provider, quicklook_path, legacy) = if let Some(raw) = raw.strip_prefix("v2\n") {
-        let fields: Vec<_> = raw.splitn(6, '\n').collect();
-        if fields.len() != 6 {
-            return None;
-        }
-        let provider = match fields[3] {
-            "Peek" => Provider::Peek,
-            "QuickLook" => Provider::QuickLook,
-            _ => return None,
-        };
-        (
-            provider,
-            fields[5].to_owned(),
-            format!("{}\n{}\n{}\n{}", fields[0], fields[1], fields[2], fields[4]),
-        )
-    } else {
-        (Provider::Peek, String::new(), raw.to_owned())
+    let fields: Vec<_> = raw.strip_prefix("v2\n")?.splitn(6, '\n').collect();
+    if fields.len() != 6 { return None; }
+    let enabled = match fields[0] { "1" => true, "0" => false, _ => return None };
+    let key = fields[1].parse().ok()?;
+    let modifiers = fields[2].parse().ok()?;
+    let provider = match fields[3] {
+        "Peek" => Provider::Peek, "QuickLook" => Provider::QuickLook, _ => return None,
     };
-    let mut lines = legacy.splitn(4, '\n');
-    let enabled = match lines.next()? {
-        "1" => true,
-        "0" => false,
-        _ => return None,
-    };
-    let key = lines.next()?.parse().ok()?;
-    let modifiers = lines.next()?.parse().ok()?;
-    let path = lines.next()?.to_owned();
+    let path = fields[4].to_owned();
+    let quicklook_path = fields[5].to_owned();
     valid_shortcut(key, modifiers).then_some(Settings {
         enabled,
         key,
@@ -511,8 +494,9 @@ mod tests {
         result.unwrap();
     }
     #[test]
-    fn legacy_preview_preferences_preserve_peek_and_provider_paths() {
-        let mut value = decode("1\n32\n0\nC:/Peek.exe").unwrap();
+    fn preview_preferences_preserve_both_provider_paths() {
+        assert!(decode("1\n32\n0\nC:/Peek.exe").is_none());
+        let mut value = decode("v2\n1\n32\n0\nPeek\nC:/Peek.exe\n").unwrap();
         assert_eq!(value.provider, Provider::Peek);
         value.provider = Provider::QuickLook;
         value.set_path("C:/QuickLook.exe".into());

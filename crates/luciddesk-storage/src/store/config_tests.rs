@@ -474,3 +474,29 @@ fn disabled_plugins_survive_config_reopen() {
     store.reload_config().unwrap();
     assert_eq!(store.preference("plugins_disabled").unwrap().as_deref(), Some(""));
 }
+
+#[test]
+fn released_search_and_preview_toml_keep_paths_without_internal_legacy_encodings() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("workspace.db");
+    std::fs::write(dir.path().join("config.toml"), r#"
+config_version = 1
+[search]
+everything_path = 'D:/工具/Everything.exe'
+[preview]
+provider = 'quicklook'
+peek_path = 'D:/工具/Peek.exe'
+quicklook_path = 'D:/工具/QuickLook.exe'
+"#).unwrap();
+    let store = WorkspaceStore::open(&path).unwrap();
+    assert_eq!(store.preference("everything").unwrap().as_deref(), Some("D:/工具/Everything.exe"));
+    let preview = store.preference("peek").unwrap().unwrap();
+    assert!(preview.starts_with("v2\n"));
+    store.save_preference("peek", &preview).unwrap();
+    store.save_preference("everything", "E:/Everything.exe").unwrap();
+    drop(store);
+    let store = WorkspaceStore::open(&path).unwrap();
+    assert_eq!(store.preference("everything").unwrap().as_deref(), Some("E:/Everything.exe"));
+    assert_eq!(store.preference("peek").unwrap().unwrap(), preview);
+    assert!(store.save_preference("peek", "1\n32\n0\nD:/Peek.exe").is_err());
+}

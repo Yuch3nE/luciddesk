@@ -26,22 +26,17 @@ pub(in crate::pane) fn set_enabled(store: &WorkspaceStore, enabled: bool) -> Res
         .save_preference("search_enabled", if enabled { "1" } else { "0" })
         .map_err(|e| e.to_string())
 }
-fn decode(raw: &str) -> Option<Settings> {
-    let (flag, path) = raw.split_once('\n')?;
-    // Accept the legacy startup flag only to preserve existing executable paths.
-    matches!(flag, "0" | "1").then(|| Settings { path: path.into() })
-}
 pub(in crate::pane) fn load(store: &WorkspaceStore) -> Result<(), String> {
     *SETTINGS.write().unwrap() = store
         .preference("everything")
         .map_err(|e| e.to_string())?
-        .and_then(|raw| decode(&raw))
+        .map(|path| Settings { path })
         .unwrap_or_default();
     Ok(())
 }
 pub(in crate::pane) fn save(store: &WorkspaceStore, value: Settings) -> Result<(), String> {
     store
-        .save_preference("everything", &format!("0\n{}", value.path))
+        .save_preference("everything", &value.path)
         .map_err(|e| e.to_string())?;
     *SETTINGS.write().unwrap() = value;
     Ok(())
@@ -116,15 +111,12 @@ mod tests {
     }
 
     #[test]
-    fn settings_preserve_unicode_paths_and_reject_invalid_flags() {
-        assert_eq!(
-            decode("1\nD:\\应用\\Everything.exe"),
-            Some(Settings {
-                path: "D:\\应用\\Everything.exe".into()
-            })
-        );
-        assert_eq!(decode("0\n"), Some(Settings::default()));
-        assert_eq!(decode("2\nx"), None);
-        assert_eq!(decode("bad"), None);
+    fn settings_preserve_unicode_path_without_unused_flags() {
+        let store = WorkspaceStore::open_in_memory().unwrap();
+        let value = Settings { path: "D:/应用/Everything.exe".into() };
+        save(&store, value.clone()).unwrap();
+        assert_eq!(store.preference("everything").unwrap().as_deref(), Some(value.path.as_str()));
+        load(&store).unwrap();
+        assert_eq!(settings(), value);
     }
 }
