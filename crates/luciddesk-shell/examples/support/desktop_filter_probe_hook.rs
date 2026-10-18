@@ -125,6 +125,16 @@ fn inspect(command: isize) -> windows::core::Result<String> {
         let _ = writeln!(log, "shell_count={}", folder.ItemCount(SVGIO_ALLVIEW)?);
         let _ = writeln!(
             log,
+            "desktop_folder_IResultsFolder={:?}",
+            folder.GetFolder::<IResultsFolder>().map(|_| ())
+        );
+        let _ = writeln!(
+            log,
+            "legacy_count={:?}",
+            view.cast::<IShellFolderView>().and_then(|legacy| legacy.GetObjectCount())
+        );
+        let _ = writeln!(
+            log,
             "view_IShellFolderView={:?}",
             view.cast::<IShellFolderView>().map(|_| ())
         );
