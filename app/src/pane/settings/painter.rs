@@ -14,7 +14,6 @@ pub(super) struct Painter {
     icon_bitmap: RefCell<Option<(ID2D1DeviceContext, windows_canvas::Bitmap)>>,
     #[cfg(test)]
     icon_uploads: std::cell::Cell<usize>,
-    app_icon: super::super::assets::Pixels,
     formats: Vec<windows_canvas::TextFormat>,
     button_format: windows_canvas::TextFormat,
 }
@@ -76,15 +75,6 @@ impl Painter {
             icon_bitmap: RefCell::new(None),
             #[cfg(test)]
             icon_uploads: std::cell::Cell::new(0),
-            app_icon: {
-                // Use the straight-alpha PNG frame; smaller DIB frames target Shell compatibility.
-                let icon = crate::app_icon::load(256, 256).map_err(|message| {
-                    windows::core::Error::new(windows::Win32::Foundation::E_FAIL, message)
-                })?;
-                super::super::assets::icon_pixels(windows::Win32::UI::WindowsAndMessaging::HICON(
-                    icon.0,
-                ))?
-            },
             formats,
             button_format,
         })
@@ -205,7 +195,14 @@ impl Painter {
                     let mut cached = self.icon_bitmap.borrow_mut();
                     if cached.as_ref().is_none_or(|(old, _)| old != context) {
                         *cached = None;
-                        let pixels = &self.app_icon;
+                        // Decode only when About needs a texture; the GPU owns
+                        // its copy after upload, so no CPU buffer is retained.
+                        let icon = crate::app_icon::load(256, 256).map_err(|message| {
+                            windows::core::Error::new(windows::Win32::Foundation::E_FAIL, message)
+                        })?;
+                        let pixels = super::super::assets::icon_pixels(
+                            windows::Win32::UI::WindowsAndMessaging::HICON(icon.0),
+                        )?;
                         *cached = Some((context.clone(), canvas_result(t.create_bitmap(
                             &pixels.data, pixels.width, pixels.height,
                         ))?));

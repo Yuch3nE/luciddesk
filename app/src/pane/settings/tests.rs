@@ -1863,3 +1863,86 @@ fn native_monitor_settings_switch_reopens_the_saved_panel() {
         SendMessageW(hwnd, WM_CLOSE, 0, 0);
     }
 }
+
+#[test]
+#[ignore = "Native window memory measurement; run alone on an interactive desktop"]
+fn native_daily_memory_lifecycle() {
+    use windows_sys::Win32::System::{ProcessStatus::*, Threading::*};
+    let _sta = crate::pane::test_support::apartment();
+    let state = Rc::new(RefCell::new(super::super::tests::test_state()));
+    let settle = || {
+        let until = std::time::Instant::now() + std::time::Duration::from_millis(250);
+        while std::time::Instant::now() < until {
+            unsafe {
+                let mut message = MSG::default();
+                while PeekMessageW(&mut message, std::ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
+                    TranslateMessage(&message);
+                    DispatchMessageW(&message);
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    };
+    let sample = |phase: &str, cycle| unsafe {
+        let process = GetCurrentProcess();
+        let mut memory = PROCESS_MEMORY_COUNTERS_EX::default();
+        memory.cb = std::mem::size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32;
+        assert_ne!(GetProcessMemoryInfo(process, (&raw mut memory).cast(), memory.cb), 0);
+        let mut handles = 0;
+        assert_ne!(GetProcessHandleCount(process, &mut handles), 0);
+        let gdi = GetGuiResources(process, GR_GDIOBJECTS);
+        let user = GetGuiResources(process, GR_USEROBJECTS);
+        println!("SETTINGS {phase} cycle={cycle} private_kib={} working_kib={} handles={handles} gdi={gdi} user={user}",
+            memory.PrivateUsage / 1024, memory.WorkingSetSize / 1024);
+        (gdi, user)
+    };
+    sample("before", 0);
+    let mut warm = None;
+    for cycle in 1..=12 {
+        for page in [0, 1, 5, 3] {
+            host::show_at(&state, PanelId::new(1), page).unwrap();
+            settle();
+        }
+        sample("open", cycle);
+        let hwnd = state.borrow().settings.as_ref().unwrap().hwnd().cast();
+        unsafe { SendMessageW(hwnd, WM_CLOSE, 0, 0); }
+        settle();
+        assert!(state.borrow().settings.is_none());
+        assert_eq!(unsafe { IsWindow(hwnd) }, 0);
+        assert_eq!(Rc::strong_count(&state), 1);
+        let resources = sample("closed", cycle);
+        if cycle == 3 { warm = Some(resources); }
+        if cycle > 3 { assert_eq!(resources, warm.unwrap(), "native GUI objects accumulated"); }
+    }
+    // Exercise the real pane window, model, and renderer with 8 MiB of icons.
+    for cycle in 1..=8 {
+        create_view(&state, PanelId::new(1)).unwrap();
+        let model = state.borrow().views[0].model.clone();
+        let weak_model = Rc::downgrade(&model);
+        let template = model.borrow().items[0].clone();
+        model.borrow_mut().items = (0..128).map(|index| {
+            let mut item = template.clone();
+            item.identity = ShellIdentity::Namespace { parsing_name: format!("memory-icon:{index}") };
+            item.label = format!("Memory icon {index}");
+            item.image = Some(Arc::new(super::super::assets::Pixels {
+                width: 128, height: 128, data: vec![index as u8; 128 * 128 * 4],
+            }));
+            item
+        }).collect();
+        drop(template);
+        let images: Vec<_> = model.borrow().items.iter()
+            .map(|item| Arc::downgrade(item.image.as_ref().unwrap())).collect();
+        let hwnd = state.borrow().views[0].window.hwnd().cast();
+        unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
+        settle();
+        sample("pane_open", cycle);
+        drop(model);
+        let view = state.borrow_mut().views.remove(0);
+        drop(view);
+        settle();
+        assert!(weak_model.upgrade().is_none(), "pane callback retained the model");
+        assert!(images.iter().all(|image| image.upgrade().is_none()), "renderer retained closed pane icons");
+        sample("pane_closed", cycle);
+    }
+
+}
