@@ -42,6 +42,7 @@ fn native_monitor_layouts_render_in_both_themes_at_multiple_dpi() {
         .collect::<std::collections::VecDeque<_>>();
     let _fixture = sampling::fixture(Snapshot {
         sequence: 1,
+        unavailable: false,
         frame: history.back().unwrap().clone(),
         history,
     });

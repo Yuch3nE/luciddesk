@@ -41,6 +41,7 @@ impl Default for Frame {
 #[derive(Default, Clone)]
 pub(super) struct Snapshot {
     pub sequence: u64,
+    pub unavailable: bool,
     pub frame: Frame,
     pub history: VecDeque<Frame>,
 }
@@ -55,6 +56,7 @@ struct Request {
     options: Option<Preferences>,
 }
 struct Service {
+    alive: Arc<std::sync::atomic::AtomicBool>,
     sender: mpsc::Sender<Request>,
     data: Arc<Mutex<Arc<Snapshot>>>,
 }
@@ -64,7 +66,7 @@ static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new
 pub(super) fn snapshot() -> Arc<Snapshot> {
     SHARED.lock().unwrap().upgrade().map_or_else(
         || Arc::new(Snapshot::default()),
-        |s| s.data.lock().unwrap().clone(),
+        |s| if s.alive.load(std::sync::atomic::Ordering::Acquire) { s.data.lock().unwrap().clone() } else { Arc::new(Snapshot { unavailable: true, ..Default::default() }) },
     )
 }
 pub(in crate::pane) struct Client {
@@ -78,18 +80,21 @@ pub(in crate::pane) struct Client {
 impl Client {
     pub(in crate::pane) fn new() -> Result<Self, String> {
         let mut shared = SHARED.lock().unwrap();
-        let service = if let Some(service) = shared.upgrade() {
+        let service = if let Some(service) = shared.upgrade().filter(|s| s.alive.load(std::sync::atomic::Ordering::Acquire)) {
             service
         } else {
             let (sender, requests) = mpsc::channel();
             let data = Arc::new(Mutex::new(Arc::new(Snapshot::default())));
+            let alive = Arc::new(std::sync::atomic::AtomicBool::new(true));
+            let worker_alive = alive.clone();
             let service = Arc::new(Service {
+                alive,
                 sender,
                 data: data.clone(),
             });
             std::thread::Builder::new()
                 .name("system-monitor".into())
-                .spawn(move || run(requests, data))
+                .spawn(move || { let _exit = WorkerAlive(worker_alive); run(requests, data); })
                 .map_err(|e| e.to_string())?;
             *shared = Arc::downgrade(&service);
             service
@@ -104,6 +109,15 @@ impl Client {
         })
     }
     pub(in crate::pane) fn tick(&mut self, visible: bool, options: &Preferences) -> bool {
+        if !self.service.alive.load(std::sync::atomic::Ordering::Acquire) {
+            let replacement = SHARED.lock().unwrap().upgrade().filter(|s| s.alive.load(std::sync::atomic::Ordering::Acquire));
+            if let Some(service) = replacement { self.service = service; self.options.clear(); }
+            else {
+                let changed = self.sequence != u64::MAX;
+                self.sequence = u64::MAX;
+                return changed;
+            }
+        }
         let active = visible && !options.paused;
         let key = serde_json::to_string(options).unwrap_or_default();
         if active != self.active
@@ -113,10 +127,14 @@ impl Client {
             self.active = active;
             self.options = key;
             self.heartbeat = Instant::now();
-            let _ = self.service.sender.send(Request {
+            if self.service.sender.send(Request {
                 id: self.id,
                 options: active.then(|| options.clone()),
-            });
+            }).is_err() {
+                self.service.alive.store(false, std::sync::atomic::Ordering::Release);
+                self.sequence = u64::MAX;
+                return true;
+            }
         }
         let sequence = self.service.data.lock().unwrap().sequence;
         if active && sequence != self.sequence {
@@ -140,11 +158,17 @@ impl Drop for Client {
 pub(in crate::pane) fn fixture(snapshot: Snapshot) -> impl Drop {
     let (sender, _receiver) = mpsc::channel();
     let service = Arc::new(Service {
+        alive: Arc::new(std::sync::atomic::AtomicBool::new(true)),
         sender,
         data: Arc::new(Mutex::new(Arc::new(snapshot))),
     });
     *SHARED.lock().unwrap() = Arc::downgrade(&service);
     service
+}
+
+struct WorkerAlive(Arc<std::sync::atomic::AtomicBool>);
+impl Drop for WorkerAlive {
+    fn drop(&mut self) { self.0.store(false, std::sync::atomic::Ordering::Release); }
 }
 
 fn run(requests: mpsc::Receiver<Request>, data: Arc<Mutex<Arc<Snapshot>>>) {
@@ -200,6 +224,7 @@ fn run(requests: mpsc::Receiver<Request>, data: Arc<Mutex<Arc<Snapshot>>>) {
         sequence += 1;
         *data.lock().unwrap() = Arc::new(Snapshot {
             sequence,
+            unavailable: false,
             frame,
             history: history.clone(),
         });
@@ -365,6 +390,27 @@ fn rate(old: (u64, u64, Instant), now: (u64, u64, Instant)) -> Option<(f64, f64)
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn disconnected_service_is_unavailable_and_not_reused() {
+        use super::*;
+        let (sender, receiver) = mpsc::channel();
+        drop(receiver);
+        let service = Arc::new(Service {
+            alive: Arc::new(std::sync::atomic::AtomicBool::new(true)), sender,
+            data: Arc::new(Mutex::new(Arc::new(Snapshot::default()))),
+        });
+        *SHARED.lock().unwrap() = Arc::downgrade(&service);
+        let mut client = Client::new().unwrap();
+        assert!(client.tick(true, &Preferences::default()));
+        assert!(snapshot().unavailable);
+        let replacement = Client::new().unwrap();
+        assert!(!Arc::ptr_eq(&replacement.service, &service));
+        assert!(!snapshot().unavailable);
+        let alive = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        drop(WorkerAlive(alive.clone()));
+        assert!(!alive.load(std::sync::atomic::Ordering::Acquire));
+    }
+
     use super::*;
     #[test]
     fn rates_use_actual_elapsed_and_reject_counter_resets_and_gaps() {

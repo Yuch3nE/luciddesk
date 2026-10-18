@@ -289,7 +289,9 @@ impl Drawing {
             }
             target.pop_clip();
         }
-        let footer = if options.paused {
+        let footer = if self.snapshot.unavailable {
+            crate::i18n::text("monitor-unavailable").to_string()
+        } else if options.paused {
             crate::i18n::text("monitor-paused").to_string()
         } else {
             format!(
@@ -298,7 +300,7 @@ impl Drawing {
                 options.interval
             )
         };
-        let status = canvas_result(target.create_solid_brush(if options.paused {
+        let status = canvas_result(target.create_solid_brush(if options.paused || self.snapshot.unavailable {
             ColorF::new(0.88, 0.62, 0.24, 1.0)
         } else {
             ColorF::new(0.24, 0.72, 0.48, 1.0)
