@@ -1291,3 +1291,5 @@ monitor-device-settings = デバイスの選択
 plugins-title = プラグイン
 plugins-description = インストール済みプラグインを管理します。変更は即時に反映され、設定は保持されます。DLL の追加・更新後は再起動してください。
 plugins-empty = プラグインはありません。アプリと同じ場所の plugins フォルダーに DLL を置き、再起動してください。
+
+plugins-manage = プラグイン管理

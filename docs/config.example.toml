@@ -83,7 +83,3 @@ shortcut = "Space"
 # PowerToys Peek 与 QuickLook 需另行安装，示例不会自动安装或启用它们。
 peek_path = ""
 quicklook_path = ""
-
-# Disabled plugin IDs separated by spaces, e.g. "system-monitor example.echo".
-[plugins]
-disabled = ""

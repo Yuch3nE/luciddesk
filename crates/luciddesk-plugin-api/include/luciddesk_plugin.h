@@ -7,6 +7,7 @@
 #define LUCIDDESK_STATUS_OK 0
 #define LUCIDDESK_STATUS_ERROR (-1)
 #define LUCIDDESK_MAX_MESSAGE_BYTES (8u * 1024u * 1024u)
+#define LUCIDDESK_SETTINGS_PAGE_CAPABILITY "settings-page.v1"
 
 /* UTF-8 JSON bytes, borrowed only until the synchronous call returns. */
 typedef void (*LucidDeskReply)(void *user, const uint8_t *data, size_t len);

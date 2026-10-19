@@ -11,3 +11,7 @@ serde_json = "1"
 [[example]]
 name = "minimal"
 crate-type = ["cdylib"]
+
+[[example]]
+name = "settings"
+crate-type = ["cdylib"]

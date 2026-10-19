@@ -2,7 +2,18 @@
 use super::*;
 
 pub(in crate::pane) fn show(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result<(), String> { show_at(state, id, 0) }
-pub(in crate::pane) fn show_monitor(state: &Rc<RefCell<PaneApp>>) -> Result<(), String> { show_at(state, PanelId::new(0), 14) }
+pub(in crate::pane) fn show_monitor(state: &Rc<RefCell<PaneApp>>) -> Result<(), String> { show_plugin(state, monitor::PLUGIN_ID) }
+
+pub(super) fn show_plugin(state: &Rc<RefCell<PaneApp>>, id: &str) -> Result<(), String> {
+    if !crate::plugins::supports(id, luciddesk_plugin_api::SETTINGS_PAGE_CAPABILITY) { return Err(format!("Plugin {id} settings are unavailable")); }
+    let selected = state.borrow().workspace.panels().iter().find(|p| p.is_monitor()).map_or(PanelId::new(0), Panel::id);
+    show_at(state, selected, 15)?;
+    let hwnd = state.borrow().settings.as_ref().unwrap().hwnd();
+    PLUGIN_SELECTION.with(|pending| *pending.borrow_mut() = Some(id.to_owned()));
+    if unsafe { PostMessageW(hwnd.cast(), SELECT_PLUGIN, 0, 0) } == 0 { return Err(std::io::Error::last_os_error().to_string()); }
+    Ok(())
+}
+
 pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: usize) -> Result<(), String> {
     // Native activation synchronously dispatches messages to other panes. Do not
     // hold a shared-state borrow while showing or activating this window.
@@ -64,7 +75,10 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
     let mut reveal: Option<PendingReveal> = None;
     // Navigation belongs to this window, not the saved workspace or connection state.
     let mut page = initial_page;
-    let mut monitor_options = None;
+    let mut selected_plugin: Option<String> = None;
+    let mut plugin_document: Option<Result<serde_json::Value, String>> = None;
+    let mut navigation_offset = 0.0_f32;
+    let mut reveal_navigation = false;
     let mut recording_peek = false;
     let mut recording_search = false;
     let mut recording_show_panels = false;
@@ -262,13 +276,16 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 }
                 return Some(0);
             }
+            if msg == SELECT_PLUGIN {
+                selected_plugin = PLUGIN_SELECTION.with(|pending| pending.borrow_mut().take());
+                page = 15; scene_key = None; scroll_offset = 0.0; focus = None; reveal_navigation = true;
+                recording_peek = false; recording_search = false; recording_show_panels = false; style_input = None;
+                unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
+                return Some(0);
+            }
             if msg == SELECT_PANEL {
-                if lp == 14 { page = 14; scene_key = None; }
                 if wp != 0 {
                     selected = PanelId::new(wp as u64);
-                    if monitor::available() && state.borrow().workspace.panel(selected).is_some_and(Panel::is_monitor) {
-                        page = 14;
-                    }
                 }
                 unsafe {
                     InvalidateRect(hwnd, std::ptr::null(), 0);
@@ -398,15 +415,20 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     snapshot_changed = true;
                 }
             }
+            let plugin_pages = plugin_content::pages();
+            if selected_plugin.as_ref().is_some_and(|id| !plugin_pages.iter().any(|p| &p.id == id)) {
+                selected_plugin = None; page = 15; plugin_document = None;
+                scroll_offset = 0.0; scene_key = None;
+            }
             let available = if let Ok(state) = state.try_borrow() {
+                if let Some(id) = &selected_plugin {
+                    let fresh = Some(plugin_content::load(id));
+                    snapshot_changed |= plugin_document != fresh;
+                    plugin_document = fresh;
+                }
                 if panels != state.workspace.panels() {
                     panels = state.workspace.panels().to_vec();
                     snapshot_changed = true;
-                }
-                if page == 14 {
-                    let fresh = Some(monitor::Preferences::load());
-                    snapshot_changed |= monitor_options != fresh;
-                    monitor_options = fresh;
                 }
                 let fresh_cli = control::enabled(&state.store);
                 snapshot_changed |= cli_enabled != fresh_cli;
@@ -466,21 +488,23 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 unsafe { IsZoomed(hwnd) } != 0,
                 search_visible,
                 (desktop_status.clone(), interface_flags::HEADER_DIVIDER.get(), interface_flags::COMPACT_MENU.get(), updates.status(), startup.status(), startup.busy(),
-                    (page == 14).then(|| [monitor::devices(monitor::Metric::Network), monitor::devices(monitor::Metric::Disk), monitor::devices(monitor::Metric::Gpu)])),
+                    (selected_plugin.clone(), navigation_offset.to_bits(), plugin_pages.iter().map(|p| (p.id.clone(), p.name.clone())).collect::<Vec<_>>())),
             );
             if scroll_page != page { scroll_offset = 0.0; scroll_page = page; }
             let scene_changed = snapshot_changed || scene_key.as_ref() != Some(&key);
             if scene_changed {
-                let mut body = scene(
+                let mut body = if let Some(id) = &selected_plugin {
+                    layout::plugin_scene(w, h - TITLE_HEIGHT, id, appearance, options)
+                } else { scene(
                         w,
                         h - TITLE_HEIGHT,
                         page,
                         search_visible,
                         appearance,
                         options,
-                    );
-                if page == 15 { plugin_page::draw(&mut body, w); }
-                if page == 14 { monitor_page::draw(&mut body, w); }
+                    ) };
+                if let Some(id) = &selected_plugin { plugin_content::draw(&mut body, w, id, plugin_document.clone().unwrap_or_else(|| plugin_content::load(id))); }
+                else if page == 15 { plugin_page::draw(&mut body, w); }
                 if page == 12 {
                     layout::language(&mut body, w, &chosen_language);
                 }
@@ -499,6 +523,8 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 }
                 let mut full = with_titlebar(body, w, key.9);
                 full.scroll_to(w, h, &mut scroll_offset);
+                if std::mem::take(&mut reveal_navigation) { full.reveal_navigation(&mut navigation_offset); }
+                full.scroll_navigation(&mut navigation_offset);
                 cached_scene = Some(full);
                 scene_key = Some(key);
             }
@@ -534,8 +560,13 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 WM_MOUSEWHEEL if scene.viewport.is_some() => {
                     let mut pointer = windows_sys::Win32::Foundation::POINT { x: lp as u16 as i16 as i32, y: (lp >> 16) as u16 as i16 as i32 };
                     unsafe { ScreenToClient(hwnd, &raw mut pointer); }
-                    if pointer.x as f32 / scale < Tokens::content_x() { return Some(0); }
                     let delta = ((wp >> 16) as u16 as i16) as f32 / 120.0;
+                    if pointer.x as f32 / scale < Tokens::content_x() {
+                        navigation_offset = (navigation_offset - delta * 64.0).clamp(0.0, scene.navigation_max);
+                        scene_key = None; hover = None; pressed = None;
+                        unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
+                        return Some(0);
+                    }
                     scroll_offset = (scroll_offset - delta * 64.0).clamp(0.0, scene.scroll_max);
                     scene_key = None; hover = None; pressed = None;
                     unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
@@ -661,19 +692,24 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                         }
                         return Some(0);
                     }
-                    if let Some(thumb) = scene.scroll_thumb() {
-                        let viewport = scene.viewport.unwrap();
-                        if msg == WM_LBUTTONDOWN && x >= viewport.right - 16.0 && y >= viewport.top && y <= viewport.bottom {
-                            scroll_drag = Some(if y >= thumb.top && y <= thumb.bottom { y - thumb.top } else { (thumb.bottom - thumb.top) / 2.0 });
-                            unsafe { SetCapture(hwnd); }
-                        }
-                        if let Some(grab) = scroll_drag {
-                            let travel = viewport.bottom - viewport.top - 16.0 - (thumb.bottom - thumb.top);
-                            scroll_offset = ((y - grab - viewport.top - 8.0) / travel.max(1.0) * scene.scroll_max).clamp(0.0, scene.scroll_max);
-                            if msg == WM_LBUTTONUP { scroll_drag = None; unsafe { ReleaseCapture(); } }
-                            scene_key = None; hover = None; pressed = None;
-                            unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
-                            return Some(0);
+                    for (navigation, thumb, viewport, maximum) in [
+                        (false, scene.scroll_thumb(), scene.viewport, scene.scroll_max),
+                        (true, scene.navigation_thumb(), scene.navigation_viewport, scene.navigation_max),
+                    ] {
+                        if let (Some(thumb), Some(viewport)) = (thumb, viewport) {
+                            if msg == WM_LBUTTONDOWN && x >= viewport.right-16.0 && x <= viewport.right && y >= viewport.top && y <= viewport.bottom {
+                                scroll_drag = Some((navigation, if y >= thumb.top && y <= thumb.bottom { y-thumb.top } else { (thumb.bottom-thumb.top)/2.0 }));
+                                unsafe { SetCapture(hwnd); }
+                            }
+                            if let Some((_, grab)) = scroll_drag.filter(|(kind, _)| *kind == navigation) {
+                                let travel = viewport.bottom-viewport.top-16.0-(thumb.bottom-thumb.top);
+                                let offset = ((y-grab-viewport.top-8.0)/travel.max(1.0)*maximum).clamp(0.0, maximum);
+                                if navigation { navigation_offset = offset; } else { scroll_offset = offset; }
+                                if msg == WM_LBUTTONUP { scroll_drag = None; unsafe { ReleaseCapture(); } }
+                                scene_key = None; hover = None; pressed = None;
+                                unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
+                                return Some(0);
+                            }
                         }
                     }
                     let hit = scene
@@ -833,6 +869,11 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                         }
                         if let (Some(index), Some(viewport)) = (focus, scene.viewport) {
                             let c = &scene.controls[index];
+                            if matches!(c.kind, ControlKind::Navigation) && let Some(viewport) = scene.navigation_viewport {
+                                let delta = if c.bounds.top < viewport.top { c.bounds.top-viewport.top }
+                                    else if c.bounds.bottom > viewport.bottom { c.bounds.bottom-viewport.bottom } else { 0.0 };
+                                if delta != 0.0 { navigation_offset = (navigation_offset+delta).clamp(0.0, scene.navigation_max); scene_key = None; }
+                            }
                             if !matches!(c.kind, ControlKind::Caption) && c.bounds.left >= Tokens::content_x() && (!scene.fixed_list() || Scene::list_row(c)) {
                                 let delta = if c.bounds.top < viewport.top + 8.0 { c.bounds.top - viewport.top - 8.0 }
                                     else if c.bounds.bottom > viewport.bottom - 8.0 { c.bounds.bottom - viewport.bottom + 8.0 } else { 0.0 };
@@ -920,6 +961,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 if actions::execute(actions::Context {
                     state: &state, hwnd, selected, appearance, dark, scale, backup_view: &backup_view, desktop_status: &desktop_status, font_search: font_editor.hwnd, all_fonts: &all_fonts,
                     page: &mut page,
+                    selected_plugin: &mut selected_plugin,
                     focus: &mut focus,
                     hover: &mut hover,
                     backup_offset: &mut backup_offset,

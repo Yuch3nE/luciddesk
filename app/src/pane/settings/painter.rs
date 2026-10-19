@@ -302,6 +302,7 @@ impl Painter {
                     t.draw_rounded_rect(&RoundedRect { rect: r, radius_x: Tokens::CARD_RADIUS, radius_y: Tokens::CARD_RADIUS }, card_border, 1.0);
                 }
                 for (i, c) in s.controls.iter().enumerate() {
+                    let _navigation_clip = matches!(c.kind, ControlKind::Navigation).then(|| ContentClip::navigation(&t, s));
                     if s.fixed_list() && Scene::list_row(c) && s.viewport.is_some_and(|v| c.bounds.bottom <= v.top || c.bounds.top >= v.bottom) { continue; }
                     let _clip = ContentClip::new(
                         &t,
@@ -580,7 +581,7 @@ impl Painter {
                             &RoundedRect {
                                 rect: Rect::from_xywh(
                                     c.bounds.left + 3.0,
-                                    c.bounds.top + 11.0,
+                                    (c.bounds.top + c.bounds.bottom - 18.0) / 2.0,
                                     3.0,
                                     18.0,
                                 ),
@@ -811,7 +812,8 @@ impl Painter {
                         );
                     }
                 }
-                for (r, text, size) in &s.text {
+                for (index, (r, text, size)) in s.text.iter().enumerate() {
+                    let _navigation_clip = s.navigation_text.contains(&index).then(|| ContentClip::navigation(&t, s));
                     let _clip = ContentClip::new(&t, s, r.left >= Tokens::content_x() && !s.fixed_list());
                     if matches!(*size, 4 | 5) {
                         t.clipped_icon(text, &self.formats[*size], r, ink);
@@ -824,7 +826,7 @@ impl Painter {
                         if matches!(*size, 0 | 6) { muted } else { ink },
                     );
                 }
-                if let Some(thumb) = s.scroll_thumb() {
+                for thumb in [s.scroll_thumb(), s.navigation_thumb()].into_iter().flatten() {
                     t.fill_rounded_rect(
                         &RoundedRect {
                             rect: thumb,

@@ -1291,3 +1291,5 @@ monitor-device-settings = 裝置來源
 plugins-title = 外掛程式
 plugins-description = 管理已安裝外掛；開關立即生效並保留設定。新增或更新 DLL 後請重新啟動。
 plugins-empty = 未安裝外掛。將 DLL 放入程式目錄的 plugins 資料夾後重新啟動。
+
+plugins-manage = 外掛程式管理

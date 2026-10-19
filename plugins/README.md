@@ -4,7 +4,8 @@
 
 - `system-monitor/`：系统监控插件，包括设置内容、原生绘图、采样和语言资源。
 - 通用 C ABI / Rust SDK：[`crates/luciddesk-plugin-api`](../crates/luciddesk-plugin-api)。
-- 主程序提供宿主窗口、设置控件、配置目录和插件发现；插件管理自己的配置文件。
+- 独立宿主运行时：[`crates/luciddesk-plugin-host`](../crates/luciddesk-plugin-host)，管理发现、校验、启停和故障；应用桥接不再实现 DLL 加载。
+- 主程序提供插件管理页、面板宿主、配置目录和插件发现；各插件提供设置页描述、处理设置动作并管理业务配置；主程序在单独的“插件”分组中统一渲染这些页面。启用状态统一保存在用户数据目录的 `plugins/config.toml`。
 
 ## 构建与验证
 

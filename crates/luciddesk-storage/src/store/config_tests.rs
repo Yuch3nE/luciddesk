@@ -463,19 +463,6 @@ fn cli_control_defaults_persists_and_skips_repeated_writes() {
 }
 
 #[test]
-fn disabled_plugins_survive_config_reopen() {
-    let (dir, store) = open();
-    assert_eq!(store.preference("plugins_disabled").unwrap().as_deref(), Some(""));
-    store.save_preference("plugins_disabled", "example.echo system-monitor").unwrap();
-    drop(store);
-    let store = WorkspaceStore::open(&dir.path().join("workspace.db")).unwrap();
-    assert_eq!(store.preference("plugins_disabled").unwrap().as_deref(), Some("example.echo system-monitor"));
-    store.save_preference("plugins_disabled", "").unwrap();
-    store.reload_config().unwrap();
-    assert_eq!(store.preference("plugins_disabled").unwrap().as_deref(), Some(""));
-}
-
-#[test]
 fn released_search_and_preview_toml_keep_paths_without_internal_legacy_encodings() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("workspace.db");

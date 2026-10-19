@@ -67,6 +67,7 @@ mod compatibility_tests {
                     (PanelTheme::Light, material),
                     luciddesk_core::PaneOptions::default(),
                     show_mica,
+                    None,
                 );
                 let choices: Vec<_> = page
                     .controls
@@ -188,10 +189,53 @@ pub(super) fn pages() -> Vec<(usize, &'static str, &'static str)> {
         (12, crate::i18n::text("language-title"), "\u{e8d2}"),
         (5, crate::i18n::text("ui-about"), "\u{e946}"),
     ];
-    if monitor::available() {
-        pages.insert(4, (14, crate::i18n::text("monitor-title"), "\u{e9d9}"));
+    if !crate::plugins::installed().is_empty() {
+        pages.push((15, crate::i18n::text("plugins-manage"), "\u{e713}"));
     }
     pages
+}
+
+pub(super) struct Navigation {
+    pub action: Action,
+    pub label: String,
+    pub icon: &'static str,
+}
+
+pub(super) fn navigation() -> Vec<Navigation> {
+    let mut entries: Vec<_> = pages()
+        .into_iter()
+        .map(|(id, name, icon)| Navigation {
+            action: Action::Page(id),
+            label: name.into(),
+            icon,
+        })
+        .collect();
+    entries.extend(plugin_content::pages().into_iter().map(|p| Navigation {
+        action: Action::PluginPage(p.id),
+        label: p.name,
+        icon: "\u{e9d9}",
+    }));
+    entries
+}
+
+pub(super) fn plugin_scene(
+    width: f32,
+    height: f32,
+    id: &str,
+    appearance: (PanelTheme, Backdrop),
+    options: luciddesk_core::PaneOptions,
+) -> Scene {
+    let version = windows_version::OsVersion::current();
+    scene_with_mica(
+        width,
+        height,
+        15,
+        false,
+        appearance,
+        options,
+        version.major > 10 || (version.major == 10 && version.build >= 22000),
+        Some(id),
+    )
 }
 
 pub(super) fn scene(
@@ -211,6 +255,7 @@ pub(super) fn scene(
         appearance,
         options,
         version.major > 10 || (version.major == 10 && version.build >= 22000),
+        None,
     )
 }
 
@@ -222,6 +267,7 @@ fn scene_with_mica(
     appearance: (PanelTheme, Backdrop),
     options: luciddesk_core::PaneOptions,
     show_mica: bool,
+    plugin: Option<&str>,
 ) -> Scene {
     // A portable configuration may have been saved on Windows 11. Reflect the
     // downlevel acrylic fallback without rewriting the persisted preference.
@@ -236,6 +282,7 @@ fn scene_with_mica(
             appearance
         };
     let mut s = Scene {
+        navigation_viewport: None, navigation_text: 0..0, navigation_max: 0.0, navigation_offset: 0.0,
         material: appearance.1,
         viewport: None,
         scroll_max: 0.0,
@@ -248,39 +295,36 @@ fn scene_with_mica(
         app_icon: None,
     };
     s.text(Rect::from_xywh(28.0, 26.0, 172.0, 32.0), "LucidDesk", 2);
-    for (position, &(id, name, icon)) in pages().iter().enumerate() {
-        // Keep spacing tied to semantic groups, not insertion positions.
-        let gap = match id {
-            4 | 3 => 10.0,
-            6 | 12 | 15 | 5 => 20.0,
-            _ => 0.0,
+    let entries = navigation();
+    let stride = ((_height - 114.0 - if entries.iter().any(|entry| matches!(entry.action, Action::Page(15))) { 28.0 } else { 0.0 }) / entries.len().max(1) as f32).clamp(32.0, 42.0);
+    let start = s.text.len();
+    let mut y = 78.0;
+    for entry in &entries {
+        if matches!(entry.action, Action::Page(15)) {
+            s.text(Rect::from_xywh(28.0, y + 4.0, Tokens::content_x() - 52.0, 20.0), crate::i18n::text("plugins-title"), 0);
+            y += 28.0;
+        }
+        let selected = match &entry.action {
+            Action::PluginPage(id) => plugin == Some(id.as_str()),
+            Action::Page(id) => plugin.is_none() && (page == *id || (page == 7 && *id == 0) || (matches!(page, 9 | 10) && *id == 6)),
+            _ => false,
         };
-        let stride = ((_height - 136.0) / (pages().len() - 1) as f32).clamp(34.0, 42.0);
-        let y = 78.0 + position as f32 * stride + gap;
-        let navigation_height = (stride - 2.0).min(38.0);
-        s.control(
-            ControlKind::Navigation,
-            Rect::from_xywh(12.0, y, Tokens::content_x() - 48.0, navigation_height),
-            name,
-            Action::Page(id),
-            page == id || (page == 7 && id == 0) || (matches!(page, 9 | 10) && id == 6),
-        );
-        s.text(Rect::from_xywh(30.0, y, 22.0, navigation_height), icon, 5);
+        s.control(ControlKind::Navigation, Rect::from_xywh(12.0, y, Tokens::content_x()-48.0, (stride-2.0).min(38.0)), &entry.label, entry.action.clone(), selected);
+        s.text(Rect::from_xywh(30.0, y, 22.0, (stride-2.0).min(38.0)), entry.icon, 5);
+        y += stride;
     }
+    s.navigation_text = start..s.text.len();
+    s.navigation_viewport = Some(Rect::from_xywh(12.0, 70.0, Tokens::content_x()-36.0, (_height-78.0).max(0.0)));
     let x = Tokens::content_x();
     let w = (width - x - Tokens::MARGIN).min(Tokens::MAX_WIDTH);
     s.text(
         Rect::from_xywh(x, 28.0, w, 44.0),
-        pages().iter().find(|(id, _, _)| *id == page).map_or(
-            match page {
-                9 => crate::i18n::text("ui-manage-backups"),
-                10 => crate::i18n::text("ui-advanced-options"),
-                _ => crate::i18n::text("ui-colors"),
-            },
-            |(_, name, _)| *name,
-        ),
+        plugin.and_then(|id| entries.iter().find(|entry| matches!(&entry.action, Action::PluginPage(target) if target == id)).map(|entry| entry.label.clone())).unwrap_or_else(|| pages().iter().find(|(id, _, _)| *id == page).map_or(
+            match page { 9 => crate::i18n::text("ui-manage-backups"), 10 => crate::i18n::text("ui-advanced-options"), _ => crate::i18n::text("ui-colors") },
+            |(_, name, _)| *name).to_owned()),
         3,
     );
+    if plugin.is_some() { return s; }
     if page == 7 {
         let Backdrop::Solid { color, opacity } = appearance.1 else {
             return s;

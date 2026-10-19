@@ -1291,3 +1291,5 @@ monitor-device-settings = Gerätequellen
 plugins-title = Plugins
 plugins-description = Installierte Plugins verwalten. Änderungen gelten sofort; Einstellungen bleiben erhalten. Nach DLL-Updates neu starten.
 plugins-empty = Keine Plugins installiert. DLLs im Ordner plugins neben der App ablegen und neu starten.
+
+plugins-manage = Plugins verwalten

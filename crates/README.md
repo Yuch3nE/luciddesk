@@ -6,6 +6,8 @@
 | --- | --- | --- |
 | `luciddesk-api` | CLI 与主程序的协议、计划及本地管道传输 | [lib.rs](luciddesk-api/src/lib.rs) |
 | `luciddesk-diagnostics` | 主程序和底层库共用的分级、限流诊断日志 | [lib.rs](luciddesk-diagnostics/src/lib.rs) |
+| `luciddesk-plugin-api` | 插件 C ABI、JSON 协议和 Rust SDK，无宿主实现依赖 | [lib.rs](luciddesk-plugin-api/src/lib.rs) |
+| `luciddesk-plugin-host` | DLL 发现、校验、生命周期、启停策略及故障诊断，不依赖 UI 或存储 | [lib.rs](luciddesk-plugin-host/src/lib.rs) |
 | `luciddesk-core` | 无平台依赖的领域模型、身份、面板与工作区 | [lib.rs](luciddesk-core/src/lib.rs) |
 | `luciddesk-storage` | SQLite 工作区与 TOML 配置持久化 | [lib.rs](luciddesk-storage/src/lib.rs) |
 | `luciddesk-shell` | Shell 枚举、通知、文件操作和菜单 | [lib.rs](luciddesk-shell/src/lib.rs) |

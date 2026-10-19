@@ -223,6 +223,8 @@ pub unsafe fn call_json(
     }
 }
 
+pub const SETTINGS_PAGE_CAPABILITY: &str = "settings-page.v1";
+
 #[derive(Serialize, Deserialize)]
 pub struct Page {
     pub description: String,

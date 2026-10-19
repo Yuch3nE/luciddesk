@@ -256,6 +256,10 @@ pub(super) fn handle(
         return appearance::options(state, event);
     }
     if matches!(event, Event::Settings) {
+        if state.borrow().workspace.panel(id).is_some_and(Panel::is_monitor) {
+            settings::show_monitor(state)?;
+            return Ok(false);
+        }
         settings::show(state, id)?;
         return Ok(false);
     }

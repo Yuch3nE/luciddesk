@@ -4,15 +4,17 @@
 
 ## 主进程、子进程与插件
 
-- 主进程提供设置窗口与配置目录，管理监控子进程的启动、配置同步与退出；插件负责保存自己的配置。
+- 主进程提供插件管理入口与配置目录，管理监控子进程的启动、配置同步与退出；插件负责保存自己的配置。
 - 监控面板启动同目录的 `luciddesk.exe --monitor-child`，复用原生窗口、标题栏、拖动、缩放、层级、折叠、DPI 和材质代码。子进程不启动托盘、Explorer Hook、控制 API 或单实例入口。
-- `plugins/system-monitor` DLL 定义设置页内容和动作；在子进程中负责监控绘图、字体、曲线、采样线程、设备查询及快照。主进程加载 DLL 不会自动启动采样或创建监控绘图对象。
-- `crates/luciddesk-plugin-api` 定义版本化 C ABI 和设置描述协议，不跨 DLL 传递 Rust 对象。绘图借用子进程宿主的 `ID2D1DeviceContext`，宿主负责 BeginDraw/EndDraw，插件不持有该指针。
-- `app/src/plugins.rs` 枚举 EXE 旁 `plugins` 的顶层 DLL，校验 ABI、清单与能力；监控适配器要求 ID `system-monitor` 和能力 `system-monitor.v1`。详见[插件开发指南](plugins.md)。
+- `plugins/system-monitor` DLL 提供设置页描述并处理设置动作、业务校验和配置保存；在子进程中负责监控绘图、字体、曲线、采样线程、设备查询及快照。主进程加载 DLL 不会自动启动采样或创建监控绘图对象。
+- `crates/luciddesk-plugin-api` 定义版本化 C ABI 和设置页描述及动作协议，不跨 DLL 传递 Rust 对象。绘图借用子进程宿主的 `ID2D1DeviceContext`，宿主负责 BeginDraw/EndDraw，插件不持有该指针。
+- `luciddesk-plugin-host` 枚举 EXE 旁 `plugins` 的顶层 DLL，校验 ABI、清单与能力，`app/src/plugins.rs` 桥接应用语言和用户数据目录配置；监控适配器要求 ID `system-monitor` 和能力 `system-monitor.v1`。详见[插件开发指南](plugins.md)。
 
-设置页通过插件返回的描述构建，动作经宿主适配器交给插件保存配置，并同步窗口启停。子进程回传设备清单，设置页不在主进程执行设备采样。字体和语言由宿主传入；插件调用在各进程的 UI 线程进行，回复缓冲区仅在同步回调期间有效。
+软件设置导航在独立“插件”组中列出插件管理和系统监控设置页。主程序统一渲染控件，将设置动作路由回插件；插件保存成功后，宿主同步监控窗口启停。子进程回传设备清单，设置页不在主进程执行设备采样。字体和语言由宿主传入；插件调用在各进程的 UI 线程进行，回复缓冲区仅在同步回调期间有效。
 
 缺少插件时不显示监控设置入口、不创建已保存的监控窗口，保留配置供以后恢复。添加或移除 DLL 后需重启程序；当前不支持热插拔。已接受的 DLL 在所属进程退出前保持加载。
+
+插件整体启用状态统一保存在用户数据目录的 `plugins/config.toml`，由宿主管理；监控功能开关及窗口参数保存在 `plugins/system-monitor/config.toml`，由插件管理。系统监控页面与软件自带设置页共用窗口；禁用插件后其设置页隐藏，仍可在插件管理中重新启用。
 
 ## 构建与使用
 
@@ -71,7 +73,7 @@ CPU/GPU 使用 `plugins/system-monitor/src/counters.rs` 的 PDH 查询，查询�
 
 系统监控是插件功能，不创建工作区面板记录。插件在数据目录的 `plugins/system-monitor/config.toml` 中保存 `[options]`（功能开关、指标、布局、设备、采样间隔）和 `[window]`（位置、大小、折叠、锁定、置顶、自动收起）。插件负责默认值、校验和原子保存；相同值不写入。宿主只传递目录与操作，关闭后配置保留。子进程的 Panel ID 仅用于内部渲染，不写入工作区。产品不包含开发版监控数据库结构的迁移或兼容代码。
 
-监控功能不出现在 CLI 工作区面板列表中；通过插件设置页开关控制，目前没有专用监控 CLI 命令。图标内容适配、排序、标签和拖放不适用。
+监控功能不出现在 CLI 工作区面板列表中；通过“插件 → 系统监控”设置页中的开关控制，目前没有专用监控 CLI 命令。图标内容适配、排序、标签和拖放不适用。
 
 ## 验证
 
@@ -84,7 +86,7 @@ CPU/GPU 使用 `plugins/system-monitor/src/counters.rs` 的 PDH 查询，查询�
 ./tools/validation/test-monitor-process.ps1 -Offline -Cycles 2 -FirstSampleMilliseconds 2500
 ```
 
-子进程测试 `isolated_monitor_closes_process_and_keeps_host_sampling_empty` 需要交互桌面，不进入普通无界面测试。默认先暖机普通宿主窗口与设置描述，再开关一个监控面板 10 次：首次采样 63 秒，其余每轮 2.2 秒。覆盖关闭按钮、设置禁用、紧凑布局尺寸回传、管道断开、无效输入及重新启用。
+子进程测试 `isolated_monitor_closes_process_and_keeps_host_sampling_empty` 需要交互桌面，不进入普通无界面测试。默认先暖机普通宿主窗口与插件设置描述，再开关一个监控面板 10 次：首次采样 63 秒，其余每轮 2.2 秒。覆盖关闭按钮、设置禁用、紧凑布局尺寸回传、管道断开、无效输入及重新启用。
 
 测试检查子进程正常退出、HWND 失效、主进程没有监控客户端/绘图实例/采样服务，同时记录 Private Bytes、Working Set、句柄与 GDI/USER 数量。输出位于 `target/review-validation/monitor-process-memory.log`。内存数值用于观察趋势，不采用固定阈值或强制清空工作集来制造通过结果。
 
@@ -101,7 +103,7 @@ cl.exe /nologo /EHsc /MT /O2 tools/validation/pdh-memory-probe.cpp /Fetarget/pdh
 
 ## PDH 子进程实现实测（2026-10-19）
 
-使用 `test-monitor-process.ps1`，真实 EXE、原生窗口和 PDH 数据源；主进程测试宿主先暖机普通分组窗口和设置描述，然后第一次启动监控。单面板开关 10 轮，首次采样 63 秒，其余每轮 2.2 秒。
+使用 `test-monitor-process.ps1`，真实 EXE、原生窗口和 PDH 数据源；主进程测试宿主先暖机普通分组窗口与插件设置描述，然后第一次启动监控。单面板开关 10 轮，首次采样 63 秒，其余每轮 2.2 秒。
 
 | 阶段 | 主进程私有内存 | 主进程工作集 | 句柄 | GDI / USER |
 | --- | ---: | ---: | ---: | ---: |
@@ -114,6 +116,5 @@ cl.exe /nologo /EHsc /MT /O2 tools/validation/pdh-memory-probe.cpp /Fetarget/pdh
 两轮故障回归的关闭后私有内存比该次基线高 88 KiB；最终构建的两轮复测为 +204 KiB，第二轮均不再增长。已验证：窗口关闭、设置禁用、紧凑布局尺寸回传、主进程管道断开、无效管道输入后的面板禁用与重新启用。原插件测试 15 项、SDK 6 项、核心 11 项，以及有插件/无插件的宿主测试 8/6 项通过。历史 9 MiB 增量不再留在主进程，但不承诺所有机器上的工作集或分配器容量逐字节回归。
 
 完整 10 轮记录：`target/process-memory-10-cycles.log`。故障验证记录：`target/process-fault-validation.log`、`target/process-final-validation.log`。本轮仅构建和测试工作区 EXE，没有替换当前安装程序。
-
 
 系统监控通过设置开关显示或关闭，保留指标和窗口配置；不提供普通分组的新建入口。

@@ -20,6 +20,8 @@ const FONT_LOAD_TIMER: usize = 0x4c5046;
 const UPDATE_TIMER: usize = 0x4c5056;
 const STARTUP_TIMER: usize = 0x4c5354;
 const SELECT_PANEL: u32 = WM_APP + 95;
+const SELECT_PLUGIN: u32 = WM_APP + 97;
+thread_local! { static PLUGIN_SELECTION: RefCell<Option<String>> = const { RefCell::new(None) }; }
 const PREPARE_REVEAL: u32 = WM_APP + 96;
 const REVEAL_TIMER: usize = 0x4c5055;
 pub(super) const DEFAULT_HEIGHT: i32 = 600;
@@ -50,7 +52,8 @@ use windows_sys::Win32::UI::Controls::WM_MOUSELEAVE;
 #[derive(Clone)]
 enum Action {
     PluginEnabled(String, bool),
-    MonitorOptions(monitor::Preferences),
+    PluginPage(String),
+    PluginAction(String, serde_json::Value),
     Startup(bool),
     CliEnabled(bool),
     CopySkillPrompt,
@@ -112,6 +115,10 @@ mod preview;
 use components::{ContentClip, SettingsForm, Tokens};
 use controls::{Control, ControlKind, Slider, Style};
 struct Scene {
+    navigation_viewport: Option<Rect>,
+    navigation_text: std::ops::Range<usize>,
+    navigation_max: f32,
+    navigation_offset: f32,
     material: Backdrop,
     viewport: Option<Rect>,
     scroll_max: f32,
@@ -128,7 +135,7 @@ fn contains(r: &Rect, x: f32, y: f32) -> bool {
     x >= r.left && x < r.right && y >= r.top && y < r.bottom
 }
 mod layout;
-mod monitor_page;
+mod plugin_content;
 pub(in crate::pane) mod plugin_page;
 use layout::scene;
 

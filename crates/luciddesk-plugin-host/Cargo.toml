@@ -1,0 +1,16 @@
+[package]
+name = "luciddesk-plugin-host"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+luciddesk-plugin-api = { path = "../luciddesk-plugin-api" }
+serde_json = "1"
+toml_edit = "0.25"
+tempfile = "3"
+windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_System_LibraryLoader"] }
+
+[lints]
+workspace = true

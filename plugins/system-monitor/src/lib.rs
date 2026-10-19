@@ -1,10 +1,10 @@
 //! Optional native system-monitor plugin. No worker is started by loading the DLL.
-mod options;
 mod config;
+mod options;
 use options::{Metric, Preferences};
+mod counters;
 mod drawing;
 mod gpu;
-mod counters;
 mod graphics;
 mod i18n;
 mod sampling;
@@ -34,8 +34,15 @@ fn next_id() -> u64 {
     })
 }
 fn devices(metric: Metric) -> Vec<(String, String)> {
-    let index = match metric { Metric::Network => 0, Metric::Disk => 1, Metric::Gpu => 2, _ => return Vec::new() };
-    if let Some(devices) = INVENTORY.with(|v| v.borrow().as_ref().map(|all| all[index].clone())) { return devices; }
+    let index = match metric {
+        Metric::Network => 0,
+        Metric::Disk => 1,
+        Metric::Gpu => 2,
+        _ => return Vec::new(),
+    };
+    if let Some(devices) = INVENTORY.with(|v| v.borrow().as_ref().map(|all| all[index].clone())) {
+        return devices;
+    }
     let s = sampling::snapshot();
     let values = match metric {
         Metric::Network => &s.networks,
@@ -63,13 +70,24 @@ struct Request {
 #[serde(tag = "op", rename_all = "snake_case")]
 enum Command {
     Manifest,
-    ConfigOpen { directory: std::path::PathBuf },
+    ConfigOpen {
+        directory: std::path::PathBuf,
+    },
     ConfigGet,
-    SaveOptions { options: Preferences },
-    SaveWindow { window: config::Window },
+    SaveOptions {
+        options: Preferences,
+    },
+    SaveWindow {
+        window: config::Window,
+    },
     Settings,
+    SettingsAction {
+        action: Value,
+    },
     Devices,
-    Inventory { devices: [Vec<(String, String)>; 3] },
+    Inventory {
+        devices: [Vec<(String, String)>; 3],
+    },
     ClientNew,
     ClientDrop {
         #[serde(default)]
@@ -110,7 +128,7 @@ fn dispatch(context: *mut c_void, r: Request) -> Result<Value, String> {
     if !r.language.is_empty() {
         i18n::set(&r.language);
     }
-    if !r.font.is_empty() {
+    if !r.font.is_empty() && r.font != font() {
         FONT.with(|f| *f.borrow_mut() = r.font);
     }
     match r.command {
@@ -119,15 +137,37 @@ fn dispatch(context: *mut c_void, r: Request) -> Result<Value, String> {
             name: i18n::text("monitor-title").into(),
             version: env!("CARGO_PKG_VERSION").into(),
             protocol_version: PROTOCOL_VERSION,
-            capabilities: vec!["system-monitor.v1".into(), "config.v1".into()],
+            capabilities: vec![
+                "system-monitor.v1".into(),
+                "config.v1".into(),
+                luciddesk_plugin_api::SETTINGS_PAGE_CAPABILITY.into(),
+            ],
         })
         .map_err(|e| e.to_string()),
-        Command::ConfigOpen { directory } => { config::open(directory)?; Ok(Value::Null) },
+        Command::ConfigOpen { directory } => {
+            config::open(directory)?;
+            Ok(Value::Null)
+        }
         Command::ConfigGet => serde_json::to_value(config::get()).map_err(|e| e.to_string()),
-        Command::SaveOptions { options } => { config::options(options)?; Ok(Value::Null) },
-        Command::SaveWindow { window } => { config::window(window)?; Ok(Value::Null) },
-        Command::Settings => serde_json::to_value(settings::draw(&config::get().options)).map_err(|e| e.to_string()),
-        Command::Inventory { devices } => { INVENTORY.with(|v| *v.borrow_mut() = Some(devices)); Ok(Value::Null) },
+        Command::SaveOptions { options } => {
+            config::options(options)?;
+            Ok(Value::Null)
+        }
+        Command::SaveWindow { window } => {
+            config::window(window)?;
+            Ok(Value::Null)
+        }
+        Command::Settings => {
+            serde_json::to_value(settings::draw(&config::get().options)).map_err(|e| e.to_string())
+        }
+        Command::SettingsAction { action } => {
+            settings::apply(action)?;
+            Ok(Value::Null)
+        }
+        Command::Inventory { devices } => {
+            INVENTORY.with(|v| *v.borrow_mut() = Some(devices));
+            Ok(Value::Null)
+        }
         Command::Devices => Ok(json!([
             devices(Metric::Network),
             devices(Metric::Disk),

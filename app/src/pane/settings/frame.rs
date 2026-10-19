@@ -39,6 +39,10 @@ pub(super) fn frame_hit(x: f32, y: f32, width: f32, height: f32, maximized: bool
     }
 }
 pub(super) fn with_titlebar(mut scene: Scene, width: f32, maximized: bool) -> Scene {
+    if let Some(viewport) = &mut scene.navigation_viewport {
+        viewport.top += TITLE_HEIGHT;
+        viewport.bottom += TITLE_HEIGHT;
+    }
     if let Some(r) = &mut scene.app_icon {
         r.top += TITLE_HEIGHT;
         r.bottom += TITLE_HEIGHT;

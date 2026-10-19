@@ -1291,3 +1291,5 @@ monitor-device-settings = Device sources
 plugins-title = Plugins
 plugins-description = Manage installed plugins. Changes apply immediately and preserve configuration. Restart after adding or updating DLLs.
 plugins-empty = No plugins installed. Place plugin DLLs in the plugins folder beside the app and restart.
+
+plugins-manage = Manage plugins

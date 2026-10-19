@@ -2,6 +2,7 @@
 members = [
     "app",
     "crates/luciddesk-plugin-api",
+    "crates/luciddesk-plugin-host",
     "plugins/system-monitor",
     "cli",
     "crates/luciddesk-api",

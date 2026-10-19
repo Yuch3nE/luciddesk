@@ -192,3 +192,20 @@ impl Form {
         });
     }
 }
+
+/// Actions belong to the plugin; the host only routes the opaque JSON payload.
+pub(crate) fn apply(action: Value) -> Result<(), String> {
+    #[derive(serde::Deserialize)]
+    #[serde(tag = "op", rename_all = "snake_case")]
+    enum Action {
+        Save { options: Preferences },
+        TaskManager,
+    }
+    match serde_json::from_value::<Action>(action).map_err(|e| e.to_string())? {
+        Action::Save { options } => crate::config::options(options),
+        Action::TaskManager => std::process::Command::new("taskmgr.exe")
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| e.to_string()),
+    }
+}

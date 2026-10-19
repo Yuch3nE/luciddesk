@@ -17,6 +17,7 @@ menu-diagnostics = ["luciddesk-explorer/menu-diagnostics", "luciddesk-shell/menu
 
 [dependencies]
 luciddesk-plugin-api = { path = "../crates/luciddesk-plugin-api" }
+luciddesk-plugin-host = { path = "../crates/luciddesk-plugin-host" }
 luciddesk-diagnostics.workspace = true
 luciddesk-api = { path = "../crates/luciddesk-api" }
 luciddesk-core.workspace = true

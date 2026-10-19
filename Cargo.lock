@@ -254,6 +254,7 @@ dependencies = [
  "luciddesk-explorer",
  "luciddesk-graphics",
  "luciddesk-plugin-api",
+ "luciddesk-plugin-host",
  "luciddesk-shell",
  "luciddesk-storage",
  "luciddesk-window",
@@ -353,6 +354,17 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "luciddesk-plugin-host"
+version = "0.1.0"
+dependencies = [
+ "luciddesk-plugin-api",
+ "serde_json",
+ "tempfile",
+ "toml_edit",
+ "windows-sys",
 ]
 
 [[package]]

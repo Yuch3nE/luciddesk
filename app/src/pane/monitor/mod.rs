@@ -94,19 +94,6 @@ pub(super) enum Metric {
     Network,
     Disk,
 }
-impl Metric {
-    #[cfg(test)]
-    pub(super) fn label(self) -> &'static str {
-        crate::i18n::text(match self {
-            Self::Cpu => "monitor-cpu",
-            Self::Memory => "monitor-memory",
-            Self::Gpu => "monitor-gpu",
-            Self::Network => "monitor-network",
-            Self::Disk => "monitor-disk",
-        })
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub(super) struct Preferences {
@@ -204,17 +191,4 @@ pub(super) fn show_menu(
         12 => event(Event::ToggleTopmost),
         _ => {}
     }
-}
-
-pub(super) fn devices(metric: Metric) -> Vec<(String, String)> {
-    let index = match metric {
-        Metric::Network => 0,
-        Metric::Disk => 1,
-        Metric::Gpu => 2,
-        _ => return Vec::new(),
-    };
-    crate::plugins::request(PLUGIN_ID, serde_json::json!({"op":"devices"}))
-        .ok()
-        .and_then(|v| serde_json::from_value(v[index].clone()).ok())
-        .unwrap_or_default()
 }

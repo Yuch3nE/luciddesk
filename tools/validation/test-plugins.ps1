@@ -5,10 +5,15 @@ $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 Push-Location -LiteralPath $repoRoot
 $previousMonitor = $env:LUCIDDESK_TEST_MONITOR_PLUGIN
 $previousExample = $env:LUCIDDESK_TEST_EXAMPLE_PLUGIN
+$previousSettings = $env:LUCIDDESK_TEST_SETTINGS_PLUGIN
 try {
+    # Real-DLL assertions run only after deploying this build's fixtures.
+    $env:LUCIDDESK_TEST_MONITOR_PLUGIN = $null
+    $env:LUCIDDESK_TEST_EXAMPLE_PLUGIN = $null
+    $env:LUCIDDESK_TEST_SETTINGS_PLUGIN = $null
     $common = @('--locked', '--target-dir', $TargetDirectory)
     if ($Offline) { $common += '--offline' }
-    & cargo test -p luciddesk-plugin-api -p luciddesk-monitor @common -- --test-threads=1
+    & cargo test -p luciddesk-plugin-api -p luciddesk-plugin-host -p luciddesk-monitor @common -- --test-threads=1
     if ($LASTEXITCODE -ne 0) { throw 'Plugin unit tests failed.' }
     $artifacts = & cargo test -p luciddesk --bin luciddesk @common --no-run --message-format=json-render-diagnostics
     if ($LASTEXITCODE -ne 0) { throw 'Plugin host build failed.' }
@@ -18,8 +23,7 @@ try {
     if ($executables.Count -ne 1) { throw 'Expected one host test executable.' }
     $executable = $executables[0]
     $destination = Join-Path (Split-Path -Parent $executable) 'plugins'
-    $filters = @('pane::settings::plugin_page::', 'pane::monitor::', 'pane::settings::monitor_page::',
-        'pane::settings::tests::native_monitor_settings_switch_')
+    $filters = @('pane::settings::plugin_page::', 'pane::monitor::', 'pane::settings::plugin_content::')
     # The host uses the Windows GUI subsystem; a pipeline makes PowerShell wait.
     $listing = @(& $executable --list | ForEach-Object { $_ })
     if ($LASTEXITCODE -ne 0) { throw 'Could not list host tests.' }
@@ -29,11 +33,15 @@ try {
         }
     }
     $null = & (Join-Path $PSScriptRoot '../build-plugins.ps1') -TargetDirectory $TargetDirectory -Destination $destination -Offline:$Offline
-    & cargo build -p luciddesk-plugin-api --example minimal @common
+    & cargo build -p luciddesk-plugin-api --examples @common
     if ($LASTEXITCODE -ne 0) { throw 'Example plugin build failed.' }
     Copy-Item -LiteralPath (Join-Path $TargetDirectory 'debug/examples/minimal.dll') -Destination (Join-Path $destination 'echo-example.dll') -Force
+    Copy-Item -LiteralPath (Join-Path $TargetDirectory 'debug/examples/settings.dll') -Destination (Join-Path $destination 'settings-example.dll') -Force
     $env:LUCIDDESK_TEST_EXAMPLE_PLUGIN = '1'
+    $env:LUCIDDESK_TEST_SETTINGS_PLUGIN = '1'
     $env:LUCIDDESK_TEST_MONITOR_PLUGIN = '1'
+    & cargo test -p luciddesk-plugin-host @common -- --test-threads=1
+    if ($LASTEXITCODE -ne 0) { throw 'Plugin runtime DLL tests failed.' }
     & $executable @filters plugins::tests:: --test-threads=1 | Out-Host
     if ($LASTEXITCODE -ne 0) { throw 'Plugin host tests failed.' }
     # Temporarily disable only our staged monitor DLL; leave other plugins untouched.
@@ -50,5 +58,6 @@ try {
 } finally {
     $env:LUCIDDESK_TEST_MONITOR_PLUGIN = $previousMonitor
     $env:LUCIDDESK_TEST_EXAMPLE_PLUGIN = $previousExample
+    $env:LUCIDDESK_TEST_SETTINGS_PLUGIN = $previousSettings
     Pop-Location
 }

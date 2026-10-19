@@ -14,6 +14,7 @@ pub(super) struct Context<'a> {
     pub all_fonts: &'a [String],
 
     pub page: &'a mut usize,
+    pub selected_plugin: &'a mut Option<String>,
     pub focus: &'a mut Option<usize>,
     pub hover: &'a mut Option<usize>,
     pub backup_offset: &'a mut usize,
@@ -53,10 +54,19 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
             if let Err(error) = plugin_page::set_enabled(state, id, *enabled) { window::error(&error); }
             invalidate = true;
         }
-        Action::MonitorOptions(options) => {
-            if let Err(error) = handle(state, selected, Event::MonitorOptions(options.clone())) {
-                window::error(&error);
-            }
+        Action::PluginPage(id) => {
+            *context.recording_peek = false; *context.recording_search = false; *context.recording_show_panels = false;
+            *context.style_input = None;
+            *context.selected_plugin = Some(id.clone());
+            *context.page = 15;
+            *context.scroll_offset = 0.0;
+            *context.focus = None;
+            *context.hover = None;
+            context.toggle_motion.clear();
+            invalidate = true;
+        }
+        Action::PluginAction(id, action) => {
+            if let Err(error) = plugin_content::execute(state, selected, id, action.clone()) { window::error(&error); }
             invalidate = true;
         }
         Action::BackupStatus => {
@@ -444,6 +454,7 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
             invalidate = true;
         }
         Action::Page(value) => {
+            *context.selected_plugin = None;
             if *value == 13 {
                 if let Err(error) = start_login_operation(&mut *context.startup, hwnd, None) {
                     window::error(&error);

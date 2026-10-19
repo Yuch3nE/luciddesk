@@ -11,6 +11,8 @@
 | `app/src/pane/settings/components.rs` | Tokens、Palette、SettingsForm、文字测量、视口与裁剪 |
 | `app/src/pane/settings/controls.rs` | 控件种类、Scene 控件构造、滑块几何与公共选项菜单 |
 | `app/src/pane/settings/painter.rs` | 按 Scene 绘制文字、卡片、控件和状态 |
+| `app/src/pane/settings/plugin_content.rs` | 根据插件 ID 渲染统一页面描述，原样路由设置动作 |
+| `app/src/pane/settings/plugin_page.rs` | 插件整体启停和设置页切换入口 |
 | `app/src/pane/settings/preview.rs` | 材质示意预览 |
 | `app/src/pane/settings/tests.rs` | 布局、渲染、交互及原生编辑框回归测试 |
 
@@ -92,7 +94,7 @@ cargo test -p luciddesk --bin luciddesk pane::settings --locked --offline -- --t
 
 | 测试 | 覆盖内容 |
 | --- | --- |
-| `settings_layout_and_rendering_at_multiple_scales` | 11 个页面、深浅主题、100%/150%/200% DPI、800×560 和 940×620 DIP、顶部与底部 |
+| `settings_layout_and_rendering_at_multiple_scales` | 包含插件管理的设置页面、深浅主题、100%/150%/200% DPI、800×560 和 940×620 DIP、顶部与底部 |
 | `all_languages_layout_and_render_without_control_overflow` | 当前 7 个语言索引、包含语言页的 12 个页面及多 DPI 布局渲染 |
 | `settings_cards_align_and_long_paths_do_not_overlap_actions` | 卡片操作区、长路径及不同宽度 |
 | `setting_cards_scroll_without_moving_navigation_or_hitting_caption` | 滚动、固定导航、可达性和标题栏命中隔离 |
@@ -117,3 +119,5 @@ try {
 导出文件位于仓库 `target/settings-*.bmp`，仅导出该测试的 100% DPI 图像；800 DIP 宽度和底部截图分别带 `-800`、`-bottom` 后缀。其他 DPI 仍参与测试，不由此命令生成对应快照。
 
 离屏检查之外，还需实际打开设置验证 Tab 导航、滚轮、滑块、下拉取消、快捷键录入、字体搜索和窗口关闭。验收时区分测试断言、人工快照检查与实际桌面结果，详见[验证与兼容边界](validation.md)。
+
+插件设置页集中在软件设置导航的“插件”组中，由主程序统一绘制；页面描述、设置动作和业务配置属于插件。导航列表支持独立滚动和键盘焦点定位，插件页不与软件内置设置项混排。

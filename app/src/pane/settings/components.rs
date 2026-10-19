@@ -4,9 +4,9 @@ use super::*;
 pub(super) struct Tokens;
 impl Tokens {
     pub fn content_x() -> f32 {
-        super::layout::pages()
+        super::layout::navigation()
             .iter()
-            .map(|(_, label, _)| text_width(label, 14.0) + 108.0)
+            .map(|entry| text_width(&entry.label, 14.0) + 108.0)
             .fold(248.0_f32, f32::max)
             .min(344.0)
     }
@@ -549,6 +549,36 @@ impl<'a> SettingsForm<'a> {
 }
 
 impl Scene {
+    pub fn reveal_navigation(&self, offset: &mut f32) {
+        if let (Some(viewport), Some(control)) = (self.navigation_viewport,
+            self.controls.iter().find(|c| matches!(c.kind, ControlKind::Navigation) && c.selected)) {
+            if control.bounds.top - *offset < viewport.top { *offset = control.bounds.top - viewport.top; }
+            if control.bounds.bottom - *offset > viewport.bottom { *offset = control.bounds.bottom - viewport.bottom; }
+        }
+    }
+    pub fn scroll_navigation(&mut self, offset: &mut f32) {
+        let Some(viewport) = self.navigation_viewport else { return; };
+        let bottom = self.controls.iter().filter(|c| matches!(c.kind, ControlKind::Navigation))
+            .map(|c| c.bounds.bottom).fold(viewport.top, f32::max);
+        self.navigation_max = (bottom + 8.0 - viewport.bottom).max(0.0);
+        *offset = offset.clamp(0.0, self.navigation_max);
+        self.navigation_offset = *offset;
+        for c in &mut self.controls {
+            if matches!(c.kind, ControlKind::Navigation) { c.bounds.top -= *offset; c.bounds.bottom -= *offset; }
+        }
+        for index in self.navigation_text.clone() {
+            self.text[index].0.top -= *offset;
+            self.text[index].0.bottom -= *offset;
+        }
+    }
+    pub fn navigation_thumb(&self) -> Option<Rect> {
+        let viewport = self.navigation_viewport?;
+        if self.navigation_max <= 0.0 { return None; }
+        let track = viewport.bottom - viewport.top - 16.0;
+        let height = (track * track / (track + self.navigation_max)).max(28.0);
+        let top = viewport.top + 8.0 + (track-height)*self.navigation_offset/self.navigation_max;
+        Some(Rect::from_xywh(viewport.right-10.0, top, 4.0, height))
+    }
     pub fn fixed_list(&self) -> bool {
         self.controls
             .iter()
@@ -648,6 +678,9 @@ impl Scene {
         Some(Rect::from_xywh(viewport.right - 10.0, top, 4.0, height))
     }
     pub fn accepts_pointer(&self, c: &Control, x: f32, y: f32) -> bool {
+        if matches!(c.kind, ControlKind::Navigation) {
+            return contains(&c.bounds, x, y) && self.navigation_viewport.is_none_or(|v| contains(&v, x, y));
+        }
         contains(&c.bounds, x, y)
             && (matches!(c.kind, ControlKind::Caption)
                 || c.bounds.left < Tokens::content_x()
@@ -661,6 +694,10 @@ pub(super) struct ContentClip<'a, 'b> {
     active: bool,
 }
 impl<'a, 'b> ContentClip<'a, 'b> {
+    pub fn navigation(pass: &'a canvas::DrawPass<'b>, scene: &Scene) -> Self {
+        if let Some(viewport) = &scene.navigation_viewport { pass.push_clip(viewport); }
+        Self { pass, active: scene.navigation_viewport.is_some() }
+    }
     pub fn new(pass: &'a canvas::DrawPass<'b>, scene: &Scene, content: bool) -> Self {
         let active = content && scene.viewport.is_some();
         if active {

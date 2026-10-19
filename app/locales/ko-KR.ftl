@@ -1291,3 +1291,5 @@ monitor-device-settings = 장치 선택
 plugins-title = 플러그인
 plugins-description = 설치된 플러그인을 관리합니다. 변경 사항은 즉시 적용되며 설정은 유지됩니다. DLL 추가 또는 업데이트 후 다시 시작하세요.
 plugins-empty = 설치된 플러그인이 없습니다. 앱 옆의 plugins 폴더에 DLL을 넣고 다시 시작하세요.
+
+plugins-manage = 플러그인 관리

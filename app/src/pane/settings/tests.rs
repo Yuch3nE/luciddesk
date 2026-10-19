@@ -491,7 +491,7 @@ fn settings_layout_and_rendering_at_multiple_scales() {
         for (viewport_width, viewport_height) in [(800.0, 560.0), (940.0, 620.0)] {
             for at_bottom in [false, true] {
                 for scale in [1.0, 1.5, 2.0] {
-                    for page in [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13] {
+                    for page in [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15] {
                         for dark in [false, true] {
                             let mut body = scene(
                                 viewport_width,
@@ -563,6 +563,9 @@ fn settings_layout_and_rendering_at_multiple_scales() {
                                     false,
                                 );
                             }
+                            if page == 15 {
+                                plugin_page::draw(&mut body, viewport_width);
+                            }
                             if page == 13 {
                                 layout::general(&mut body, viewport_width,
                                     crate::startup::Status::DisabledByWindows, false, true, false);
@@ -625,6 +628,8 @@ fn settings_layout_and_rendering_at_multiple_scales() {
                                 let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                                     .join("../target")
                                     .join(match (page, dark) {
+                                        (15, true) => "settings-plugins-dark.bmp",
+                                        (15, false) => "settings-plugins-light.bmp",
                                         (13, true) => "settings-general-dark.bmp",
                                         (13, false) => "settings-general-light.bmp",
                                         (11, true) => "settings-fonts-dark.bmp",
@@ -737,7 +742,7 @@ fn font_picker_fits_minimum_window_and_exposes_list_and_reset() {
 
 #[test]
 fn setting_cards_scroll_without_moving_navigation_or_hitting_caption() {
-    for page in [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13] {
+    for page in [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15] {
         for width in [800.0, 940.0, 1440.0] {
             let build = || {
                 let mut body = scene(
@@ -1131,7 +1136,7 @@ fn control_position(
             .workspace
             .appearance()
             .unwrap_or((PanelTheme::System, Backdrop::Mica));
-        let mut content = scene(
+        let content = scene(
             w,
             h - TITLE_HEIGHT,
             page,
@@ -1139,9 +1144,6 @@ fn control_position(
             appearance,
             Default::default(),
         );
-        if page == 14 {
-            monitor_page::draw(&mut content, w);
-        }
         let mut body = with_titlebar(content, w, false);
         let mut scroll = 0.0;
         body.scroll_to(w, h, &mut scroll);
@@ -1348,7 +1350,7 @@ fn all_languages_layout_and_render_without_control_overflow() {
     for locale in 0..7 {
         crate::i18n::with_locale(locale, || {
             let painter = Painter::new().unwrap();
-            for page in [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] {
+            for page in [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15] {
                 let width = 800.0;
                 let height = MIN_HEIGHT;
                 let material = if page == 7 {
@@ -1399,7 +1401,7 @@ fn all_languages_layout_and_render_without_control_overflow() {
                         true,
                         false,
                     ),
-                    14 => monitor_page::draw(&mut body, width),
+                    15 => plugin_page::draw(&mut body, width),
                     _ => {}
                 }
                 let mut scene = with_titlebar(body, width, false);
@@ -1814,53 +1816,6 @@ fn search_font_lifetime_survives_detached_callback_and_releases_on_close() {
                 );
             }
         }
-    }
-}
-
-#[test]
-fn native_monitor_settings_switch_reopens_the_saved_panel() {
-    if !monitor::available() {
-        assert!(!layout::pages().iter().any(|(id, _, _)| *id == 14));
-        return;
-    }
-    let _sta = crate::pane::test_support::apartment();
-    let state = Rc::new(RefCell::new(super::super::tests::test_state()));
-    state.borrow_mut().monitor_child = true;
-    handle(&state, PanelId::new(0), Event::EnableMonitor).unwrap();
-    let id = state.borrow().workspace.panels().last().unwrap().id();
-    host::show_at(&state, id, 14).unwrap();
-    let hwnd = state.borrow().settings.as_ref().unwrap().hwnd().cast();
-    let click = |predicate| {
-        let point = control_position(&state, hwnd, 14, predicate, 0.5);
-        unsafe {
-            SendMessageW(hwnd, WM_LBUTTONDOWN, 1, point);
-            SendMessageW(hwnd, WM_LBUTTONUP, 0, point);
-            SendMessageW(hwnd, WM_PAINT, 0, 0);
-        }
-    };
-    click(
-        |a| matches!(a, Action::MonitorOptions(p) if !p.metrics.contains(&monitor::Metric::Cpu)),
-    );
-    assert!(
-        !monitor::Preferences::load()
-            .unwrap()
-            .metrics
-            .contains(&monitor::Metric::Cpu)
-    );
-    click(|a| matches!(a, Action::MonitorOptions(p) if !p.enabled));
-    assert!(!state.borrow().views.iter().any(|v| v.id == id));
-    assert!(
-        !monitor::Preferences::load()
-            .unwrap()
-            .enabled
-    );
-    click(|a| matches!(a, Action::MonitorOptions(p) if p.enabled));
-    assert!(state.borrow().views.iter().any(|v| v.id == id));
-    let options = monitor::Preferences::load().unwrap();
-    assert!(options.enabled);
-    assert!(!options.metrics.contains(&monitor::Metric::Cpu));
-    unsafe {
-        SendMessageW(hwnd, WM_CLOSE, 0, 0);
     }
 }
 
