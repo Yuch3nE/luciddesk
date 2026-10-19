@@ -57,6 +57,21 @@ pub(super) fn draw(scene: &mut Scene, width: f32, id: &str, value: Result<Value,
                     .map(|(s, a, b)| (s.as_str(), action(a.clone()), *b))
                     .collect(),
             ),
+            Item::Dropdown { title, values } => form.dropdown(
+                &title,
+                "",
+                values
+                    .iter()
+                    .map(|(s, a, b)| (s.as_str(), action(a.clone()), *b))
+                    .collect(),
+            ),
+            Item::Reorder { title, values } => form.reorder(
+                &title,
+                values
+                    .into_iter()
+                    .map(|(s, up, down)| (s, up.map(&action), down.map(&action)))
+                    .collect(),
+            ),
             Item::Button {
                 title,
                 label,
@@ -167,7 +182,6 @@ mod tests {
                                 && width == 940.0
                                 && scale == 1.0
                                 && !dark
-                                && !bottom
                             {
                                 let pixels = bitmap.pixels().unwrap();
                                 let mut bmp = vec![0_u8; 54];
@@ -184,7 +198,11 @@ mod tests {
                                 std::fs::write(
                                     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                                         .join("../target")
-                                        .join(format!("settings-plugin-{}.bmp", plugin.id)),
+                                        .join(format!(
+                                            "settings-plugin-{}{}.bmp",
+                                            plugin.id,
+                                            if bottom { "-bottom" } else { "" }
+                                        )),
                                     bmp,
                                 )
                                 .unwrap();

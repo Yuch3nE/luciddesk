@@ -51,6 +51,9 @@ impl Config {
         if ![1, 2, 5].contains(&self.options.interval) {
             return Err("Invalid sampling interval".into());
         }
+        if self.options.metrics.iter().enumerate().any(|(i, metric)| self.options.metrics[..i].contains(metric)) {
+            return Err("Duplicate monitor metric".into());
+        }
         let w = &self.window;
         if ![w.x, w.y, w.width, w.height]
             .into_iter()

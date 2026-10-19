@@ -319,6 +319,35 @@ impl<'a> SettingsForm<'a> {
         self.combo(title, description, label, action);
         self.scene.controls.last_mut().unwrap().enabled = enabled;
     }
+    pub fn reorder(&mut self, title: &str, values: Vec<(String, Option<Action>, Option<Action>)>) {
+        if values.is_empty() {
+            return;
+        }
+        self.section(title);
+        let height = values.len() as f32 * 44.0 + 16.0;
+        self.scene
+            .cards
+            .push(Rect::from_xywh(self.x, self.y, self.width, height));
+        for (index, (label, up, down)) in values.into_iter().enumerate() {
+            let top = self.y + 8.0 + index as f32 * 44.0;
+            self.scene.text(
+                Rect::from_xywh(self.x + 16.0, top, self.width - 112.0, 36.0),
+                format!("{} · {label}", index + 1),
+                1,
+            );
+            for (offset, label, action) in [(84.0, "↑", up), (44.0, "↓", down)] {
+                let enabled = action.is_some();
+                self.scene.button(
+                    Rect::from_xywh(self.x + self.width - offset, top + 2.0, 32.0, 32.0),
+                    label,
+                    action.unwrap_or(Action::Page(15)),
+                    false,
+                );
+                self.scene.controls.last_mut().unwrap().enabled = enabled;
+            }
+        }
+        self.y += height + Tokens::GAP;
+    }
     pub fn back(&mut self, _label: &str, action: Action) {
         self.scene.control(
             ControlKind::BackButton,

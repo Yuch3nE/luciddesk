@@ -247,6 +247,14 @@ pub enum Item {
         title: String,
         values: Vec<(String, serde_json::Value, bool)>,
     },
+    Dropdown {
+        title: String,
+        values: Vec<(String, serde_json::Value, bool)>,
+    },
+    Reorder {
+        title: String,
+        values: Vec<(String, Option<serde_json::Value>, Option<serde_json::Value>)>,
+    },
     Button {
         title: String,
         label: String,

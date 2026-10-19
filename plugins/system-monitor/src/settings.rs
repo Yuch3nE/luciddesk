@@ -41,14 +41,24 @@ pub(crate) fn draw(options: &Preferences) -> Page {
             .collect(),
         );
         form.section(crate::i18n::text("monitor-display-settings"));
-        form.toggle(
-            crate::i18n::text("monitor-compact"),
-            "",
-            options.compact,
-            action(Preferences {
-                compact: !options.compact,
-                ..options.clone()
-            }),
+        form.dropdown(
+            crate::i18n::text("monitor-layout"),
+            [
+                (false, "monitor-layout-standard"),
+                (true, "monitor-compact"),
+            ]
+            .into_iter()
+            .map(|(compact, key)| {
+                (
+                    crate::i18n::text(key),
+                    action(Preferences {
+                        compact,
+                        ..options.clone()
+                    }),
+                    options.compact == compact,
+                )
+            })
+            .collect(),
         );
         form.toggle(
             crate::i18n::text("monitor-pause"),
@@ -59,9 +69,8 @@ pub(crate) fn draw(options: &Preferences) -> Page {
                 ..options.clone()
             }),
         );
-        form.choices(
+        form.dropdown(
             crate::i18n::text("monitor-interval"),
-            "",
             [
                 (1, "monitor-one-second"),
                 (2, "monitor-two-seconds"),
@@ -80,25 +89,24 @@ pub(crate) fn draw(options: &Preferences) -> Page {
             })
             .collect(),
         );
-        if !options.metrics.is_empty() {
-            form.choices(
-                crate::i18n::text("monitor-first"),
-                "",
-                options
+        if options.metrics.len() > 1 {
+            form.0.items.push(Item::Reorder {
+                title: crate::i18n::text("monitor-order").into(),
+                values: options
                     .metrics
                     .iter()
-                    .map(|metric| {
-                        let mut next = options.clone();
-                        next.metrics.retain(|m| m != metric);
-                        next.metrics.insert(0, *metric);
+                    .enumerate()
+                    .map(|(index, metric)| {
                         (
-                            metric.label(),
-                            action(next),
-                            options.metrics.first() == Some(metric),
+                            metric.label().into(),
+                            (index > 0)
+                                .then(|| json!({"op":"move", "metric":metric, "direction":-1})),
+                            (index + 1 < options.metrics.len())
+                                .then(|| json!({"op":"move", "metric":metric, "direction":1})),
                         )
                     })
                     .collect(),
-            );
+            });
         }
         if [Metric::Network, Metric::Disk, Metric::Gpu]
             .iter()
@@ -124,11 +132,13 @@ pub(crate) fn draw(options: &Preferences) -> Page {
                 .as_ref()
                 .filter(|id| !devices.iter().any(|(value, _)| value.as_ref() == Some(id)))
             {
-                devices.push((Some(id.clone()), id.clone()));
+                devices.push((
+                    Some(id.clone()),
+                    crate::i18n::text("monitor-unavailable").into(),
+                ));
             }
-            form.choices(
+            form.dropdown(
                 crate::i18n::text(key),
-                "",
                 devices
                     .iter()
                     .map(|(device, name)| {
@@ -144,12 +154,6 @@ pub(crate) fn draw(options: &Preferences) -> Page {
             );
         }
     }
-    form.button(
-        crate::i18n::text("monitor-task-manager"),
-        "",
-        crate::i18n::text("ui-open"),
-        json!({"op":"task_manager"}),
-    );
     form.0
 }
 
@@ -175,20 +179,13 @@ impl Form {
                 .collect(),
         });
     }
-    fn choices(&mut self, title: &str, _: &str, values: Vec<(&str, Value, bool)>) {
-        self.0.items.push(Item::Choices {
+    fn dropdown(&mut self, title: &str, values: Vec<(&str, Value, bool)>) {
+        self.0.items.push(Item::Dropdown {
             title: title.into(),
             values: values
                 .into_iter()
                 .map(|(s, a, b)| (s.into(), a, b))
                 .collect(),
-        });
-    }
-    fn button(&mut self, title: &str, _: &str, label: &str, action: Value) {
-        self.0.items.push(Item::Button {
-            title: title.into(),
-            label: label.into(),
-            action,
         });
     }
 }
@@ -199,13 +196,85 @@ pub(crate) fn apply(action: Value) -> Result<(), String> {
     #[serde(tag = "op", rename_all = "snake_case")]
     enum Action {
         Save { options: Preferences },
-        TaskManager,
+        Move { metric: Metric, direction: i8 },
     }
     match serde_json::from_value::<Action>(action).map_err(|e| e.to_string())? {
         Action::Save { options } => crate::config::options(options),
-        Action::TaskManager => std::process::Command::new("taskmgr.exe")
-            .spawn()
-            .map(|_| ())
-            .map_err(|e| e.to_string()),
+        Action::Move { metric, direction } => {
+            if ![-1, 1].contains(&direction) {
+                return Err("Invalid metric direction".into());
+            }
+            let mut options = crate::config::get().options;
+            let Some(index) = options.metrics.iter().position(|m| *m == metric) else {
+                return Ok(());
+            };
+            let next = index as isize + direction as isize;
+            if next >= 0 && (next as usize) < options.metrics.len() {
+                options.metrics.swap(index, next as usize);
+                crate::config::options(options)?;
+            }
+            Ok(())
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn monitor_settings_use_dropdowns_and_reorder_all_enabled_metrics() {
+        let options = Preferences::default();
+        let page = draw(&options);
+        assert!(
+            page.items
+                .iter()
+                .all(|item| !matches!(item, Item::Choices { .. } | Item::Button { .. }))
+        );
+        assert_eq!(
+            page.items
+                .iter()
+                .filter(|item| matches!(item, Item::Dropdown { .. }))
+                .count(),
+            5
+        );
+        let Item::Reorder { values, .. } = page
+            .items
+            .iter()
+            .find(|item| matches!(item, Item::Reorder { .. }))
+            .unwrap()
+        else {
+            unreachable!()
+        };
+        assert_eq!(values.len(), options.metrics.len());
+        assert!(values[0].1.is_none());
+        assert!(values.last().unwrap().2.is_none());
+    }
+    #[test]
+    fn moving_a_metric_preserves_selection_and_obeys_list_boundaries() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::config::open(dir.path().into()).unwrap();
+        let options = Preferences::default();
+        crate::config::options(options.clone()).unwrap();
+        apply(json!({"op":"move","metric":"Gpu","direction":-1})).unwrap();
+        assert_eq!(
+            crate::config::get().options.metrics,
+            [
+                Metric::Cpu,
+                Metric::Gpu,
+                Metric::Memory,
+                Metric::Network,
+                Metric::Disk
+            ]
+        );
+        apply(json!({"op":"move","metric":"Gpu","direction":1})).unwrap();
+        assert_eq!(crate::config::get().options, options);
+        let bytes = std::fs::read(dir.path().join("config.toml")).unwrap();
+        apply(json!({"op":"move","metric":"Cpu","direction":-1})).unwrap();
+        assert_eq!(
+            std::fs::read(dir.path().join("config.toml")).unwrap(),
+            bytes
+        );
+        assert!(apply(json!({"op":"move","metric":"Cpu","direction":9})).is_err());
+        assert!(apply(json!({"op":"task_manager"})).is_err());
     }
 }
