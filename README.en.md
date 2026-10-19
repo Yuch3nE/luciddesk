@@ -190,6 +190,10 @@ When Windows disables background effects, LucidDesk uses a theme-aware solid fal
 
 **Desktop panels cannot connect:** check the connection status in **Settings → About** and try reconnecting. LucidDesk keeps the panel configuration and retries automatically. Folder and search panels can still work independently.
 
+**A disconnection warning after restarting Explorer:** exiting Explorer interrupts the desktop connection. LucidDesk retries automatically when Explorer returns. The dialog records the state at disconnection and does not update after recovery. Dismiss it and check **Settings → About** or run `luciddesk-cli status --json` for the current state. `desktop_connected=true` means the connection is established; `desktop_sync_status=applied` means group synchronization is complete. If failures persist, retain the error details from the diagnostic log.
+
+The current source fixes circular waits in filtering requests when returning to the desktop and false handshake timeouts after message callbacks. It also improves preview/context-menu coordination, Settings dropdowns and control interactions. See [Unreleased changes](CHANGELOG.en.md#unreleased) for changes not yet released.
+
 <a id="build-from-source"></a>
 
 ## 🛠️ Build from source

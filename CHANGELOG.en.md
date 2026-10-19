@@ -14,6 +14,20 @@ Exit the app before upgrading a portable installation and preserve its `data` fo
 - Retry desktop filtering work when Explorer's nested message handling consumes its wake, preventing lost-wake request timeouts, and include more timeout diagnostics.
 - Retire and reconnect sessions after ordinary desktop filtering requests time out, avoiding repeated waits and dialogs when returning focus to a group with a selected item.
 
+- Fix event callback borrow conflicts that could occur while an error dialog processes nested Windows/COM messages.
+- Prevent file previews from overlapping context menus, including queued previews and requests from other groups; reject nested desktop filtering requests so they cannot overwrite an active request.
+- Fix completed Explorer connection handshakes being incorrectly reported as timed out after a long-running message callback.
+
+### Interface and interaction
+
+- Settings dropdowns locate the current selection and support keyboard navigation, wheel scrolling and prefix search; cancellation preserves the original value.
+- Align shared control dimensions and focus feedback across Settings, menus, search and system monitoring; menus support Home/End navigation to the first or last enabled item.
+- Improve the optional system monitor plugin's compact dashboard and metric presentation. Default installers still exclude plugins.
+
+### Performance
+
+- Reuse solid-color brushes in Settings and system monitoring to reduce drawing resource allocation; keep the monitor brush cache bounded.
+
 ## 0.21.2 · 2026-10-19
 
 Changes since official version 0.20.4. Users of official releases can upgrade with their existing data. Unmanaged icons remain on the native Explorer desktop.
