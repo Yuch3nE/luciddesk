@@ -2,6 +2,18 @@
 
 本文说明桌面项目从收纳、同步到恢复的完整流程。应用使用 `FilterSession` 管理 Explorer 视图成员，面板由独立窗口自绘；进程分工和 DLL 生命周期见[架构说明](architecture.md)。
 
+## 事件回调借用与错误提示
+
+实际链路为 `WM_SETFOCUS → post_action → events.try_borrow_mut → PaneItemFocus → clear_desktop_selection`。成功的普通 ACK 等待只服务 sent messages；普通物理键盘输入是排队消息，不能仅凭“Windows/COM 会重入”断定方向键会在这里执行。窗口回调中的焦点通知已排队，激活/位置通知的自动隐藏处理也延后到定时器；尚未确认成功等待分支中自然触发同一借用 panic 的系统消息序列。
+
+但请求错误会返回 `create_view` 的事件回调；它仍持有 `events` 的可变借用，并曾直接调用 `window::error → MessageBoxW(NULL, MB_OK | MB_ICONWARNING)`。MessageBox 使用完整模态消息循环；该无 owner、未设置 `MB_TASKMODAL` 的对话框不会禁用分组窗口。用户点击原分组、按键或已有自动隐藏定时器均可回到事件入口。这是正常错误处理加正常 Windows 消息分派可达的分支，不需要 Shell 扩展同步发送键盘消息。
+
+最小修复只把 `create_view` 的错误框通过已有 `defer_action` 延后显示，让事件回调及其借用先结束；错误日志仍立即记录。调度失败时保留日志，不回退为同步弹框。没有新增通用事件队列、重试，也不以 `try_borrow_mut` 静默丢弃用户操作。该修复不承诺支持任意外部同步注入输入消息。
+
+`pane::window::error_tests` 使用真实 MessageBox 的定时器分派，比较直接显示和生产 `defer_error` 路径：确认模态期间分组仍启用，旧路径借用不可用，新路径回调能成功执行。测试自动关闭自己的错误框，不同步注入键盘/焦点消息，也不强制真实 Explorer 超时。它验证错误提示处的重入条件与修复，不是历史转储首次故障的自然复现。
+
+参考：[MessageBox 的 owner 与模态范围](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-messageboxw)、[PeekMessage 的分派范围](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-peekmessagew)。
+
 ## 接口失败与恢复
 
 `IShellFolderView` 仍是需要兼容性验证的旧接口；使用它不代表获得跨 Windows 版本保证。所有增删与恢复都在 Explorer 桌面 STA 执行，不创建替代桌面视图。

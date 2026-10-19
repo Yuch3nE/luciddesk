@@ -27,6 +27,8 @@ mod shape;
 mod context_menu;
 mod input;
 mod scheduling;
+#[cfg(test)]
+mod error_tests;
 pub(super) use scheduling::{post_action, defer_action};
 use input::*;
 pub(super) fn dispatch_sort_menu(
@@ -1539,6 +1541,12 @@ where
     Ok(window)
 }
 
+
+pub(super) fn defer_error(message: String) {
+    // Do not fall back to an inline dialog on scheduling failure: the caller
+    // may still own an event callback. Its diagnostic log retains the error.
+    defer_action(move || error(&message));
+}
 
 pub fn error(message: &str) {
     unsafe {

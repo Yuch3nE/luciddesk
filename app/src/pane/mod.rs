@@ -495,7 +495,9 @@ fn create_view(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result<(), String> 
                     "pane.mod",
                     &format!("{error}"),
                 );
-                window::error(&error);
+                // A posted focus callback still owns its event RefMut here.
+                // MessageBox pumps input for our ownerless, enabled panes.
+                window::defer_error(error);
                 false
             }
         }
