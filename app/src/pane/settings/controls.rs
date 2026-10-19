@@ -62,9 +62,9 @@ impl Style {
     pub const NAV_TEXT_INSET: f32 = 48.0;
     pub const ROW_INSET: f32 = 16.0;
     pub const ROW_HEIGHT: f32 = 38.0;
-    pub const CONTROL_HEIGHT: f32 = 32.0;
-    pub const TEXT_SIZE: f32 = 14.0;
-    pub const RADIUS: f32 = 5.0;
+    pub const CONTROL_HEIGHT: f32 = super::super::control_style::HEIGHT;
+    pub const TEXT_SIZE: f32 = super::super::control_style::TEXT;
+    pub const RADIUS: f32 = super::super::control_style::RADIUS;
     pub const SLIDER_INSET: f32 = 8.0;
 }
 

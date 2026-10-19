@@ -69,6 +69,25 @@ fn native_log_level_dropdown_cancels_and_saves_after_the_popup_returns() {
     let original = state.borrow().store.preference("log_level").unwrap();
     host::show_at(&state, PanelId::new(1), 13).unwrap();
     let hwnd = state.borrow().settings.as_ref().unwrap().hwnd().cast();
+    // Wait for the composition reveal separately from foreground permission.
+    // A visible window is not necessarily foreground when tests are launched
+    // from a background terminal.
+    windows_window::pump();
+    let revealed = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while unsafe { SendMessageW(hwnd, INSPECT_STARTUP, 2, 0) } != 0 {
+        assert!(std::time::Instant::now() < revealed, "settings did not finish revealing");
+        windows_window::pump();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    unsafe { SetForegroundWindow(hwnd); }
+    assert_eq!(unsafe { GetForegroundWindow() }, hwnd,
+        "Windows denied foreground activation; run this test alone on the interactive desktop");
+    let settled = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while unsafe { SendMessageW(hwnd, INSPECT_STARTUP, 0, 0) } != 0 {
+        assert!(std::time::Instant::now() < settled, "startup query did not finish");
+        unsafe { SendMessageW(hwnd, WM_TIMER, STARTUP_TIMER, 0); }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
     let mut body = scene(
         900.0,
         600.0,
@@ -80,7 +99,9 @@ fn native_log_level_dropdown_cancels_and_saves_after_the_popup_returns() {
     layout::general(
         &mut body,
         900.0,
-        crate::startup::Status::Unknown,
+        if unsafe { SendMessageW(hwnd, INSPECT_STARTUP, 1, 0) } != 0 {
+            crate::startup::Status::Off
+        } else { crate::startup::Status::Unknown },
         false,
         false,
         false,
@@ -95,12 +116,6 @@ fn native_log_level_dropdown_cancels_and_saves_after_the_popup_returns() {
         for _ in body.controls[..=index].iter().filter(|c| c.enabled) {
             SendMessageW(hwnd, WM_KEYDOWN, VK_TAB as usize, 0);
         }
-    }
-    let settled = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    while unsafe { SendMessageW(hwnd, INSPECT_STARTUP, 0, 0) } != 0 {
-        assert!(std::time::Instant::now() < settled, "startup query did not finish");
-        unsafe { SendMessageW(hwnd, WM_TIMER, STARTUP_TIMER, 0); }
-        std::thread::sleep(std::time::Duration::from_millis(5));
     }
     // Reactivating this HWND after an owned popup must not start a fresh query.
     unsafe { SendMessageW(hwnd, WM_ACTIVATE, WA_ACTIVE as usize, 0); }

@@ -10,7 +10,7 @@ struct CachedPreview {
 
 pub(super) struct Painter {
     preview: RefCell<Option<CachedPreview>>,
-    brushes: RefCell<super::super::canvas::Brushes<15>>,
+    brushes: RefCell<super::super::canvas::Brushes<18>>,
     icon_bitmap: RefCell<Option<(ID2D1DeviceContext, windows_canvas::Bitmap)>>,
     #[cfg(test)]
     icon_uploads: std::cell::Cell<usize>,
@@ -148,7 +148,7 @@ impl Painter {
                     components::navigation_colors(s.material, dark);
                 let [card, card_border, ink, muted, disabled, border, accent, slider_track,
                     slider_border, slider_surface, scroll_thumb, nav_selected, nav_hovered,
-                    nav_selected_hovered, page_background] = canvas_result(brushes.get(context, &t, [
+                    nav_selected_hovered, page_background, red, green, blue] = canvas_result(brushes.get(context, &t, [
                         chrome.card, chrome.card_border,
                         color(palette.ink), color(palette.muted),
                         ColorF { a: 0.55, ..color(palette.muted) },
@@ -161,6 +161,9 @@ impl Painter {
                         color(palette.scroll_thumb), nav_selection, nav_hover, nav_selection_hover,
                         ColorF { a: if native { if dark { 0.12 } else { 0.22 } } else { 1.0 },
                             ..color(if dark { 0x242424 } else { 0xf9f9f9 }) },
+                        color(if dark { 0xef8d8d } else { 0xb83d42 }),
+                        color(if dark { 0x8dccaa } else { 0x287b50 }),
+                        color(if dark { 0x88baf0 } else { 0x266eae }),
                     ]))?;
                 let selected = nav_selected;
                 let hovered = nav_hovered;
@@ -392,34 +395,10 @@ impl Painter {
                             radius_x: 2.0,
                             radius_y: 2.0,
                         };
-                        let channel_brush = if let Some(channel) = slider.channel {
-                            Some(canvas_result(t.create_solid_brush(color(match channel {
-                                0 => {
-                                    if dark {
-                                        0xef8d8d
-                                    } else {
-                                        0xb83d42
-                                    }
-                                }
-                                1 => {
-                                    if dark {
-                                        0x8dccaa
-                                    } else {
-                                        0x287b50
-                                    }
-                                }
-                                _ => {
-                                    if dark {
-                                        0x88baf0
-                                    } else {
-                                        0x266eae
-                                    }
-                                }
-                            })))?)
-                        } else {
-                            None
-                        };
-                        let slider_ink = channel_brush.as_ref().unwrap_or(accent);
+                        let channel_brush = slider.channel.map(|channel| match channel {
+                            0 => red, 1 => green, _ => blue,
+                        });
+                        let slider_ink = channel_brush.unwrap_or(accent);
                         t.fill_rounded_rect(&filled, slider_ink);
                         t.fill_ellipse(
                             &Ellipse {
@@ -527,7 +506,7 @@ impl Painter {
                             } else {
                                 border
                             },
-                            if focus == Some(i) || combo_open { 2.0 } else { 1.0 },
+                            if focus == Some(i) || combo_open { super::super::control_style::FOCUS_STROKE } else { 1.0 },
                         );
                     }
                     if matches!(c.kind, ControlKind::Combo) {

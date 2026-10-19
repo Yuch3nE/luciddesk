@@ -38,7 +38,7 @@ impl Entry {
     }
 }
 
-pub const ROW_HEIGHT: f32 = 30.0;
+pub const ROW_HEIGHT: f32 = super::control_style::HEIGHT;
 pub(super) const CORNER_RADIUS: f32 = 8.0;
 pub fn row_top(rows: &[Entry], index: usize) -> f32 {
     4.0 + rows[..index]
@@ -59,6 +59,24 @@ pub(crate) fn entry(
         icon,
         trailing,
         children: Vec::new(),
+    }
+}
+
+// Skip disabled commands and separators without allocating on every key.
+fn keyboard_selection(rows: &[Entry], selected: Option<usize>, key: u16) -> Option<usize> {
+    let enabled = |i: usize| rows[i].enabled && rows[i].id != 0;
+    match key {
+        VK_HOME => (0..rows.len()).find(|&i| enabled(i)),
+        VK_END => (0..rows.len()).rev().find(|&i| enabled(i)),
+        VK_DOWN => {
+            let start = selected.filter(|&i| i < rows.len()).map_or(0, |i| i + 1);
+            (start..rows.len()).chain(0..start).find(|&i| enabled(i))
+        }
+        VK_UP => {
+            let end = selected.filter(|&i| i < rows.len()).unwrap_or(rows.len());
+            (0..end).rev().chain((end..rows.len()).rev()).find(|&i| enabled(i))
+        }
+        _ => selected,
     }
 }
 
@@ -541,26 +559,9 @@ fn show_level(
                     VK_RETURN | VK_SPACE | VK_RIGHT => {
                         activate = selected;
                     }
-                    VK_UP | VK_DOWN => {
-                        let indices: Vec<_> = rows
-                            .iter()
-                            .enumerate()
-                            .filter_map(|(i, row)| (row.enabled && row.id != 0).then_some(i))
-                            .collect();
-                        if indices.is_empty() { return Some(0); }
-                        let current =
-                            selected.and_then(|index| indices.iter().position(|&i| i == index));
-                        let next = if wparam as u16 == VK_DOWN {
-                            current.map_or(0, |i| (i + 1) % indices.len())
-                        } else {
-                            current.map_or(indices.len() - 1, |i| {
-                                (i + indices.len() - 1) % indices.len()
-                            })
-                        };
-                        selected = Some(indices[next]);
-                        unsafe {
-                            InvalidateRect(hwnd, std::ptr::null(), 0);
-                        }
+                    VK_UP | VK_DOWN | VK_HOME | VK_END => {
+                        selected = keyboard_selection(&rows, selected, wparam as u16);
+                        unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
                     }
                     _ => {}
                 },
@@ -1016,6 +1017,26 @@ fn sort_fields_show_only_the_current_direction() {
         }
     }
     assert!(sort_entries(None).iter().all(|e| e.icon.is_empty() && e.trailing.is_empty()));
+}
+
+#[test]
+fn keyboard_navigation_skips_disabled_rows_and_wraps() {
+    let mut disabled = entry(2, "disabled", "", "");
+    disabled.enabled = false;
+    let rows = [entry(0, "", "", ""), entry(1, "first", "", ""), disabled,
+        entry(3, "last", "", ""), entry(0, "", "", "")];
+    for selected in [None, Some(0), Some(2), Some(usize::MAX)] {
+        assert_eq!(keyboard_selection(&rows, selected, VK_HOME), Some(1));
+        assert_eq!(keyboard_selection(&rows, selected, VK_END), Some(3));
+    }
+    assert_eq!(keyboard_selection(&rows, Some(1), VK_DOWN), Some(3));
+    assert_eq!(keyboard_selection(&rows, Some(3), VK_DOWN), Some(1));
+    assert_eq!(keyboard_selection(&rows, Some(1), VK_UP), Some(3));
+    assert_eq!(keyboard_selection(&rows, Some(3), VK_UP), Some(1));
+    for key in [VK_UP, VK_DOWN, VK_HOME, VK_END] {
+        assert_eq!(keyboard_selection(&[], Some(0), key), None);
+        assert_eq!(keyboard_selection(&rows[2..3], None, key), None);
+    }
 }
 
 #[test]

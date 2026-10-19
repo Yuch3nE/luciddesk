@@ -217,7 +217,7 @@ fn full_path_tooltip_updates_and_releases_native_window() {
 fn clear_button_keeps_fixed_input_and_ime_escape_is_not_intercepted() {
     let _apartment = crate::pane::test_support::apartment();
     let app = Rc::new(RefCell::new(super::super::tests::test_state()));
-    super::super::handle(&app, luciddesk_core::PanelId::new(0), Event::EnableSearch).unwrap();
+    create_fixture_view(&app);
     let hwnd = app.borrow().views[0].window.hwnd().cast();
     unsafe {
         SetWindowTextW(edit(hwnd), wide("query").as_ptr());
@@ -247,6 +247,14 @@ fn clear_button_keeps_fixed_input_and_ime_escape_is_not_intercepted() {
         SendMessageW(edit(hwnd), WM_KEYDOWN, VK_ESCAPE as usize, 0);
         assert_eq!(text(edit(hwnd)), "");
     }
+}
+
+// Rendering/input fixtures do not need an installed Everything executable or
+// the process-global path left by preference tests.
+fn create_fixture_view(app: &Rc<RefCell<super::super::PaneApp>>) {
+    let id = luciddesk_core::PanelId::new(1);
+    app.borrow_mut().workspace.panel_mut(id).unwrap().set_search(true);
+    super::super::create_view(app, id).unwrap();
 }
 
 fn populated_search() -> Search {
@@ -464,7 +472,7 @@ fn compact_render_keeps_rows_and_border_inside_the_pane() {
         luciddesk_core::PanelTheme::Dark,
         luciddesk_core::Backdrop::Translucent { opacity: 1.0 },
     );
-    super::super::handle(&app, luciddesk_core::PanelId::new(0), Event::EnableSearch).unwrap();
+    create_fixture_view(&app);
     let mut model = app.borrow().views[0].model.borrow().clone();
     let fixture = windows_window::Window::new("Search render fixture")
         .style(WS_POPUP)
@@ -597,6 +605,47 @@ fn compact_render_keeps_rows_and_border_inside_the_pane() {
             }
         }
     }
+}
+
+#[test]
+#[ignore = "Shows a real search window and transfers keyboard focus; run on the interactive desktop"]
+fn native_unselected_keyboard_target_has_focus_outline_only_while_focused() {
+    let _apartment = crate::pane::test_support::apartment();
+    let app = Rc::new(RefCell::new(super::super::tests::test_state()));
+    create_fixture_view(&app);
+    let model = app.borrow().views[0].model.borrow().clone();
+    let fixture = windows_window::Window::new("Search keyboard focus regression")
+        .style(WS_POPUP).size(480, 180)
+        .on_message(|_, message, _, _| if message == WM_DESTROY { Some(0) } else { None })
+        .create().unwrap();
+    let hwnd = fixture.hwnd().cast();
+    let mut state = Search::new();
+    state.change("txt".into());
+    state.replacing = false;
+    state.busy = false;
+    state.entries = vec![Entry { path: "first.txt".into(), folder: false },
+        Entry { path: "second.txt".into(), folder: false }];
+    state.total = 2;
+    state.select(0, false, false);
+    state.move_focus(1, true, false);
+    assert_eq!(state.focused, Some(1));
+    assert!(!state.selection.contains(&1));
+    let editor = Editor::new(hwnd).unwrap();
+    resize(hwnd, &mut state);
+    let mut drawing = Drawing::new(hwnd).unwrap();
+    unsafe { ShowWindow(hwnd, SW_SHOW); SetFocus(hwnd); }
+    assert_eq!(unsafe { GetFocus() }, hwnd);
+    drawing.draw_frame(hwnd, &model, &state).unwrap();
+    let focused = drawing.surface.readback().unwrap();
+    unsafe { SetFocus(editor.hwnd); }
+    assert_eq!(unsafe { GetFocus() }, editor.hwnd);
+    drawing.draw_frame(hwnd, &model, &state).unwrap();
+    let unfocused = drawing.surface.readback().unwrap();
+    assert!(focused != unfocused, "unselected keyboard target must be visible");
+    unsafe { SetFocus(hwnd); }
+    drawing.draw_frame(hwnd, &model, &state).unwrap();
+    assert!(focused == drawing.surface.readback().unwrap());
+    assert!(!state.selection.contains(&1), "drawing must not alter selection");
 }
 #[test]
 fn empty_query_collapses_and_rejects_pending_results() {

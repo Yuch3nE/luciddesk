@@ -21,7 +21,7 @@ impl Painter {
     pub fn new(rows: &[Entry]) -> windows::core::Result<Self> {
         let format = canvas_result(TextFormat::with_weight(
             &crate::pane::fonts::family(),
-            14.0,
+            crate::pane::control_style::TEXT,
             FontWeight(400),
         ))?
         .with_paragraph_alignment(ParagraphAlignment::Center)

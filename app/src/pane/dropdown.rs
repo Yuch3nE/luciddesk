@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use windows_sys::Win32::Foundation::{HWND, RECT};
 
 mod painter;
-pub(super) const ROW_HEIGHT: f32 = 32.0;
+pub(super) const ROW_HEIGHT: f32 = super::control_style::HEIGHT;
 pub(super) const PADDING: f32 = 4.0;
 const MAX_ROWS: usize = 8;
 

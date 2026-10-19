@@ -17,6 +17,7 @@ struct CompactBrushes<'a> {
 }
 
 pub(crate) struct Drawing {
+    brushes: std::cell::RefCell<crate::graphics::Brushes>,
     family: String,
     label: TextFormat,
     value: TextFormat,
@@ -35,6 +36,10 @@ pub(crate) struct Drawing {
     was_paused: bool,
 }
 impl Drawing {
+    fn brush(&self, target: &DrawPass<'_>, color: ColorF) -> canvas_core::Result<std::rc::Rc<Brush>> {
+        self.brushes.borrow_mut().get(target, color)
+    }
+
     pub(crate) fn new() -> windows::core::Result<Self> {
         let family = crate::font();
         let make = |size, weight| {
@@ -74,6 +79,7 @@ impl Drawing {
             crate::graphics::ellipsis(format)?;
         }
         Ok(Self {
+            brushes: Default::default(),
             family,
             label,
             value,
@@ -139,20 +145,20 @@ impl Drawing {
             )
         };
         let mut standard_top = bounds.top;
-        let card = canvas_result(target.create_solid_brush(ColorF::new(
+        let card = canvas_result(self.brush(target, ColorF::new(
             ink,
             ink,
             ink,
             if dark { 0.045 } else { 0.028 },
         )))?;
-        let edge = canvas_result(target.create_solid_brush(ColorF::new(
+        let edge = canvas_result(self.brush(target, ColorF::new(
             ink,
             ink,
             ink,
             if dark { 0.055 } else { 0.035 },
         )))?;
-        let subtle = canvas_result(target.create_solid_brush(ColorF::new(ink, ink, ink, 0.055)))?;
-        let secondary = canvas_result(target.create_solid_brush(ColorF::new(
+        let subtle = canvas_result(self.brush(target, ColorF::new(ink, ink, ink, 0.055)))?;
+        let secondary = canvas_result(self.brush(target, ColorF::new(
             ink,
             ink,
             ink,
@@ -176,14 +182,14 @@ impl Drawing {
                 radius_x: 8.0,
                 radius_y: 8.0,
             };
-            target.fill_rounded_rect(&shape, &card);
-            target.draw_rounded_rect(&shape, &edge, 0.6);
+            target.fill_rounded_rect(&shape, &*card);
+            target.draw_rounded_rect(&shape, &*edge, 0.6);
             target.push_clip(&shape.rect);
             let x = left + 12.0;
             let y = top + 4.0;
             let w = (card_width - 24.0).max(1.0);
             let color = color(*metric, dark);
-            let accent = canvas_result(target.create_solid_brush(color))?;
+            let accent = canvas_result(self.brush(target, color))?;
             let device = selected_device(&self.snapshot, *metric, options);
             let (value, detail) = presentation(&self.snapshot, *metric, device);
             let throughput = matches!(metric, Metric::Network | Metric::Disk);
@@ -204,7 +210,7 @@ impl Drawing {
                 target.pop_clip();
                 continue;
             }
-            let area = canvas_result(target.create_solid_brush(ColorF::new(
+            let area = canvas_result(self.brush(target, ColorF::new(
                 color.r,
                 color.g,
                 color.b,
@@ -212,7 +218,7 @@ impl Drawing {
             )))?;
             target.fill_ellipse(
                 &Ellipse::circle(Vector2::new(x + 3.0, y + 10.0), 2.5),
-                &accent,
+                &*accent,
             );
             if *metric == Metric::Disk {
                 self.paint_disk(
@@ -225,7 +231,7 @@ impl Drawing {
                     row_height,
                     text,
                     &secondary,
-                    &accent,
+                    &*accent,
                     &area,
                     &subtle,
                 )?;
@@ -254,12 +260,12 @@ impl Drawing {
                         radius_x: 2.0,
                         radius_y: 2.0,
                     };
-                    target.fill_rounded_rect(&track, &subtle);
+                    target.fill_rounded_rect(&track, &*subtle);
                     if let Some((used, total)) = self.snapshot.memory {
                         let occupied = w * (used as f64 / total as f64).clamp(0.0, 1.0) as f32;
                         if occupied > 0.0 {
                             target.push_clip(&Rect::from_xywh(x, track.rect.top, occupied, 4.0));
-                            target.fill_rounded_rect(&track, &accent);
+                            target.fill_rounded_rect(&track, &*accent);
                             target.pop_clip();
                         }
                     }
@@ -272,7 +278,7 @@ impl Drawing {
                             *metric,
                             device.map(|d| d.id.as_str()),
                             Rect::from_xywh(x, y + 28.0, w, graph_height),
-                            &accent,
+                            &*accent,
                             &area,
                             &subtle,
                             &secondary,
@@ -301,7 +307,7 @@ impl Drawing {
                 options.interval
             )
         };
-        let status = canvas_result(target.create_solid_brush(
+        let status = canvas_result(self.brush(target,
             if options.paused || self.snapshot.unavailable {
                 ColorF::new(0.88, 0.62, 0.24, 1.0)
             } else {
@@ -311,7 +317,7 @@ impl Drawing {
         let footer_top = bounds.bottom - 22.0;
         target.fill_ellipse(
             &Ellipse::circle(Vector2::new(bounds.left + 12.0, footer_top + 10.0), 2.5),
-            &status,
+            &*status,
         );
         target.clipped_text(
             &footer,
@@ -500,7 +506,7 @@ impl Drawing {
             secondary,
         );
         let write_color = write_color();
-        let write = canvas_result(target.create_solid_brush(write_color))?;
+        let write = canvas_result(self.brush(target, write_color))?;
         let pair = width >= 220.0;
         let readings = device.and_then(|d| d.rate);
         for index in 0..2 {
@@ -702,8 +708,8 @@ impl Drawing {
         if metric == Metric::Disk {
             let c = write_color();
             // Write series uses a distinct blue; both directions share one scale.
-            let stroke = canvas_result(target.create_solid_brush(c))?;
-            let fill = canvas_result(target.create_solid_brush(ColorF::new(c.r, c.g, c.b, 0.055)))?;
+            let stroke = canvas_result(self.brush(target, c))?;
+            let fill = canvas_result(self.brush(target, ColorF::new(c.r, c.g, c.b, 0.055)))?;
             graph_series(
                 target,
                 &writes,

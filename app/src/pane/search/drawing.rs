@@ -55,7 +55,7 @@ impl Drawing {
             .map_err(|e| e.to_string())?,
             name,
             path,
-            placeholder: TextFormat::new(&crate::pane::fonts::family(), 14.0)
+            placeholder: TextFormat::new(&crate::pane::fonts::family(), crate::pane::control_style::TEXT)
                 .map_err(|e| e.to_string())?
                 .with_paragraph_alignment(ParagraphAlignment::Center)
                 .with_word_wrapping(WordWrapping::NoWrap),
@@ -100,7 +100,7 @@ impl Drawing {
             };
             let name = make(13.0)?;
             let path = make(11.0)?;
-            let placeholder = make(14.0)?;
+            let placeholder = make(crate::pane::control_style::TEXT)?;
             crate::pane::canvas::ellipsis_delimiter(&name, '.' as u32)
                 .map_err(|e| e.to_string())?;
             crate::pane::canvas::ellipsis_delimiter(&path, '\\' as u32)
@@ -283,6 +283,15 @@ impl Drawing {
                                 accent,
                             );
                         }
+                    }
+                    // Ctrl+navigation moves focus without changing selection.
+                    // Keep that keyboard target visible, including unselected rows.
+                    if state.focused == Some(row) && unsafe { GetFocus() } == hwnd {
+                        target.draw_rounded_rect(&RoundedRect {
+                            rect: Rect::from_xywh(7.0, y + 1.0, (w - 14.0).max(0.0), ROW - 4.0),
+                            radius_x: crate::pane::control_style::RADIUS,
+                            radius_y: crate::pane::control_style::RADIUS,
+                        }, accent, crate::pane::control_style::FOCUS_STROKE);
                     }
                     let name = entry
                         .path

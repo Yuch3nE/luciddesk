@@ -61,6 +61,7 @@ mod theme;
 
 pub(crate) mod menu;
 mod dropdown;
+mod control_style;
 mod tooltip;
 use events::handle;
 pub use hybrid::run;

@@ -129,7 +129,11 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
             };
             #[cfg(test)]
             if msg == INSPECT_STARTUP {
-                return Some(isize::from(startup.busy()));
+                return Some(isize::from(match wp {
+                    1 => startup.status().editable(),
+                    2 => reveal.is_some(),
+                    _ => startup.busy(),
+                }));
             }
             if msg == WM_TIMER && wp == UPDATE_TIMER {
                 updates.poll();

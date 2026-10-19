@@ -22,6 +22,79 @@ pub fn ellipsis(format: &c::TextFormat) -> Result<()> {
         )
     }
 }
+/// Renderer-local, bounded solid colors; no resources cross the plugin boundary.
+#[derive(Default)]
+pub(crate) struct Brushes {
+    context: Option<ID2D1DeviceContext>,
+    colors: Vec<(c::ColorF, std::rc::Rc<c::Brush>)>,
+}
+impl Brushes {
+    pub fn get(&mut self, target: &DrawPass<'_>, color: c::ColorF) -> canvas_core::Result<std::rc::Rc<c::Brush>> {
+        if self.context.as_ref() != Some(target.native) {
+            self.colors.clear();
+            self.context = Some(target.native.clone());
+        }
+        if let Some((_, brush)) = self.colors.iter().find(|(cached, _)| *cached == color) {
+            return Ok(brush.clone());
+        }
+        let brush = std::rc::Rc::new(target.create_solid_brush(color)?);
+        // Theme changes or future dynamic colors must not grow the cache forever.
+        if self.colors.len() == 64 { self.colors.clear(); }
+        self.colors.push((color, brush.clone()));
+        Ok(brush)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use canvas_core::Interface as _;
+
+    #[test]
+    fn brushes_reuse_colors_bound_growth_and_rebuild_on_context_change() {
+        let device = c::GpuDevice::new_warp().unwrap();
+        let first = device.create_render_target(4, 4).unwrap();
+        let second = device.create_render_target(4, 4).unwrap();
+        let mut cache = Brushes::default();
+        let red = c::ColorF::new(1.0, 0.0, 0.0, 1.0);
+        let mut saved = None;
+        first.draw(|session| {
+            let ptr = session.raw().as_raw();
+            let native = unsafe { ID2D1DeviceContext::from_raw_borrowed(&ptr).unwrap() };
+            let target = DrawPass::new(session.raw(), native);
+            let brush = cache.get(&target, red)?;
+            assert!(std::rc::Rc::ptr_eq(&brush, &cache.get(&target, red)?));
+            let blue = cache.get(&target, c::ColorF::new(0.0, 0.0, 1.0, 1.0))?;
+            assert!(!std::rc::Rc::ptr_eq(&brush, &blue));
+            assert!(std::rc::Rc::ptr_eq(&brush, &cache.get(&target, red)?));
+            for i in 0..130 {
+                cache.get(&target, c::ColorF::new(0.0, i as f32 / 130.0, 1.0, 1.0))?;
+                assert!(cache.colors.len() <= 64);
+            }
+            // A brush in use survives eviction while a frame is being drawn.
+            target.fill_rect(&c::Rect::from_xywh(0.0, 0.0, 2.0, 4.0), &*brush);
+            target.fill_rect(&c::Rect::from_xywh(2.0, 0.0, 2.0, 4.0), &*blue);
+            saved = Some(cache.get(&target, red)?);
+            Ok(())
+        }).unwrap();
+        for row in first.read_pixels().unwrap().chunks_exact(16) {
+            assert!(row[..8].chunks_exact(4).all(|p| p == [0, 0, 255, 255]));
+            assert!(row[8..].chunks_exact(4).all(|p| p == [255, 0, 0, 255]));
+        }
+        second.draw(|session| {
+            let ptr = session.raw().as_raw();
+            let native = unsafe { ID2D1DeviceContext::from_raw_borrowed(&ptr).unwrap() };
+            let target = DrawPass::new(session.raw(), native);
+            let brush = cache.get(&target, red)?;
+            assert!(!std::rc::Rc::ptr_eq(saved.as_ref().unwrap(), &brush));
+            assert_eq!(cache.colors.len(), 1);
+            target.fill_rect(&c::Rect::from_xywh(0.0, 0.0, 4.0, 4.0), &*brush);
+            Ok(())
+        }).unwrap();
+        assert!(second.read_pixels().unwrap().chunks_exact(4).all(|p| p == [0, 0, 255, 255]));
+    }
+}
+
 pub struct DrawPass<'a> {
     session: c::DrawingSession<'a>,
     native: &'a ID2D1DeviceContext,
