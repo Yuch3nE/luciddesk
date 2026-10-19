@@ -14,7 +14,7 @@ impl Tokens {
     pub const GAP: f32 = 8.0;
     pub const INSET: f32 = 16.0;
     pub const CARD_RADIUS: f32 = 8.0;
-    pub const CONTROL_HEIGHT: f32 = 32.0;
+    pub const CONTROL_HEIGHT: f32 = Style::CONTROL_HEIGHT;
     pub const ROW_HEIGHT: f32 = 40.0;
     pub const MAX_WIDTH: f32 = 1000.0;
     pub const VALUE_TEXT: usize = 7;
@@ -303,6 +303,22 @@ impl<'a> SettingsForm<'a> {
         self.scene
             .control(ControlKind::Combo, r, label, action, false);
     }
+    pub fn dropdown(&mut self, title: &str, description: &str, options: Vec<(&str, Action, bool)>) {
+        let label = options
+            .iter()
+            .find(|(_, _, selected)| *selected)
+            .or_else(|| options.first())
+            .map_or("", |(label, _, _)| *label);
+        let enabled = !options.is_empty();
+        let action = Action::Dropdown(
+            options
+                .iter()
+                .map(|(label, action, selected)| ((*label).to_owned(), action.clone(), *selected))
+                .collect(),
+        );
+        self.combo(title, description, label, action);
+        self.scene.controls.last_mut().unwrap().enabled = enabled;
+    }
     pub fn back(&mut self, _label: &str, action: Action) {
         self.scene.control(
             ControlKind::BackButton,
@@ -427,20 +443,22 @@ impl<'a> SettingsForm<'a> {
     }
     pub fn diagnostics(&mut self) {
         use luciddesk_diagnostics::{Level, level};
-        let r = self.card_layout(
-            crate::i18n::text("diagnostics-section"),
+        let current = level();
+        self.section(crate::i18n::text("diagnostics-section"));
+        self.dropdown(
+            crate::i18n::text("diagnostics-level"),
             "",
-            self.width - 2.0 * Tokens::INSET,
-            true,
+            [
+                Level::Error,
+                Level::Warn,
+                Level::Info,
+                Level::Debug,
+                Level::Trace,
+            ]
+            .into_iter()
+            .map(|value| (value.label(), Action::LogLevel(value), value == current))
+            .collect(),
         );
-        let levels = [Level::Error, Level::Warn, Level::Info, Level::Debug, Level::Trace];
-        let width = (r.right - r.left - 4.0 * Tokens::GAP) / 5.0;
-        for (index, value) in levels.into_iter().enumerate() {
-            self.scene.button(
-                Rect::from_xywh(r.left + index as f32 * (width + Tokens::GAP), r.top, width, Tokens::CONTROL_HEIGHT),
-                value.label(), Action::LogLevel(value), value == level(),
-            );
-        }
     }
     pub fn choices(&mut self, title: &str, description: &str, choices: Vec<(&str, Action, bool)>) {
         let cell = choices

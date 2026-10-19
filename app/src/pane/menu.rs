@@ -21,7 +21,7 @@ use windows_sys::Win32::{
 pub struct Entry {
     pub id: i32,
     pub enabled: bool,
-    pub label: &'static str,
+    pub label: std::borrow::Cow<'static, str>,
     pub icon: &'static str,
     pub trailing: &'static str,
     pub children: Vec<Entry>,
@@ -48,14 +48,14 @@ pub fn row_top(rows: &[Entry], index: usize) -> f32 {
 }
 pub(crate) fn entry(
     id: i32,
-    label: &'static str,
+    label: impl Into<std::borrow::Cow<'static, str>>,
     icon: &'static str,
     trailing: &'static str,
 ) -> Entry {
     Entry {
         id,
         enabled: true,
-        label,
+        label: label.into(),
         icon,
         trailing,
         children: Vec::new(),

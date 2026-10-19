@@ -16,6 +16,7 @@ pub(super) struct Painter {
     icon_uploads: std::cell::Cell<usize>,
     formats: Vec<windows_canvas::TextFormat>,
     button_format: windows_canvas::TextFormat,
+    combo_format: windows_canvas::TextFormat,
 }
 impl Drop for Painter {
     fn drop(&mut self) { super::components::release_text_metrics(); }
@@ -64,11 +65,16 @@ impl Painter {
             super::super::canvas::ellipsis(&format)?;
             formats.push(format);
         }
-        let button_format = canvas_result(TextFormat::new(&family, 14.0))?
-            .with_paragraph_alignment(ParagraphAlignment::Center)
-            .with_word_wrapping(WordWrapping::NoWrap)
-            .with_alignment(windows_canvas::TextAlignment::Center);
-        super::super::canvas::ellipsis(&button_format)?;
+        let control_format = |alignment| -> windows::core::Result<TextFormat> {
+            let format = canvas_result(TextFormat::new(&family, Style::TEXT_SIZE))?
+                .with_paragraph_alignment(ParagraphAlignment::Center)
+                .with_word_wrapping(WordWrapping::NoWrap)
+                .with_alignment(alignment);
+            super::super::canvas::ellipsis(&format)?;
+            Ok(format)
+        };
+        let button_format = control_format(windows_canvas::TextAlignment::Center)?;
+        let combo_format = control_format(windows_canvas::TextAlignment::Leading)?;
         Ok(Self {
             preview: RefCell::new(None),
             brushes: Default::default(),
@@ -77,6 +83,7 @@ impl Painter {
             icon_uploads: std::cell::Cell::new(0),
             formats,
             button_format,
+            combo_format,
         })
     }
     pub(super) fn label_width(&self, text: &str) -> windows::core::Result<f32> {
@@ -452,60 +459,6 @@ impl Painter {
                         }
                         continue;
                     }
-                    if matches!(c.kind, ControlKind::Combo) {
-                        let rounded = RoundedRect {
-                            rect: c.bounds,
-                            radius_x: Style::COMBO_RADIUS,
-                            radius_y: Style::COMBO_RADIUS,
-                        };
-                        t.fill_rounded_rect(
-                            &rounded,
-                            if c.enabled && hover == Some(i) {
-                                hovered
-                            } else {
-                                card
-                            },
-                        );
-                        t.draw_rounded_rect(&rounded, border, 1.0);
-                        if c.enabled {
-                            t.draw_line(
-                                Vector2 {
-                                    x: c.bounds.left + 4.0,
-                                    y: c.bounds.bottom - 1.0,
-                                },
-                                Vector2 {
-                                    x: c.bounds.right - 4.0,
-                                    y: c.bounds.bottom - 1.0,
-                                },
-                                if focus == Some(i) { accent } else { muted },
-                                if focus == Some(i) { 2.0 } else { 1.0 },
-                            );
-                        }
-                        let text = if c.enabled { ink } else { muted };
-                        t.clipped_text(
-                            &c.label,
-                            &self.formats[1],
-                            &Rect::from_xywh(
-                                c.bounds.left + 12.0,
-                                c.bounds.top,
-                                c.bounds.right - c.bounds.left - 44.0,
-                                Style::COMBO_HEIGHT,
-                            ),
-                            text,
-                        );
-                        t.clipped_icon(
-                            "\u{e70d}",
-                            &self.formats[4],
-                            &Rect::from_xywh(
-                                c.bounds.right - 28.0,
-                                c.bounds.top,
-                                Style::ICON_SLOT,
-                                Style::COMBO_HEIGHT,
-                            ),
-                            text,
-                        );
-                        continue;
-                    }
                     let navigation = matches!(c.kind, ControlKind::Navigation);
                     let caption = matches!(c.kind, ControlKind::Caption);
                     let plain = c.kind.is_row();
@@ -575,6 +528,32 @@ impl Painter {
                             },
                             if focus == Some(i) { 2.0 } else { 1.0 },
                         );
+                    }
+                    if matches!(c.kind, ControlKind::Combo) {
+                        let text = if c.enabled { ink } else { disabled };
+                        t.clipped_text(
+                            &c.label,
+                            &self.combo_format,
+                            &Rect::from_xywh(
+                                c.bounds.left + 12.0,
+                                c.bounds.top,
+                                c.bounds.right - c.bounds.left - 44.0,
+                                c.bounds.bottom - c.bounds.top,
+                            ),
+                            text,
+                        );
+                        t.clipped_icon(
+                            "\u{e70d}",
+                            &self.formats[4],
+                            &Rect::from_xywh(
+                                c.bounds.right - 28.0,
+                                c.bounds.top,
+                                Style::ICON_SLOT,
+                                c.bounds.bottom - c.bounds.top,
+                            ),
+                            text,
+                        );
+                        continue;
                     }
                     if navigation && c.selected {
                         t.fill_rounded_rect(

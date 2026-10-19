@@ -50,7 +50,7 @@ fn multi_window_render_latency() {
         .map(|id| Entry {
             enabled: true,
             id,
-            label: "文件夹面板与菜单",
+            label: "文件夹面板与菜单".into(),
             icon: "",
             trailing: "Ctrl+L",
             children: Vec::new(),

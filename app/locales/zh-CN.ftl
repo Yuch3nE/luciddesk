@@ -1227,6 +1227,7 @@ ui-desktop-log-saved = 诊断日志：{ $path }
 ui-desktop-log-failed = 诊断日志写入失败：{ $error }
 
 diagnostics-section = 诊断日志
+diagnostics-level = 日志等级
 
 ui-sort-by-name = 按名称排序
 ui-sort-ascending = 升序

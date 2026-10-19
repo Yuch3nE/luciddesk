@@ -96,7 +96,7 @@ impl Renderer {
             .fold(216.0_f32, |width, row| {
                 let trailing = row.trailing_width();
                 let measured =
-                    windows_canvas::TextLayout::new(row.label, &self.title, 4096.0, 64.0)
+                    windows_canvas::TextLayout::new(&row.label, &self.title, 4096.0, 64.0)
                         .map(|layout| layout.metrics().width_including_trailing_whitespace)
                         .unwrap_or(166.0);
                 width.max((measured + 54.0 + trailing).ceil())
@@ -213,7 +213,7 @@ impl Renderer {
                 let trailing_width = row.trailing_width();
                 for (label, left, available) in [
                     (row.icon, 12.0, 20.0),
-                    (row.label, 38.0, width - 50.0 - trailing_width),
+                    (row.label.as_ref(), 38.0, width - 50.0 - trailing_width),
                 ] {
                     if label
                         .chars()

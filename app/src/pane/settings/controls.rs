@@ -10,9 +10,9 @@ impl Style {
     pub const NAV_TEXT_INSET: f32 = 48.0;
     pub const ROW_INSET: f32 = 16.0;
     pub const ROW_HEIGHT: f32 = 38.0;
-    pub const COMBO_HEIGHT: f32 = 32.0;
+    pub const CONTROL_HEIGHT: f32 = 32.0;
+    pub const TEXT_SIZE: f32 = 14.0;
     pub const RADIUS: f32 = 5.0;
-    pub const COMBO_RADIUS: f32 = 4.0;
     pub const SLIDER_INSET: f32 = 8.0;
 }
 
@@ -61,6 +61,7 @@ impl ControlKind {
     }
 }
 
+#[derive(Clone)]
 pub(super) struct Control {
     pub bounds: Rect,
     pub label: String,
@@ -157,7 +158,7 @@ pub(super) fn choose(
         .map(|(index, (value, label))| {
             super::super::menu::entry(
                 index as i32 + 1,
-                label,
+                *label,
                 if *value == selected { "\u{e73e}" } else { "" },
                 "",
             )
@@ -175,6 +176,67 @@ fn choice_value(options: &[(u64, &'static str)], command: i32) -> Option<u64> {
         .map(|(value, _)| *value)
 }
 
+/// Open after the settings callback returns: the popup runs its own message loop.
+pub(super) fn open_dropdown(
+    hwnd: windows_sys::Win32::Foundation::HWND,
+    appearance: (luciddesk_core::PanelTheme, luciddesk_core::Backdrop),
+    scale: f32,
+    control: &Control,
+    sender: std::sync::mpsc::Sender<Control>,
+) {
+    use windows_sys::Win32::{
+        Graphics::Gdi::ClientToScreen,
+        UI::WindowsAndMessaging::{IsWindow, PostMessageW},
+    };
+    let Action::Dropdown(options) = &control.action else {
+        return;
+    };
+    let options = options.clone();
+    let mut control = control.clone();
+    let mut point = windows_sys::Win32::Foundation::POINT {
+        x: (control.bounds.left * scale).round() as i32,
+        y: ((control.bounds.bottom + 4.0) * scale).round() as i32,
+    };
+    unsafe {
+        ClientToScreen(hwnd, &raw mut point);
+    }
+    super::window::defer_action(move || {
+        if unsafe { IsWindow(hwnd) } == 0 {
+            return;
+        }
+        let rows = options
+            .iter()
+            .enumerate()
+            .map(|(index, (label, _, selected))| {
+                super::super::menu::entry(
+                    index as i32 + 1,
+                    label.clone(),
+                    if *selected { "\u{e73e}" } else { "" },
+                    "",
+                )
+            })
+            .collect();
+        let command =
+            super::super::menu::show_entries(hwnd, point, false, appearance.0, appearance.1, rows);
+        if let Some(action) = dropdown_action(&options, command) {
+            control.action = action;
+            if sender.send(control).is_ok() {
+                unsafe {
+                    PostMessageW(hwnd, super::SELECT_SETTING, 0, 0);
+                }
+            }
+        }
+    });
+}
+
+fn dropdown_action(options: &[(String, Action, bool)], command: i32) -> Option<Action> {
+    usize::try_from(command.checked_sub(1)?)
+        .ok()
+        .and_then(|index| options.get(index))
+        .filter(|(_, _, selected)| !selected)
+        .map(|(_, action, _)| action.clone())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -186,6 +248,22 @@ mod tests {
         assert_eq!(choice_value(&options, -1), None);
         assert_eq!(choice_value(&options, 3), None);
         assert_eq!(choice_value(&options, 2), Some(15));
+    }
+
+    #[test]
+    fn dropdown_only_dispatches_a_changed_valid_option() {
+        let options = vec![
+            ("Current".into(), Action::Page(1), true),
+            ("Next".into(), Action::Page(2), false),
+        ];
+        for command in [i32::MIN, -1, 0, 1, 3, i32::MAX] {
+            assert!(dropdown_action(&options, command).is_none());
+        }
+        assert!(matches!(
+            dropdown_action(&options, 2),
+            Some(Action::Page(2))
+        ));
+        assert!(dropdown_action(&[], 1).is_none());
     }
 
     #[test]

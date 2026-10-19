@@ -79,6 +79,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
     let mut plugin_document: Option<Result<serde_json::Value, String>> = None;
     let mut navigation_offset = 0.0_f32;
     let mut reveal_navigation = false;
+    let (dropdown_sender, dropdown_receiver) = std::sync::mpsc::channel::<Control>();
     let mut recording_peek = false;
     let mut recording_search = false;
     let mut recording_show_panels = false;
@@ -126,6 +127,10 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
             let Some(state) = weak.upgrade() else {
                 return Some(0);
             };
+            #[cfg(test)]
+            if msg == INSPECT_STARTUP {
+                return Some(isize::from(startup.busy()));
+            }
             if msg == WM_TIMER && wp == UPDATE_TIMER {
                 updates.poll();
                 if !updates.busy() { unsafe { KillTimer(hwnd, UPDATE_TIMER); } }
@@ -387,9 +392,11 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
             if !matches!(
                 msg,
                 WM_PAINT
+                    | SELECT_SETTING
                     | WM_ERASEBKGND
                     | WM_SIZE
                     | WM_ACTIVATE
+                    | WM_ACTIVATEAPP
                     | WM_WINDOWPOSCHANGED
                     | WM_SHOWWINDOW
                     | WM_MOUSEWHEEL
@@ -557,6 +564,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
             let mut strength_change = None;
             let mut channel_change = None;
             match msg {
+                SELECT_SETTING => {}
                 WM_MOUSEWHEEL if scene.viewport.is_some() => {
                     let mut pointer = windows_sys::Win32::Foundation::POINT { x: lp as u16 as i16 as i32, y: (lp >> 16) as u16 as i16 as i32 };
                     unsafe { ScreenToClient(hwnd, &raw mut pointer); }
@@ -645,13 +653,19 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 }
                 WM_ACTIVATE => {
                     scene_key = None;
-                    if wp & 0xffff != WA_INACTIVE as usize && page == 13 {
-                        if let Err(error) = start_login_operation(&mut startup, hwnd, None) { window::error(&error); }
-                    }
                     if wp & 0xffff == WA_INACTIVE as usize {
                         hover = None;
                         pressed = None;
                         keyboard_focus = false;
+                    }
+                }
+                WM_ACTIVATEAPP => {
+                    // Owned flyouts activate/deactivate this HWND without leaving
+                    // the application. Only an external application switch needs
+                    // to recheck changes made in Windows startup settings.
+                    if wp != 0 && page == 13 {
+                        if let Err(error) = start_login_operation(&mut startup, hwnd, None) { window::error(&error); }
+                        scene_key = None;
                     }
                 }
                 WM_MOUSELEAVE | WM_NCMOUSEMOVE => {
@@ -791,7 +805,10 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                         unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
                         return Some(0);
                     }
-                    if msg == WM_SYSKEYDOWN { return None; }
+                    let open_combo = focus.and_then(|i| scene.controls.get(i))
+                        .is_some_and(|c| c.enabled && matches!(c.kind, ControlKind::Combo))
+                        && (wp == VK_F4 as usize || (msg == WM_SYSKEYDOWN && wp == VK_DOWN as usize));
+                    if msg == WM_SYSKEYDOWN && !open_combo { return None; }
                     if wp == VK_ESCAPE as usize {
                         if page == 7 {
                             page = 0; scene_key = None; focus = None;
@@ -845,7 +862,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                         scroll_offset = (scroll_offset + if wp == VK_NEXT as usize { step } else { -step }).clamp(0.0, scene.scroll_max);
                         scene_key = None;
                         unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
-                    } else if wp == VK_TAB as usize || wp == VK_DOWN as usize || wp == VK_UP as usize {
+                    } else if !open_combo && (wp == VK_TAB as usize || wp == VK_DOWN as usize || wp == VK_UP as usize) {
                         keyboard_focus = true;
                         let n = scene.controls.len();
                         let backwards = wp == VK_UP as usize
@@ -880,7 +897,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                                 if delta != 0.0 { scroll_offset = (scroll_offset + delta).clamp(0.0, scene.scroll_max); scene_key = None; }
                             }
                         }
-                    } else if wp == VK_SPACE as usize || wp == VK_RETURN as usize {
+                    } else if open_combo || wp == VK_SPACE as usize || wp == VK_RETURN as usize {
                         activate = focus;
                     }
                 }
@@ -953,12 +970,14 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     }
                 }
             }
-            if let Some(c) = activate
+            let dropdown_selection = if msg == SELECT_SETTING { dropdown_receiver.try_recv().ok() } else { None };
+            if let Some(c) = dropdown_selection.as_ref()
+                .or_else(|| activate.and_then(|i| scene.controls.get(i)))
                 .filter(|_| available)
-                .and_then(|i| scene.controls.get(i))
                 .filter(|c| c.enabled)
             {
                 if actions::execute(actions::Context {
+                    dropdown_sender: &dropdown_sender,
                     state: &state, hwnd, selected, appearance, dark, scale, backup_view: &backup_view, desktop_status: &desktop_status, font_search: font_editor.hwnd, all_fonts: &all_fonts,
                     page: &mut page,
                     selected_plugin: &mut selected_plugin,
@@ -988,9 +1007,10 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 && (scene_changed
                     || interaction_before != (hover, focus, keyboard_focus, pressed)
                     || activate.is_some()
+                    || dropdown_selection.is_some()
                     || grid_change.is_some()
                     || radius_change.is_some_and(|radius| radius != options.corner_radius)
-                    || matches!(msg, WM_SIZE | WM_ACTIVATE | WM_TIMER))
+                    || matches!(msg, WM_SIZE | WM_ACTIVATE | WM_ACTIVATEAPP | WM_TIMER))
             {
                 unsafe {
                     InvalidateRect(hwnd, std::ptr::null(), 0);

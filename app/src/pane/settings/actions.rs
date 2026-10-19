@@ -2,6 +2,7 @@
 use super::*;
 
 pub(super) struct Context<'a> {
+    pub dropdown_sender: &'a std::sync::mpsc::Sender<Control>,
     pub state: &'a Rc<RefCell<PaneApp>>,
     pub hwnd: windows_sys::Win32::Foundation::HWND,
     pub selected: PanelId,
@@ -50,6 +51,9 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
     let all_fonts = context.all_fonts;
     let mut invalidate = false;
     match &c.action {
+        Action::Dropdown(_) => {
+            controls::open_dropdown(hwnd, appearance, scale, c, context.dropdown_sender.clone());
+        }
         Action::PluginEnabled(id, enabled) => {
             if let Err(error) = plugin_page::set_enabled(state, id, *enabled) { window::error(&error); }
             invalidate = true;

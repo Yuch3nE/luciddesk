@@ -1,6 +1,220 @@
 use super::*;
 
 #[test]
+fn diagnostics_uses_one_dropdown_with_the_current_level_and_all_five_options() {
+    let mut body = scene(
+        800.0,
+        560.0,
+        usize::MAX,
+        false,
+        (PanelTheme::Light, Backdrop::Mica),
+        Default::default(),
+    );
+    let before = body.controls.len();
+    let mut form = SettingsForm::new(&mut body, 800.0, "");
+    form.diagnostics();
+    form.dropdown("Empty", "", vec![]);
+    let controls = &body.controls[before..];
+    assert_eq!(controls.len(), 2);
+    let control = &controls[0];
+    assert!(matches!(control.kind, ControlKind::Combo));
+    assert_eq!(control.label, luciddesk_diagnostics::level().label());
+    let Action::Dropdown(options) = &control.action else {
+        panic!("Expected dropdown");
+    };
+    assert_eq!(
+        options
+            .iter()
+            .map(|(label, _, _)| label.as_str())
+            .collect::<Vec<_>>(),
+        ["ERROR", "WARN", "INFO", "DEBUG", "TRACE"]
+    );
+    assert_eq!(
+        options.iter().filter(|(_, _, selected)| *selected).count(),
+        1
+    );
+    for (label, action, selected) in options {
+        let Action::LogLevel(level) = action else {
+            panic!("Expected log level");
+        };
+        assert_eq!(label, level.label());
+        assert_eq!(*selected, *level == luciddesk_diagnostics::level());
+    }
+    assert!(!controls[1].enabled);
+}
+
+#[test]
+#[ignore = "Opens settings and dropdown menus on the interactive desktop"]
+fn native_log_level_dropdown_cancels_and_saves_after_the_popup_returns() {
+    use luciddesk_diagnostics::{Level, level, set_level};
+    let _sta = crate::pane::test_support::apartment();
+    let directory = tempfile::tempdir().unwrap();
+    let state = Rc::new(RefCell::new(super::super::tests::test_state()));
+    state.borrow_mut().store =
+        WorkspaceStore::open(&directory.path().join("workspace.db")).unwrap();
+    luciddesk_diagnostics::initialize(
+        &directory.path().join("workspace.db"),
+        "test",
+        "test",
+        String::new,
+    );
+    struct RestoreLevel(Level);
+    impl Drop for RestoreLevel {
+        fn drop(&mut self) {
+            set_level(self.0);
+        }
+    }
+    let _restore = RestoreLevel(level());
+    set_level(Level::Error);
+    let original = state.borrow().store.preference("log_level").unwrap();
+    host::show_at(&state, PanelId::new(1), 13).unwrap();
+    let hwnd = state.borrow().settings.as_ref().unwrap().hwnd().cast();
+    let mut body = scene(
+        900.0,
+        600.0,
+        13,
+        false,
+        (PanelTheme::System, Backdrop::Mica),
+        Default::default(),
+    );
+    layout::general(
+        &mut body,
+        900.0,
+        crate::startup::Status::Unknown,
+        false,
+        false,
+        false,
+    );
+    let body = with_titlebar(body, 900.0, false);
+    let index = body
+        .controls
+        .iter()
+        .position(|c| matches!(c.action, Action::Dropdown(_)))
+        .unwrap();
+    unsafe {
+        for _ in body.controls[..=index].iter().filter(|c| c.enabled) {
+            SendMessageW(hwnd, WM_KEYDOWN, VK_TAB as usize, 0);
+        }
+    }
+    let settled = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while unsafe { SendMessageW(hwnd, INSPECT_STARTUP, 0, 0) } != 0 {
+        assert!(std::time::Instant::now() < settled, "startup query did not finish");
+        unsafe { SendMessageW(hwnd, WM_TIMER, STARTUP_TIMER, 0); }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    // Reactivating this HWND after an owned popup must not start a fresh query.
+    unsafe { SendMessageW(hwnd, WM_ACTIVATE, WA_ACTIVE as usize, 0); }
+    assert_eq!(unsafe { SendMessageW(hwnd, INSPECT_STARTUP, 0, 0) }, 0);
+    for cancel in [true, false] {
+        let completed = Rc::new(std::cell::Cell::new(false));
+        let observed = Rc::clone(&completed);
+        let driver = windows_window::Window::new("Dropdown test driver")
+            .style(WS_POPUP)
+            .size(1, 1)
+            .ex_style(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE)
+            .on_message(move |_, message, _, lp| {
+                if unsafe { crate::window_visibility::defer_show(message, lp, false) } {
+                    return Some(0);
+                }
+                if message == WM_DESTROY {
+                    return Some(0);
+                }
+                if message != WM_TIMER || observed.get() {
+                    return None;
+                }
+                unsafe extern "system" fn visit(
+                    window: windows_sys::Win32::Foundation::HWND,
+                    data: isize,
+                ) -> i32 {
+                    unsafe {
+                        let pair = &mut *(data as *mut (
+                            windows_sys::Win32::Foundation::HWND,
+                            windows_sys::Win32::Foundation::HWND,
+                        ));
+                        if GetWindow(window, GW_OWNER) == pair.0 && IsWindowVisible(window) != 0 {
+                            pair.1 = window;
+                        }
+                    }
+                    1
+                }
+                let mut pair = (hwnd, std::ptr::null_mut::<std::ffi::c_void>());
+                unsafe {
+                    EnumThreadWindows(
+                        windows_sys::Win32::System::Threading::GetCurrentThreadId(),
+                        Some(visit),
+                        (&raw mut pair) as isize,
+                    );
+                    if !pair.1.is_null() {
+                        if !cancel {
+                            for _ in 0..3 {
+                                PostMessageW(pair.1, WM_KEYDOWN, VK_DOWN as usize, 0);
+                            }
+                        }
+                        PostMessageW(
+                            pair.1,
+                            WM_KEYDOWN,
+                            if cancel { VK_ESCAPE } else { VK_RETURN } as usize,
+                            0,
+                        );
+                        observed.set(true);
+                    }
+                }
+                Some(0)
+            })
+            .create()
+            .unwrap();
+        unsafe {
+            SetTimer(driver.hwnd().cast(), 1, 25, None);
+            SendMessageW(
+                hwnd,
+                WM_KEYDOWN,
+                if cancel { VK_RETURN } else { VK_F4 } as usize,
+                0,
+            );
+        }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while std::time::Instant::now() < deadline {
+            unsafe {
+                let mut message = MSG::default();
+                while PeekMessageW(&raw mut message, std::ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
+                    TranslateMessage(&message);
+                    DispatchMessageW(&message);
+                }
+            }
+            if completed.get() && (cancel || level() == Level::Info) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        unsafe {
+            KillTimer(driver.hwnd().cast(), 1);
+        }
+        assert!(
+            completed.get(),
+            "dropdown was not opened by the focused control"
+        );
+        assert_eq!(level(), if cancel { Level::Error } else { Level::Info });
+        assert_eq!(unsafe { SendMessageW(hwnd, INSPECT_STARTUP, 0, 0) }, 0,
+            "log level interaction must not refresh the startup switch");
+        assert_eq!(
+            state
+                .borrow()
+                .store
+                .preference("log_level")
+                .unwrap()
+                .as_deref(),
+            if cancel { original.as_deref() } else { Some("info") }
+        );
+    }
+    unsafe {
+        SendMessageW(hwnd, WM_ACTIVATEAPP, 1, 0);
+        assert_eq!(SendMessageW(hwnd, INSPECT_STARTUP, 0, 0), 1,
+            "returning from another application must still refresh startup status");
+        SendMessageW(hwnd, WM_CLOSE, 0, 0);
+    }
+}
+
+#[test]
 fn desktop_layout_defaults_show_both_toggles_and_their_linked_actions() {
     for mode in [
         layout_defaults::Mode::Compact,

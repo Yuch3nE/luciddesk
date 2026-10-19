@@ -1227,6 +1227,7 @@ ui-desktop-log-saved = Diagnostic log: { $path }
 ui-desktop-log-failed = Could not write diagnostic log: { $error }
 
 diagnostics-section = Diagnostic logging
+diagnostics-level = 記錄等級
 
 ui-sort-by-name = 依名稱排序
 ui-sort-ascending = 遞增

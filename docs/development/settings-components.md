@@ -43,6 +43,12 @@
 
 `SettingsForm` 提供分组、信息卡、开关、选项组、滑块、按钮、路径、快捷键、下拉选择、列表、分页、品牌卡及预览。公共 `Palette` 提供深浅主题颜色，导航选中和悬停颜色另外按材质、主题及强度计算。
 
+`SettingsForm::dropdown` 接收标签、Action 和当前选中状态，自动显示当前值，空选项时禁用。通用页的日志等级使用此组件，提供 ERROR、WARN、INFO、DEBUG、TRACE。弹出菜单在设置窗口回调返回后打开，选中动作经窗口消息统一分派；取消和重复选择当前值不会写入配置。支持鼠标、Enter、空格、F4 和 Alt+下方向键展开，菜单内使用上下方向键选择、Enter 确认、Esc 取消。
+
+下拉框与按钮共用背景、边框、5 DIP 圆角、悬停与焦点绘制，标准高度为 32 DIP、文字为 14 DIP。下拉框文字左对齐，长文本单行省略，右侧保留下拉箭头；键盘焦点使用与按钮一致的强调色边框，禁用时沿用公共弱化文字颜色。日志等级和备份策略的下拉框使用同一套样式。
+
+通用页在进入页面及收到外部应用切回的 `WM_ACTIVATEAPP` 时查询自启动状态；同一应用内的 `WM_ACTIVATE` 仅更新窗口交互状态。下拉菜单展开与关闭不会触发自启动查询，避免修改日志等级时刷新无关开关。
+
 主导航由 `layout::pages()` 定义，当前有主题与材质、面板布局、字体、文件夹面板、Everything 搜索、文件预览、备份与恢复、语言和关于九项。配色、备份记录和高级选项等通过页内操作进入。页面 ID 不连续，不应把导航数组下标直接当作页面 ID。
 
 交互状态应保留以下语义：
@@ -101,6 +107,8 @@ cargo test -p luciddesk --bin luciddesk pane::settings --locked --offline -- --t
 | `pagination_disables_unavailable_directions_and_short_pages_do_not_scroll` | 分页边界和短页无多余滚动 |
 | `font_list_scroll_keeps_search_and_current_font_fixed` | 字体候选滚动与固定搜索区 |
 | `native_font_search_tracks_window_and_handles_clear_and_page_leave` | 原生搜索框的位置、清空和离页行为 |
+| `diagnostics_uses_one_dropdown_with_the_current_level_and_all_five_options` | 日志等级下拉框的当前值、完整选项和空选项禁用 |
+| `native_log_level_dropdown_cancels_and_saves_after_the_popup_returns` | 实际窗口中的键盘展开、取消、保存及日志等级即时生效；需单独使用 `--ignored` 运行 |
 
 测试中的页面及语言集合是显式枚举，新增页面或语言不会自动获得这些测试的完整覆盖。尺寸及命中检查另外覆盖 1440 DIP 宽度。
 

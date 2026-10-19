@@ -268,7 +268,7 @@ fn canvas_flyout_retains_transparency_and_hover_after_resize() {
     let entries = [super::super::menu::Entry {
             enabled: true,
         id: 1,
-        label: "返回上个文件夹",
+        label: "返回上个文件夹".into(),
         icon: "",
         trailing: "Alt + ←",
         children: Vec::new(),
