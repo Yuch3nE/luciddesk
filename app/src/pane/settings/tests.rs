@@ -79,9 +79,42 @@ fn native_log_level_dropdown_cancels_and_saves_after_the_popup_returns() {
         windows_window::pump();
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
-    unsafe { SetForegroundWindow(hwnd); }
+    // A background test runner may not steal foreground. Activate the test
+    // window with a real titlebar click, after checking the exact hit target.
+    // Do not attach input queues, change foreground policy, or inject fake keys.
+    {
+        unsafe {
+            let was_topmost = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST as isize != 0;
+            SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            let mut rect = windows_sys::Win32::Foundation::RECT::default();
+            assert_ne!(GetWindowRect(hwnd, &raw mut rect), 0);
+            let point = windows_sys::Win32::Foundation::POINT {
+                x: (rect.left + rect.right) / 2,
+                y: rect.top + (16.0 * GetDpiForWindow(hwnd) as f32 / 96.0) as i32,
+            };
+            assert_eq!(WindowFromPoint(point), hwnd, "activation click must hit the test window");
+            assert_ne!(SetCursorPos(point.x, point.y), 0);
+            let events = [MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP].map(|flags| INPUT {
+                r#type: INPUT_MOUSE,
+                Anonymous: INPUT_0 { mi: MOUSEINPUT { dwFlags: flags, ..Default::default() } },
+            });
+            assert_eq!(SendInput(events.len() as u32, events.as_ptr(), size_of::<INPUT>() as i32), 2);
+            windows_window::pump();
+            if !was_topmost {
+                SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            }
+        }
+    }
+    let started = std::time::Instant::now();
+    let initial_foreground = unsafe { GetForegroundWindow() };
+    let timeout = std::time::Duration::from_secs(5);
+    while unsafe { GetForegroundWindow() } != hwnd && started.elapsed() < timeout {
+        windows_window::pump();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    println!("titlebar activation: initial={initial_foreground:?} target={hwnd:?} elapsed_ms={}", started.elapsed().as_millis());
     assert_eq!(unsafe { GetForegroundWindow() }, hwnd,
-        "Windows denied foreground activation; run this test alone on the interactive desktop");
+        "settings did not obtain foreground before the deadline; activate the test window on the interactive desktop");
     let settled = std::time::Instant::now() + std::time::Duration::from_secs(5);
     while unsafe { SendMessageW(hwnd, INSPECT_STARTUP, 0, 0) } != 0 {
         assert!(std::time::Instant::now() < settled, "startup query did not finish");
@@ -209,6 +242,9 @@ fn native_log_level_dropdown_cancels_and_saves_after_the_popup_returns() {
             "dropdown was not opened by the focused control"
         );
         assert_eq!(level(), if cancel { Level::Error } else { Level::Info });
+        assert_eq!(unsafe { GetForegroundWindow() }, hwnd, "popup must return foreground to settings");
+        assert_eq!(unsafe { GetFocus() }, hwnd, "popup must return keyboard focus to settings");
+        println!("dropdown cancel={cancel}: level={:?}, foreground and keyboard focus returned", level());
         assert_eq!(unsafe { SendMessageW(hwnd, INSPECT_STARTUP, 0, 0) }, 0,
             "log level interaction must not refresh the startup switch");
         assert_eq!(
