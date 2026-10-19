@@ -2,6 +2,40 @@
 
 本文说明桌面项目从收纳、同步到恢复的完整流程。应用使用 `FilterSession` 管理 Explorer 视图成员，面板由独立窗口自绘；进程分工和 DLL 生命周期见[架构说明](architecture.md)。
 
+## 连接调用链与重入边界
+
+下表按执行顺序列出主链路。STA 上的同步 Win32/COM 调用可能派发回调，不能把“单线程”视为“不会重入”。
+
+| 阶段 | 代码入口与线程 | 等待及重入约束 |
+| --- | --- | --- |
+| 定位与初始清单 | UI：`runtime::reconnect → hybrid::connect → desktop_view → inventory::capture` | `reconnecting` 阻止再次连接。先复制托管身份，再释放 `PaneApp` 借用，之后才调用 Shell 枚举；不能把 `state.borrow()` 临时值留在 COM 调用的实参中。 |
+| 注入与握手 | UI：`FilterSession::connect → wait_for_attach`；Explorer：Hook 安装 Subclass | 验证窗口、PID、线程及旧 DLL 释放状态。握手泵送 UI 消息并检查视图是否替换；这一步不持有应用状态借用。 |
+| 首次发布 | UI：`reconcile_inventory → sync → submit_hidden` | 安装会话后提交完整名单。初始化失败时先从应用取出会话、释放借用，再销毁会话，避免 DETACH 回调重入被借用的应用。 |
+| 请求与确认 | UI：`transmit/send`；Explorer：`WM_COPYDATA → pending → work_message → apply_request → ACK` | 接收只复制请求，实际 Shell 操作排队执行。单个会话只有一个 ACK 槽；发送及同步等待全程持有请求保护，回调中的嵌套请求在分配序号、创建更新令牌或发送前被拒绝。异步提交返回后由 `pending_hidden` 接续保护，直到 `poll_hidden` 消费确认。 |
+| 选择与预览 | UI：焦点 `post_action → PaneItemFocus → clear_selection`；预览 `activate_with → PAUSE → Peek → RESUME` | 焦点同步必须先返回 Explorer 的同步通知；代次校验丢弃旧任务。普通 ACK 等待只服务 sent messages，不分派排队应用动作。预览在排队动作实际执行时检查会话的菜单/预览占用；占用中直接跳过，不发送 PAUSE/RESUME，也不释放他人的占用。暂停与恢复期间仍可能接收同步窗口回调。 |
+| 文件菜单与重命名 | UI：`BeginItemMenu → shell_menu::show_many`；Explorer 桌面 STA → 独立菜单 STA | 菜单请求等待会泵送 UI 消息，调用前释放应用、模型和事件借用，单独持有 Hook。菜单准备失败也取消；桌面 STA 等菜单线程时只服务同步回调。重命名先保存实际文件操作结果，再同步身份与完整名单，最后释放带序号的更新令牌。 |
+| OLE 拖放 | Explorer → `drag_drop::target::Drop → hybrid::register_drop` | 完成拖动辅助对象和描述清理后才排队成员变化；Drop 返回前不等待 Explorer 的过滤工作。拖出和文件夹复制也在释放借用后执行 Shell 操作。 |
+| 审计、断开与恢复 | 后台 STA：`DesktopAudit`；UI：`hybrid::tick → runtime::maintain/suspend/reconnect` | 后台结果通过通道回传，带成员身份版本校验。异常会话取出后在借用外销毁；正常退出及初始化回滚遵守同一规则。Explorer 恢复验证完成前保留组件引用；菜单线程退出及 DLL 释放由独立生命周期机制处理，不在桌面 STA 上 join。 |
+
+请求保护是单 ACK 槽的轻量协议约束：同一会话有请求执行时，嵌套提交立即返回错误，不等待、不排队、不新增自动重试，也不将会话标记为损坏或触发重连。保护采用作用域释放，成功、传输拒绝、断开和超时返回都会释放；身份更新的带序号释放标记仍可用于清理。应用层的 `menu_active`、成员同步状态和延迟调度继续负责正常操作的互斥与时序。
+
+协议测试人为构造同步发送和菜单 ACK 等待期间的嵌套回调，覆盖异步提交、序号与更新令牌不被污染、拒绝重入后会话仍健康，以及传输失败后仍可发下一请求。它验证客户端边界，不能单独作为现场故障的复现证据。初始清单读取直接用局部变量结束借用，不保留仅为注入测试而设置的泛型包装。两处借用修正还需结合第三方 Shell 扩展和连接失败场景进行实机验证。
+
+### 实际入口审查：菜单等待与 Peek 交错
+
+修复前应用层存在一条未被菜单状态拦截的预览路径：`WM_CONTEXTMENU → BeginItemMenu → prepare_menu → send` 等待 ACK 时会分派所有排队消息；此时预览快捷键仍可经过 `WM_KEYDOWN → Event::Peek → activate_with → post_action → pause_for_preview → hook.pause(true)`。窗口的局部 `menu_active` 阻止再次打开菜单，但通用快捷键分支没有据此阻止 Peek；会话的 `menu_active` 已为 true，`pause_for_preview` 却没有检查它。排队动作在 Subclass 中执行，普通窗口事件回调仍可用，因此回调临时脱离机制也不会封住此路径。需要桌面分组有选中项、启用 Peek（非 QuickLook），并且预览任务在菜单请求等待期间被分派，例如菜单准备较慢时按预览快捷键。
+
+这是基于生产代码和真实消息分派规则识别的可达路径，尚未实机捕获菜单准备 ACK 被嵌套请求覆盖的历史故障时序。`in_flight` 在客户端拒绝第二次提交。若移除它，Explorer 正忙时可能拒绝请求；若外层菜单 ACK 已写入、客户端尚未消费，嵌套 PAUSE/RESUME 被接受并完成后可能覆盖共享 ACK，令外层等待到超时。Explorer 的 PAUSE 分支也没有拒绝 `menu_prepared` 状态，不能假设服务端菜单互斥会兜底。不能将这些条件性后果描述为每次快速右键加预览都会发生。
+
+应用层现已在 `pause_for_preview(true)` 检查并取得会话占用。检查位于 `activate_with` 的排队动作内，因此不依赖快捷键收到时的状态，也不依赖是哪一个分组发起。被跳过的动作既不打开 Peek，也不调用恢复；暂停失败则释放本次取得的占用并返回原错误。QuickLook 和文件夹的按路径预览不提交桌面过滤请求，继续走原路径。协议层保留轻量请求保护，不增加排队、重试或重连。
+
+实机回归脚本 `tools/validation/test-preview-menu.py` 使用独立数据目录中两个各有一个文本文件的桌面分组；先配置 Peek 和 Space 快捷键，并确认默认网格的首个图标可点击。参数为 `--pid <测试进程> --cli <CLI路径> --data-dir <隔离目录> --panes <分组A名称> <分组B名称> --fixtures <文件A名称> <文件B名称> --report <报告路径>`。脚本真实点击打开 Explorer 菜单，通过窗口键盘消息进入 `Event::Peek → post_action`，检查两组的排队预览未改变 ACK、未打开 Peek、未释放菜单占用；随后关闭菜单，逐组验证 Peek 正常打开并恢复同步。菜单宿主会缓存，结束判定使用会话状态，不能仅检查宿主可见性。
+
+2026-10-20 在 Windows build 26300 上完成五轮上述组合（10 次菜单期间请求、10 次菜单结束后预览），以及 10 轮 Win+D 隐藏/恢复和 10 轮从专用测试窗口返回桌面；会话 Owner 保持不变，无超时或错误弹窗。该脚本验证真实应用的排队执行路径，但通过定向窗口消息安排交错，不代表物理键盘自然复现了菜单准备 ACK 的竞态，也不证明所有 Shell 扩展均不会重入。
+
+探索脚本阶段另有一次同步注入方向键后的异常退出。转储栈中的符号对应 `PaneItemFocus → clear_desktop_selection` 等待期间重入 `window::create` 的方向键分支，随后在事件回调的 `RefCell::borrow_mut` 处 panic。栈扫描不是完整展开，但与该脚本的同步消息时序及现有源码一致；不能将其认定为物理键盘自然触发，也不能用后续通过掩盖这一未修复边界。菜单回归脚本使用 `PostMessageW`，不直接同步注入 `WM_SETFOCUS/WM_KEYDOWN`。后续审查确认并修复了以下不依赖同步按键注入的错误提示分支。
+
+
 ## 事件回调借用与错误提示
 
 实际链路为 `WM_SETFOCUS → post_action → events.try_borrow_mut → PaneItemFocus → clear_desktop_selection`。成功的普通 ACK 等待只服务 sent messages；普通物理键盘输入是排队消息，不能仅凭“Windows/COM 会重入”断定方向键会在这里执行。窗口回调中的焦点通知已排队，激活/位置通知的自动隐藏处理也延后到定时器；尚未确认成功等待分支中自然触发同一借用 panic 的系统消息序列。

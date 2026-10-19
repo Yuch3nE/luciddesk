@@ -14,6 +14,10 @@ use windows_sys::Win32::{
 #[path = "client_focus_tests.rs"]
 mod focus_tests;
 
+#[cfg(test)]
+#[path = "client_reentrancy_tests.rs"]
+mod reentrancy_tests;
+
 /// Owns one desktop membership session. Dropping it restores removed view items.
 pub struct FilterSession {
     view: HWND,
@@ -22,9 +26,18 @@ pub struct FilterSession {
     module: HMODULE,
     sequence: Cell<u32>,
     timed_out: Cell<bool>,
+    in_flight: Cell<bool>,
     pending_hidden: Cell<Option<u32>>,
     update: Cell<Option<u32>>,
     explorer_watch: Option<explorer::ExplorerWatch>,
+}
+
+// Both SendMessageTimeout and ACK waits can dispatch callbacks on this STA.
+// The protocol has one ACK slot, so a nested request must not replace it.
+// This is a protocol precondition, not a connection failure or retry mechanism.
+struct RequestGuard<'a>(&'a Cell<bool>);
+impl Drop for RequestGuard<'_> {
+    fn drop(&mut self) { self.0.set(false); }
 }
 
 struct AttachTarget {
@@ -169,6 +182,7 @@ impl FilterSession {
                 module,
                 sequence: Cell::new(0),
                 timed_out: Cell::new(false),
+                in_flight: Cell::new(false),
                 pending_hidden: Cell::new(None),
                 update: Cell::new(None),
                 explorer_watch: None,
@@ -201,6 +215,7 @@ impl FilterSession {
     /// Submit membership without waiting for Shell enumeration and updates.
     /// Call poll_hidden until complete before submitting another transaction.
     pub fn submit_hidden(&self, names: &[String]) -> Result<(), String> {
+        let _request = self.enter_request()?;
         if self.timed_out.get() {
             return Err("桌面过滤连接已超时，等待重新连接".into());
         }
@@ -249,6 +264,7 @@ impl FilterSession {
     /// Freeze presentation while a managed Shell identity changes. Membership
     /// remains filtered; the caller must finish even if the operation fails.
     pub fn begin_update(&self) -> Result<(), String> {
+        self.ensure_idle()?;
         if self.timed_out.get() {
             return Err("桌面过滤连接已超时，等待重新连接".into());
         }
@@ -315,6 +331,7 @@ impl FilterSession {
         x: i32,
         y: i32,
     ) -> Result<isize, String> {
+        self.ensure_idle()?;
         unsafe {
             let mut pid = 0;
             GetWindowThreadProcessId(self.view, &raw mut pid);
@@ -353,9 +370,20 @@ impl FilterSession {
         sequence
     }
     fn request(&self, op: u32, names: &[String]) -> Result<(), String> {
+        self.ensure_idle()?;
         let sequence = self.next_sequence();
         let bytes = wire::encode(op, sequence, names)?;
         self.send(op, sequence, &bytes)
+    }
+    fn ensure_idle(&self) -> Result<(), String> {
+        if self.in_flight.get() {
+            Err("桌面过滤请求正在执行，不能重入提交".into())
+        } else { Ok(()) }
+    }
+    fn enter_request(&self) -> Result<RequestGuard<'_>, String> {
+        self.ensure_idle()?;
+        self.in_flight.set(true);
+        Ok(RequestGuard(&self.in_flight))
     }
     fn transmit(&self, bytes: &[u8]) -> Result<(), String> {
         unsafe {
@@ -385,6 +413,7 @@ impl FilterSession {
         Ok(())
     }
     fn send(&self, op: u32, sequence: u32, bytes: &[u8]) -> Result<(), String> {
+        let _request = self.enter_request()?;
         // An accepted request without an ACK has an unknown outcome. Retire
         // this session instead of treating a live HWND as a healthy protocol.
         // Cleanup must remain possible before the supervisor reconnects.
@@ -576,7 +605,7 @@ mod update_tests {
             SetPropW(hwnd, OWNER, hwnd);
             let session = std::mem::ManuallyDrop::new(FilterSession {
                 view: hwnd, owner: hwnd, hook: null_mut(), module: null_mut(),
-                sequence: Cell::new(0), timed_out: Cell::new(false), pending_hidden: Cell::new(None),
+                sequence: Cell::new(0), timed_out: Cell::new(false), in_flight: Cell::new(false), pending_hidden: Cell::new(None),
                 update: Cell::new(None), explorer_watch: None,
             });
             assert!(session.is_alive());
@@ -617,7 +646,7 @@ mod update_tests {
                 null_mut(), null_mut(), instance, null_mut());
             assert!(!hwnd.is_null());
             SetPropW(hwnd, OWNER, hwnd);
-            let session = std::mem::ManuallyDrop::new(FilterSession { timed_out: Cell::new(false),
+            let session = std::mem::ManuallyDrop::new(FilterSession { timed_out: Cell::new(false), in_flight: Cell::new(false),
                 view: hwnd, owner: hwnd, hook: null_mut(), module: null_mut(),
                 sequence: Cell::new(0), pending_hidden: Cell::new(None),
                 update: Cell::new(None), explorer_watch: None,
@@ -701,7 +730,7 @@ mod update_tests {
             let view = receiver.recv_timeout(Duration::from_secs(2)).unwrap() as HWND;
             SetPropW(view, OWNER, owner);
             PostMessageW(owner, ACTION, 0, 0);
-            let session = std::mem::ManuallyDrop::new(FilterSession { timed_out: Cell::new(false),
+            let session = std::mem::ManuallyDrop::new(FilterSession { timed_out: Cell::new(false), in_flight: Cell::new(false),
                 view, owner, hook: null_mut(), module: null_mut(), sequence: Cell::new(0), pending_hidden: Cell::new(None),
                 update: Cell::new(None), explorer_watch: None,
             });
@@ -732,7 +761,7 @@ mod update_tests {
             let hwnd = CreateWindowExW(0, class, class, WS_POPUP, 0, 0, 1, 1,
                 null_mut(), null_mut(), instance, null_mut());
             assert!(!hwnd.is_null());
-            let session = std::mem::ManuallyDrop::new(FilterSession { timed_out: Cell::new(false),
+            let session = std::mem::ManuallyDrop::new(FilterSession { timed_out: Cell::new(false), in_flight: Cell::new(false),
                 view: hwnd, owner: hwnd, hook: null_mut(), module: null_mut(),
                 sequence: Cell::new(0), pending_hidden: Cell::new(None), update: Cell::new(None), explorer_watch: None,
             });
@@ -767,7 +796,7 @@ mod update_tests {
             SetPropW(hwnd, OWNER, hwnd);
             // STATIC rejects WM_COPYDATA, so this exercises a real transport
             // rejection without injecting into the user's Explorer.
-            let session = std::mem::ManuallyDrop::new(FilterSession { timed_out: Cell::new(false),
+            let session = std::mem::ManuallyDrop::new(FilterSession { timed_out: Cell::new(false), in_flight: Cell::new(false),
                 view: hwnd,
                 owner: hwnd,
                 hook: null_mut(),

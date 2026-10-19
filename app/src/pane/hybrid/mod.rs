@@ -379,7 +379,9 @@ pub(super) fn connect(state: &Rc<RefCell<PaneApp>>, _path: &Path) -> Result<(), 
     // into Explorer's STA. During startup, the HWND can exist before ShellWindows
     // is ready; asking Explorer to initialize it from its own callback can stall.
     // Reuse this snapshot below instead of performing a second enumeration.
-    let snapshot = inventory::capture(&managed_identities(&state.borrow()))
+    // End the app borrow before Shell enumeration can dispatch COM callbacks.
+    let managed = managed_identities(&state.borrow());
+    let snapshot = inventory::capture(&managed)
         .map_err(|error| format!("桌面连接准备失败 (Inventory): {error}"))?;
     if luciddesk_explorer::desktop_view()? != view {
         return Err(crate::i18n::text("ui-desktop-view-changed-while-reading-reconnecting").into());
@@ -429,7 +431,10 @@ pub(super) fn connect(state: &Rc<RefCell<PaneApp>>, _path: &Path) -> Result<(), 
     // A fresh hook has no desired membership. Cached pane images may produce
     // no loading-completion event, so publish now rather than waiting for one.
     if let Err(error) = reconcile_inventory(&mut s).and_then(|()| sync(&mut s)) {
-        s.session.take();
+        let session = s.session.take();
+        drop(s);
+        // Detach and subscription teardown can synchronously call our windows.
+        drop(session);
         return Err(error);
     }
     Ok(())
@@ -814,16 +819,26 @@ fn clear_pane_selection_on_desktop_input(s: &PaneApp) {
     }
 }
 
-pub(super) fn pause_for_preview(s: &PaneApp, allow: bool) -> Result<(), String> {
+// Called by the queued preview action, not when its shortcut is received.
+// False means another menu/preview owns this session; do not open or resume it.
+pub(super) fn pause_for_preview(s: &PaneApp, allow: bool) -> Result<bool, String> {
     if let Some(h) = &s.session {
         if allow {
+            if h.menu_active.replace(true) {
+                return Ok(false);
+            }
             h.last_pane_input
                 .set(Some(unsafe { GetMessageTime() } as u32));
         }
-        h.hook.pause(allow)?;
+        if let Err(error) = h.hook.pause(allow) {
+            if allow {
+                h.menu_active.set(false);
+            }
+            return Err(error);
+        }
         h.menu_active.set(allow);
     }
-    Ok(())
+    Ok(true)
 }
 
 pub(super) fn begin_item_menu(s: &PaneApp) -> Result<Rc<FilterSession>, String> {
