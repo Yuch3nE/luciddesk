@@ -3,6 +3,9 @@ use luciddesk_plugin_api::{Item, Page};
 use serde_json::{Value, json};
 
 pub(crate) fn draw(options: &Preferences) -> Page {
+    let mut current = options.clone();
+    current.gpu = current.gpu.as_deref().map(crate::gpu::resolve);
+    let options = &current;
     let mut form = Form(Page {
         description: crate::i18n::text("monitor-settings-description").into(),
         items: Vec::new(),

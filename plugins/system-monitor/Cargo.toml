@@ -20,7 +20,7 @@ sysinfo = { version = "0.39.6", default-features = false, features = ["system", 
 windows-canvas = { version = "=0.100.0", default-features = false }
 canvas-core = { package = "windows-core", version = "=0.100.0", default-features = false }
 windows-numerics.workspace = true
-windows = { workspace = true, features = ["Win32_Graphics_Direct2D", "Win32_Graphics_Direct2D_Common", "Win32_Graphics_DirectWrite", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common"] }
+windows = { workspace = true, features = ["Wdk_Graphics_Direct3D", "Win32_Graphics_Direct2D", "Win32_Graphics_Direct2D_Common", "Win32_Graphics_DirectWrite", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common"] }
 windows-sys = { workspace = true, features = ["Win32_System_Performance"] }
 
 [package.metadata.luciddesk]

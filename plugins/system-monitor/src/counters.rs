@@ -1,5 +1,5 @@
 //! PDH query owned and closed on the sampling thread in the monitor process.
-use super::{gpu, sampling::Device};
+use super::gpu;
 use std::ptr;
 use windows_sys::Win32::System::Performance::*;
 
@@ -51,7 +51,11 @@ impl Counters {
         (!self.requested.0 || self.cpu.is_some())
             && (!self.requested.1 || self.engines.is_some() && self.memory.is_some())
     }
-    pub(super) fn sample(&mut self, adapters: &mut [Device]) -> Option<f64> {
+    pub(super) fn sample(&mut self, adapters: &mut [gpu::Adapter]) -> Option<f64> {
+        for adapter in adapters.iter_mut() {
+            adapter.device.usage = None;
+            adapter.device.used = None;
+        }
         if unsafe { PdhCollectQueryData(self.query) } != 0 {
             self.primed = false;
             return None;
@@ -72,12 +76,22 @@ impl Counters {
         let memory = self.memory.map(rows).unwrap_or_default();
         for adapter in adapters {
             if self.primed {
-                adapter.usage = gpu::engine_usage(&adapter.id, &engines);
+                adapter.device.usage = adapter
+                    .instances
+                    .iter()
+                    .filter_map(|id| gpu::engine_usage(id, &engines))
+                    .reduce(f64::max);
             }
-            adapter.used = memory
+            adapter.device.used = memory
                 .iter()
-                .find(|(id, _)| id == &adapter.id)
-                .map(|(_, v)| *v as u64);
+                .filter(|(id, _)| {
+                    adapter
+                        .instances
+                        .iter()
+                        .any(|instance| instance.eq_ignore_ascii_case(id))
+                })
+                .map(|(_, v)| *v as u64)
+                .max();
         }
         self.primed = true;
         cpu

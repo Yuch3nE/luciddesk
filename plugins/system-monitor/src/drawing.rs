@@ -777,7 +777,12 @@ fn selected_device<'a>(
         _ => return None,
     };
     if let Some(id) = selected {
-        return devices.iter().find(|d| &d.id == id);
+        let id = if metric == Metric::Gpu {
+            crate::gpu::resolve(id)
+        } else {
+            id.clone()
+        };
+        return devices.iter().find(|d| d.id == id);
     }
     match metric {
         Metric::Network => devices.iter().max_by(|a, b| {
@@ -824,7 +829,13 @@ fn presentation(frame: &Frame, metric: Metric, device: Option<&Device>) -> (Stri
             || ("—".into(), missing.into()),
             |d| {
                 let detail = d.used.map_or_else(
-                    || format!("{missing} · {}", d.name),
+                    || {
+                        if d.usage.is_some() {
+                            d.name.clone()
+                        } else {
+                            format!("{missing} · {}", d.name)
+                        }
+                    },
                     |used| {
                         if d.total > 0 {
                             format!(

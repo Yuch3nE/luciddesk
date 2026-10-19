@@ -284,7 +284,7 @@ struct Sampler {
     disks: Disks,
     counters: Option<Counters>,
     counter_retry: Instant,
-    adapters: Vec<Device>,
+    adapters: Vec<gpu::Adapter>,
     previous: Vec<Metric>,
     network_bytes: HashMap<String, (u64, u64, Instant)>,
     disk_bytes: HashMap<String, (u64, u64, Instant)>,
@@ -341,11 +341,16 @@ impl Sampler {
             if enabled.1 && (changed || inventory) {
                 self.adapters = gpu::adapters();
             }
-            if enabled.1 {
-                frame.gpus = self.adapters.clone();
-            }
             if let Some(counters) = &mut self.counters {
-                frame.cpu = counters.sample(&mut frame.gpus);
+                frame.cpu = counters.sample(&mut self.adapters);
+            } else {
+                for adapter in &mut self.adapters {
+                    adapter.device.usage = None;
+                    adapter.device.used = None;
+                }
+            }
+            if enabled.1 {
+                frame.gpus = self.adapters.iter().map(|a| a.device.clone()).collect();
             }
         }
         if metrics.contains(&Metric::Memory) {

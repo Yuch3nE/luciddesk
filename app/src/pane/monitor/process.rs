@@ -82,10 +82,15 @@ impl Config {
     }
 }
 type Devices = [Vec<(String, String)>; 3];
+#[derive(Clone, Default, Serialize, Deserialize)]
+struct Inventory {
+    devices: Devices,
+    gpu_aliases: HashMap<String, String>,
+}
 
 #[derive(Serialize, Deserialize)]
 enum Reply {
-    Devices(Devices),
+    Devices(Inventory),
     Ready(isize),
     Panel(Panel),
     Settings,
@@ -114,7 +119,7 @@ pub(super) fn publish_devices() {
     {
         LAST.with(|last| {
             if *last.borrow() != value {
-                if let Ok(devices) = Devices::deserialize(&value) {
+                if let Ok(devices) = Inventory::deserialize(&value) {
                     emit(Reply::Devices(devices));
                 }
                 *last.borrow_mut() = value;
@@ -157,7 +162,7 @@ struct Process {
     replies: mpsc::Receiver<Reply>,
     config: Config,
     hwnd: isize,
-    devices: Devices,
+    devices: Inventory,
 }
 impl Drop for Process {
     fn drop(&mut self) {
@@ -197,7 +202,7 @@ impl Manager {
             .unwrap_or_default();
         let _ = crate::plugins::request(
             super::PLUGIN_ID,
-            serde_json::json!({"op":"inventory", "devices":devices}),
+            serde_json::json!({"op":"inventory", "devices":devices.devices, "gpu_aliases":devices.gpu_aliases}),
         );
     }
 }

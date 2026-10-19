@@ -15,9 +15,10 @@ use luciddesk_plugin_api::{
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{cell::RefCell, collections::HashMap, ffi::c_void};
+type DeviceLists = [Vec<(String, String)>; 3];
 
 thread_local! {
-    static INVENTORY: RefCell<Option<[Vec<(String, String)>; 3]>> = const { RefCell::new(None) };
+    static INVENTORY: RefCell<Option<DeviceLists>> = const { RefCell::new(None) };
     static CLIENTS: RefCell<HashMap<u64, sampling::Client>> = RefCell::new(HashMap::new());
     static DRAWINGS: RefCell<HashMap<u64, drawing::Drawing>> = RefCell::new(HashMap::new());
     static FONT: RefCell<String> = RefCell::new("Segoe UI".into());
@@ -86,7 +87,9 @@ enum Command {
     },
     Devices,
     Inventory {
-        devices: [Vec<(String, String)>; 3],
+        devices: DeviceLists,
+        #[serde(default)]
+        gpu_aliases: HashMap<String, String>,
     },
     ClientNew,
     ClientDrop {
@@ -164,15 +167,15 @@ fn dispatch(context: *mut c_void, r: Request) -> Result<Value, String> {
             settings::apply(action)?;
             Ok(Value::Null)
         }
-        Command::Inventory { devices } => {
+        Command::Inventory { devices, gpu_aliases } => {
+            gpu::set_aliases(gpu_aliases);
             INVENTORY.with(|v| *v.borrow_mut() = Some(devices));
             Ok(Value::Null)
         }
-        Command::Devices => Ok(json!([
-            devices(Metric::Network),
-            devices(Metric::Disk),
-            devices(Metric::Gpu)
-        ])),
+        Command::Devices => Ok(json!({
+            "devices": [devices(Metric::Network), devices(Metric::Disk), devices(Metric::Gpu)],
+            "gpu_aliases": gpu::aliases(),
+        })),
         Command::ClientNew => {
             let id = next_id();
             let c = sampling::Client::new()?;

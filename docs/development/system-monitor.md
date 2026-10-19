@@ -54,6 +54,7 @@ CPU/GPU 使用 `plugins/system-monitor/src/counters.rs` 的 PDH 查询，查询�
 
 自动网卡选择当前最活跃接口，磁盘优先系统盘，GPU 优先能读取计数器且专用显存最大的适配器。手动选定的设备消失时显示不可用，不自动换设备。核显专用显存容量可能为零，不用该值作除数。目前不采集温度、风扇或功耗。`sysinfo` Windows 磁盘后端不能传播所有 I/O 查询错误，因此未观察到有效累计计数之前不显示零速率；后续驱动查询失败仍可能表现为保持原计数。
 
+GPU 使用物理设备 PnP 实例作为稳定身份，合并虚拟显示驱动为同一显卡暴露的多个 DXGI LUID；相同型号的不同物理显卡仍保持独立。身份通过 [D3DKMT_QUERY_PHYSICAL_ADAPTER_PNP_KEY](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmthk/ns-d3dkmthk-_d3dkmt_query_physical_adapter_pnp_key) 查询，查询不可用时保留 LUID。采样时从同一物理设备的逻辑别名选取有效读数，设备清单同时向主进程同步别名映射，使已保存的有效旧选择继续指向原物理设备。PDH LUID 匹配忽略十六进制字母大小写，占用率可用而显存不可用时仍保留占用率。
 ## 通信、关闭与恢复
 
 `app/src/pane/monitor/process.rs` 使用继承的匿名管道传输按行 JSON。这是同一 EXE 构建之间的私有协议，不是第三方插件 ABI。
