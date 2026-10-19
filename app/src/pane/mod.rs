@@ -60,6 +60,8 @@ mod shell_menu;
 mod theme;
 
 pub(crate) mod menu;
+mod dropdown;
+mod tooltip;
 use events::handle;
 pub use hybrid::run;
 pub(crate) use monitor::process::run as run_monitor_child;

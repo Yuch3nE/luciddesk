@@ -518,15 +518,16 @@ impl Painter {
                             },
                         );
                     }
+                    let combo_open = matches!(c.kind, ControlKind::Combo) && controls::dropdown_is_open(c.bounds);
                     if (!navigation && !caption && !plain) || focus == Some(i) {
                         t.draw_rounded_rect(
                             &rr,
-                            if focus == Some(i) || c.selected {
+                            if focus == Some(i) || c.selected || combo_open {
                                 accent
                             } else {
                                 border
                             },
-                            if focus == Some(i) { 2.0 } else { 1.0 },
+                            if focus == Some(i) || combo_open { 2.0 } else { 1.0 },
                         );
                     }
                     if matches!(c.kind, ControlKind::Combo) {
@@ -543,7 +544,7 @@ impl Painter {
                             text,
                         );
                         t.clipped_icon(
-                            "\u{e70d}",
+                            if combo_open { "\u{e70e}" } else { "\u{e70d}" },
                             &self.formats[4],
                             &Rect::from_xywh(
                                 c.bounds.right - 28.0,

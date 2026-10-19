@@ -25,6 +25,9 @@ pub(crate) struct Drawing {
     axis: TextFormat,
     compact_value: TextFormat,
     compact_rate: TextFormat,
+    compact_label: TextFormat,
+    compact_center: TextFormat,
+    compact_unit: TextFormat,
     detail: TextFormat,
     small: TextFormat,
     small_right: TextFormat,
@@ -48,8 +51,11 @@ impl Drawing {
         let rate = canvas_result(make(17.0, 400))?.with_alignment(TextAlignment::Trailing);
         let disk_value = canvas_result(make(17.0, 500))?;
         let axis = canvas_result(make(9.0, 400))?.with_alignment(TextAlignment::Trailing);
-        let compact_value = canvas_result(make(16.0, 600))?.with_alignment(TextAlignment::Trailing);
-        let compact_rate = canvas_result(make(12.0, 500))?.with_alignment(TextAlignment::Trailing);
+        let compact_value = canvas_result(make(15.0, 500))?.with_alignment(TextAlignment::Center);
+        let compact_rate = canvas_result(make(17.0, 500))?;
+        let compact_label = canvas_result(make(11.0, 500))?;
+        let compact_center = canvas_result(make(11.0, 500))?.with_alignment(TextAlignment::Center);
+        let compact_unit = canvas_result(make(9.0, 400))?;
         for format in [
             &label,
             &detail,
@@ -61,6 +67,9 @@ impl Drawing {
             &axis,
             &compact_value,
             &compact_rate,
+            &compact_label,
+            &compact_center,
+            &compact_unit,
         ] {
             crate::graphics::ellipsis(format)?;
         }
@@ -73,6 +82,9 @@ impl Drawing {
             axis,
             compact_value,
             compact_rate,
+            compact_label,
+            compact_center,
+            compact_unit,
             detail,
             small,
             small_right,
@@ -104,8 +116,20 @@ impl Drawing {
         let width = (bounds.right - bounds.left - 8.0).max(1.0);
         let height = bounds.bottom - bounds.top;
         let rows = options.metrics.len().max(1);
-        let gap = if options.compact { 4.0 } else { 7.0 };
-        let row_height = ((height - 28.0 - gap * (rows - 1) as f32) / rows as f32).max(1.0);
+        let gap = 7.0;
+        let tiles = if options.compact {
+            compact_tiles(
+                &options.metrics,
+                Rect::from_xywh(
+                    bounds.left + 4.0,
+                    bounds.top,
+                    width,
+                    (height - 28.0).max(1.0),
+                ),
+            )
+        } else {
+            Vec::new()
+        };
         let heights = if options.compact {
             Vec::new()
         } else {
@@ -135,23 +159,20 @@ impl Drawing {
             if dark { 0.60 } else { 0.58 },
         )))?;
         for (index, metric) in options.metrics.iter().enumerate() {
-            let left = bounds.left + 4.0;
-            let top = if options.compact {
-                bounds.top + index as f32 * (row_height + gap)
+            let tile = if options.compact {
+                tiles[index]
             } else {
-                standard_top
-            };
-            let row_height = if options.compact {
-                row_height
-            } else {
-                heights[index]
-            };
-            if !options.compact {
+                let tile = Rect::from_xywh(bounds.left + 4.0, standard_top, width, heights[index]);
+                let row_height = heights[index];
                 standard_top += row_height + gap;
-            }
-            let card_width = width;
+                tile
+            };
+            let left = tile.left;
+            let top = tile.top;
+            let row_height = tile.bottom - tile.top;
+            let card_width = tile.right - tile.left;
             let shape = RoundedRect {
-                rect: Rect::from_xywh(left, top, card_width, row_height),
+                rect: tile,
                 radius_x: 8.0,
                 radius_y: 8.0,
             };
@@ -163,36 +184,16 @@ impl Drawing {
             let w = (card_width - 24.0).max(1.0);
             let color = color(*metric, dark);
             let accent = canvas_result(target.create_solid_brush(color))?;
-            let area = canvas_result(target.create_solid_brush(ColorF::new(
-                color.r,
-                color.g,
-                color.b,
-                if dark { 0.11 } else { 0.075 },
-            )))?;
             let device = selected_device(&self.snapshot, *metric, options);
             let (value, detail) = presentation(&self.snapshot, *metric, device);
             let throughput = matches!(metric, Metric::Network | Metric::Disk);
-            target.fill_ellipse(
-                &Ellipse::circle(
-                    Vector2::new(
-                        x + 3.0,
-                        if options.compact {
-                            top + row_height / 2.0
-                        } else {
-                            y + 10.0
-                        },
-                    ),
-                    2.5,
-                ),
-                &accent,
-            );
             if options.compact {
                 self.paint_compact(
                     target,
                     *metric,
                     device,
                     &value,
-                    Rect::from_xywh(x, top, w, row_height),
+                    tile,
                     CompactBrushes {
                         text,
                         secondary: &secondary,
@@ -200,7 +201,20 @@ impl Drawing {
                         track: &subtle,
                     },
                 )?;
-            } else if *metric == Metric::Disk {
+                target.pop_clip();
+                continue;
+            }
+            let area = canvas_result(target.create_solid_brush(ColorF::new(
+                color.r,
+                color.g,
+                color.b,
+                if dark { 0.11 } else { 0.075 },
+            )))?;
+            target.fill_ellipse(
+                &Ellipse::circle(Vector2::new(x + 3.0, y + 10.0), 2.5),
+                &accent,
+            );
+            if *metric == Metric::Disk {
                 self.paint_disk(
                     target,
                     device,
@@ -331,23 +345,30 @@ impl Drawing {
             accent,
             track,
         } = brushes;
-        let x = bounds.left;
-        let y = (bounds.top + bounds.bottom - 24.0) / 2.0;
         let width = bounds.right - bounds.left;
-        let label_width = 72.0_f32.min(width * 0.3);
-        target.clipped_text(
-            metric.label(),
-            &self.label,
-            &Rect::from_xywh(x + 10.0, y, label_width - 10.0, 24.0),
-            secondary,
-        );
+        let height = bounds.bottom - bounds.top;
         if matches!(metric, Metric::Network | Metric::Disk) {
+            let short = height < 58.0;
+            let header_height = if short { 12.0 } else { 14.0 };
+            let number_height = if short { 20.0 } else { 22.0 };
+            let caption_height = if short { 11.0 } else { 13.0 };
+            let x = bounds.left + 10.0;
+            let top = bounds.top + (height - header_height - number_height - caption_height) / 2.0;
+            target.fill_ellipse(
+                &Ellipse::circle(Vector2::new(x + 2.0, top + 7.0), 2.0),
+                accent,
+            );
+            target.clipped_text(
+                metric.label(),
+                &self.compact_label,
+                &Rect::from_xywh(x + 10.0, top, width - 30.0, header_height),
+                secondary,
+            );
             let readings = device.and_then(|d| d.rate);
-            let cell = (width - label_width) / 2.0;
-            let top = (bounds.top + bounds.bottom - 32.0) / 2.0;
+            let cell = (width - 20.0) / 2.0;
             for index in 0..2 {
-                let left = x + label_width + index as f32 * cell;
-                let label = if metric == Metric::Network {
+                let left = x + index as f32 * cell;
+                let direction = if metric == Metric::Network {
                     if index == 0 { "↓" } else { "↑" }
                 } else {
                     crate::i18n::text(if index == 0 {
@@ -356,43 +377,46 @@ impl Drawing {
                         "monitor-write"
                     })
                 };
+                let reading = readings.map(|(a, b)| if index == 0 { a } else { b });
+                let (number, unit) =
+                    reading.map_or_else(|| ("—".into(), String::new()), rate_parts);
                 target.clipped_text(
-                    label,
-                    &self.small_right,
-                    &Rect::from_xywh(left, top, cell - 4.0, 12.0),
-                    secondary,
-                );
-                let rate = readings.map(|(a, b)| if index == 0 { a } else { b });
-                let rate = rate.map_or_else(
-                    || "—".into(),
-                    |rate| {
-                        let (number, unit) = rate_parts(rate);
-                        format!("{number} {unit}")
-                    },
-                );
-                target.clipped_text(
-                    &rate,
+                    &number,
                     &self.compact_rate,
-                    &Rect::from_xywh(left, top + 12.0, cell - 4.0, 20.0),
+                    &Rect::from_xywh(left, top + header_height, cell - 3.0, number_height),
                     text,
+                );
+                target.clipped_text(
+                    &format!("{direction} {unit}"),
+                    &self.compact_unit,
+                    &Rect::from_xywh(
+                        left,
+                        top + header_height + number_height,
+                        cell - 3.0,
+                        caption_height,
+                    ),
+                    secondary,
                 );
             }
         } else {
-            let value_width = 60.0;
-            target.clipped_text(
-                value,
-                &self.compact_value,
-                &Rect::from_xywh(bounds.right - value_width, y, value_width, 24.0),
-                text,
-            );
-            let left = x + label_width + 4.0;
-            let width = (width - label_width - value_width - 16.0).max(0.0);
-            let bar = RoundedRect {
-                rect: Rect::from_xywh(left, y + 10.0, width, 4.0),
-                radius_x: 2.0,
-                radius_y: 2.0,
+            let horizontal = width >= 110.0 && width > height * 1.6;
+            let radius = if horizontal {
+                ((height - 12.0) / 2.0).clamp(16.0, 26.0)
+            } else {
+                ((height - 30.0) / 2.0).clamp(22.0, 28.0)
             };
-            target.fill_rounded_rect(&bar, track);
+            let center = Vector2::new(
+                if horizontal {
+                    bounds.left + radius + 10.0
+                } else {
+                    (bounds.left + bounds.right) / 2.0
+                },
+                if horizontal {
+                    (bounds.top + bounds.bottom) / 2.0
+                } else {
+                    bounds.top + (height - 2.0 * radius - 18.0) / 2.0 + radius
+                },
+            );
             let percent = match metric {
                 Metric::Cpu => self.snapshot.cpu,
                 Metric::Memory => self
@@ -401,14 +425,47 @@ impl Drawing {
                     .map(|(used, total)| used as f64 / total.max(1) as f64 * 100.0),
                 _ => device.and_then(|d| d.usage),
             };
-            if let Some(percent) = percent {
-                let occupied = width * (percent / 100.0).clamp(0.0, 1.0) as f32;
-                if occupied > 0.0 {
-                    target.push_clip(&Rect::from_xywh(left, y + 10.0, occupied, 4.0));
-                    target.fill_rounded_rect(&bar, accent);
-                    target.pop_clip();
-                }
+            target.draw_ellipse(&Ellipse::circle(center, radius), track, 3.0);
+            if let Some(percent) = percent.filter(|p| p.is_finite()) {
+                target.progress_arc(
+                    center,
+                    radius,
+                    (percent / 100.0).clamp(0.0, 1.0) as f32,
+                    accent,
+                    3.0,
+                )?;
             }
+            target.clipped_text(
+                value,
+                &self.compact_value,
+                &Rect::from_xywh(center.x - radius, center.y - 12.0, radius * 2.0, 24.0),
+                text,
+            );
+            let label = if horizontal {
+                Rect::from_xywh(
+                    center.x + radius + 9.0,
+                    center.y - 9.0,
+                    (bounds.right - center.x - radius - 15.0).max(0.0),
+                    18.0,
+                )
+            } else {
+                Rect::from_xywh(
+                    bounds.left + 4.0,
+                    center.y + radius + 5.0,
+                    width - 8.0,
+                    16.0,
+                )
+            };
+            target.clipped_text(
+                metric.label(),
+                if horizontal {
+                    &self.compact_label
+                } else {
+                    &self.compact_center
+                },
+                &label,
+                secondary,
+            );
         }
         Ok(())
     }
@@ -689,6 +746,54 @@ fn standard_heights(metrics: &[Metric], available: f32) -> Vec<f32> {
         })
         .collect()
 }
+/// Flow in configured order. Percentage tiles occupy two units, paired rates three.
+/// Seven units fit a rate tile and two gauges, keeping all five metrics in two rows.
+/// Incomplete rows expand to fill the panel instead of leaving empty grid cells.
+fn compact_tiles(metrics: &[Metric], bounds: Rect) -> Vec<Rect> {
+    let weight = |metric: &Metric| {
+        if matches!(metric, Metric::Network | Metric::Disk) {
+            3
+        } else {
+            2
+        }
+    };
+    let mut rows = Vec::new();
+    let mut start = 0;
+    let mut units = 0;
+    for (index, metric) in metrics.iter().enumerate() {
+        let next = weight(metric);
+        if units + next > 7 {
+            rows.push((start, index, units));
+            start = index;
+            units = 0;
+        }
+        units += next;
+    }
+    if units > 0 {
+        rows.push((start, metrics.len(), units));
+    }
+    let gap = 6.0;
+    let height = ((bounds.bottom - bounds.top - gap * rows.len().saturating_sub(1) as f32)
+        / rows.len().max(1) as f32)
+        .max(1.0);
+    let mut tiles = Vec::with_capacity(metrics.len());
+    for (row, (start, end, units)) in rows.iter().copied().enumerate() {
+        let available = (bounds.right - bounds.left - gap * (end - start - 1) as f32).max(1.0);
+        let mut left = bounds.left;
+        for metric in &metrics[start..end] {
+            let width = available * weight(metric) as f32 / units as f32;
+            tiles.push(Rect::from_xywh(
+                left,
+                bounds.top + row as f32 * (height + gap),
+                width,
+                height,
+            ));
+            left += width + gap;
+        }
+    }
+    tiles
+}
+
 fn rate_parts(value: f64) -> (String, String) {
     let (value, unit) = [(3, "GiB/s"), (2, "MiB/s"), (1, "KiB/s")]
         .into_iter()
@@ -996,6 +1101,167 @@ fn bytes(value: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn compact_dashboard_flows_in_configured_order_without_overlaps_or_empty_rows() {
+        fn check(metrics: &mut Vec<Metric>, remaining: &[Metric]) {
+            for (width, height) in [(300.0, 240.0), (320.0, 280.0), (500.0, 240.0)] {
+                let bounds = Rect::from_xywh(10.0, 56.0, width - 20.0, height - 90.0);
+                let tiles = compact_tiles(metrics, bounds);
+                assert_eq!(tiles.len(), metrics.len());
+                let rows = usize::from(!tiles.is_empty())
+                    + tiles
+                        .windows(2)
+                        .filter(|pair| pair[0].top != pair[1].top)
+                        .count();
+                assert!(rows <= 2);
+                for (index, tile) in tiles.iter().enumerate() {
+                    assert!(tile.right > tile.left && tile.bottom > tile.top);
+                    assert!(tile.left >= bounds.left && tile.top >= bounds.top);
+                    assert!(
+                        tile.right <= bounds.right + 0.01 && tile.bottom <= bounds.bottom + 0.01
+                    );
+                    if let Some(next) = tiles.get(index + 1) {
+                        assert!(
+                            next.top >= tile.bottom
+                                || (next.top == tile.top && next.left >= tile.right)
+                        );
+                    }
+                    if tiles.get(index + 1).is_none_or(|next| next.top != tile.top) {
+                        assert!((tile.right - bounds.right).abs() < 0.01);
+                    }
+                }
+            }
+            for (index, metric) in remaining.iter().enumerate() {
+                metrics.push(*metric);
+                let mut rest = remaining.to_vec();
+                rest.remove(index);
+                check(metrics, &rest);
+                metrics.pop();
+            }
+        }
+        let metrics = Preferences::default().metrics;
+        let tiles = compact_tiles(&metrics, Rect::from_xywh(4.0, 50.0, 312.0, 202.0));
+        assert_eq!(tiles[0].top, tiles[2].top);
+        assert_eq!(tiles[3].top, tiles[4].top);
+        assert!(tiles[3].top > tiles[0].bottom);
+        check(&mut Vec::new(), &metrics);
+    }
+
+    #[test]
+    fn compact_dashboard_renders_sample_values_and_limits_at_native_scales() {
+        use canvas_core::Interface as _;
+        use windows::core::Interface;
+        let device = windows_canvas::GpuDevice::new_warp().unwrap();
+        let mut drawing = Drawing::new().unwrap();
+        drawing.was_paused = true;
+        let device_reading = |id: &str, rate, usage| Device {
+            id: id.into(),
+            name: id.into(),
+            rate,
+            usage,
+            used: None,
+            total: 0,
+        };
+        let orders = [
+            Preferences::default().metrics,
+            vec![
+                Metric::Disk,
+                Metric::Cpu,
+                Metric::Memory,
+                Metric::Network,
+                Metric::Gpu,
+            ],
+        ];
+        for (order, metrics) in orders.into_iter().enumerate() {
+            for (width, height) in [(320_i32, 280_i32), (300, 240)] {
+                for dark in [false, true] {
+                    for scale in [1.0, 1.5, 2.0] {
+                        for limits in [false, true] {
+                            drawing.snapshot = Arc::new(Snapshot {
+                                frame: Arc::new(Frame {
+                                    cpu: Some(if limits { 100.0 } else { 13.0 }),
+                                    memory: Some((if limits { 0 } else { 8 }, 16)),
+                                    gpus: vec![device_reading(
+                                        "gpu",
+                                        None,
+                                        if limits { None } else { Some(15.0) },
+                                    )],
+                                    networks: vec![device_reading(
+                                        "network",
+                                        Some((108.0 * 1024.0, 5.5 * 1024.0)),
+                                        None,
+                                    )],
+                                    disks: vec![device_reading(
+                                        "disk",
+                                        Some((0.0, 282.0 * 1024.0)),
+                                        None,
+                                    )],
+                                    ..Default::default()
+                                }),
+                                ..Default::default()
+                            });
+                            let options = Preferences {
+                                metrics: metrics.clone(),
+                                compact: true,
+                                paused: true,
+                                ..Default::default()
+                            };
+                            let bitmap = device
+                                .create_render_target(
+                                    (width as f32 * scale) as u32,
+                                    (height as f32 * scale) as u32,
+                                )
+                                .unwrap();
+                            let mut result = Ok(());
+                            bitmap.draw(|session| {
+                                let ptr = session.raw().as_raw();
+                                let native = unsafe { windows::Win32::Graphics::Direct2D::ID2D1DeviceContext::from_raw_borrowed(&ptr).unwrap() };
+                                unsafe { native.SetDpi(96.0 * scale, 96.0 * scale); }
+                                let target = DrawPass::new(session.raw(), native);
+                                let background = if dark { 0.12549 } else { 1.0 };
+                                target.clear(ColorF::new(background, background, background, 1.0));
+                                let ink = if dark { 1.0 } else { 0.0 };
+                                let text = target.create_solid_brush(ColorF::new(ink, ink, ink, 1.0)).unwrap();
+                                target.clipped_text("系统监控", &drawing.compact_center, &Rect::from_xywh(0.0, 10.0, width as f32, 30.0), &text);
+                                result = drawing.paint(&target, &options, Rect::from_xywh(6.0, 56.0, (width - 12) as f32, (height - 62) as f32), &text, &text, dark, ink);
+                                Ok(())
+                            }).unwrap();
+                            result.unwrap();
+                            let pixels = bitmap.read_pixels().unwrap();
+                            assert!(
+                                pixels.chunks_exact(4).any(|p| p[0] != p[1] || p[1] != p[2]),
+                                "colored gauges/rate markers missing"
+                            );
+                            if std::env::var_os("LUCIDDESK_TEST_EXPORT_SNAPSHOTS").is_some()
+                                && scale == 1.0
+                                && !limits
+                            {
+                                let mut bmp = vec![0_u8; 54];
+                                bmp[0..2].copy_from_slice(b"BM");
+                                bmp[2..6]
+                                    .copy_from_slice(&(54 + pixels.len() as u32).to_le_bytes());
+                                bmp[10..14].copy_from_slice(&54_u32.to_le_bytes());
+                                bmp[14..18].copy_from_slice(&40_u32.to_le_bytes());
+                                bmp[18..22].copy_from_slice(&width.to_le_bytes());
+                                bmp[22..26].copy_from_slice(&(-height).to_le_bytes());
+                                bmp[26..28].copy_from_slice(&1_u16.to_le_bytes());
+                                bmp[28..30].copy_from_slice(&32_u16.to_le_bytes());
+                                bmp.extend_from_slice(&pixels);
+                                let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                                    .join("../../target")
+                                    .join(format!(
+                                        "monitor-dashboard-{order}-{width}-{}.bmp",
+                                        if dark { "dark" } else { "light" }
+                                    ));
+                                std::fs::write(path, bmp).unwrap();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn history_keeps_valid_delayed_and_mixed_interval_samples_connected() {
         use std::time::{Duration, Instant};

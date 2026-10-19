@@ -35,6 +35,61 @@ impl<'a> DrawPass<'a> {
             clips: std::cell::Cell::new(0),
         }
     }
+    /// A single native arc, starting at twelve o'clock; reuse the host factory/device.
+    pub fn progress_arc(
+        &self,
+        center: c::Vector2,
+        radius: f32,
+        fraction: f32,
+        brush: &c::Brush,
+        width: f32,
+    ) -> Result<()> {
+        use c::Paint;
+        use canvas_core::Interface as _;
+        if fraction <= 0.0 {
+            return Ok(());
+        }
+        if fraction >= 1.0 {
+            self.draw_ellipse(&c::Ellipse::circle(center, radius), brush, width);
+            return Ok(());
+        }
+        let angle = fraction * std::f32::consts::TAU;
+        unsafe {
+            let geometry = self.native.GetFactory()?.CreatePathGeometry()?;
+            let sink = geometry.Open()?;
+            sink.BeginFigure(
+                windows_numerics::Vector2 {
+                    X: center.x,
+                    Y: center.y - radius,
+                },
+                Common::D2D1_FIGURE_BEGIN_HOLLOW,
+            );
+            sink.AddArc(&D2D1_ARC_SEGMENT {
+                point: windows_numerics::Vector2 {
+                    X: center.x + radius * angle.sin(),
+                    Y: center.y - radius * angle.cos(),
+                },
+                size: Common::D2D_SIZE_F {
+                    width: radius,
+                    height: radius,
+                },
+                rotationAngle: 0.0,
+                sweepDirection: D2D1_SWEEP_DIRECTION_CLOCKWISE,
+                arcSize: if fraction > 0.5 {
+                    D2D1_ARC_SIZE_LARGE
+                } else {
+                    D2D1_ARC_SIZE_SMALL
+                },
+            });
+            sink.EndFigure(Common::D2D1_FIGURE_END_OPEN);
+            sink.Close()?;
+            let ptr = brush.as_raw_brush().as_raw();
+            let native_brush = ID2D1Brush::from_raw_borrowed(&ptr).unwrap();
+            self.native
+                .DrawGeometry(&geometry, native_brush, width, None);
+        }
+        Ok(())
+    }
     /// Build chart geometry with the host factory; no separate GPU device is needed.
     pub fn fill_polygon(
         &self,

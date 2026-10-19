@@ -33,7 +33,7 @@ fn diagnostics_uses_one_dropdown_with_the_current_level_and_all_five_options() {
         options.iter().filter(|(_, _, selected)| *selected).count(),
         1
     );
-    for (label, action, selected) in options {
+    for (label, action, selected) in options.iter() {
         let Action::LogLevel(level) = action else {
             panic!("Expected log level");
         };
@@ -146,7 +146,7 @@ fn native_log_level_dropdown_cancels_and_saves_after_the_popup_returns() {
                     );
                     if !pair.1.is_null() {
                         if !cancel {
-                            for _ in 0..3 {
+                            for _ in 0..2 {
                                 PostMessageW(pair.1, WM_KEYDOWN, VK_DOWN as usize, 0);
                             }
                         }

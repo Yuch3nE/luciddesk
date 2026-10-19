@@ -54,7 +54,7 @@ use windows_sys::Win32::UI::Controls::WM_MOUSELEAVE;
 
 #[derive(Clone)]
 enum Action {
-    Dropdown(Vec<(String, Action, bool)>),
+    Dropdown(std::sync::Arc<[(String, Action, bool)]>),
     PluginEnabled(String, bool),
     PluginPage(String),
     PluginAction(String, serde_json::Value),

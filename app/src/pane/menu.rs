@@ -238,7 +238,17 @@ pub(crate) fn show_entries(
     backdrop: Backdrop,
     rows: Vec<Entry>,
 ) -> i32 {
-    show_level(owner, anchor, anchored, theme, backdrop, rows, None, Rc::new(Cell::new(false)))
+    show_level(owner, anchor, anchored, theme, backdrop, rows, None, Rc::new(Cell::new(false)), None)
+}
+
+pub(super) fn show_picker(
+    owner: HWND,
+    appearance: (luciddesk_core::PanelTheme, Backdrop),
+    rows: Vec<Entry>,
+    options: super::dropdown::Options,
+) -> i32 {
+    let anchor = POINT { x: options.anchor.left, y: options.anchor.bottom };
+    show_level(owner, anchor, false, appearance.0, appearance.1, rows, None, Rc::new(Cell::new(false)), Some(options))
 }
 
 fn show_level(
@@ -246,6 +256,7 @@ fn show_level(
     theme: luciddesk_core::PanelTheme, backdrop: Backdrop, rows: Vec<Entry>,
     parent_row: Option<RECT>,
     resume_parent: Rc<Cell<bool>>,
+    picker_options: Option<super::dropdown::Options>,
 ) -> i32 {
     let dark = super::theme::is_dark(theme);
     let backdrop = default_material(backdrop, dark);
@@ -254,10 +265,10 @@ fn show_level(
     unsafe {
         SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, (&raw mut animate).cast(), 0);
     }
-    let Ok(renderer) = Renderer::new() else { return 0; };
-    let menu_width = renderer.menu_width(&rows);
-    let width = (menu_width * scale).round() as i32;
-    let height = ((row_top(&rows, rows.len()) + 4.0) * scale).round() as i32;
+    let renderer = if picker_options.is_none() {
+        let Ok(renderer) = Renderer::new() else { return 0; };
+        Some(renderer)
+    } else { None };
     let mut monitor = MONITORINFO {
         cbSize: size_of::<MONITORINFO>() as u32,
         ..Default::default()
@@ -269,11 +280,21 @@ fn show_level(
         );
     }
     let work = monitor.rcWork;
-    let left = (if anchored { anchor.x - width } else { anchor.x })
-        .clamp(work.left, (work.right - width).max(work.left));
-    let top = anchor
-        .y
-        .clamp(work.top, (work.bottom - height).max(work.top));
+    let picker_anchor = picker_options.as_ref().map(|options| options.anchor);
+    let mut picker = if let Some(options) = picker_options {
+        let Ok(popup) = super::dropdown::Popup::new(&rows, options, work, scale) else { return 0; };
+        Some(popup)
+    } else { None };
+    let (left, top, width, height) = if let Some(picker) = &picker {
+        let r = picker.bounds;
+        (r.left, r.top, r.right - r.left, r.bottom - r.top)
+    } else {
+        let width = (renderer.as_ref().unwrap().menu_width(&rows) * scale).round() as i32;
+        let height = ((row_top(&rows, rows.len()) + 4.0) * scale).round() as i32;
+        let left = (if anchored { anchor.x - width } else { anchor.x }).clamp(work.left, (work.right - width).max(work.left));
+        let top = anchor.y.clamp(work.top, (work.bottom - height).max(work.top));
+        (left, top, width, height)
+    };
     let done = Rc::new(Cell::new(false));
     let command = Rc::new(Cell::new(0));
     let done_handler = Rc::clone(&done);
@@ -283,17 +304,22 @@ fn show_level(
     let child_active_handler = Rc::clone(&child_active);
     let pending = Rc::new(Cell::new(None));
     let pending_handler = Rc::clone(&pending);
-    let child_rows = rows.clone();
+    let child_rows = if picker.is_none() { rows.clone() } else { Vec::new() };
     let mut surface: Option<Surface> = None;
-    let mut selected: Option<usize> = None;
+    let mut selected = picker.as_ref().and_then(|popup| popup.model.focus);
     let mut down: Option<usize> = None;
+    let mut picker_drag = None;
+    let mut pointer = POINT::default();
+    unsafe { GetCursorPos(&raw mut pointer); }
     let mut fade_started: Option<Instant> = None;
     let mut fade: Option<super::animation::Fade> = None;
     let mut fade_finished = animate == 0;
     let mut hover_motion: Vec<_> = rows
         .iter()
-        .map(|_| super::animation::Motion::settled(0.0, Instant::now()))
+        .enumerate()
+        .map(|(i, _)| super::animation::Motion::settled(if selected == Some(i) { 1.0 } else { 0.0 }, Instant::now()))
         .collect();
+    let mut highlights = vec![0.0; rows.len()];
     let mut hover_timer_running = false;
     let window = windows_window::Window::new(crate::i18n::text("ui-group-menu"))
         .style(WS_POPUP)
@@ -303,8 +329,8 @@ fn show_level(
             let hwnd = raw.cast();
             let mut activate = None;
             match message {
-                WM_DESTROY | WM_ERASEBKGND | WM_NCCALCSIZE => return Some(0),
-                WM_CLOSE => {
+                WM_ERASEBKGND | WM_NCCALCSIZE => return Some(0),
+                WM_DESTROY | WM_CLOSE => {
                     done_handler.set(true);
                     return Some(0);
                 }
@@ -335,10 +361,9 @@ fn show_level(
                         };
                         let now = Instant::now();
                         let mut hovering = false;
-                        let highlights: Vec<_> = hover_motion
-                            .iter_mut()
-                            .enumerate()
-                            .map(|(i, motion)| {
+                        let visible = picker.as_ref().map_or(0..rows.len(), |popup| popup.model.range());
+                        for i in visible {
+                                let motion = &mut hover_motion[i];
                                 let to = if selected == Some(i) { 1.0 } else { 0.0 };
                                 let value = motion.retarget_with_duration(
                                     to,
@@ -347,9 +372,8 @@ fn show_level(
                                     super::animation::HOVER_DURATION,
                                 );
                                 hovering |= (value - to).abs() > 0.0001;
-                                value
-                            })
-                            .collect();
+                                highlights[i] = value;
+                        }
                         if hovering != hover_timer_running {
                             unsafe {
                                 hover_timer_running =
@@ -359,7 +383,9 @@ fn show_level(
                                 }
                             }
                         }
-                        renderer.paint_flyout(
+                        if let Some(picker) = &mut picker {
+                            picker.paint(&target, scale, &highlights, value.native, dark)?;
+                        } else { renderer.as_ref().unwrap().paint_flyout(
                             &target,
                             width as u32,
                             height as u32,
@@ -368,7 +394,7 @@ fn show_level(
                             &highlights,
                             value.native,
                             dark,
-                        )?;
+                        )?; }
                         value.end_frame()?;
                         // Start after the first frame is ready: device creation and
                         // rasterization must not consume the animation's time budget.
@@ -406,7 +432,33 @@ fn show_level(
                 WM_MOUSEMOVE | WM_LBUTTONDOWN | WM_LBUTTONUP => {
                     let x = f32::from((lparam as u16).cast_signed()) / scale;
                     let y = f32::from(((lparam >> 16) as u16).cast_signed()) / scale;
-                    let hit = rows.iter().enumerate().find_map(|(index, row)| {
+                    if picker.is_some() && message == WM_MOUSEMOVE {
+                        let current = POINT { x: left + (x * scale).round() as i32, y: top + (y * scale).round() as i32 };
+                        if current.x == pointer.x && current.y == pointer.y { return Some(0); }
+                        pointer = current;
+                    }
+                    if let Some(popup) = &mut picker {
+                        if message == WM_MOUSEMOVE {
+                            let mut tracking = TRACKMOUSEEVENT { cbSize: size_of::<TRACKMOUSEEVENT>() as u32, dwFlags: TME_LEAVE, hwndTrack: hwnd, dwHoverTime: 0 };
+                            unsafe { TrackMouseEvent(&raw mut tracking); }
+                        }
+                        if picker_drag.is_some() || (message == WM_LBUTTONDOWN && x >= width as f32 / scale - 10.0 && rows.len() > popup.model.visible) {
+                            if message == WM_LBUTTONDOWN {
+                                let (top, thumb) = popup.model.scrollbar(height as f32 / scale).unwrap();
+                                picker_drag = Some(if y >= top && y <= top + thumb { y - top } else { thumb / 2.0 });
+                                unsafe { SetCapture(hwnd); }
+                            }
+                            popup.model.drag_scrollbar(y, picker_drag.unwrap(), height as f32 / scale);
+                            popup.hide_tip();
+                            down = None; selected = None; popup.model.focus = None;
+                            if message == WM_LBUTTONUP { picker_drag = None; unsafe { ReleaseCapture(); } }
+                            unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
+                            return Some(0);
+                        }
+                    }
+                    let hit = if let Some(popup) = &picker {
+                        popup.model.hit(x, y, width as f32 / scale)
+                    } else { rows.iter().enumerate().find_map(|(index, row)| {
                         let top = row_top(&rows, index);
                         (row.enabled && row.id != 0
                             && x >= 5.0
@@ -414,7 +466,11 @@ fn show_level(
                             && y >= top
                             && y < top + ROW_HEIGHT)
                             .then_some(index)
-                    });
+                    }) };
+                    if let Some(popup) = &mut picker {
+                        popup.model.focus = hit;
+                        if message == WM_MOUSEMOVE { popup.hover_tip(hwnd, &rows, hit, scale); }
+                    }
                     if selected != hit {
                         selected = hit;
                         unsafe {
@@ -431,6 +487,51 @@ fn show_level(
                     if message == WM_LBUTTONUP && down.take() == hit {
                         activate = hit;
                     }
+                }
+                WM_MOUSEWHEEL if picker.is_some() => {
+                    let popup = picker.as_mut().unwrap();
+                    if popup.model.wheel(i32::from(((wparam >> 16) as u16).cast_signed())) {
+                        popup.hide_tip(); down = None; selected = None; popup.model.focus = None;
+                        unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
+                    }
+                }
+                WM_CAPTURECHANGED if picker.is_some() => { picker_drag = None; down = None; }
+                windows_sys::Win32::UI::Controls::WM_MOUSELEAVE if picker.is_some() => {
+                    picker.as_mut().unwrap().hide_tip();
+                    selected = None;
+                    unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
+                }
+                WM_CHAR if picker.is_some() => {
+                    let popup = picker.as_mut().unwrap();
+                    if let Some(ch) = char::from_u32(wparam as u32) {
+                        popup.model.type_char(ch, Instant::now());
+                        selected = popup.model.focus;
+                        popup.hide_tip();
+                        unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
+                    }
+                }
+                WM_SYSKEYDOWN if picker.is_some() && matches!(wparam as u16, VK_UP | VK_DOWN) => { done_handler.set(true); }
+                WM_KEYDOWN if picker.is_some() => {
+                    let popup = picker.as_mut().unwrap();
+                    popup.hide_tip();
+                    let page = i32::try_from(popup.model.visible.saturating_sub(1).max(1)).unwrap_or(1);
+                    match wparam as u16 {
+                        VK_ESCAPE | VK_F4 => done_handler.set(true),
+                        VK_TAB => {
+                            done_handler.set(true);
+                            unsafe { PostMessageW(owner, WM_KEYDOWN, wparam, lparam); }
+                        }
+                        VK_RETURN | VK_SPACE => activate = selected,
+                        VK_UP => popup.model.step(-1),
+                        VK_DOWN => popup.model.step(1),
+                        VK_HOME => popup.model.edge(false),
+                        VK_END => popup.model.edge(true),
+                        VK_PRIOR => popup.model.step(-page),
+                        VK_NEXT => popup.model.step(page),
+                        _ => {}
+                    }
+                    selected = popup.model.focus;
+                    unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
                 }
                 WM_KEYDOWN => match wparam as u16 {
                     VK_ESCAPE | VK_LEFT => {
@@ -558,6 +659,17 @@ fn show_level(
                     }
                 }
             }
+            if let Some(anchor) = picker_anchor {
+                if message.hwnd == owner && message.message == WM_MOUSEWHEEL {
+                    PostMessageW(owner, message.message, message.wParam, message.lParam);
+                    break;
+                }
+                if matches!(message.message, WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN) && message.hwnd != hwnd {
+                    let mut point = POINT { x: i32::from((message.lParam as u16).cast_signed()), y: i32::from(((message.lParam >> 16) as u16).cast_signed()) };
+                    ClientToScreen(message.hwnd, &raw mut point);
+                    if point.x >= anchor.left && point.x < anchor.right && point.y >= anchor.top && point.y < anchor.bottom { break; }
+                }
+            }
             if anchored && message.hwnd == owner && message.message == WM_LBUTTONDOWN {
                 let mut bounds = RECT::default();
                 GetClientRect(owner, &raw mut bounds);
@@ -582,7 +694,7 @@ fn show_level(
                 let child_left = if row.right + child_width <= work.right { row.right } else { row.left - child_width };
                 let resume = Rc::new(Cell::new(false));
                 let result = show_level(hwnd, POINT { x: child_left, y: row.top - (4.0 * scale) as i32 }, false,
-                    theme, backdrop, child_rows[index].children.clone(), Some(row), Rc::clone(&resume));
+                    theme, backdrop, child_rows[index].children.clone(), Some(row), Rc::clone(&resume), None);
                 child_active.set(false);
                 if result != 0 { command.set(result); done.set(true); }
                 else if resume.get() || GetForegroundWindow() == hwnd { SetFocus(hwnd); }

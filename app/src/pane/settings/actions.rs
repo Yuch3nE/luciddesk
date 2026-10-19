@@ -98,13 +98,7 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
         Action::BackupPolicy(kind) => {
             let state = Rc::clone(&state);
             let kind = *kind;
-            let mut point = windows_sys::Win32::Foundation::POINT {
-                x: (c.bounds.left * scale).round() as i32,
-                y: ((c.bounds.bottom + 4.0) * scale).round() as i32,
-            };
-            unsafe {
-                ClientToScreen(hwnd, &raw mut point);
-            }
+            let bounds = c.bounds;
             window::defer_action(move || {
                 let loaded = recovery::Policy::load(&state.borrow().store);
                 let mut policy = match loaded {
@@ -136,14 +130,12 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
                     } else {
                         policy.keep as u64
                     };
-                    if let Some(value) =
-                        controls::choose(hwnd, point, appearance, options, selected)
-                    {
-                        if kind == 1 {
-                            policy.minutes = value;
-                        } else {
-                            policy.keep = value as usize;
-                        }
+                    let Some(value) = controls::choose(hwnd, bounds, appearance, options, selected)
+                        .filter(|value| *value != selected) else { return; };
+                    if kind == 1 {
+                        policy.minutes = value;
+                    } else {
+                        policy.keep = value as usize;
                     }
                 }
                 let saved = policy.save(&state.borrow().store);

@@ -1,6 +1,58 @@
 //! Shared settings controls. Appearance is independent of the action a page binds.
 use super::{Action, Rect, Scene};
 
+thread_local! { static OPEN_DROPDOWN: std::cell::Cell<Option<Rect>> = const { std::cell::Cell::new(None) }; }
+pub(super) fn dropdown_is_open(bounds: Rect) -> bool {
+    // Identity of the same immutable scene rectangle, rather than a distance test.
+    let key = |r: Rect| {
+        [
+            r.left.to_bits(),
+            r.top.to_bits(),
+            r.right.to_bits(),
+            r.bottom.to_bits(),
+        ]
+    };
+    OPEN_DROPDOWN.with(|open| open.get().is_some_and(|r| key(r) == key(bounds)))
+}
+struct OpenDropdown(windows_sys::Win32::Foundation::HWND);
+impl OpenDropdown {
+    fn new(hwnd: windows_sys::Win32::Foundation::HWND, bounds: Rect) -> Self {
+        OPEN_DROPDOWN.with(|open| open.set(Some(bounds)));
+        unsafe {
+            windows_sys::Win32::Graphics::Gdi::InvalidateRect(hwnd, std::ptr::null(), 0);
+        }
+        Self(hwnd)
+    }
+}
+impl Drop for OpenDropdown {
+    fn drop(&mut self) {
+        OPEN_DROPDOWN.with(|open| open.set(None));
+        unsafe {
+            windows_sys::Win32::Graphics::Gdi::InvalidateRect(self.0, std::ptr::null(), 0);
+        }
+    }
+}
+
+fn screen_anchor(
+    hwnd: windows_sys::Win32::Foundation::HWND,
+    bounds: Rect,
+    scale: f32,
+) -> windows_sys::Win32::Foundation::RECT {
+    let mut point = windows_sys::Win32::Foundation::POINT {
+        x: (bounds.left * scale).round() as i32,
+        y: (bounds.top * scale).round() as i32,
+    };
+    unsafe {
+        windows_sys::Win32::Graphics::Gdi::ClientToScreen(hwnd, &raw mut point);
+    }
+    windows_sys::Win32::Foundation::RECT {
+        left: point.x,
+        top: point.y,
+        right: point.x + ((bounds.right - bounds.left) * scale).round() as i32,
+        bottom: point.y + ((bounds.bottom - bounds.top) * scale).round() as i32,
+    }
+}
+
 pub(super) struct Style;
 impl Style {
     pub const ICON: f32 = 12.0;
@@ -147,7 +199,7 @@ pub(super) fn centered_icon_left(bounds: Rect, label_width: f32) -> f32 {
 /// Uses the shared popup for all value selectors; dismissal never becomes a value.
 pub(super) fn choose(
     hwnd: windows_sys::Win32::Foundation::HWND,
-    point: windows_sys::Win32::Foundation::POINT,
+    bounds: Rect,
     appearance: (luciddesk_core::PanelTheme, luciddesk_core::Backdrop),
     options: &[(u64, &'static str)],
     selected: u64,
@@ -164,13 +216,19 @@ pub(super) fn choose(
             )
         })
         .collect();
-    let result =
-        super::super::menu::show_entries(hwnd, point, false, appearance.0, appearance.1, rows);
-    choice_value(options, result)
+    let scale =
+        unsafe { windows_sys::Win32::UI::HiDpi::GetDpiForWindow(hwnd) }.max(96) as f32 / 96.0;
+    let anchor = screen_anchor(hwnd, bounds, scale);
+    let _open = OpenDropdown::new(hwnd, bounds);
+    let current = options.iter().position(|(value, _)| *value == selected);
+    let command = super::super::dropdown::show(hwnd, anchor, appearance, rows, current)
+        .and_then(|index| i32::try_from(index + 1).ok())
+        .unwrap_or(0);
+    choice_value(options, command)
 }
 
 fn choice_value(options: &[(u64, &'static str)], command: i32) -> Option<u64> {
-    usize::try_from(command - 1)
+    usize::try_from(command.checked_sub(1)?)
         .ok()
         .and_then(|index| options.get(index))
         .map(|(value, _)| *value)
@@ -184,22 +242,13 @@ pub(super) fn open_dropdown(
     control: &Control,
     sender: std::sync::mpsc::Sender<Control>,
 ) {
-    use windows_sys::Win32::{
-        Graphics::Gdi::ClientToScreen,
-        UI::WindowsAndMessaging::{IsWindow, PostMessageW},
-    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{IsWindow, PostMessageW};
+    let mut control = control.clone();
     let Action::Dropdown(options) = &control.action else {
         return;
     };
-    let options = options.clone();
-    let mut control = control.clone();
-    let mut point = windows_sys::Win32::Foundation::POINT {
-        x: (control.bounds.left * scale).round() as i32,
-        y: ((control.bounds.bottom + 4.0) * scale).round() as i32,
-    };
-    unsafe {
-        ClientToScreen(hwnd, &raw mut point);
-    }
+    let options = std::sync::Arc::clone(options);
+    let anchor = screen_anchor(hwnd, control.bounds, scale);
     super::window::defer_action(move || {
         if unsafe { IsWindow(hwnd) } == 0 {
             return;
@@ -216,8 +265,11 @@ pub(super) fn open_dropdown(
                 )
             })
             .collect();
-        let command =
-            super::super::menu::show_entries(hwnd, point, false, appearance.0, appearance.1, rows);
+        let _open = OpenDropdown::new(hwnd, control.bounds);
+        let current = options.iter().position(|(_, _, selected)| *selected);
+        let command = super::super::dropdown::show(hwnd, anchor, appearance, rows, current)
+            .and_then(|index| i32::try_from(index + 1).ok())
+            .unwrap_or(0);
         if let Some(action) = dropdown_action(&options, command) {
             control.action = action;
             if sender.send(control).is_ok() {
@@ -264,6 +316,16 @@ mod tests {
             Some(Action::Page(2))
         ));
         assert!(dropdown_action(&[], 1).is_none());
+    }
+
+    #[test]
+    fn cloning_dropdown_controls_shares_options_and_plugin_payloads() {
+        let action = Action::Dropdown(vec![("Device".into(), Action::Page(1), true)].into());
+        let cloned = action.clone();
+        let (Action::Dropdown(first), Action::Dropdown(second)) = (&action, &cloned) else {
+            unreachable!()
+        };
+        assert!(std::sync::Arc::ptr_eq(first, second));
     }
 
     #[test]
