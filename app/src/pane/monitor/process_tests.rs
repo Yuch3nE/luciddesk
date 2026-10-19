@@ -5,6 +5,83 @@ use windows_sys::Win32::{
     System::{ProcessStatus::*, Threading::*},
 };
 
+#[test]
+fn monitor_controller_stays_hidden_without_activation_or_a_taskbar_window() {
+    let _sta = crate::pane::test_support::apartment();
+    let state = Rc::new(RefCell::new(crate::pane::tests::test_state()));
+    let (_sender, commands) = mpsc::channel();
+    let controller = create_controller(&state, commands).unwrap();
+    let hwnd = controller.hwnd().cast();
+    let style = unsafe { GetWindowLongW(hwnd, GWL_EXSTYLE) } as u32;
+    assert_ne!(style & WS_EX_TOOLWINDOW, 0);
+    assert_ne!(style & WS_EX_NOACTIVATE, 0);
+    assert_eq!(style & WS_EX_APPWINDOW, 0);
+    assert_eq!(unsafe { IsWindowVisible(hwnd) }, 0);
+    let foreground = unsafe { GetForegroundWindow() };
+    unsafe {
+        ShowWindow(hwnd, SW_SHOW);
+        SetWindowPos(hwnd, HWND_TOP, 0, 0, 1, 1, SWP_SHOWWINDOW);
+    }
+    assert_eq!(unsafe { IsWindowVisible(hwnd) }, 0);
+    assert_eq!(unsafe { GetForegroundWindow() }, foreground);
+    // Coalesced IPC wake-ups still reach an invisible controller.
+    let wake = state.borrow().wake.clone();
+    wake.bind(hwnd as isize);
+    let mut message = MSG::default();
+    assert_ne!(
+        unsafe { PeekMessageW(&raw mut message, hwnd, wake::READY, wake::READY, PM_REMOVE) },
+        0
+    );
+    unsafe {
+        DispatchMessageW(&message);
+    }
+    wake.notify();
+    assert_ne!(
+        unsafe { PeekMessageW(&raw mut message, hwnd, wake::READY, wake::READY, PM_REMOVE) },
+        0
+    );
+    wake.unbind();
+}
+
+fn assert_child_windows_stay_off_taskbar(pid: u32, panel: windows_sys::Win32::Foundation::HWND) {
+    unsafe extern "system" fn visit(
+        hwnd: windows_sys::Win32::Foundation::HWND,
+        data: isize,
+    ) -> i32 {
+        unsafe {
+            let (pid, windows) = &mut *(data as *mut (u32, Vec<(String, bool, u32)>));
+            let mut owner_pid = 0;
+            GetWindowThreadProcessId(hwnd, &raw mut owner_pid);
+            if owner_pid == *pid {
+                let mut title = [0u16; 128];
+                let len =
+                    GetWindowTextW(hwnd, title.as_mut_ptr(), title.len() as i32).max(0) as usize;
+                windows.push((
+                    String::from_utf16_lossy(&title[..len]),
+                    IsWindowVisible(hwnd) != 0,
+                    GetWindowLongW(hwnd, GWL_EXSTYLE) as u32,
+                ));
+            }
+        }
+        1
+    }
+    let mut inventory = (pid, Vec::<(String, bool, u32)>::new());
+    unsafe {
+        EnumWindows(Some(visit), (&raw mut inventory) as isize);
+    }
+    let (_, visible, style) = inventory
+        .1
+        .iter()
+        .find(|(title, _, _)| title == "LucidDesk monitor controller")
+        .expect("monitor IPC controller missing");
+    assert!(!visible, "background controller became visible");
+    assert_ne!(style & WS_EX_TOOLWINDOW, 0);
+    assert_eq!(style & WS_EX_APPWINDOW, 0);
+    let panel_style = unsafe { GetWindowLongW(panel, GWL_EXSTYLE) } as u32;
+    assert_ne!(panel_style & WS_EX_TOOLWINDOW, 0);
+    assert_eq!(panel_style & WS_EX_APPWINDOW, 0);
+}
+
 fn pump(state: &Rc<RefCell<PaneApp>>, ms: u64) {
     let end = Instant::now() + Duration::from_millis(ms);
     while Instant::now() < end {
@@ -99,6 +176,7 @@ fn isolated_monitor_closes_process_and_keeps_host_sampling_empty() {
             )
         };
         assert!(!child.is_null());
+        assert_child_windows_stay_off_taskbar(pid, hwnd as _);
         pump(&state, if cycle == 1 { first } else { 2200 });
         assert!(state.borrow().views.iter().all(|v| v.id != id));
         let diagnostics = crate::plugins::request(

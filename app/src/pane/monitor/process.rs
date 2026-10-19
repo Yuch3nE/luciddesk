@@ -431,6 +431,55 @@ fn apply(state: &Rc<RefCell<PaneApp>>, config: Config) -> Result<(), String> {
     PUBLISHED.with(|last| *last.borrow_mut() = Some(config.panel));
     Ok(())
 }
+fn create_controller(
+    state: &Rc<RefCell<PaneApp>>,
+    commands: mpsc::Receiver<Result<Config, String>>,
+) -> Result<windows_window::Window, String> {
+    let weak = Rc::downgrade(state);
+    windows_window::Window::new("LucidDesk monitor controller")
+        .size(1, 1)
+        .style(WS_POPUP)
+        .ex_style(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE)
+        .on_message(move |_, msg, _, lp| {
+            if unsafe { crate::window_visibility::defer_show(msg, lp, false) } {
+                return Some(0);
+            }
+            if msg == WM_DESTROY {
+                return Some(0);
+            }
+            if msg != wake::READY {
+                return None;
+            }
+            let Some(state) = weak.upgrade() else {
+                return Some(0);
+            };
+            state.borrow().wake.received();
+            loop {
+                match commands.try_recv() {
+                    Ok(Ok(config)) => {
+                        if let Err(error) = apply(&state, config) {
+                            emit(Reply::Error(error));
+                            windows_window::quit();
+                        }
+                    }
+                    Ok(Err(error)) => {
+                        emit(Reply::Error(error));
+                        windows_window::quit();
+                        break;
+                    }
+                    Err(mpsc::TryRecvError::Empty) => break,
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        windows_window::quit();
+                        break;
+                    }
+                }
+            }
+            Some(0)
+        })
+        .create()
+        .map_err(|e| e.to_string())
+}
+
 pub(crate) fn run() -> Result<(), String> {
     run_inner().inspect_err(|error| emit(Reply::Error(error.clone())))
 }
@@ -466,44 +515,7 @@ fn run_inner() -> Result<(), String> {
     }));
     apply(&state, config)?;
     let (sender, commands) = mpsc::channel();
-    let weak = Rc::downgrade(&state);
-    let controller = windows_window::Window::new("LucidDesk monitor controller")
-        .style(WS_POPUP)
-        .on_message(move |_, msg, _, _| {
-            if msg == WM_DESTROY {
-                return Some(0);
-            }
-            if msg != wake::READY {
-                return None;
-            }
-            let Some(state) = weak.upgrade() else {
-                return Some(0);
-            };
-            state.borrow().wake.received();
-            loop {
-                match commands.try_recv() {
-                    Ok(Ok(config)) => {
-                        if let Err(error) = apply(&state, config) {
-                            emit(Reply::Error(error));
-                            windows_window::quit();
-                        }
-                    }
-                    Ok(Err(error)) => {
-                        emit(Reply::Error(error));
-                        windows_window::quit();
-                        break;
-                    }
-                    Err(mpsc::TryRecvError::Empty) => break,
-                    Err(mpsc::TryRecvError::Disconnected) => {
-                        windows_window::quit();
-                        break;
-                    }
-                }
-            }
-            Some(0)
-        })
-        .create()
-        .map_err(|e| e.to_string())?;
+    let controller = create_controller(&state, commands)?;
     let wake = state.borrow().wake.clone();
     wake.bind(controller.hwnd() as isize);
     std::thread::spawn(move || {
