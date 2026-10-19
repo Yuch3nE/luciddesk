@@ -214,7 +214,6 @@ impl Drawing {
                     &accent,
                     &area,
                     &subtle,
-                    options.interval,
                 )?;
             } else {
                 target.clipped_text(
@@ -263,7 +262,6 @@ impl Drawing {
                             &area,
                             &subtle,
                             &secondary,
-                            options.interval,
                         )?;
                     }
                     if caption {
@@ -428,7 +426,6 @@ impl Drawing {
         accent: &Brush,
         area: &Brush,
         grid: &Brush,
-        interval: u64,
     ) -> windows::core::Result<()> {
         target.clipped_text(
             Metric::Disk.label(),
@@ -490,7 +487,6 @@ impl Drawing {
                 area,
                 grid,
                 secondary,
-                interval,
             )?;
         }
         if pair && height >= 58.0 {
@@ -573,19 +569,18 @@ impl Drawing {
         area: &Brush,
         grid: &Brush,
         label: &Brush,
-        interval: u64,
     ) -> windows::core::Result<()> {
         let samples: Vec<_> = self
             .snapshot
             .history
             .iter()
-            .map(|f| (f.at, plot_value(f, metric, id, false)))
+            .map(|f| (f.at, plot_value(f, metric, id, false), f.break_before))
             .collect();
         let writes: Vec<_> = if metric == Metric::Disk {
             self.snapshot
                 .history
                 .iter()
-                .map(|f| (f.at, plot_value(f, metric, id, true)))
+                .map(|f| (f.at, plot_value(f, metric, id, true), f.break_before))
                 .collect()
         } else {
             Vec::new()
@@ -593,7 +588,7 @@ impl Drawing {
         let percent = matches!(metric, Metric::Cpu | Metric::Gpu);
         let maximum = chart_maximum(
             metric,
-            samples.iter().chain(&writes).filter_map(|(_, v)| *v),
+            samples.iter().chain(&writes).filter_map(|(_, v, _)| *v),
         );
         let margin = if percent { 30.0 } else { 51.0 };
         let plot = Rect::from_xywh(
@@ -644,7 +639,6 @@ impl Drawing {
             self.snapshot.at,
             plot,
             maximum,
-            interval,
             accent,
             area,
         )?;
@@ -659,7 +653,6 @@ impl Drawing {
                 self.snapshot.at,
                 plot,
                 maximum,
-                interval,
                 &stroke,
                 &fill,
             )?;
@@ -746,42 +739,52 @@ fn plot_value(frame: &Frame, metric: Metric, id: Option<&str>, writing: bool) ->
 fn write_color() -> ColorF {
     ColorF::new(0.42, 0.59, 0.83, 1.0)
 }
-fn graph_series(
-    target: &DrawPass<'_>,
-    samples: &[(std::time::Instant, Option<f64>)],
+type PlotSample = (std::time::Instant, Option<f64>, bool);
+
+// Segment boundaries are recorded by the sampler. Changing the refresh setting
+// must never reinterpret already collected history as missing samples.
+fn graph_segments(
+    samples: &[PlotSample],
     at: std::time::Instant,
     rect: Rect,
     maximum: f64,
-    interval: u64,
+) -> Vec<Vec<Vector2>> {
+    let mut segments = Vec::new();
+    let mut segment = Vec::new();
+    for &(time, value, break_before) in samples {
+        if (value.is_none() || break_before) && !segment.is_empty() {
+            segments.push(std::mem::take(&mut segment));
+        }
+        if let Some(value) = value {
+            let age = at.saturating_duration_since(time).as_secs_f32();
+            segment.push(Vector2::new(
+                rect.right - (rect.right - rect.left) * age.min(60.0) / 60.0,
+                rect.bottom - (rect.bottom - rect.top) * (value / maximum).clamp(0.0, 1.0) as f32,
+            ));
+        }
+    }
+    if !segment.is_empty() {
+        segments.push(segment);
+    }
+    segments
+}
+
+fn graph_series(
+    target: &DrawPass<'_>,
+    samples: &[PlotSample],
+    at: std::time::Instant,
+    rect: Rect,
+    maximum: f64,
     stroke: &Brush,
     area: &Brush,
 ) -> windows::core::Result<()> {
-    let mut segment = Vec::new();
-    let mut previous_time = None;
-    let mut last = None;
-    for &(time, value) in samples {
-        let gap = previous_time.is_some_and(|old| {
-            time.duration_since(old).as_secs_f64() > interval as f64 * 1.8 + 0.5
-        });
-        if value.is_none() || gap {
-            draw_segment(target, &segment, rect.bottom, stroke, area)?;
-            segment.clear();
-        }
-        previous_time = Some(time);
-        let Some(value) = value else {
-            last = None;
-            continue;
-        };
-        let age = at.duration_since(time).as_secs_f32();
-        let point = Vector2::new(
-            rect.right - (rect.right - rect.left) * age.min(60.0) / 60.0,
-            rect.bottom - (rect.bottom - rect.top) * (value / maximum).clamp(0.0, 1.0) as f32,
-        );
-        segment.push(point);
-        last = Some(point);
+    let segments = graph_segments(samples, at, rect, maximum);
+    for segment in &segments {
+        draw_segment(target, segment, rect.bottom, stroke, area)?;
     }
-    draw_segment(target, &segment, rect.bottom, stroke, area)?;
-    if let Some(point) = last {
+    if samples.last().is_some_and(|(_, value, _)| value.is_some())
+        && let Some(&point) = segments.last().and_then(|segment| segment.last())
+    {
         target.fill_ellipse(&Ellipse::circle(point, 2.0), stroke);
     }
     Ok(())
@@ -993,6 +996,55 @@ fn bytes(value: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn history_keeps_valid_delayed_and_mixed_interval_samples_connected() {
+        use std::time::{Duration, Instant};
+        let start = Instant::now();
+        // Five-second history followed by a faster refresh and a short delay:
+        // none of these valid measurements is a pause or a missing reading.
+        let samples: Vec<_> = [0, 5000, 10000, 11000, 13500, 14500]
+            .into_iter()
+            .map(|ms| (start + Duration::from_millis(ms), Some(10.0), false))
+            .collect();
+        let segments = graph_segments(
+            &samples,
+            samples.last().unwrap().0,
+            Rect::from_xywh(0.0, 0.0, 600.0, 100.0),
+            100.0,
+        );
+        assert_eq!(segments.len(), 1);
+        assert_eq!(segments[0].len(), 6);
+        // Preserve real time spacing; no fabricated samples or zeroes.
+        assert!((segments[0][1].x - segments[0][0].x - 50.0).abs() < 0.01);
+        assert!((segments[0][4].x - segments[0][3].x - 25.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn history_still_breaks_for_missing_readings_and_explicit_pause_boundaries() {
+        use std::time::{Duration, Instant};
+        let start = Instant::now();
+        let samples: Vec<_> = [
+            (Some(10.0), true),
+            (Some(20.0), false),
+            (None, false),
+            (Some(30.0), false),
+            (Some(40.0), false),
+            (Some(50.0), true),
+            (Some(60.0), false),
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(i, (value, boundary))| (start + Duration::from_secs(i as u64), value, boundary))
+        .collect();
+        let segments = graph_segments(
+            &samples,
+            samples.last().unwrap().0,
+            Rect::from_xywh(0.0, 0.0, 600.0, 100.0),
+            100.0,
+        );
+        assert_eq!(segments.iter().map(Vec::len).collect::<Vec<_>>(), [2, 2, 2]);
+    }
+
     #[test]
     fn axes_keep_percentages_absolute_and_disk_directions_separate() {
         assert_eq!(chart_maximum(Metric::Cpu, [2.0, 3.0].into_iter()), 100.0);

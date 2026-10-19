@@ -52,11 +52,14 @@ CPU/GPU 使用 `plugins/system-monitor/src/counters.rs` 的 PDH 查询，查询�
 
 监控子进程有自己的后台采样服务，耗时查询不在 UI 线程执行。窗口定时器更新订阅并读取快照；暂停时保留当前快照。恢复采样时重新建立速率基线，首份差分数据未就绪时显示“采集中”，历史空档不连线。
 
+采样订阅由可见性、暂停、配置变更及客户端析构显式更新，不再依赖 UI 心跳续期；UI 消息短暂阻塞不终止后台采样。采样线程按下一次截止时间等待请求，避免固定轮询叠加刷新误差。历史帧记录恢复边界，修改刷新间隔不重新解释旧历史；短暂调度延迟按实际时间连接有效读数。显式暂停、隐藏、折叠后的恢复，以及超过 7 秒的采样空档会开始新线段并重置差分基线，单项读数缺失仍保留断档，不补零。
+
 历史保留最近 60 秒，仅存在内存中；采样线程、当前快照与历史通过 `Arc<Frame>` 共享不可变帧。CPU/GPU 的 Y 轴固定为 0–100%；网络曲线显示双向吞吐合计；磁盘分别绘制读写曲线，使用两者峰值计算共享刻度。速率单位为 B/s、KiB/s、MiB/s、GiB/s。
 
 自动网卡选择当前最活跃接口，磁盘优先系统盘，GPU 优先能读取计数器且专用显存最大的适配器。手动选定的设备消失时显示不可用，不自动换设备。核显专用显存容量可能为零，不用该值作除数。目前不采集温度、风扇或功耗。`sysinfo` Windows 磁盘后端不能传播所有 I/O 查询错误，因此未观察到有效累计计数之前不显示零速率；后续驱动查询失败仍可能表现为保持原计数。
 
 GPU 使用物理设备 PnP 实例作为稳定身份，合并虚拟显示驱动为同一显卡暴露的多个 DXGI LUID；相同型号的不同物理显卡仍保持独立。身份通过 [D3DKMT_QUERY_PHYSICAL_ADAPTER_PNP_KEY](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/d3dkmthk/ns-d3dkmthk-_d3dkmt_query_physical_adapter_pnp_key) 查询，查询不可用时保留 LUID。采样时从同一物理设备的逻辑别名选取有效读数，设备清单同时向主进程同步别名映射，使已保存的有效旧选择继续指向原物理设备。PDH LUID 匹配忽略十六进制字母大小写，占用率可用而显存不可用时仍保留占用率。
+
 ## 通信、关闭与恢复
 
 `app/src/pane/monitor/process.rs` 使用继承的匿名管道传输按行 JSON。这是同一 EXE 构建之间的私有协议，不是第三方插件 ABI。
@@ -89,6 +92,8 @@ GPU 使用物理设备 PnP 实例作为稳定身份，合并虚拟显示驱动�
 ./tools/validation/test-monitor-process.ps1 -Offline
 # 快速生命周期及故障复测
 ./tools/validation/test-monitor-process.ps1 -Offline -Cycles 2 -FirstSampleMilliseconds 2500
+# 35 秒实机时序诊断：模拟 UI 无消息，并切换 5/2/1 秒刷新
+cargo test -p luciddesk-monitor --lib --locked --offline native_sampling_cadence -- --ignored --nocapture --test-threads=1
 ```
 
 子进程测试 `isolated_monitor_closes_process_and_keeps_host_sampling_empty` 需要交互桌面，不进入普通无界面测试。默认先暖机普通宿主窗口与插件设置描述，再开关一个监控面板 10 次：首次采样 63 秒，其余每轮 2.2 秒。覆盖关闭按钮、设置禁用、紧凑布局尺寸回传、管道断开、无效输入及重新启用。
