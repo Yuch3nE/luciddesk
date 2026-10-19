@@ -77,14 +77,23 @@ fn attach_os_error(view: HWND, stage: diagnostics::Stage) -> String {
 }
 
 fn wait_for_attach(target: &AttachTarget, owner: HWND) -> Result<(), String> {
+    wait_for_attach_with(target, owner, Duration::from_secs(3), || crate::desktop_view().ok())
+}
+
+fn wait_for_attach_with(
+    target: &AttachTarget,
+    owner: HWND,
+    timeout: Duration,
+    mut discover: impl FnMut() -> Option<isize>,
+) -> Result<(), String> {
     let started = Instant::now();
     let mut next_discovery = Duration::ZERO;
-    while started.elapsed() < Duration::from_secs(3) {
+    loop {
         if !target.alive() || unsafe { IsWindow(owner) } == 0 {
             return Err("握手期间桌面或控制窗口已失效，将重新定位".into());
         }
         if started.elapsed() >= next_discovery {
-            if !target.current(crate::desktop_view().ok()) {
+            if !target.current(discover()) {
                 return Err("握手期间桌面视图已被替换，将重新定位".into());
             }
             next_discovery = started.elapsed() + Duration::from_millis(50);
@@ -94,6 +103,10 @@ fn wait_for_attach(target: &AttachTarget, owner: HWND) -> Result<(), String> {
             let error = GetPropW(target.view, ERROR) as usize as u32;
             if error != 0 { return Err(format!("桌面过滤连接失败 (0x{error:08x}); {}", diagnostics::summary(target.view))); }
         }
+        // A dispatched callback (including a modal disconnect warning) can run
+        // past the deadline while Explorer completes attachment. Check identity
+        // and the published result before declaring timeout on return.
+        if started.elapsed() >= timeout { break; }
         // Explorer's Shell initialization can synchronously query our windows.
         // Keep this STA responsive rather than making the handshake wait for
         // its own UI thread. The app guards reentrant reconnect attempts.
@@ -526,6 +539,49 @@ mod attach_tests {
         }
     }
     impl Drop for Window { fn drop(&mut self) { unsafe { DestroyWindow(self.0); } } }
+    #[test]
+    fn attach_observes_result_after_a_callback_crosses_the_deadline() {
+        unsafe extern "system" fn delayed(hwnd: HWND, _: u32, id: usize, _: u32) {
+            unsafe {
+                KillTimer(hwnd, id);
+                std::thread::sleep(Duration::from_millis(120));
+                let view = GetPropW(hwnd, windows_sys::w!("LucidDesk.Test.AttachTarget"));
+                if id == 1 { SetPropW(view, OWNER, hwnd); }
+                else { SetPropW(view, ERROR, 0x80004005usize as _); }
+            }
+        }
+        for id in [1, 2] {
+            let view = Window::new();
+            let owner = Window::new();
+            let target = AttachTarget::capture(view.0).unwrap();
+            unsafe {
+                assert_ne!(SetPropW(owner.0, windows_sys::w!("LucidDesk.Test.AttachTarget"), view.0), 0);
+                assert_ne!(SetTimer(owner.0, id, 1, Some(delayed)), 0);
+            }
+            let result = wait_for_attach_with(&target, owner.0, Duration::from_millis(100), || Some(view.0 as isize));
+            if id == 1 { assert!(result.is_ok(), "{result:?}"); }
+            else { assert!(result.unwrap_err().contains("0x80004005")); }
+        }
+        // A late success on a replaced desktop must still be rejected.
+        let view = Window::new();
+        let owner = Window::new();
+        let target = AttachTarget::capture(view.0).unwrap();
+        unsafe {
+            assert_ne!(SetPropW(owner.0, windows_sys::w!("LucidDesk.Test.AttachTarget"), view.0), 0);
+            assert_ne!(SetTimer(owner.0, 1, 1, Some(delayed)), 0);
+        }
+        let mut discoveries = 0;
+        let error = wait_for_attach_with(&target, owner.0, Duration::from_millis(100), || {
+            discoveries += 1;
+            (discoveries == 1).then_some(view.0 as isize)
+        }).unwrap_err();
+        assert!(error.contains("桌面视图已被替换"), "{error}");
+        let view = Window::new();
+        let owner = Window::new();
+        let target = AttachTarget::capture(view.0).unwrap();
+        let error = wait_for_attach_with(&target, owner.0, Duration::from_millis(20), || Some(view.0 as isize)).unwrap_err();
+        assert!(error.contains("未确认桌面过滤连接"), "{error}");
+    }
     #[test]
     fn native_attach_errors_keep_stage_and_hresult() {
         let view = Window::new();
