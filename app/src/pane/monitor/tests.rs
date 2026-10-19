@@ -18,6 +18,7 @@ fn plugin_content_draws_through_host_context_and_preserves_the_header() {
     let device = windows_canvas::GpuDevice::new_warp().unwrap();
     let mut drawing = Drawing::new().unwrap();
     for compact in [false, true] {
+        let (width, height) = if compact { (320.0, 280.0) } else { (360.0, 600.0) };
         for dark in [false, true] {
             for scale in [1.0, 1.5, 2.0] {
                 let options = Preferences {
@@ -27,16 +28,17 @@ fn plugin_content_draws_through_host_context_and_preserves_the_header() {
                 client.tick(true, &options);
                 let bitmap = crate::pane::canvas::Offscreen::new(
                     &device,
-                    (360.0 * scale) as u32,
-                    (600.0 * scale) as u32,
+                    (width * scale) as u32,
+                    (height * scale) as u32,
                 )
                 .unwrap();
                 crate::pane::canvas::draw(&bitmap.target, scale, |target| {
-                    target.clear(windows_canvas::ColorF::new(1.0, 1.0, 1.0, 1.0));
+                    let bg = if dark { 0.12549 } else { 1.0 };
+                    target.clear(windows_canvas::ColorF::new(bg, bg, bg, 1.0));
                     drawing.paint(
                         &target,
                         &options,
-                        windows_canvas::Rect::from_xywh(0.0, 50.0, 360.0, 550.0),
+                        windows_canvas::Rect::from_xywh(0.0, 50.0, width, height - 50.0),
                         dark,
                         if dark { 1.0 } else { 0.0 },
                     )?;
@@ -44,17 +46,32 @@ fn plugin_content_draws_through_host_context_and_preserves_the_header() {
                 })
                 .unwrap();
                 let pixels = bitmap.pixels().unwrap();
-                let header = (360.0 * scale) as usize * (50.0 * scale) as usize * 4;
+                let header = (width * scale) as usize * (50.0 * scale) as usize * 4;
+                let background = if dark { [32, 32, 32, 255] } else { [255, 255, 255, 255] };
                 assert!(
                     pixels[..header]
                         .chunks_exact(4)
-                        .all(|p| p == [255, 255, 255, 255])
+                        .all(|p| p == background)
                 );
                 assert!(
                     pixels[header..]
                         .chunks_exact(4)
-                        .any(|p| p != [255, 255, 255, 255])
+                        .any(|p| p != background)
                 );
+                if std::env::var_os("LUCIDDESK_TEST_EXPORT_SNAPSHOTS").is_some() && scale == 1.0 {
+                    let mut bmp = vec![0_u8; 54];
+                    bmp[0..2].copy_from_slice(b"BM");
+                    bmp[2..6].copy_from_slice(&(54 + pixels.len() as u32).to_le_bytes());
+                    bmp[10..14].copy_from_slice(&54_u32.to_le_bytes());
+                    bmp[14..18].copy_from_slice(&40_u32.to_le_bytes());
+                    bmp[18..22].copy_from_slice(&(width as i32).to_le_bytes());
+                    bmp[22..26].copy_from_slice(&(-(height as i32)).to_le_bytes());
+                    bmp[26..28].copy_from_slice(&1_u16.to_le_bytes());
+                    bmp[28..30].copy_from_slice(&32_u16.to_le_bytes());
+                    bmp.extend_from_slice(&pixels);
+                    std::fs::write(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../target")
+                        .join(format!("monitor-{}-{}.bmp", if compact { "compact" } else { "standard" }, if dark { "dark" } else { "light" })), bmp).unwrap();
+                }
             }
         }
     }

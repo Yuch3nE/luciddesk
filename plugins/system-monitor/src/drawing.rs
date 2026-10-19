@@ -9,6 +9,13 @@ use windows_canvas::{
     TextFormat, Vector2, WordWrapping,
 };
 
+struct CompactBrushes<'a> {
+    text: &'a Brush,
+    secondary: &'a Brush,
+    accent: &'a Brush,
+    track: &'a Brush,
+}
+
 pub(crate) struct Drawing {
     family: String,
     label: TextFormat,
@@ -41,8 +48,8 @@ impl Drawing {
         let rate = canvas_result(make(17.0, 400))?.with_alignment(TextAlignment::Trailing);
         let disk_value = canvas_result(make(17.0, 500))?;
         let axis = canvas_result(make(9.0, 400))?.with_alignment(TextAlignment::Trailing);
-        let compact_value = canvas_result(make(20.0, 500))?;
-        let compact_rate = canvas_result(make(15.0, 500))?;
+        let compact_value = canvas_result(make(16.0, 600))?.with_alignment(TextAlignment::Trailing);
+        let compact_rate = canvas_result(make(12.0, 500))?.with_alignment(TextAlignment::Trailing);
         for format in [
             &label,
             &detail,
@@ -96,11 +103,9 @@ impl Drawing {
         target.push_clip(&bounds);
         let width = (bounds.right - bounds.left - 8.0).max(1.0);
         let height = bounds.bottom - bounds.top;
-        let columns = if options.compact { 2 } else { 1 };
-        let rows = options.metrics.len().div_ceil(columns).max(1);
-        let gap = 7.0;
+        let rows = options.metrics.len().max(1);
+        let gap = if options.compact { 4.0 } else { 7.0 };
         let row_height = ((height - 28.0 - gap * (rows - 1) as f32) / rows as f32).max(1.0);
-        let column_width = (width - gap * (columns - 1) as f32) / columns as f32;
         let heights = if options.compact {
             Vec::new()
         } else {
@@ -130,10 +135,9 @@ impl Drawing {
             if dark { 0.60 } else { 0.58 },
         )))?;
         for (index, metric) in options.metrics.iter().enumerate() {
-            let wide_last = columns == 2 && index + 1 == options.metrics.len() && index % 2 == 0;
-            let left = bounds.left + 4.0 + (index % columns) as f32 * (column_width + gap);
+            let left = bounds.left + 4.0;
             let top = if options.compact {
-                bounds.top + (index / columns) as f32 * (row_height + gap)
+                bounds.top + index as f32 * (row_height + gap)
             } else {
                 standard_top
             };
@@ -145,7 +149,7 @@ impl Drawing {
             if !options.compact {
                 standard_top += row_height + gap;
             }
-            let card_width = if wide_last { width } else { column_width };
+            let card_width = width;
             let shape = RoundedRect {
                 rect: Rect::from_xywh(left, top, card_width, row_height),
                 radius_x: 8.0,
@@ -169,10 +173,34 @@ impl Drawing {
             let (value, detail) = presentation(&self.snapshot, *metric, device);
             let throughput = matches!(metric, Metric::Network | Metric::Disk);
             target.fill_ellipse(
-                &Ellipse::circle(Vector2::new(x + 3.0, y + 10.0), 2.5),
+                &Ellipse::circle(
+                    Vector2::new(
+                        x + 3.0,
+                        if options.compact {
+                            top + row_height / 2.0
+                        } else {
+                            y + 10.0
+                        },
+                    ),
+                    2.5,
+                ),
                 &accent,
             );
-            if *metric == Metric::Disk {
+            if options.compact {
+                self.paint_compact(
+                    target,
+                    *metric,
+                    device,
+                    &value,
+                    Rect::from_xywh(x, top, w, row_height),
+                    CompactBrushes {
+                        text,
+                        secondary: &secondary,
+                        accent: &accent,
+                        track: &subtle,
+                    },
+                )?;
+            } else if *metric == Metric::Disk {
                 self.paint_disk(
                     target,
                     device,
@@ -188,45 +216,6 @@ impl Drawing {
                     &subtle,
                     options.interval,
                 )?;
-            } else if options.compact {
-                let tight = row_height < 58.0;
-                let label_width = if tight && throughput {
-                    (w * 0.42 - 10.0).max(1.0)
-                } else {
-                    w - 10.0
-                };
-                target.clipped_text(
-                    metric.label(),
-                    &self.label,
-                    &Rect::from_xywh(x + 10.0, y, label_width, 18.0),
-                    &secondary,
-                );
-                target.clipped_text(
-                    &value,
-                    if throughput {
-                        &self.compact_rate
-                    } else {
-                        &self.compact_value
-                    },
-                    &Rect::from_xywh(x, y + 18.0, w, 27.0),
-                    text,
-                );
-                if !tight {
-                    target.clipped_text(
-                        &detail,
-                        &self.small,
-                        &Rect::from_xywh(x, y + 44.0, w, 16.0),
-                        &secondary,
-                    );
-                } else if throughput {
-                    let secondary_rate = detail.split(" · ").next().unwrap_or(&detail);
-                    target.clipped_text(
-                        secondary_rate,
-                        &self.small_right,
-                        &Rect::from_xywh(x + w * 0.42, y, w * 0.58, 18.0),
-                        &secondary,
-                    );
-                }
             } else {
                 target.clipped_text(
                     metric.label(),
@@ -327,6 +316,102 @@ impl Drawing {
             );
         }
         target.pop_clip();
+        Ok(())
+    }
+    fn paint_compact(
+        &self,
+        target: &DrawPass<'_>,
+        metric: Metric,
+        device: Option<&Device>,
+        value: &str,
+        bounds: Rect,
+        brushes: CompactBrushes<'_>,
+    ) -> windows::core::Result<()> {
+        let CompactBrushes {
+            text,
+            secondary,
+            accent,
+            track,
+        } = brushes;
+        let x = bounds.left;
+        let y = (bounds.top + bounds.bottom - 24.0) / 2.0;
+        let width = bounds.right - bounds.left;
+        let label_width = 72.0_f32.min(width * 0.3);
+        target.clipped_text(
+            metric.label(),
+            &self.label,
+            &Rect::from_xywh(x + 10.0, y, label_width - 10.0, 24.0),
+            secondary,
+        );
+        if matches!(metric, Metric::Network | Metric::Disk) {
+            let readings = device.and_then(|d| d.rate);
+            let cell = (width - label_width) / 2.0;
+            let top = (bounds.top + bounds.bottom - 32.0) / 2.0;
+            for index in 0..2 {
+                let left = x + label_width + index as f32 * cell;
+                let label = if metric == Metric::Network {
+                    if index == 0 { "↓" } else { "↑" }
+                } else {
+                    crate::i18n::text(if index == 0 {
+                        "monitor-read"
+                    } else {
+                        "monitor-write"
+                    })
+                };
+                target.clipped_text(
+                    label,
+                    &self.small_right,
+                    &Rect::from_xywh(left, top, cell - 4.0, 12.0),
+                    secondary,
+                );
+                let rate = readings.map(|(a, b)| if index == 0 { a } else { b });
+                let rate = rate.map_or_else(
+                    || "—".into(),
+                    |rate| {
+                        let (number, unit) = rate_parts(rate);
+                        format!("{number} {unit}")
+                    },
+                );
+                target.clipped_text(
+                    &rate,
+                    &self.compact_rate,
+                    &Rect::from_xywh(left, top + 12.0, cell - 4.0, 20.0),
+                    text,
+                );
+            }
+        } else {
+            let value_width = 60.0;
+            target.clipped_text(
+                value,
+                &self.compact_value,
+                &Rect::from_xywh(bounds.right - value_width, y, value_width, 24.0),
+                text,
+            );
+            let left = x + label_width + 4.0;
+            let width = (width - label_width - value_width - 16.0).max(0.0);
+            let bar = RoundedRect {
+                rect: Rect::from_xywh(left, y + 10.0, width, 4.0),
+                radius_x: 2.0,
+                radius_y: 2.0,
+            };
+            target.fill_rounded_rect(&bar, track);
+            let percent = match metric {
+                Metric::Cpu => self.snapshot.cpu,
+                Metric::Memory => self
+                    .snapshot
+                    .memory
+                    .map(|(used, total)| used as f64 / total.max(1) as f64 * 100.0),
+                _ => device.and_then(|d| d.usage),
+            };
+            if let Some(percent) = percent {
+                let occupied = width * (percent / 100.0).clamp(0.0, 1.0) as f32;
+                if occupied > 0.0 {
+                    target.push_clip(&Rect::from_xywh(left, y + 10.0, occupied, 4.0));
+                    target.fill_rounded_rect(&bar, accent);
+                    target.pop_clip();
+                }
+            }
+        }
         Ok(())
     }
     fn paint_disk(
