@@ -214,7 +214,7 @@ impl State {
             KillTimer(self.hwnd, RECOVERY_TIMER);
             if let Some(delay) = schedule::recovery_delay(
                 if self.failed { self.recovery.deadline() } else { self.read_retry.deadline() },
-                self.updating, self.queued && !self.failed, std::time::Instant::now(),
+                self.updating, self.pending.is_some() || (self.queued && !self.failed), std::time::Instant::now(),
             ) {
                 SetTimer(self.hwnd, RECOVERY_TIMER, delay, None);
             }
@@ -539,6 +539,13 @@ unsafe extern "system" fn subclass(
     let handled = std::panic::catch_unwind(|| {
         STATE.with(|slot| {
             let Ok(mut slot) = slot.try_borrow_mut() else {
+                // A Shell/COM modal loop can consume our posted wake while an
+                // outer callback owns STATE. Do not lose that wake or repost it
+                // into the same nested loop: retry after a short timer instead.
+                if msg == work_message() || (msg == WM_TIMER && matches!(wp, TIMER | RECOVERY_TIMER)) {
+                    unsafe { SetTimer(hwnd, RECOVERY_TIMER, 25, None); }
+                    return Some(0);
+                }
                 return None;
             };
             let state = slot.as_mut()?;
@@ -808,6 +815,49 @@ mod tests {
 
     use super::*;
     use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+
+    #[test]
+    fn reentrant_work_wake_is_retried_after_state_borrow_releases() {
+        unsafe {
+            let hwnd = CreateWindowExW(0, windows_sys::w!("STATIC"), windows_sys::w!(""),
+                WS_POPUP, 0, 0, 1, 1, null_mut(), null_mut(), null_mut(), null_mut());
+            assert!(!hwnd.is_null());
+            assert_ne!(SetWindowSubclass(hwnd, Some(subclass), MAGIC, 0), 0);
+            let mut retries = 0;
+            STATE.with(|slot| {
+                // Model a Shell nested message loop while the outer filter
+                // callback still owns STATE, without touching the real desktop.
+                let borrow = slot.borrow_mut();
+                assert!(borrow.is_none());
+                PostMessageW(hwnd, work_message(), 0, 0);
+                let mut message = MSG::default();
+                assert_ne!(PeekMessageW(&raw mut message, hwnd, work_message(), work_message(), PM_REMOVE), 0);
+                DispatchMessageW(&message);
+                for _ in 0..2 {
+                    let started = std::time::Instant::now();
+                    while started.elapsed() < std::time::Duration::from_secs(1) {
+                        if PeekMessageW(&raw mut message, hwnd, WM_TIMER, WM_TIMER, PM_REMOVE) != 0 {
+                            assert_eq!(message.wParam, RECOVERY_TIMER);
+                            retries += 1;
+                            if retries == 1 {
+                                // A timer consumed by that same nested loop
+                                // must also leave another chance to run.
+                                DispatchMessageW(&message);
+                            }
+                            break;
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(5));
+                    }
+                }
+                drop(borrow);
+                if retries == 2 { DispatchMessageW(&message); }
+            });
+            KillTimer(hwnd, RECOVERY_TIMER);
+            RemoveWindowSubclass(hwnd, Some(subclass), MAGIC);
+            DestroyWindow(hwnd);
+            assert_eq!(retries, 2, "nested message loops must not swallow the only work wake");
+        }
+    }
 
     #[test]
     fn silent_refresh_is_filtered_before_paint_without_a_queued_notification() {

@@ -849,6 +849,7 @@ fn unrelated_keys_do_not_select_first_icon_or_emit_pane_focus() {
         SetErrorMode(GetErrorMode() | SEM_NOGPFAULTERRORBOX);
     }
     use windows_sys::Win32::UI::WindowsAndMessaging::{
+        DispatchMessageW, MSG, PM_REMOVE, PeekMessageW,
         SendMessageW, WM_KEYDOWN, WM_KILLFOCUS, WM_SETFOCUS,
     };
     let _apartment = crate::pane::test_support::apartment();
@@ -865,6 +866,10 @@ fn unrelated_keys_do_not_select_first_icon_or_emit_pane_focus() {
         .collect();
     let focus_events = Rc::new(std::cell::Cell::new(0));
     let observed = Rc::clone(&focus_events);
+    let nested_focus = Rc::new(std::cell::Cell::new(false));
+    let trigger_nested_focus = Rc::clone(&nested_focus);
+    let focus_hwnd = Rc::new(std::cell::Cell::new(0isize));
+    let nested_hwnd = Rc::clone(&focus_hwnd);
     let keyboard_events = Rc::new(RefCell::new(Vec::new()));
     let observed_keyboard = Rc::clone(&keyboard_events);
     let pane = window::create(
@@ -885,12 +890,26 @@ fn unrelated_keys_do_not_select_first_icon_or_emit_pane_focus() {
             }
             if matches!(event, Event::PaneItemFocus) {
                 observed.set(observed.get() + 1);
+                if trigger_nested_focus.replace(false) {
+                    // Model a Shell action pumping focus and posted messages
+                    // while the outer pane callback is still borrowed.
+                    unsafe {
+                        let hwnd = nested_hwnd.get() as windows_sys::Win32::Foundation::HWND;
+                        SendMessageW(hwnd, WM_SETFOCUS, 0, 0);
+                        let mut message = MSG::default();
+                        while PeekMessageW(&raw mut message, hwnd, window::RUN_POSTED_ACTION,
+                            window::RUN_POSTED_ACTION, PM_REMOVE) != 0 {
+                            DispatchMessageW(&message);
+                        }
+                    }
+                }
             }
             false
         },
     )
     .unwrap();
     let hwnd = pane.hwnd().cast();
+    focus_hwnd.set(hwnd as isize);
     if scrollbar::animations_enabled() {
         use windows_sys::Win32::UI::WindowsAndMessaging::{WM_APP, WM_TIMER};
         // Delayed startup must not consume the fade before the UI loop runs.
@@ -910,9 +929,47 @@ fn unrelated_keys_do_not_select_first_icon_or_emit_pane_focus() {
         model.borrow_mut().selected = selected;
         model.borrow_mut().selection = selected.into_iter().collect();
         model.borrow_mut().scroll = 1;
+        let before_focus = focus_events.get();
         unsafe {
             SendMessageW(hwnd, WM_KILLFOCUS, 0, 0);
             SendMessageW(hwnd, WM_SETFOCUS, 0, 0);
+        }
+        assert_eq!(focus_events.get(), before_focus, "focus callback must return before Shell IPC");
+        let drain_focus = || unsafe {
+            let mut message = MSG::default();
+            while PeekMessageW(&raw mut message, hwnd, window::RUN_POSTED_ACTION,
+                window::RUN_POSTED_ACTION, PM_REMOVE) != 0 {
+                DispatchMessageW(&message);
+            }
+        };
+        drain_focus();
+        assert_eq!(focus_events.get(), before_focus + usize::from(selected.is_some()));
+        unsafe {
+            SendMessageW(hwnd, WM_SETFOCUS, 0, 0);
+            SendMessageW(hwnd, WM_KILLFOCUS, 0, 0);
+        }
+        let after_focus = focus_events.get();
+        drain_focus();
+        assert_eq!(focus_events.get(), after_focus, "discard focus sync after focus has already left");
+        unsafe { SendMessageW(hwnd, WM_SETFOCUS, 0, 0); }
+        drain_focus();
+        let before_reactivation = focus_events.get();
+        unsafe {
+            SendMessageW(hwnd, WM_SETFOCUS, 0, 0);
+            SendMessageW(hwnd, WM_KILLFOCUS, 0, 0);
+            SendMessageW(hwnd, WM_SETFOCUS, 0, 0);
+        }
+        drain_focus();
+        assert_eq!(focus_events.get(), before_reactivation + usize::from(selected.is_some()),
+            "only the latest focus generation may synchronize selection");
+        if selected.is_some() {
+            let before_nested = focus_events.get();
+            nested_focus.set(true);
+            unsafe { SendMessageW(hwnd, WM_SETFOCUS, 0, 0); }
+            drain_focus();
+            assert!(!nested_focus.get());
+            assert_eq!(focus_events.get(), before_nested + 1,
+                "a nested focus must not reenter the active event callback");
         }
         let before = focus_events.get();
         // Letters, digits, modifiers, space, Tab, Backspace and unhandled function keys.

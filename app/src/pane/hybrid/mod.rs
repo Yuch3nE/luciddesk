@@ -763,6 +763,12 @@ pub(super) fn sync(s: &mut PaneApp) -> Result<(), String> {
 
 pub(super) fn clear_desktop_selection(s: &PaneApp) -> Result<(), String> {
     if let Some(h) = &s.session {
+        if !h.hook.is_alive() {
+            // Focus can return again when the first error dialog closes. Let
+            // the supervisor retire the session instead of opening another one.
+            h.wake.notify();
+            return Ok(());
+        }
         h.last_pane_input
             .set(Some(unsafe { GetMessageTime() } as u32));
         if !h.menu_active.get() && h.membership_pending.is_none() {

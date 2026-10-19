@@ -6,6 +6,14 @@ Current version: **0.21.2**. Features and fixes by release.
 
 Exit the app before upgrading a portable installation and preserve its `data` folder. See the [portable guide](docs/portable.md) (Chinese).
 
+## Unreleased
+
+### Fixes
+
+- Defer desktop selection synchronization until the pane's focus callback returns, avoiding a circular wait with Explorer's synchronous focus notification that can cause a filtering timeout.
+- Retry desktop filtering work when Explorer's nested message handling consumes its wake, preventing lost-wake request timeouts, and include more timeout diagnostics.
+- Retire and reconnect sessions after ordinary desktop filtering requests time out, avoiding repeated waits and dialogs when returning focus to a group with a selected item.
+
 ## 0.21.2 · 2026-10-19
 
 Changes since official version 0.20.4. Users of official releases can upgrade with their existing data. Unmanaged icons remain on the native Explorer desktop.

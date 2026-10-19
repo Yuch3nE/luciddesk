@@ -259,6 +259,7 @@ where
     F: FnMut(Event) -> bool + 'static,
 {
     let events = Rc::new(RefCell::new(event));
+    let focus_generation = Rc::new(std::cell::Cell::new(0u64));
     let mut renderer = Renderer::new().map_err(|e| e.to_string())?;
     let mut surface: Option<Surface> = None;
     let mut visibility = super::visibility::Transition::default();
@@ -387,9 +388,29 @@ where
                     Some(0)
                 }
                 WM_SETFOCUS | WM_KILLFOCUS => {
+                    let generation = focus_generation.get().wrapping_add(1);
+                    focus_generation.set(generation);
                     model.borrow_mut().focused = message == WM_SETFOCUS;
                     if message == WM_SETFOCUS && model.borrow().selected.is_some() {
-                        event(Event::PaneItemFocus);
+                        // Explorer may be synchronously sending this focus
+                        // notification. Waiting for its posted filter work here
+                        // would wait on the very thread awaiting our return.
+                        let model = Rc::clone(&model);
+                        let events = Rc::clone(&events);
+                        let focus_generation = Rc::clone(&focus_generation);
+                        post_action(hwnd, move || {
+                            if focus_generation.get() != generation { return; }
+                            let sync = {
+                                let model = model.borrow();
+                                model.focused && model.selected.is_some()
+                            };
+                            // Shell actions can pump posted messages while the
+                            // event callback still owns selection/menu handling.
+                            // This focus notification must not reenter it.
+                            if sync && let Ok(mut events) = events.try_borrow_mut() {
+                                (events)(Event::PaneItemFocus);
+                            }
+                        });
                     }
                     invalidate(hwnd);
                     Some(0)

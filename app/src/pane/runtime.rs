@@ -149,9 +149,12 @@ pub(super) fn reconnect(state: &Rc<RefCell<PaneApp>>) {
 }
 
 fn suspend(state: &Rc<RefCell<PaneApp>>) {
+    // Detach can service sent Shell callbacks. As during normal shutdown,
+    // release the app borrow before dropping the native filter session.
+    let session = state.borrow_mut().session.take();
+    drop(session);
     let removed = {
         let mut s = state.borrow_mut();
-        s.session.take();
         if let Some(runtime) = &mut s.runtime {
             runtime.desktop_error = Some(crate::i18n::text("ui-explorer-disconnected-waiting-to-reconnect").into());
             runtime.reconnect_failures = 0;
