@@ -10,7 +10,6 @@ pub(super) struct Context<'a> {
     pub dark: bool,
     pub scale: f32,
     pub backup_view: &'a recovery::View,
-    pub desktop_status: &'a str,
     pub font_search: windows_sys::Win32::Foundation::HWND,
     pub all_fonts: &'a [String],
 
@@ -46,7 +45,6 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
     let dark = context.dark;
     let scale = context.scale;
     let backup_view = context.backup_view;
-    let desktop_status = context.desktop_status;
     let font_search = context.font_search;
     let all_fonts = context.all_fonts;
     let mut invalidate = false;
@@ -295,11 +293,7 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
             invalidate = true;
         }
         Action::CopyDiagnostics => {
-            let report = format!(
-                "{}Desktop: {}\r\n",
-                crate::system_info::report(),
-                desktop_status
-            );
+            let report = diagnostics::report(&state.borrow());
             match crate::clipboard::copy(hwnd as isize, &report) {
                 Ok(()) => {
                     *context.diagnostics_copied = true;

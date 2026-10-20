@@ -1,4 +1,5 @@
 //! Source membership is independent of the reduced Explorer view.
+use crate::pane::diagnostics::{self, Operation};
 use luciddesk_core::ShellIdentity;
 use luciddesk_shell::ShellEntry;
 
@@ -24,14 +25,18 @@ pub(super) fn revision_keys(managed: &[ShellIdentity]) -> Vec<String> {
 }
 
 pub(super) fn capture(managed: &[ShellIdentity]) -> Result<Inventory, String> {
-    let native = luciddesk_shell::native_desktop_snapshot()?;
+    let native = luciddesk_shell::native_desktop_snapshot()
+        .inspect_err(|error| diagnostics::failure(Operation::NativeSnapshot, error))?;
     if !native.is_complete() {
-        return Err(crate::i18n::text("ui-desktop-is-changing-group-refresh-deferred").into());
+        let error = crate::i18n::text("ui-desktop-is-changing-group-refresh-deferred");
+        diagnostics::failure(Operation::ValidateSnapshot, error);
+        return Err(error.into());
     }
     let mut items: Vec<_> = native.items.into_iter().map(|(item, _, _)| item).collect();
     if !managed.is_empty() {
-        let source =
-            luciddesk_shell::enumerate_desktop_source().map_err(|error| error.to_string())?;
+        let source = luciddesk_shell::enumerate_desktop_source()
+            .inspect_err(|error| diagnostics::failure(Operation::EnumerateSource, error))
+            .map_err(|error| error.to_string())?;
         merge_managed(&mut items, source, managed);
     }
     items.sort_by_cached_key(|item| item.identity.persistent_key());
@@ -40,7 +45,9 @@ pub(super) fn capture(managed: &[ShellIdentity]) -> Result<Inventory, String> {
         .iter()
         .all(|item| seen.insert(item.identity.persistent_key()))
     {
-        return Err(crate::i18n::text("ui-duplicate-desktop-identities-group-refresh-deferred").into());
+        let error = crate::i18n::text("ui-duplicate-desktop-identities-group-refresh-deferred");
+        diagnostics::failure(Operation::ValidateIdentities, error);
+        return Err(error.into());
     }
     Ok(Inventory {
         icon_size: native.icon_size,

@@ -11,9 +11,9 @@ pub(super) struct State {
     pub path: PathBuf,
     pub desktop_error: Option<String>,
     notice: ConnectionNotice,
-    last_attempt: Instant,
-    reconnect_failures: u8,
-    reconnecting: bool,
+    pub(super) last_attempt: Instant,
+    pub(super) reconnect_failures: u8,
+    pub(super) reconnecting: bool,
     last_maintenance: Instant,
     pub layouts: display_layout::Layouts,
     pub backup: recovery::Manager,
@@ -75,6 +75,9 @@ fn notify_connection(state: &Rc<RefCell<PaneApp>>) {
     let (path, error, generation, notify) = {
         let mut s = state.borrow_mut();
         let Some(runtime) = &mut s.runtime else { return; };
+        if let Some(error) = &runtime.desktop_error {
+            luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Error, "desktop.connection", error);
+        }
         let notify = runtime.notice.transition(runtime.desktop_error.is_some());
         let changed = runtime.notice.error_changed(runtime.desktop_error.as_deref());
         if !notify && !changed { return; }
@@ -566,6 +569,33 @@ pub(super) fn supervisor(state: &Rc<RefCell<PaneApp>>) -> Result<windows_window:
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn connection_failure_capture_survives_recovery_and_notice_deduplication() {
+        let mut app = super::super::tests::test_state();
+        let mut runtime = super::State::new("diagnostics-test/workspace.db".into());
+        let error = "Hook load failed: 0x80070005";
+        runtime.desktop_error = Some(error.into());
+        runtime.notice.transition(true);
+        runtime.notice.error_changed(Some(error));
+        app.runtime = Some(runtime);
+        let state = Rc::new(RefCell::new(app));
+        // An already displayed/recorded notice must not prevent diagnostic capture.
+        super::notify_connection(&state);
+        super::notify_connection(&state);
+        {
+            let mut s = state.borrow_mut();
+            let r = s.runtime.as_mut().unwrap();
+            r.desktop_error = None;
+            r.notice.transition(false);
+            r.notice.error_changed(None);
+        }
+        super::notify_connection(&state);
+        let report = diagnostics::report(&state.borrow());
+        assert!(report.contains(error));
+        assert!(report.matches(error).count() >= 2);
+        assert!(report.contains("Current desktop connection error:\r\nNone"));
+    }
+
     #[test]
     fn changed_failure_is_logged_without_a_second_notification() {
         let mut notice = super::ConnectionNotice::default();

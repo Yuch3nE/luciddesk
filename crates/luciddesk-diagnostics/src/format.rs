@@ -19,7 +19,11 @@ pub(crate) fn entry(
         .unwrap_or_default()
         .as_millis();
     let component: String = component.chars().take(128).collect();
-    let message: String = message.chars().take(16_384).collect();
+    let mut characters = message.chars();
+    let mut message: String = characters.by_ref().take(16_384).collect();
+    if characters.next().is_some() {
+        message.push_str(" [message truncated after 16384 characters]");
+    }
     let version: String = version.chars().take(128).collect();
     let build: String = build.chars().take(128).collect();
     format!(

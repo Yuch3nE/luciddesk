@@ -4,6 +4,7 @@ use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance};
 use windows::Win32::UI::Shell::{IFolderView2, IShellWindows, SVGIO_ALLVIEW, ShellWindows};
 use windows::core::Interface;
 
+use crate::error::com_context;
 use crate::namespace::Pidl;
 
 const SNAPSHOT_CHANGED: windows::core::HRESULT =
@@ -26,16 +27,14 @@ fn retry_snapshot<T>(
     unreachable!()
 }
 
+#[track_caller]
 fn read_error(
     error: windows::core::Error,
     operation: &str,
     index: i32,
     count: i32,
 ) -> windows::core::Error {
-    windows::core::Error::new(
-        error.code(),
-        format!("{operation} index={index}, count={count}: {error}"),
-    )
+    com_context(error, &format!("{operation} index={index}, count={count}"))
 }
 
 fn validate_revision(
@@ -55,6 +54,7 @@ fn validate_revision(
     Ok(())
 }
 
+#[track_caller]
 fn entry_error(
     error: crate::ShellError,
     index: i32,
@@ -67,13 +67,14 @@ fn entry_error(
         crate::ShellError::Com(error) => error.code(),
         _ => windows::Win32::Foundation::E_FAIL,
     };
-    windows::core::Error::new(
+    let error = windows::core::Error::new(
         code,
         format!(
             "Shell item metadata failed: index={index}, count={count}, parsing_name={:?}: {error}",
             parsing_name.unwrap_or("<unavailable>")
         ),
-    )
+    );
+    com_context(error, "Shell item metadata")
 }
 
 /// Explorer-owned item IDs and view metrics, without opening desktop files.
@@ -137,7 +138,10 @@ impl NativeDesktopReader {
 
     fn capture_revision(&mut self) -> windows::core::Result<NativeDesktopRevision> {
         if self.shell.is_none() {
-            self.shell = Some(unsafe { CoCreateInstance(&ShellWindows, None, CLSCTX_ALL)? });
+            self.shell = Some(unsafe {
+                CoCreateInstance(&ShellWindows, None, CLSCTX_ALL)
+                    .map_err(|e| com_context(e, "CoCreateInstance(ShellWindows)"))?
+            });
         }
         let shell = self.shell.as_ref().unwrap();
         let before = capture_revision(shell)?;
@@ -150,7 +154,11 @@ impl NativeDesktopReader {
 fn capture_revision(shell: &IShellWindows) -> windows::core::Result<NativeDesktopRevision> {
     let (folder, hwnd) = desktop_folder(shell)?;
     let mut revision = revision_header(&folder, hwnd)?;
-    let count = unsafe { folder.ItemCount(SVGIO_ALLVIEW)? };
+    let count = unsafe {
+        folder
+            .ItemCount(SVGIO_ALLVIEW)
+            .map_err(|e| com_context(e, "IFolderView2::ItemCount"))?
+    };
     for index in 0..count {
         if index > 0 && index % 8 == 0 {
             std::thread::sleep(std::time::Duration::from_millis(1));
@@ -161,7 +169,12 @@ fn capture_revision(shell: &IShellWindows) -> windows::core::Result<NativeDeskto
         );
         revision.item_ids.push(item_id(&pidl));
     }
-    if unsafe { folder.ItemCount(SVGIO_ALLVIEW)? } != count {
+    if unsafe {
+        folder
+            .ItemCount(SVGIO_ALLVIEW)
+            .map_err(|e| com_context(e, "IFolderView2::ItemCount"))?
+    } != count
+    {
         return Err(windows::core::Error::new(
             SNAPSHOT_CHANGED,
             "桌面项目数量在读取期间变化",
@@ -177,9 +190,13 @@ fn revision_header(
     unsafe {
         let mut icon_size = 48;
         let mut mode = windows::Win32::UI::Shell::FOLDERVIEWMODE::default();
-        folder.GetViewModeAndIconSize(&raw mut mode, &raw mut icon_size)?;
+        folder
+            .GetViewModeAndIconSize(&raw mut mode, &raw mut icon_size)
+            .map_err(|e| com_context(e, "IFolderView2::GetViewModeAndIconSize"))?;
         let mut spacing = POINT::default();
-        folder.GetSpacing(&raw mut spacing)?;
+        folder
+            .GetSpacing(&raw mut spacing)
+            .map_err(|e| com_context(e, "IFolderView2::GetSpacing"))?;
         Ok(NativeDesktopRevision {
             view: hwnd.0 as isize,
             icon_size,
@@ -205,8 +222,12 @@ fn desktop_folder(
 ) -> windows::core::Result<(IFolderView2, windows::Win32::Foundation::HWND)> {
     unsafe {
         let view = crate::desktop::shell_view(shell)?;
-        let folder: IFolderView2 = view.cast()?;
-        let hwnd = view.GetWindow()?;
+        let folder: IFolderView2 = view
+            .cast()
+            .map_err(|e| com_context(e, "QueryInterface(IFolderView2)"))?;
+        let hwnd = view
+            .GetWindow()
+            .map_err(|e| com_context(e, "IShellView::GetWindow"))?;
         Ok((folder, hwnd))
     }
 }
@@ -214,15 +235,20 @@ fn desktop_folder(
 fn capture_desktop_snapshot() -> Result<NativeDesktopSnapshot, String> {
     unsafe {
         let capture = || -> windows::core::Result<NativeDesktopSnapshot> {
-            let shell: IShellWindows = CoCreateInstance(&ShellWindows, None, CLSCTX_ALL)?;
+            let shell: IShellWindows = CoCreateInstance(&ShellWindows, None, CLSCTX_ALL)
+                .map_err(|e| com_context(e, "CoCreateInstance(ShellWindows)"))?;
             let (folder, hwnd) = desktop_folder(&shell)?;
-            let parent: windows::Win32::UI::Shell::IShellFolder = folder.GetFolder()?;
+            let parent: windows::Win32::UI::Shell::IShellFolder = folder
+                .GetFolder()
+                .map_err(|e| com_context(e, "IFolderView2::GetFolder(IShellFolder)"))?;
             let mut origin = windows_sys::Win32::Foundation::POINT::default();
             windows_sys::Win32::Graphics::Gdi::ClientToScreen(hwnd.0, &raw mut origin);
             let mut revision = revision_header(&folder, hwnd)?;
             let mut items = Vec::new();
             let mut view_indices = Vec::new();
-            let count = folder.ItemCount(SVGIO_ALLVIEW)?;
+            let count = folder
+                .ItemCount(SVGIO_ALLVIEW)
+                .map_err(|e| com_context(e, "IFolderView2::ItemCount"))?;
             for index in 0..count {
                 let pidl = Pidl::new(
                     folder

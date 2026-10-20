@@ -8,6 +8,8 @@ Exit the app before upgrading a portable installation and preserve its `data` fo
 
 ## Unreleased
 
+- Expand copied diagnostics with independently retained error categories, source locations, original HRESULTs, recent events, native Hook state, and current/rotated logs. Logging does not borrow application state; retain failures after recovery and verify real startup and graceful shutdown.
+
 - Add an automatic update switch to About, enabled by default. Check stable releases at startup and every 24 hours, and notify with the latest version number; manual checks and downloads remain available when disabled.
 
 - Show the embedded Git commit in About, preserving the dirty-build marker to distinguish builds of the same version.

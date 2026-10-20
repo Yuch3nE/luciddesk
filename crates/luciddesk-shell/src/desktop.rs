@@ -1,4 +1,5 @@
 //! Read-only discovery of Explorer's desktop icon window and Shell view.
+use crate::error::com_context;
 use std::ptr;
 use windows::{
     Win32::{
@@ -25,16 +26,24 @@ const HIDE_DESKTOP_ICONS_BIT: i32 = 1 << 12;
 pub(crate) fn shell_view(shell: &IShellWindows) -> Result<IShellView> {
     unsafe {
         let mut desktop_hwnd = 0;
-        let dispatch = shell.FindWindowSW(
-            &VARIANT::from(CSIDL_DESKTOP.cast_signed()),
-            &VARIANT::default(),
-            SWC_DESKTOP,
-            &raw mut desktop_hwnd,
-            SWFO_NEEDDISPATCH,
-        )?;
-        let provider: IServiceProvider = dispatch.cast()?;
-        let browser: IShellBrowser = provider.QueryService(&SID_STopLevelBrowser)?;
-        browser.QueryActiveShellView()
+        let dispatch = shell
+            .FindWindowSW(
+                &VARIANT::from(CSIDL_DESKTOP.cast_signed()),
+                &VARIANT::default(),
+                SWC_DESKTOP,
+                &raw mut desktop_hwnd,
+                SWFO_NEEDDISPATCH,
+            )
+            .map_err(|e| com_context(e, "IShellWindows::FindWindowSW"))?;
+        let provider: IServiceProvider = dispatch
+            .cast()
+            .map_err(|e| com_context(e, "QueryInterface(IServiceProvider)"))?;
+        let browser: IShellBrowser = provider
+            .QueryService(&SID_STopLevelBrowser)
+            .map_err(|e| com_context(e, "IServiceProvider::QueryService(IShellBrowser)"))?;
+        browser
+            .QueryActiveShellView()
+            .map_err(|e| com_context(e, "IShellBrowser::QueryActiveShellView"))
     }
 }
 

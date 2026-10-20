@@ -297,12 +297,16 @@ pub fn run(path: &Path, title: Option<String>) -> Result<(), String> {
 }
 
 pub(super) fn connect(state: &Rc<RefCell<PaneApp>>, _path: &Path) -> Result<(), String> {
+    use diagnostics::{Operation, failure};
     if luciddesk_explorer::conflicting_desktop_extension() {
-        return Err(crate::i18n::text("ui-close-other-desktop-organizers-first").into());
+        let error = crate::i18n::text("ui-close-other-desktop-organizers-first");
+        failure(Operation::Conflict, error);
+        return Err(error.into());
     }
     // Hidden icons are a display preference, not evidence of an unusable Shell
     // view. Validate discovery, enumeration and COM capabilities below.
-    let view = luciddesk_explorer::desktop_view()?;
+    let view = luciddesk_explorer::desktop_view()
+        .inspect_err(|error| failure(Operation::DiscoverView, error))?;
     let dirty = Rc::new(Cell::new(false));
     let notify = Rc::clone(&dirty);
     let icons_dirty = Rc::new(RefCell::new(icon_changes::Pending::default()));
@@ -368,12 +372,14 @@ pub(super) fn connect(state: &Rc<RefCell<PaneApp>>, _path: &Path) -> Result<(), 
             }
         })
         .create()
+        .inspect_err(|error| failure(Operation::Controller, error))
         .map_err(|e| e.to_string())?;
     // Subscribe before reading so changes during initialization are not lost.
     let icon_subscription = luciddesk_shell::DesktopChangeSubscription::register(
         controller.hwnd() as isize,
         ICON_CHANGE_MESSAGE,
     )
+    .inspect_err(|error| failure(Operation::SubscribeDesktop, error))
     .map_err(|error| error.to_string())?;
     // Warm and validate the Shell view from the client before injecting work
     // into Explorer's STA. During startup, the HWND can exist before ShellWindows
@@ -382,16 +388,34 @@ pub(super) fn connect(state: &Rc<RefCell<PaneApp>>, _path: &Path) -> Result<(), 
     // End the app borrow before Shell enumeration can dispatch COM callbacks.
     let managed = managed_identities(&state.borrow());
     let snapshot = inventory::capture(&managed)
+        .inspect_err(|error| failure(Operation::InitialInventory, error))
         .map_err(|error| format!("桌面连接准备失败 (Inventory): {error}"))?;
-    if luciddesk_explorer::desktop_view()? != view {
-        return Err(crate::i18n::text("ui-desktop-view-changed-while-reading-reconnecting").into());
+    if luciddesk_explorer::desktop_view()
+        .inspect_err(|error| failure(Operation::ValidateView, error))?
+        != view
+    {
+        let error = crate::i18n::text("ui-desktop-view-changed-while-reading-reconnecting");
+        failure(Operation::ValidateView, error);
+        return Err(error.into());
     }
     let hook_dll = crate::desktop_component::prepare()
+        .inspect_err(|error| failure(Operation::Component, error))
         .map_err(|error| format!("桌面连接准备失败 (Component): {error}"))?;
-    let hook = FilterSession::connect(view, controller.hwnd() as isize, &hook_dll.path)?;
+    let hook = FilterSession::connect(view, controller.hwnd() as isize, &hook_dll.path)
+        .inspect_err(|error| failure(Operation::AttachHook, error))?;
+    diagnostics::completed(
+        Operation::AttachHook,
+        format_args!(
+            "view=0x{view:x} owner=0x{:x} dll={}",
+            controller.hwnd() as usize,
+            hook_dll.path.display()
+        ),
+    );
+    let wake = state.borrow().wake.clone();
+    let audit = DesktopAudit::start(wake.clone())?;
     let (sender, receiver) = mpsc::channel();
     let session = Session {
-        wake: state.borrow().wake.clone(),
+        wake,
         hook: Rc::new(hook),
         _icon_subscription: icon_subscription,
         recycle_subscription: None,
@@ -404,7 +428,7 @@ pub(super) fn connect(state: &Rc<RefCell<PaneApp>>, _path: &Path) -> Result<(), 
         view,
         snapshot,
         last_reconcile: Instant::now(),
-        audit: DesktopAudit::start(state.borrow().wake.clone())?,
+        audit,
         last_tick: Instant::now() - Duration::from_millis(20),
         tick_deferred: false,
         last_icon_scan: Instant::now() - Duration::from_secs(1),
@@ -430,7 +454,10 @@ pub(super) fn connect(state: &Rc<RefCell<PaneApp>>, _path: &Path) -> Result<(), 
     s.session = Some(session);
     // A fresh hook has no desired membership. Cached pane images may produce
     // no loading-completion event, so publish now rather than waiting for one.
-    if let Err(error) = reconcile_inventory(&mut s).and_then(|()| sync(&mut s)) {
+    if let Err(error) = reconcile_inventory(&mut s)
+        .inspect_err(|error| failure(Operation::Reconcile, error))
+        .and_then(|()| sync(&mut s))
+    {
         let session = s.session.take();
         drop(s);
         // Detach and subscription teardown can synchronously call our windows.
@@ -591,7 +618,8 @@ fn reconcile_inventory(s: &mut PaneApp) -> Result<(), String> {
     normalize_pane_orders(s);
     let h = s.session.as_mut().unwrap();
     let snapshot = &h.snapshot;
-    h.shortcut_retention.reconcile(&mut s.workspace,
+    h.shortcut_retention.reconcile(
+        &mut s.workspace,
         snapshot
             .items
             .iter()
@@ -709,11 +737,15 @@ pub(super) fn sync(s: &mut PaneApp) -> Result<(), String> {
         return Ok(());
     }
     if !h.hook.is_alive() {
-        return Err(crate::i18n::text("ui-explorer-view-filter-disconnected").into());
+        let error = crate::i18n::text("ui-explorer-view-filter-disconnected");
+        diagnostics::failure(diagnostics::Operation::ValidateHook, error);
+        return Err(error.into());
     }
     let h = s.session.as_mut().unwrap();
     if let Some(started) = h.membership_pending {
-        match h.hook.poll_hidden() {
+        match h.hook.poll_hidden().inspect_err(|error| {
+            diagnostics::failure(diagnostics::Operation::PollMembership, error)
+        }) {
             Ok(false) => return Ok(()),
             Ok(true) => {
                 h.membership_pending = None;
@@ -754,7 +786,9 @@ pub(super) fn sync(s: &mut PaneApp) -> Result<(), String> {
             names.len()
         ));
         Ok(())
-    }) {
+    })
+    .inspect_err(|error| diagnostics::failure(diagnostics::Operation::PublishMembership, error))
+    {
         // A failed immediate rollback may meet the same busy Explorer. Ensure
         // the supervisor retries the authoritative workspace after Drop returns.
         h.dirty.set(true);
@@ -916,7 +950,11 @@ pub(super) fn workspace_save_pending(s: &PaneApp) -> bool {
 }
 
 fn tick_once(s: &mut PaneApp) -> Result<(), String> {
-    s.session.as_mut().unwrap().shortcut_retention.expire(&s.workspace, Instant::now());
+    s.session
+        .as_mut()
+        .unwrap()
+        .shortcut_retention
+        .expire(&s.workspace, Instant::now());
     if s.session.as_ref().unwrap().menu_active.get() {
         return Ok(());
     }
@@ -934,7 +972,8 @@ fn tick_once(s: &mut PaneApp) -> Result<(), String> {
                 )
                 .map_err(|error| error.to_string())
             },
-        );
+        )
+        .inspect_err(|error| diagnostics::failure(diagnostics::Operation::SubscribeRecycle, error));
         if !matches!(attempted, Ok(false)) {
             h.icons_dirty
                 .borrow_mut()
@@ -948,7 +987,9 @@ fn tick_once(s: &mut PaneApp) -> Result<(), String> {
             );
         }
     }
-    match persist_workspace(s) {
+    match persist_workspace(s)
+        .inspect_err(|error| diagnostics::failure(diagnostics::Operation::SaveWorkspace, error))
+    {
         Ok(true) => {
             s.session.as_ref().unwrap().dirty.set(true);
             refresh_views(s);
@@ -987,9 +1028,23 @@ fn poll_inventory(s: &mut PaneApp, urgent: bool) -> Result<bool, String> {
     }
     if h.audit.due(h.last_reconcile.elapsed()) {
         let managed = managed_identities(s);
-        s.session.as_mut().unwrap().audit.submit(managed, urgent)?;
+        s.session
+            .as_mut()
+            .unwrap()
+            .audit
+            .submit(managed, urgent)
+            .inspect_err(|error| {
+                diagnostics::failure(diagnostics::Operation::SubmitAudit, error)
+            })?;
     }
-    let Some(result) = s.session.as_mut().unwrap().audit.poll()? else {
+    let Some(result) = s
+        .session
+        .as_mut()
+        .unwrap()
+        .audit
+        .poll()
+        .inspect_err(|error| diagnostics::failure(diagnostics::Operation::PollAudit, error))?
+    else {
         return Ok(false);
     };
     let managed_keys = inventory::revision_keys(&managed_identities(s));
@@ -999,7 +1054,9 @@ fn poll_inventory(s: &mut PaneApp, urgent: bool) -> Result<bool, String> {
         return Ok(false);
     }
     h.last_reconcile = Instant::now();
-    let snapshot = result.inventory?;
+    let snapshot = result
+        .inventory
+        .inspect_err(|error| diagnostics::failure(diagnostics::Operation::ReadAudit, error))?;
     let changed = snapshot
         .as_ref()
         .is_some_and(|next| !inventory::same(&h.snapshot, next));
@@ -1007,11 +1064,14 @@ fn poll_inventory(s: &mut PaneApp, urgent: bool) -> Result<bool, String> {
     // One scheduler owns fallback audits and hook repair. Changed inventories
     // publish membership through sync(); unchanged ones still repair missed events.
     if !changed {
-        h.hook.repair()?;
+        h.hook
+            .repair()
+            .inspect_err(|error| diagnostics::failure(diagnostics::Operation::Repair, error))?;
     }
     if let Some(snapshot) = snapshot.filter(|_| changed) {
         h.snapshot = snapshot;
-        reconcile_inventory(s)?;
+        reconcile_inventory(s)
+            .inspect_err(|error| diagnostics::failure(diagnostics::Operation::Reconcile, error))?;
     }
     Ok(changed)
 }

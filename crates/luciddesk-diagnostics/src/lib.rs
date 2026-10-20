@@ -1,6 +1,8 @@
 //! Lazy, bounded diagnostic files. No heartbeat or database writes.
 mod format;
+mod recent;
 mod trace;
+pub use recent::report as recent_report;
 pub use trace::TraceFile;
 
 use std::{
@@ -232,6 +234,7 @@ pub fn path() -> Option<PathBuf> {
 }
 /// Fallible output for hosts that need to report unavailable diagnostic storage.
 pub fn try_log(level: Level, component: &str, message: &str) -> io::Result<()> {
+    recent::record(level, component, message);
     if !enabled(level) {
         return Ok(());
     }
@@ -245,9 +248,6 @@ pub fn try_log(level: Level, component: &str, message: &str) -> io::Result<()> {
 }
 /// Non-panicking fallback is safe at native callback boundaries. Never writes stdout.
 pub fn log(level: Level, component: &str, message: &str) {
-    if !enabled(level) {
-        return;
-    }
     if let Err(error) = try_log(level, component, message) {
         let _ = writeln!(
             std::io::stderr().lock(),

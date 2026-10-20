@@ -3,6 +3,7 @@ use super::{
     audit_schedule::AuditSchedule,
     inventory::{self, Inventory},
 };
+use crate::pane::diagnostics::{self, Operation};
 use crate::pane::wake;
 use luciddesk_core::ShellIdentity;
 use luciddesk_shell::ShellApartment;
@@ -33,16 +34,23 @@ impl DesktopAudit {
                 // channel before waking the UI, including during unwinding.
                 let _exit = exit_wake.on_drop();
                 let sender = sender;
-                let apartment = ShellApartment::initialize_sta();
+                let apartment = ShellApartment::initialize_sta()
+                    .inspect_err(|error| diagnostics::failure(Operation::StartAudit, error));
                 let mut reader = luciddesk_shell::NativeDesktopReader::default();
                 let mut previous = None;
                 while let Ok((managed, force)) = receiver.recv() {
+                    let started = std::time::Instant::now();
                     let keys = inventory::revision_keys(&managed);
                     let result = match &apartment {
                         Ok(_) => (|| -> Result<Option<Inventory>, String> {
                             let revision = (
-                                reader.revision()?,
+                                reader.revision().inspect_err(|error| {
+                                    diagnostics::failure(Operation::NativeSnapshot, error)
+                                })?,
                                 luciddesk_shell::desktop_source_revision()
+                                    .inspect_err(|error| {
+                                        diagnostics::failure(Operation::EnumerateSource, error)
+                                    })
                                     .map_err(|error| error.to_string())?,
                                 keys.clone(),
                             );
@@ -55,6 +63,16 @@ impl DesktopAudit {
                         })(),
                         Err(error) => Err(error.to_string()),
                     };
+                    if result.is_ok() {
+                        diagnostics::completed(
+                            Operation::ReadAudit,
+                            format_args!(
+                                "elapsed_us={} managed_count={}",
+                                started.elapsed().as_micros(),
+                                keys.len()
+                            ),
+                        );
+                    }
                     if sender
                         .send(AuditResult {
                             member_keys: keys,
@@ -67,7 +85,9 @@ impl DesktopAudit {
                     exit_wake.notify();
                 }
             })
+            .inspect_err(|error| diagnostics::failure(Operation::StartAudit, error))
             .map_err(|error| error.to_string())?;
+        diagnostics::completed(Operation::StartAudit, "worker=desktop-audit");
         Ok(Self {
             requests,
             results,

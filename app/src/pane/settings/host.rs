@@ -990,7 +990,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
             {
                 if actions::execute(actions::Context {
                     dropdown_sender: &dropdown_sender,
-                    state: &state, hwnd, selected, appearance, dark, scale, backup_view: &backup_view, desktop_status: &desktop_status, font_search: font_editor.hwnd, all_fonts: &all_fonts,
+                    state: &state, hwnd, selected, appearance, dark, scale, backup_view: &backup_view, font_search: font_editor.hwnd, all_fonts: &all_fonts,
                     page: &mut page,
                     selected_plugin: &mut selected_plugin,
                     focus: &mut focus,
