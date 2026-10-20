@@ -1299,3 +1299,7 @@ settings-nav-basics = Grundeinstellungen
 settings-nav-appearance = Darstellung und Layout
 settings-nav-files = Dateien und Werkzeuge
 settings-nav-maintenance = Wartung
+
+desktop-gesture-section = Desktop-Gesten
+desktop-gesture-title = Desktop per Doppelklick ausblenden
+desktop-gesture-description = Doppelklicken Sie auf eine freie Desktopfläche, um alle Symbole und Bereiche auszublenden. Erneut doppelklicken zum Wiederherstellen.

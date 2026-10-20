@@ -36,6 +36,7 @@ mod layout;
 mod marquee;
 mod peek;
 mod quick_reveal;
+mod desktop_toggle;
 mod rename;
 mod scrollbar;
 mod show_hotkey;

@@ -1299,3 +1299,7 @@ settings-nav-basics = 기본 설정
 settings-nav-appearance = 모양 및 레이아웃
 settings-nav-files = 파일 및 도구
 settings-nav-maintenance = 유지 관리
+
+desktop-gesture-section = 바탕 화면 동작
+desktop-gesture-title = 두 번 클릭하여 바탕 화면 숨기기
+desktop-gesture-description = 바탕 화면의 빈 공간을 두 번 클릭하면 모든 아이콘과 패널을 숨기고, 다시 두 번 클릭하면 복원합니다.

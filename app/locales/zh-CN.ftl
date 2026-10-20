@@ -1299,3 +1299,7 @@ settings-nav-basics = 基础设置
 settings-nav-appearance = 外观与布局
 settings-nav-files = 文件与工具
 settings-nav-maintenance = 维护
+
+desktop-gesture-section = 桌面操作
+desktop-gesture-title = 双击隐藏桌面
+desktop-gesture-description = 双击桌面空白处隐藏所有图标和面板，再次双击恢复。

@@ -1299,3 +1299,7 @@ settings-nav-basics = 基本設定
 settings-nav-appearance = 外観とレイアウト
 settings-nav-files = ファイルとツール
 settings-nav-maintenance = メンテナンス
+
+desktop-gesture-section = デスクトップ操作
+desktop-gesture-title = ダブルクリックでデスクトップを非表示
+desktop-gesture-description = デスクトップの空白をダブルクリックするとすべてのアイコンとパネルを非表示にし、再度ダブルクリックすると元に戻します。

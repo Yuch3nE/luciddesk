@@ -47,6 +47,17 @@ pub(super) fn general(
     form.diagnostics();
 }
 
+pub(super) fn desktop_gesture(s: &mut Scene, width: f32, enabled: bool) {
+    let bottom = s.cards.iter().map(|r| r.bottom)
+        .chain(s.controls.iter().filter(|c| c.bounds.left >= Tokens::content_x()).map(|c| c.bounds.bottom))
+        .fold(120.0_f32, f32::max);
+    let mut form = SettingsForm::continuation(s, width, bottom + 24.0);
+    form.section(crate::i18n::text("desktop-gesture-section"));
+    form.toggle(crate::i18n::text("desktop-gesture-title"),
+        crate::i18n::text("desktop-gesture-description"), enabled,
+        Action::DesktopDoubleClick(!enabled));
+}
+
 #[cfg(test)]
 mod compatibility_tests {
     use super::*;

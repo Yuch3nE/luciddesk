@@ -102,6 +102,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
     let mut cli_enabled = control::enabled(&state.borrow().store);
     let updates = state.borrow().runtime.as_ref().map(|r| Rc::clone(&r.updates)).unwrap_or_default();
     let mut auto_check_updates = crate::updates::automatic_enabled(&state.borrow().store);
+    let mut desktop_double_click = desktop_toggle::enabled(&state.borrow().store);
     let mut startup = crate::startup::Controller::default();
     let mut backup_view = recovery::View::default();
     let mut backup_policy = recovery::Policy::default();
@@ -447,6 +448,9 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 let fresh_auto_check = crate::updates::automatic_enabled(&state.store);
                 snapshot_changed |= auto_check_updates != fresh_auto_check;
                 auto_check_updates = fresh_auto_check;
+                let fresh_desktop_double_click = desktop_toggle::enabled(&state.store);
+                snapshot_changed |= desktop_double_click != fresh_desktop_double_click;
+                desktop_double_click = fresh_desktop_double_click;
                 search_visible = state.views.iter().any(|v| state.workspace.panel(v.id).is_some_and(Panel::is_search));
                 let connected = state.session.is_some();
                 snapshot_changed |= desktop_connected != connected;
@@ -529,7 +533,10 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 if page == 12 {
                     layout::language(&mut body, w, &chosen_language);
                 }
-                if page == 13 { layout::general(&mut body, w, startup.status(), startup.busy(), cli_enabled, skill_prompt_copied); }
+                if page == 13 {
+                    layout::general(&mut body, w, startup.status(), startup.busy(), cli_enabled, skill_prompt_copied);
+                    layout::desktop_gesture(&mut body, w, desktop_double_click);
+                }
                 if page == 1 {
                     layout::desktop_defaults(&mut body, w, layout_defaults);
                     layout::show_panels_shortcut(&mut body, w, show_panels_enabled, show_panels_shortcut);

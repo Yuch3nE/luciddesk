@@ -333,6 +333,18 @@ impl FilterSession {
         self.request(if pause { wire::PAUSE } else { wire::RESUME }, &[])?;
         Ok(!pause && unsafe { !GetPropW(self.view, RENAME).is_null() })
     }
+    /// Enable blank-desktop gestures on the existing desktop thread hook.
+    /// # Errors
+    /// Returns the native request/acknowledgement failure.
+    pub fn desktop_gesture(&self, enabled: bool) -> Result<(), String> {
+        self.request(if enabled { wire::DESKTOP_GESTURE_ON } else { wire::DESKTOP_GESTURE_OFF }, &[])
+    }
+    /// Hide native icons temporarily, or restore the state saved by this session.
+    /// # Errors
+    /// Returns the Shell visibility or acknowledgement failure.
+    pub fn desktop_hidden(&self, hidden: bool) -> Result<(), String> {
+        self.request(if hidden { wire::DESKTOP_HIDE } else { wire::DESKTOP_RESTORE }, &[])
+    }
     /// Prepare an independent Shell view. Desktop membership remains filtered.
     /// # Errors
     /// Fails if Explorer cannot provide an isolated native menu host.
@@ -431,7 +443,8 @@ impl FilterSession {
         // this session instead of treating a live HWND as a healthy protocol.
         // Cleanup must remain possible before the supervisor reconnects.
         if self.timed_out.get() && !matches!(op,
-            wire::DETACH | wire::UPDATE_END | wire::MENU_FINISH | wire::MENU_CANCEL)
+            wire::DETACH | wire::UPDATE_END | wire::MENU_FINISH | wire::MENU_CANCEL
+            | wire::DESKTOP_RESTORE | wire::DESKTOP_GESTURE_OFF)
         {
             return Err("桌面过滤连接已超时，等待重新连接".into());
         }
@@ -454,6 +467,12 @@ impl FilterSession {
                     return Err("等待确认期间桌面过滤连接已断开".into());
                 }
                 if GetPropW(self.view, ACK) as usize == sequence as usize {
+                    if wire::is_desktop_visibility(op) {
+                        let error = GetPropW(self.view, REQUEST_ERROR) as usize as u32;
+                        return if error == 0 { Ok(()) } else {
+                            Err(format!("桌面显隐请求失败 (0x{error:08x}); op={op}"))
+                        };
+                    }
                     if wire::is_menu_transaction(op) {
                         let error = GetPropW(self.view, MENU_ERROR) as usize as u32;
                         return if error == 0 {

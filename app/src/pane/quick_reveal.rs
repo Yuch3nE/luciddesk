@@ -12,6 +12,11 @@ pub(super) fn show(hwnd: HWND) {
 /// Shared by the tray and the optional global shortcut. Release the app borrow
 /// before changing window order, because native calls can dispatch messages.
 pub(super) fn show_all(state: &std::rc::Rc<std::cell::RefCell<super::PaneApp>>) {
+    match super::desktop_toggle::restore(state) {
+        Ok(true) => return,
+        Err(error) => luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Error, "desktop.visibility", "Reveal restore: {error}"),
+        Ok(false) => {}
+    }
     let windows: Vec<_> = state.borrow().views.iter().map(|v| v.window.hwnd()).collect();
     let monitors = state.borrow().monitors.windows();
     for hwnd in monitors { show(hwnd); }

@@ -65,6 +65,10 @@ impl Transition {
         // Activation/z-order changes may repeat SHOWWINDOW for an already
         // visible HWND. Only a real hidden-to-visible transition starts a fade.
         let showing = flags & SWP_SHOWWINDOW != 0 && unsafe { IsWindowVisible(hwnd) } == 0;
+        if showing && !self.closing && super::desktop_toggle::restoring(hwnd) {
+            self.complete(hwnd, surface, &mut companion);
+            return false;
+        }
         // Only request_close may initiate a close. Ignore unsolicited or stale
         // notifications rather than turning a broadcast into a persisted delete.
         if msg == CLOSE && (unsafe { GetPropW(hwnd, CLOSE_STATE) } as usize != 1 || self.closing) {
@@ -161,5 +165,15 @@ mod tests {
         transition.message(hwnd, WM_WINDOWPOSCHANGING, 0,
             (&raw mut position) as isize, Some(&surface), |_| {});
         assert_eq!(transition.opacity(), if super::super::scrollbar::animations_enabled() { 0.0 } else { 1.0 });
+        // Desktop restoration reuses the surface rather than resetting it to
+        // transparent and waiting for the next animation timer.
+        unsafe { SetPropW(hwnd, super::super::desktop_toggle::HIDDEN_WINDOW, 1usize as _); }
+        transition.message(hwnd, WM_WINDOWPOSCHANGING, 0,
+            (&raw mut position) as isize, Some(&surface), |_| {});
+        assert_eq!(transition.opacity(), 1.0);
+        assert_eq!(surface.current_opacity(), 1.0);
+        assert!(!transition.pending);
+        assert!(transition.track.is_none());
+        unsafe { RemovePropW(hwnd, super::super::desktop_toggle::HIDDEN_WINDOW); }
     }
 }

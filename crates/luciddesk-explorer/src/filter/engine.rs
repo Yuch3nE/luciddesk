@@ -26,10 +26,12 @@ use windows_sys::Win32::{
 const TIMER: usize = MAGIC;
 const RECOVERY_TIMER: usize = MAGIC + 1;
 thread_local! { static STATE: RefCell<Option<State>> = const { RefCell::new(None) }; }
+thread_local! { static GESTURE_INTERRUPTED: Cell<bool> = const { Cell::new(false) }; }
 // COM calls can synchronously re-enter the subclass while STATE is borrowed.
 // Keep the redraw gate separate so Explorer cannot unfreeze the restored items.
 thread_local! { static FROZEN_VIEW: Cell<HWND> = const { Cell::new(null_mut()) }; }
 struct State {
+    desktop_visibility: super::desktop_visibility::DesktopVisibility,
     hwnd: HWND,
     owner: HWND,
     process: HANDLE,
@@ -152,6 +154,7 @@ fn attach_inner(hwnd: HWND, owner: HWND) -> Result<()> {
             Err(error) => { CloseHandle(process); return Err(error); }
         };
         let mut state = State {
+            desktop_visibility: Default::default(),
             hwnd,
             owner,
             process,
@@ -249,10 +252,16 @@ impl State {
         self.paused = false;
         self.updating = false;
         let report = self.recovery.attempt(std::time::Instant::now(),
-            || self.membership.restore(&self.folder, &self.object_view).map_err(|e| {
+            || {
+                let members = self.membership.restore(&self.folder, &self.object_view);
+                // Icon visibility must be released even when restoring a
+                // particular membership fails and requires another retry.
+                let icons = self.desktop_visibility.restore_from_shell(self.hwnd, &self.folder).map_err(Into::into);
+                members.and(icons).map_err(|e| {
                 diagnostics::restore_failure(self.hwnd, e.stage, e.code());
-                e
-            }),
+                    e
+                })
+            },
             || unsafe { self.view.Refresh() });
         diagnostics::recovery(self.hwnd, if report.complete { 2 } else { 1 }, report.restore_error, report.refresh_error);
         if !report.complete {
@@ -682,6 +691,23 @@ unsafe extern "system" fn subclass(
                     if state.cleanup() { slot.take(); }
                     return Some(0);
                 }
+                if let Some(request) = request.as_ref().filter(|r| wire::is_desktop_visibility(r.op)) {
+                    let result = match request.op {
+                        wire::DESKTOP_HIDE => state.desktop_visibility.hide(state.hwnd),
+                        wire::DESKTOP_RESTORE => state.desktop_visibility.restore_from_shell(state.hwnd, &state.folder),
+                        _ => {
+                            state.desktop_visibility.enable(request.op == wire::DESKTOP_GESTURE_ON);
+                            Ok(())
+                        }
+                    };
+                    unsafe {
+                        if let Err(error) = result {
+                            SetPropW(hwnd, REQUEST_ERROR, error.code().0 as u32 as usize as _);
+                        }
+                        SetPropW(hwnd, ACK, request.sequence as usize as _);
+                    }
+                    return Some(0);
+                }
                 if !state.failed {
                     if let Some(request) = &request {
                         if wire::is_menu_transaction(request.op) {
@@ -788,6 +814,36 @@ unsafe extern "system" fn subclass(
         });
     }
     handled.unwrap_or_else(|| unsafe { DefSubclassProc(hwnd, msg, wp, lp) })
+}
+
+/// Called only for queued messages removed by our existing desktop-thread hook.
+pub(super) fn desktop_gesture(message: &MSG) -> bool {
+    if !super::desktop_visibility::observes(message.message) { return false; }
+    STATE.with(|slot| {
+        if let Ok(mut slot) = slot.try_borrow_mut() {
+            if let Some(state) = slot.as_mut() {
+                if GESTURE_INTERRUPTED.with(|interrupted| interrupted.replace(false)) {
+                    state.desktop_visibility.cancel_gesture();
+                }
+                let blocked = state.paused || state.updating || state.menu_prepared || state.closing || state.failed;
+                if unsafe { state.desktop_visibility.message(state.hwnd, message, blocked) } {
+                    unsafe {
+                        PostMessageW(state.owner, crate::notifications::DESKTOP_TOGGLE_MESSAGE,
+                            state.hwnd as usize, message.time as isize);
+                    }
+                }
+                let consume = state.desktop_visibility.consumes_double_click(message.message);
+                #[cfg(debug_assertions)]
+                if consume { unsafe {
+                    let key = windows_sys::w!("LucidDesk.Desktop.DoubleClick.Consumed");
+                    let count = GetPropW(state.hwnd, key) as usize;
+                    SetPropW(state.hwnd, key, count.saturating_add(1) as _);
+                } }
+                return consume;
+            }
+        } else { GESTURE_INTERRUPTED.with(|interrupted| interrupted.set(true)); }
+        false
+    })
 }
 
 fn filter_before_paint(msg: u32, has_members: bool, pending: bool, paused: bool, updating: bool, failed: bool) -> bool {

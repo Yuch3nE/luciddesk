@@ -49,6 +49,8 @@ pub(super) fn runtime(state: &PaneApp) -> serde_json::Value {
     json!({
         "font_family":fonts::family(),
         "title_emoji_color":interface_flags::TITLE_EMOJI.get(),
+        "desktop_double_click_hide":desktop_toggle::enabled(&state.store),
+        "desktop_hidden":desktop_toggle::hidden(),
         "compact_menu":interface_flags::COMPACT_MENU.get(),
         "header_divider":interface_flags::HEADER_DIVIDER.get(),
         "diagnostics_level":format!("{:?}", luciddesk_diagnostics::level()).to_ascii_lowercase(),

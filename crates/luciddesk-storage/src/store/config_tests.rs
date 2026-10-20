@@ -358,6 +358,19 @@ fn show_panels_hotkey_defaults_disabled_and_persists_independently() {
 }
 
 #[test]
+fn desktop_double_click_defaults_off_and_roundtrips_through_config_and_settings() {
+    let (dir, store) = open();
+    assert_eq!(store.preference("desktop_double_click_hide").unwrap().as_deref(), Some("0"));
+    store.save_preference("desktop_double_click_hide", "1").unwrap();
+    assert_eq!(store.settings().unwrap()["desktop.double_click_hide"], crate::SettingValue::Boolean(true));
+    assert!(store.save_preference("desktop_double_click_hide", "yes").is_err());
+    let reopened = WorkspaceStore::open(&dir.path().join("workspace.db")).unwrap();
+    assert_eq!(reopened.preference("desktop_double_click_hide").unwrap().as_deref(), Some("1"));
+    reopened.save_settings(&[("desktop.double_click_hide".into(), crate::SettingValue::Boolean(false))].into_iter().collect()).unwrap();
+    assert_eq!(reopened.preference("desktop_double_click_hide").unwrap().as_deref(), Some("0"));
+}
+
+#[test]
 fn log_level_defaults_persists_and_rejects_unknown_values() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("workspace.db");

@@ -297,6 +297,7 @@ where
             if unsafe { crate::window_visibility::defer_show(message, lparam, show_prepared.get()) } {
                 return Some(0);
             }
+            unsafe { super::desktop_toggle::gate(raw.cast(), message, lparam); }
             let hwnd: HWND = raw.cast();
             #[cfg(test)]
             if message == WM_APP + 199 {

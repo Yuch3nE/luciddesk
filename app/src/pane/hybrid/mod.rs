@@ -62,6 +62,11 @@ pub(super) struct Session {
     save_due: Option<Instant>,
 }
 
+pub(super) fn visibility_hook(s: &PaneApp) -> Option<(Rc<FilterSession>, bool)> {
+    s.session.as_ref().map(|h| (Rc::clone(&h.hook),
+        h.membership_pending.is_none() && !h.menu_active.get() && is_alive(h)))
+}
+
 struct OleApartment;
 /// Desired Explorer-hidden names, independent of image loading and submitted IPC.
 pub(super) fn desired_membership(s: &PaneApp) -> Vec<String> {
@@ -282,6 +287,9 @@ pub fn run(path: &Path, title: Option<String>) -> Result<(), String> {
     let control = control::start(&state)?;
     // Settings are opened only by an explicit user action, including offline startup.
     windows_window::run();
+    if let Err(error) = desktop_toggle::restore(&state) {
+        luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Error, "desktop.visibility", "Shutdown restore: {error}");
+    }
     crate::pane::render_debug::render_trace(format_args!("shutdown: stop supervisor"));
     state.borrow_mut().monitors = Default::default();
     drop(control);
@@ -297,6 +305,7 @@ pub fn run(path: &Path, title: Option<String>) -> Result<(), String> {
 }
 
 pub(super) fn connect(state: &Rc<RefCell<PaneApp>>, _path: &Path) -> Result<(), String> {
+    desktop_toggle::connection_changed();
     use diagnostics::{Operation, failure};
     if luciddesk_explorer::conflicting_desktop_extension() {
         let error = crate::i18n::text("ui-close-other-desktop-organizers-first");
@@ -312,6 +321,7 @@ pub(super) fn connect(state: &Rc<RefCell<PaneApp>>, _path: &Path) -> Result<(), 
     let icons_dirty = Rc::new(RefCell::new(icon_changes::Pending::default()));
     let icon_notify = Rc::clone(&icons_dirty);
     let input_receiver = Rc::downgrade(state);
+    let toggle_receiver = Rc::downgrade(state);
     let pending_desktop_input = Rc::new(Cell::new(None));
     let pending_input = Rc::clone(&pending_desktop_input);
     let work_ready = state.borrow().wake.clone();
@@ -355,6 +365,14 @@ pub(super) fn connect(state: &Rc<RefCell<PaneApp>>, _path: &Path) -> Result<(), 
                 icon_notify
                     .borrow_mut()
                     .add([icon_changes::Change::Name(RECYCLE_BIN_PARSING_NAME.into())]);
+                Some(0)
+            } else if message == luciddesk_explorer::notifications::DESKTOP_TOGGLE_MESSAGE {
+                if wparam as isize == view {
+                    let receiver = toggle_receiver.clone();
+                    window::defer_action(move || {
+                        if let Some(state) = receiver.upgrade() { desktop_toggle::request(&state); }
+                    });
+                }
                 Some(0)
             } else if message == DESKTOP_INPUT_MESSAGE {
                 work_ready.notify();

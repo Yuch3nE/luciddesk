@@ -1,21 +1,30 @@
 //! Private same-build IPC. The parent plugin persists configuration; child EOF closes the UI.
+//! Startup sends Config; subsequent messages are typed updates, including visibility-only updates.
 use super::super::*;
 use super::Preferences;
 use luciddesk_core::{Backdrop, PanelTheme};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};
 use std::os::windows::process::CommandExt;
+use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 struct Config {
+    #[serde(default)]
+    desktop_hidden: bool,
     panel: Panel,
     options: luciddesk_core::PaneOptions,
     preferences: Preferences,
     language: String,
     font: String,
     flags: [bool; 3],
+}
+#[derive(Serialize, Deserialize)]
+enum Update {
+    Configure(Box<Config>),
+    DesktopVisibility(bool),
 }
 #[derive(Clone, Serialize, Deserialize)]
 struct WindowOptions {
@@ -67,6 +76,7 @@ impl Config {
         panel.set_theme(theme);
         panel.set_backdrop(backdrop);
         Ok(Self {
+            desktop_hidden: super::super::desktop_toggle::hidden(),
             panel,
             preferences: serde_json::from_value(value["options"].clone())
                 .map_err(|e| e.to_string())?,
@@ -156,7 +166,8 @@ pub(in crate::pane) fn publish_panel(panel: &Panel) {
 }
 
 struct Process {
-    child: Child,
+    child: Option<Child>,
+    job: Option<OwnedHandle>,
     input: Option<ChildStdin>,
     reader: Option<std::thread::JoinHandle<()>>,
     replies: mpsc::Receiver<Reply>,
@@ -166,21 +177,69 @@ struct Process {
 }
 impl Drop for Process {
     fn drop(&mut self) {
-        // EOF requests ordinary UI teardown. Never trim memory, unload the plugin or kill the process.
+        // EOF requests ordinary teardown, but waiting never blocks the UI.
         self.input.take();
-        if let Ok(status) = self.child.wait() {
-            if !status.success() {
-                luciddesk_diagnostics::log(
-                    luciddesk_diagnostics::Level::Error,
-                    "monitor.process",
-                    &format!("Monitor process exited: {status}"),
-                );
+        if let Some(child) = self.child.take() {
+            let job = self.job.take();
+            let reader = self.reader.take();
+            if let Err(error) = reap(child, job, reader, std::time::Duration::from_secs(2)) {
+                luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Error,
+                    "monitor.process", "Start cleanup thread: {error}");
             }
         }
-        if let Some(reader) = self.reader.take() {
-            let _ = reader.join();
-        }
     }
+}
+
+fn own_renderer(child: &Child) -> Result<OwnedHandle, String> {
+    use windows_sys::Win32::System::JobObjects::*;
+    unsafe {
+        let raw = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+        if raw.is_null() { return Err(std::io::Error::last_os_error().to_string()); }
+        let job = OwnedHandle::from_raw_handle(raw);
+        let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        if SetInformationJobObject(raw, JobObjectExtendedLimitInformation,
+            (&raw const limits).cast(), size_of_val(&limits) as u32) == 0
+            || AssignProcessToJobObject(raw, child.as_raw_handle()) == 0
+        {
+            return Err(std::io::Error::last_os_error().to_string());
+        }
+        Ok(job)
+    }
+}
+
+fn reap(mut child: Child, job: Option<OwnedHandle>, reader: Option<std::thread::JoinHandle<()>>,
+    grace: std::time::Duration) -> std::io::Result<std::thread::JoinHandle<()>> {
+    std::thread::Builder::new().name("monitor-cleanup".into()).spawn(move || {
+        let deadline = std::time::Instant::now() + grace;
+        loop {
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    if !status.success() {
+                        luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Error,
+                            "monitor.process", "Monitor process exited: {status}");
+                    }
+                    break;
+                }
+                Ok(None) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(std::time::Duration::from_millis(25));
+                }
+                result => {
+                    luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Warn,
+                        "monitor.process", "Monitor shutdown exceeded grace period or failed: {result:?}");
+                    // Only this owned, stateless renderer is terminated.
+                    let _ = child.kill();
+                    break;
+                }
+            }
+        }
+        // Also guarantees cleanup if the parent exits before this thread runs.
+        drop(job);
+        if let Some(reader) = reader {
+            // A broken pipe or blocked decoder must not extend the deadline.
+            if reader.is_finished() { let _ = reader.join(); }
+        }
+    })
 }
 #[derive(Default)]
 pub(in crate::pane) struct Manager {
@@ -223,6 +282,13 @@ fn open(state: &Rc<RefCell<PaneApp>>, config: Config) -> Result<(), String> {
         .stderr(Stdio::null())
         .spawn()
         .map_err(|e| format!("Start monitor process: {e}"))?;
+    let job = match own_renderer(&child) {
+        Ok(job) => job,
+        Err(error) => {
+            let _ = child.kill();
+            return Err(format!("Track monitor process: {error}"));
+        }
+    };
     let input = child.stdin.take().unwrap();
     let output = child.stdout.take().unwrap();
     let (sender, replies) = mpsc::channel();
@@ -249,7 +315,8 @@ fn open(state: &Rc<RefCell<PaneApp>>, config: Config) -> Result<(), String> {
         wake.notify();
     });
     let mut process = Process {
-        child,
+        child: Some(child),
+        job: Some(job),
         input: Some(input),
         reader: Some(reader),
         replies,
@@ -282,8 +349,20 @@ pub(in crate::pane) fn configure(state: &Rc<RefCell<PaneApp>>) -> Result<(), Str
     let mut s = state.borrow_mut();
     let process = s.monitors.process.as_mut().unwrap();
     if process.config != config {
-        write_json(process.input.as_mut().unwrap(), &config)?;
+        write_json(process.input.as_mut().unwrap(), &Update::Configure(Box::new(config.clone())))?;
         process.config = config;
+    }
+    Ok(())
+}
+/// Presentation-only changes reuse the live renderer and its cached settings.
+/// Do not query plugins, launch processes or reconfigure monitoring backends.
+pub(in crate::pane) fn desktop_visibility(state: &Rc<RefCell<PaneApp>>, hidden: bool) -> Result<(), String> {
+    let mut s = state.borrow_mut();
+    if let Some(process) = s.monitors.process.as_mut()
+        && process.config.desktop_hidden != hidden
+    {
+        write_json(process.input.as_mut().ok_or("Monitor input closed")?, &Update::DesktopVisibility(hidden))?;
+        process.config.desktop_hidden = hidden;
     }
     Ok(())
 }
@@ -351,6 +430,26 @@ pub(in crate::pane) fn poll(state: &Rc<RefCell<PaneApp>>) -> Result<(), String> 
 }
 
 fn apply(state: &Rc<RefCell<PaneApp>>, config: Config) -> Result<(), String> {
+    apply_visibility(state, config.desktop_hidden);
+    apply_settings(state, &config)
+}
+
+fn apply_visibility(state: &Rc<RefCell<PaneApp>>, hidden: bool) {
+    let windows: Vec<_> = state.borrow().views.iter().map(|v| v.window.hwnd().cast()).collect();
+    super::super::desktop_toggle::child_visibility(hidden, &windows);
+}
+
+fn apply_update(state: &Rc<RefCell<PaneApp>>, update: Update) -> Result<(), String> {
+    match update {
+        Update::Configure(config) => apply(state, *config),
+        Update::DesktopVisibility(hidden) => {
+            apply_visibility(state, hidden);
+            Ok(())
+        }
+    }
+}
+
+fn apply_settings(state: &Rc<RefCell<PaneApp>>, config: &Config) -> Result<(), String> {
     let id = config.panel.id();
     let initial = state.borrow().views.is_empty();
     let rect_changed;
@@ -391,7 +490,7 @@ fn apply(state: &Rc<RefCell<PaneApp>>, config: Config) -> Result<(), String> {
     if initial {
         create_view(state, id)?;
     } else {
-        handle(state, id, Event::MonitorOptions(config.preferences))?;
+        handle(state, id, Event::MonitorOptions(config.preferences.clone()))?;
     }
     let hwnd = {
         let s = state.borrow();
@@ -433,12 +532,12 @@ fn apply(state: &Rc<RefCell<PaneApp>>, config: Config) -> Result<(), String> {
             }
         }
     }
-    PUBLISHED.with(|last| *last.borrow_mut() = Some(config.panel));
+    PUBLISHED.with(|last| *last.borrow_mut() = Some(config.panel.clone()));
     Ok(())
 }
 fn create_controller(
     state: &Rc<RefCell<PaneApp>>,
-    commands: mpsc::Receiver<Result<Config, String>>,
+    commands: mpsc::Receiver<Result<Update, String>>,
 ) -> Result<windows_window::Window, String> {
     let weak = Rc::downgrade(state);
     windows_window::Window::new("LucidDesk monitor controller")
@@ -461,8 +560,8 @@ fn create_controller(
             state.borrow().wake.received();
             loop {
                 match commands.try_recv() {
-                    Ok(Ok(config)) => {
-                        if let Err(error) = apply(&state, config) {
+                    Ok(Ok(update)) => {
+                        if let Err(error) = apply_update(&state, update) {
                             emit(Reply::Error(error));
                             windows_window::quit();
                         }

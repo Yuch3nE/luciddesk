@@ -1299,3 +1299,7 @@ settings-nav-basics = Основные настройки
 settings-nav-appearance = Оформление и расположение
 settings-nav-files = Файлы и инструменты
 settings-nav-maintenance = Обслуживание
+
+desktop-gesture-section = Действия на рабочем столе
+desktop-gesture-title = Скрывать рабочий стол двойным щелчком
+desktop-gesture-description = Дважды щёлкните пустое место рабочего стола, чтобы скрыть все значки и панели. Повторите, чтобы восстановить.

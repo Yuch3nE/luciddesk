@@ -22,6 +22,7 @@ pub(super) const KEYS: &[&str] = &[
     "search_hotkey",
     "show_panels_enabled",
     "show_panels_hotkey",
+    "desktop_double_click_hide",
     "peek",
 ];
 const DEFAULTS: &str = r##"# LucidDesk global settings. Reload from Settings after editing.
@@ -33,6 +34,9 @@ enabled = true
 
 [updates]
 auto_check = true
+
+[desktop]
+double_click_hide = false
 
 [diagnostics]
 level = "error"
@@ -313,6 +317,7 @@ pub(super) fn decode(doc: &DocumentMut) -> Result<BTreeMap<String, String>, Stor
     );
     let (key, bits) = shortcut(&s(&["search", "shortcut"])?, true)?;
     map.insert("search_hotkey".into(), format!("{key}:{bits}"));
+    map.insert("desktop_double_click_hide".into(), if b(&["desktop", "double_click_hide"])? { "1" } else { "0" }.into());
     map.insert("show_panels_enabled".into(), if b(&["show_panels", "enabled"])? { "1" } else { "0" }.into());
     let (key, bits) = shortcut(&s(&["show_panels", "shortcut"])?, true)?;
     map.insert("show_panels_hotkey".into(), format!("{key}:{bits}"));
@@ -432,6 +437,9 @@ fn update(doc: &mut DocumentMut, key: &str, raw: &str) -> Result<(), StoreError>
             ],
             value(raw.parse::<i64>().map_err(io)?),
         ),
+        "desktop_double_click_hide" if ["0", "1"].contains(&raw) => {
+            set(doc, &["desktop", "double_click_hide"], value(raw == "1"));
+        }
         "show_panels_enabled" if ["0", "1"].contains(&raw) => {
             set(doc, &["show_panels", "enabled"], value(raw == "1"));
         }

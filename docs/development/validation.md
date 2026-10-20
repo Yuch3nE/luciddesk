@@ -34,6 +34,8 @@
 
 ## 常用自动检查
 
+桌面双击隐藏的实机回归使用 `python tools/validation/test-desktop-toggle.py --executable <同次构建的主程序> --cli <CLI> --with-monitor`。主程序旁需有同次构建的 `luciddesk_explorer.dll`，`plugins/` 中需有监控插件。先正常退出已获授权的旧实例。脚本使用隔离配置和测试面板，通过实际桌面 Hook 验证空白处双击、背景恢复、原先隐藏的窗口、新建窗口、监控子进程、关闭开关、托盘恢复、正常退出及自建测试进程异常退出后的恢复；结束时核验原图标状态。图标显隐使用 Explorer 线程上的临时窗口显隐，不修改 `FWF_NOICONS`；原先隐藏的窗口和恢复逻辑由原生窗口夹具自动测试覆盖。 脚本发送真实的 `DOWN/UP/DBLCLK/UP` 序列；调试构建可加 `--expect-consumed-double-clicks` 核验空白双击未进入 Shell 默认动作。光标回归 `filter::desktop_visibility::tests::busy_pointer_is_restored_only_over_our_desktop_target` 需桌面测试授权后以 `--ignored --exact` 串行运行：短暂显示自有夹具，验证等待/启动光标恢复以及其他窗口和文本光标不受影响，结束恢复原光标。
+
 依赖和工具链就绪后，可按范围选用以下命令；`--offline` 要求依赖已缓存：
 
 ```powershell

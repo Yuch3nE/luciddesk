@@ -1299,3 +1299,7 @@ settings-nav-basics = Basics
 settings-nav-appearance = Appearance and layout
 settings-nav-files = Files and tools
 settings-nav-maintenance = Maintenance
+
+desktop-gesture-section = Desktop gestures
+desktop-gesture-title = Double-click to hide desktop
+desktop-gesture-description = Double-click an empty desktop area to hide all icons and panels; double-click again to restore.

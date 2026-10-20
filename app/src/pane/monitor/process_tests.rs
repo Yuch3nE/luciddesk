@@ -6,6 +6,32 @@ use windows_sys::Win32::{
 };
 
 #[test]
+fn visibility_only_update_does_not_apply_settings_or_start_a_monitor() {
+    let state = Rc::new(RefCell::new(crate::pane::tests::test_state()));
+    let id = PanelId::new(999);
+    let mut panel = Panel::new(id, "Monitor", RectDip::from_bounds(0.0, 0.0, 100.0, 100.0));
+    panel.set_monitor(true);
+    state.borrow_mut().workspace.add_panel(panel).unwrap();
+    for (index, hidden) in [true, false, true, false].into_iter().enumerate() {
+        // Emulate a local move/resize after the last parent configuration.
+        let rect = RectDip::from_bounds(50.0 + index as f32, 60.0, 120.0, 130.0);
+        state.borrow_mut().workspace.panel_mut(id).unwrap().set_rect(rect);
+        let mut wire = Vec::new();
+        write_json(&mut wire, &Update::DesktopVisibility(hidden)).unwrap();
+        let update = serde_json::from_slice(&wire).unwrap();
+        apply_update(&state, update).unwrap();
+        assert_eq!(super::super::super::desktop_toggle::hidden(), hidden);
+        assert_eq!(state.borrow().workspace.panel(id).unwrap().rect(), rect,
+            "visibility must preserve live geometry independently of parent config");
+        assert!(state.borrow().views.is_empty(), "visibility must not create UI");
+        assert!(state.borrow().store.preference("language").unwrap().is_none(),
+            "visibility must not rewrite settings");
+    }
+    desktop_visibility(&state, true).unwrap();
+    assert!(state.borrow().monitors.process.is_none(), "visibility must not spawn a process");
+}
+
+#[test]
 fn monitor_controller_stays_hidden_without_activation_or_a_taskbar_window() {
     let _sta = crate::pane::test_support::apartment();
     let state = Rc::new(RefCell::new(crate::pane::tests::test_state()));
@@ -166,7 +192,7 @@ fn isolated_monitor_closes_process_and_keeps_host_sampling_empty() {
         let (pid, hwnd) = {
             let s = state.borrow();
             let p = &s.monitors.process.as_ref().unwrap();
-            (p.child.id(), p.hwnd)
+            (p.child.as_ref().unwrap().id(), p.hwnd)
         };
         let child = unsafe {
             OpenProcess(
@@ -252,7 +278,7 @@ fn isolated_monitor_closes_process_and_keeps_host_sampling_empty() {
     // The settings plugin switch stops the real child without changing panel preferences.
     handle(&state, id, Event::MonitorOptions(Preferences::default())).unwrap();
     pump(&state, 1500);
-    let pid = state.borrow().monitors.process.as_ref().unwrap().child.id();
+    let pid = state.borrow().monitors.process.as_ref().unwrap().child.as_ref().unwrap().id();
     let child = unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_SYNCHRONIZE, 0, pid) };
 
     crate::pane::settings::plugin_page::set_enabled(&state, super::super::PLUGIN_ID, false)
@@ -280,14 +306,14 @@ fn isolated_monitor_closes_process_and_keeps_host_sampling_empty() {
         saved_config
     );
     assert_ne!(
-        state.borrow().monitors.process.as_ref().unwrap().child.id(),
+        state.borrow().monitors.process.as_ref().unwrap().child.as_ref().unwrap().id(),
         pid
     );
     state.borrow_mut().monitors = Manager::default();
     // Host shutdown (dropping its pipe) must also exit a still-visible child normally.
     handle(&state, id, Event::MonitorOptions(Preferences::default())).unwrap();
     pump(&state, 1500);
-    let pid = state.borrow().monitors.process.as_ref().unwrap().child.id();
+    let pid = state.borrow().monitors.process.as_ref().unwrap().child.as_ref().unwrap().id();
     let child = unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_SYNCHRONIZE, 0, pid) };
     state.borrow_mut().monitors = Manager::default();
     assert_eq!(unsafe { WaitForSingleObject(child, 5000) }, 0);
@@ -332,4 +358,38 @@ fn isolated_monitor_closes_process_and_keeps_host_sampling_empty() {
             .join("plugins/system-monitor/config.toml")
             .exists()
     );
+}
+
+#[test]
+#[ignore = "Owned subprocess entry point for shutdown regression"]
+fn shutdown_fixture_child() {
+    match std::env::var("LUCIDDESK_SHUTDOWN_FIXTURE").as_deref() {
+        Ok("hung") => std::thread::sleep(Duration::from_secs(60)),
+        Ok("eof") => { let mut s = String::new(); let _ = std::io::stdin().read_line(&mut s); }
+        _ => {}
+    }
+}
+
+#[test]
+fn renderer_cleanup_is_async_and_bounds_hung_children() {
+    for mode in ["eof", "hung"] {
+        let mut child = Command::new(std::env::current_exe().unwrap())
+            .args(["pane::monitor::process::tests::shutdown_fixture_child", "--exact", "--ignored"])
+            .env("LUCIDDESK_SHUTDOWN_FIXTURE", mode)
+            .creation_flags(CREATE_NO_WINDOW).stdin(Stdio::piped())
+            .stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap();
+        let job = own_renderer(&child).unwrap();
+        let handle = unsafe { OpenProcess(PROCESS_SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, 0, child.id()) };
+        assert!(!handle.is_null());
+        child.stdin.take();
+        let started = Instant::now();
+        let worker = reap(child, Some(job), None, Duration::from_millis(500)).unwrap();
+        assert!(started.elapsed() < Duration::from_millis(250), "UI thread must not wait for child exit");
+        assert_eq!(unsafe { WaitForSingleObject(handle, 3000) }, 0, "owned renderer must not survive timeout");
+        let mut code = 0;
+        unsafe { assert_ne!(GetExitCodeProcess(handle, &raw mut code), 0); CloseHandle(handle); }
+        if mode == "eof" { assert_eq!(code, 0, "normal EOF must remain graceful"); }
+        else { assert_ne!(code, 0, "hung renderer must be stopped"); }
+        worker.join().unwrap();
+    }
 }

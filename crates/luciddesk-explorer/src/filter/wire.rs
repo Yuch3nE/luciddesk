@@ -12,6 +12,14 @@ pub const UPDATE_BEGIN: u32 = 8;
 pub const UPDATE_END: u32 = 9;
 pub const REPLACE_IDENTITY: u32 = 10;
 pub const MENU_CANCEL: u32 = 11;
+pub const DESKTOP_GESTURE_ON: u32 = 12;
+pub const DESKTOP_GESTURE_OFF: u32 = 13;
+pub const DESKTOP_HIDE: u32 = 14;
+pub const DESKTOP_RESTORE: u32 = 15;
+
+pub fn is_desktop_visibility(op: u32) -> bool {
+    (DESKTOP_GESTURE_ON..=DESKTOP_RESTORE).contains(&op)
+}
 
 /// Menu and rename-transaction failures use MENU_ERROR, without restoring
 /// desktop membership. These requests also allow the caller to pump UI messages.
@@ -36,7 +44,7 @@ pub struct Request {
     pub menu: Option<MenuContext>,
 }
 fn valid_header(op: u32, sequence: u32, count: usize) -> bool {
-    (SET..=MENU_CANCEL).contains(&op)
+    (SET..=DESKTOP_RESTORE).contains(&op)
         && sequence != 0
         && count <= MAX_ITEMS
         && (matches!(op, SET | MENU_PREPARE | REPLACE_IDENTITY) || count == 0)
@@ -145,6 +153,17 @@ pub fn decode(bytes: &[u8]) -> Option<Request> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn desktop_visibility_requests_are_bounded_and_separate_from_membership() {
+        for op in DESKTOP_GESTURE_ON..=DESKTOP_RESTORE {
+            let request = decode(&encode(op, 9, &[]).unwrap()).unwrap();
+            assert_eq!(request.op, op);
+            assert!(is_desktop_visibility(op));
+            assert!(!is_menu_transaction(op));
+            assert!(encode(op, 9, &["not allowed".into()]).is_err());
+        }
+        assert!(decode(&[16u32.to_le_bytes(), 1u32.to_le_bytes(), 0u32.to_le_bytes()].concat()).is_none());
+    }
     #[test]
     fn rejects_truncated_oversized_and_invalid_requests() {
         let names = vec![

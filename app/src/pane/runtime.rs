@@ -150,6 +150,9 @@ pub(super) fn reconnect(state: &Rc<RefCell<PaneApp>>) {
 }
 
 fn suspend(state: &Rc<RefCell<PaneApp>>) {
+    if let Err(error) = desktop_toggle::restore(state) {
+        luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Error, "desktop.visibility", "Connection loss restore: {error}");
+    }
     // Detach can service sent Shell callbacks. As during normal shutdown,
     // release the app borrow before dropping the native filter session.
     let session = state.borrow_mut().session.take();
@@ -278,6 +281,7 @@ pub(super) fn maintain(state: &Rc<RefCell<PaneApp>>, force: bool) -> Result<(), 
             create_view(state, id)?;
         }
     }
+    desktop_toggle::maintain(state)?;
     Ok(())
 }
 
@@ -296,6 +300,7 @@ fn next_work(s: &PaneApp, hotkey: &search_hotkey::Registration, reveal: &search_
     hybrid::next_work(s).map(u64::from).map(Duration::from_millis)
         .map(|delay| now + delay).into_iter()
         .chain(maintenance)
+        .chain(desktop_toggle::next_work().map(|delay| now + delay))
         .chain(runtime.filter(|r| r.updates.borrow().busy()).map(|_| now + Duration::from_millis(200)))
         .chain(reconnect)
         .chain(runtime.and_then(|r| r.layouts.deadline()))
@@ -311,6 +316,9 @@ pub(super) fn backup_status(s: &PaneApp) -> String {
 }
 
 pub(super) fn reload(state: &Rc<RefCell<PaneApp>>) -> Result<(), String> {
+    if let Err(error) = desktop_toggle::restore(state) {
+        luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Error, "desktop.visibility", "Reload restore: {error}");
+    }
     load_log_level(&state.borrow().store)?;
     let children = std::mem::take(&mut state.borrow_mut().monitors);
     drop(children);
@@ -422,6 +430,10 @@ pub(super) fn supervisor(state: &Rc<RefCell<PaneApp>>) -> Result<windows_window:
             }
             if msg == show_message {
                 if let Some(state) = weak.upgrade() {
+                    if desktop_toggle::hidden() {
+                        quick_reveal::show_all(&state);
+                        return Some(0);
+                    }
                     let s = state.borrow();
                     for view in &s.views {
                         unsafe {

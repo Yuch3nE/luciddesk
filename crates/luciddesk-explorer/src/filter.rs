@@ -2,6 +2,7 @@
 mod client;
 mod diagnostics;
 mod engine;
+mod desktop_visibility;
 mod explorer;
 mod items;
 mod library;
@@ -57,7 +58,12 @@ pub unsafe extern "system" fn LucidDeskFilterHook(code: i32, wp: usize, lp: isiz
     let _callback = library::Callback::enter();
     if code >= 0 && wp == PM_REMOVE as usize && lp != 0 {
         let _ = std::panic::catch_unwind(|| {
-            let msg = unsafe { &*(lp as *const MSG) };
+            let msg = unsafe { &mut *(lp as *mut MSG) };
+            if engine::desktop_gesture(msg) {
+                msg.message = WM_NULL;
+                msg.wParam = 0;
+                msg.lParam = 0;
+            }
             if msg.message == message() && msg.lParam == MAGIC as isize {
                 engine::attach(msg.hwnd, msg.wParam as _);
             }

@@ -97,6 +97,7 @@ enum Action {
     PeekShortcut,
     SearchShortcut,
     ShowPanelsEnable,
+    DesktopDoubleClick(bool),
     ShowPanelsShortcut,
     ShowPanelsReset,
     SearchReset,

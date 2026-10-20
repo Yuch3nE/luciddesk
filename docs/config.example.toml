@@ -12,6 +12,10 @@ config_version = 1
 # system 跟随 Windows 显示语言，不支持的语言回退英语。
 language = "system"
 
+# 双击桌面空白处隐藏所有图标和面板；再次双击恢复。
+[desktop]
+double_click_hide = false
+
 [appearance]
 # system / light / dark：跟随系统 / 浅色 / 深色。
 theme = "system"

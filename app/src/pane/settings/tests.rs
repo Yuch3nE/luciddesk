@@ -1851,6 +1851,24 @@ fn show_panels_shortcut_is_off_and_accessible_in_every_language() {
 }
 
 #[test]
+fn desktop_gesture_setting_is_translated_and_appended_below_general_controls() {
+    for locale in 0..7 {
+        crate::i18n::with_locale(locale, || {
+            let mut body = scene(800.0, 700.0, 13, false,
+                (PanelTheme::Light, Backdrop::Acrylic), Default::default());
+            layout::general(&mut body, 800.0, crate::startup::Status::Off, false, true, false);
+            let bottom = body.controls.iter().map(|c| c.bounds.bottom).fold(0.0_f32, f32::max);
+            layout::desktop_gesture(&mut body, 800.0, false);
+            let toggle = body.controls.iter().find(|c| matches!(c.action, Action::DesktopDoubleClick(true))).unwrap();
+            assert!(toggle.bounds.top > bottom);
+            assert!(!toggle.selected);
+            assert_ne!(toggle.label, "desktop-gesture-title");
+            assert!(!crate::i18n::text("desktop-gesture-description").starts_with("desktop-gesture-"));
+        });
+    }
+}
+
+#[test]
 fn font_search_uses_owned_surface_and_accepts_unicode_text() {
     use windows_sys::Win32::UI::WindowsAndMessaging::*;
     let owner = windows_window::Window::new("Font search test")

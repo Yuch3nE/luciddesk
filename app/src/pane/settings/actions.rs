@@ -360,6 +360,14 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
             }
             invalidate = true;
         }
+        Action::DesktopDoubleClick(enabled) => {
+            let result = state.borrow().store.save_preference(desktop_toggle::PREFERENCE,
+                if *enabled { "1" } else { "0" }).map_err(|error| error.to_string());
+            if let Err(error) = result.and_then(|()| desktop_toggle::maintain(state)) {
+                window::error_for(hwnd, &error);
+            }
+            invalidate = true;
+        }
         Action::ShowPanelsEnable => {
             let saved = {
                 let s = state.borrow();

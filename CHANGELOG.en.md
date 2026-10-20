@@ -8,6 +8,8 @@ Exit the app before upgrading a portable installation and preserve its `data` fo
 
 ## Unreleased
 
+- Add an opt-in blank-desktop double-click gesture to hide all icons and panels, then restore them with another double-click or the tray. Preserve prior icon visibility and panel layout, including monitor subprocesses and panels created while hidden.
+
 - Render color emoji in pane and tab title rename fields, including selected text, honoring the title color emoji setting while retaining native caret, selection and IME handling.
 
 - Use readable computer-local dates with milliseconds and the system time-zone offset in logs, first-occurrence times and diagnostic reports; group messages, source locations and runtime fields for easier reading.
