@@ -1290,3 +1290,8 @@ error-unknown = { "Es wurden keine Fehlerdetails angegeben." }
 error-copy-hint = Drücken Sie Strg+C, um die gesamte Meldung zu kopieren.
 
 error-open-item = { "Das ausgewählte Element kann nicht geöffnet werden.\u000A\u000AElement:\u000A" }{ $path }{ "\u000A\u000AFehlerdetails:\u000A" }{ $error }
+
+settings-nav-basics = Grundeinstellungen
+settings-nav-appearance = Darstellung und Layout
+settings-nav-files = Dateien und Werkzeuge
+settings-nav-maintenance = Wartung

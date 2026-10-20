@@ -1290,3 +1290,8 @@ error-unknown = { "エラーの詳細は提供されていません。" }
 error-copy-hint = Ctrl+C でこのメッセージ全体をコピーできます。
 
 error-open-item = { "選択した項目を開けません。\u000A\u000A項目：\u000A" }{ $path }{ "\u000A\u000Aエラーの詳細：\u000A" }{ $error }
+
+settings-nav-basics = 基本設定
+settings-nav-appearance = 外観とレイアウト
+settings-nav-files = ファイルとツール
+settings-nav-maintenance = メンテナンス

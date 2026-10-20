@@ -179,6 +179,7 @@ pub(super) fn folder_defaults(
 pub(super) fn pages() -> Vec<(usize, &'static str, &'static str)> {
     let mut pages = vec![
         (13, crate::i18n::text("startup-general"), "\u{e713}"),
+        (12, crate::i18n::text("language-title"), "\u{f2b7}"),
         (0, crate::i18n::text("ui-theme-materials"), "\u{e790}"),
         (1, crate::i18n::text("ui-panel-layout"), "\u{f0e2}"),
         (11, crate::i18n::text("ui-fonts"), "\u{e8d2}"),
@@ -186,7 +187,6 @@ pub(super) fn pages() -> Vec<(usize, &'static str, &'static str)> {
         (4, crate::i18n::text("ui-everything-search"), "\u{e721}"),
         (3, crate::i18n::text("ui-file-preview"), "\u{e890}"),
         (6, crate::i18n::text("ui-backup-restore"), "\u{e81c}"),
-        (12, crate::i18n::text("language-title"), "\u{e8d2}"),
         (5, crate::i18n::text("ui-about"), "\u{e946}"),
     ];
     if !crate::plugins::installed().is_empty() {
@@ -199,6 +199,7 @@ pub(super) struct Navigation {
     pub action: Action,
     pub label: String,
     pub icon: &'static str,
+    pub section: Option<&'static str>,
 }
 
 pub(super) fn navigation() -> Vec<Navigation> {
@@ -208,12 +209,21 @@ pub(super) fn navigation() -> Vec<Navigation> {
             action: Action::Page(id),
             label: name.into(),
             icon,
+            section: match id {
+                13 => Some(crate::i18n::text("settings-nav-basics")),
+                0 => Some(crate::i18n::text("settings-nav-appearance")),
+                8 => Some(crate::i18n::text("settings-nav-files")),
+                6 => Some(crate::i18n::text("settings-nav-maintenance")),
+                15 => Some(crate::i18n::text("plugins-title")),
+                _ => None,
+            },
         })
         .collect();
     entries.extend(plugin_content::pages().into_iter().map(|p| Navigation {
         action: Action::PluginPage(p.id),
         label: p.name,
         icon: "\u{e9d9}",
+        section: None,
     }));
     entries
 }
@@ -296,26 +306,30 @@ fn scene_with_mica(
     };
     s.text(Rect::from_xywh(28.0, 26.0, 172.0, 32.0), "LucidDesk", 2);
     let entries = navigation();
-    let stride = ((_height - 114.0 - if entries.iter().any(|entry| matches!(entry.action, Action::Page(15))) { 28.0 } else { 0.0 }) / entries.len().max(1) as f32).clamp(32.0, 42.0);
+    let content_x = Tokens::content_x();
+    let heading_height = 28.0;
+    let sections = entries.iter().filter(|entry| entry.section.is_some()).count();
+    let stride = ((_height - 114.0 - heading_height * sections as f32)
+        / entries.len().max(1) as f32).clamp(32.0, 42.0);
     let start = s.text.len();
     let mut y = 78.0;
     for entry in &entries {
-        if matches!(entry.action, Action::Page(15)) {
-            s.text(Rect::from_xywh(28.0, y + 4.0, Tokens::content_x() - 52.0, 20.0), crate::i18n::text("plugins-title"), 0);
-            y += 28.0;
+        if let Some(section) = entry.section {
+            s.text(Rect::from_xywh(28.0, y + 4.0, content_x - 52.0, 20.0), section, 0);
+            y += heading_height;
         }
         let selected = match &entry.action {
             Action::PluginPage(id) => plugin == Some(id.as_str()),
             Action::Page(id) => plugin.is_none() && (page == *id || (page == 7 && *id == 0) || (matches!(page, 9 | 10) && *id == 6)),
             _ => false,
         };
-        s.control(ControlKind::Navigation, Rect::from_xywh(12.0, y, Tokens::content_x()-48.0, (stride-2.0).min(38.0)), &entry.label, entry.action.clone(), selected);
+        s.control(ControlKind::Navigation, Rect::from_xywh(12.0, y, content_x-48.0, (stride-2.0).min(38.0)), &entry.label, entry.action.clone(), selected);
         s.text(Rect::from_xywh(30.0, y, 22.0, (stride-2.0).min(38.0)), entry.icon, 5);
         y += stride;
     }
     s.navigation_text = start..s.text.len();
-    s.navigation_viewport = Some(Rect::from_xywh(12.0, 70.0, Tokens::content_x()-36.0, (_height-78.0).max(0.0)));
-    let x = Tokens::content_x();
+    s.navigation_viewport = Some(Rect::from_xywh(12.0, 70.0, content_x-36.0, (_height-78.0).max(0.0)));
+    let x = content_x;
     let w = (width - x - Tokens::MARGIN).min(Tokens::MAX_WIDTH);
     s.text(
         Rect::from_xywh(x, 28.0, w, 44.0),

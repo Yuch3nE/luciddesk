@@ -6,7 +6,8 @@ impl Tokens {
     pub fn content_x() -> f32 {
         super::layout::navigation()
             .iter()
-            .map(|entry| text_width(&entry.label, 14.0) + 108.0)
+            .map(|entry| (text_width(&entry.label, 14.0) + 108.0)
+                .max(entry.section.map_or(0.0, |title| text_width(title, 12.0) + 52.0)))
             .fold(248.0_f32, f32::max)
             .min(344.0)
     }

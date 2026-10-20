@@ -1290,3 +1290,8 @@ error-unknown = { "未提供错误详情。" }
 error-copy-hint = 按 Ctrl+C 可复制此提示的完整内容。
 
 error-open-item = { "无法打开所选项目。\u000A\u000A项目：\u000A" }{ $path }{ "\u000A\u000A错误详情：\u000A" }{ $error }
+
+settings-nav-basics = 基础设置
+settings-nav-appearance = 外观与布局
+settings-nav-files = 文件与工具
+settings-nav-maintenance = 维护

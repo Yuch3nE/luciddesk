@@ -78,7 +78,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
     let mut selected_plugin: Option<String> = None;
     let mut plugin_document: Option<Result<serde_json::Value, String>> = None;
     let mut navigation_offset = 0.0_f32;
-    let mut reveal_navigation = false;
+    let mut reveal_navigation = true;
     let (dropdown_sender, dropdown_receiver) = std::sync::mpsc::channel::<Control>();
     let mut recording_peek = false;
     let mut recording_search = false;
@@ -501,7 +501,12 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 (desktop_status.clone(), interface_flags::HEADER_DIVIDER.get(), interface_flags::COMPACT_MENU.get(), updates.status(), startup.status(), startup.busy(),
                     (selected_plugin.clone(), navigation_offset.to_bits(), plugin_pages.iter().map(|p| (p.id.clone(), p.name.clone())).collect::<Vec<_>>())),
             );
-            if scroll_page != page { scroll_offset = 0.0; scroll_page = page; }
+            if scroll_page != page {
+                scroll_offset = 0.0;
+                scroll_page = page;
+                reveal_navigation = true;
+            }
+            if msg == WM_SIZE { reveal_navigation = true; }
             let scene_changed = snapshot_changed || scene_key.as_ref() != Some(&key);
             if scene_changed {
                 let mut body = if let Some(id) = &selected_plugin {

@@ -8,6 +8,8 @@ Exit the app before upgrading a portable installation and preserve its `data` fo
 
 ## Unreleased
 
+- Group settings navigation into basics, appearance and layout, files and tools, maintenance, and plugins. Move language next to general settings, give it a distinct icon, and translate group headings into all seven languages.
+
 - Centralize application, CLI and internal crate versions in the workspace; keep plugin package and compatibility protocol versions independent, with updated release-note automation and version checks.
 
 - Make prompts easier to understand in all seven languages by leading with the affected operation and separating technical details.

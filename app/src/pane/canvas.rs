@@ -566,7 +566,8 @@ mod tests {
                 let surface = Offscreen::new(&device, size, size).unwrap();
                 for glyph in [
                     "\u{e790}", "\u{f0e2}", "\u{e721}", "\u{e70d}", "\u{e70e}", "\u{e73e}",
-                    "\u{e8bb}",
+                    "\u{e8bb}", "\u{e713}", "\u{f2b7}", "\u{e8d2}", "\u{e8b7}",
+                    "\u{e890}", "\u{e81c}", "\u{e946}", "\u{e9d9}",
                 ] {
                     draw(&surface.target, scale, |frame| {
                         frame.clear(c::ColorF::new(0.0, 0.0, 0.0, 0.0));

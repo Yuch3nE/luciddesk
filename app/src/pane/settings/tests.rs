@@ -2166,3 +2166,53 @@ fn native_daily_memory_lifecycle() {
     }
 
 }
+#[test]
+fn grouped_navigation_keeps_routes_selection_and_scrolling_in_all_languages() {
+    for locale in 0..7 {
+        crate::i18n::with_locale(locale, || {
+            let entries = layout::navigation();
+            for entry in &entries {
+                for glyph in entry.icon.chars() {
+                    assert!(super::super::fonts::ICON_GLYPHS.contains(&(glyph as u32)),
+                        "Navigation icon missing from font coverage check: {}", entry.label);
+                }
+            }
+            let builtin: Vec<_> = entries.iter().filter_map(|entry| match entry.action {
+                Action::Page(id) if id != 15 => Some(id), _ => None,
+            }).collect();
+            assert_eq!(builtin, [13, 12, 0, 1, 11, 8, 4, 3, 6, 5]);
+            let headings: Vec<_> = entries.iter().filter_map(|entry| {
+                entry.section.and_then(|_| match entry.action { Action::Page(id) => Some(id), _ => None })
+            }).collect();
+            assert!(headings.starts_with(&[13, 0, 8, 6]));
+            assert_ne!(entries[1].icon, entries[4].icon);
+            for (page, selected_page) in [(13, 13), (12, 12), (7, 0), (9, 6), (10, 6), (5, 5)] {
+                for (height, mut offset) in [
+                    (260.0, 0.0), (600.0, 0.0), (900.0, 0.0),
+                    (260.0, 1000.0), (600.0, 1000.0), (900.0, 1000.0),
+                ] {
+                    let mut scene = layout::scene(1000.0, height, page, false,
+                        (PanelTheme::Dark, Backdrop::Acrylic), Default::default());
+                    let selected: Vec<_> = scene.controls.iter().filter(|control|
+                        matches!(control.kind, ControlKind::Navigation) && control.selected).collect();
+                    assert_eq!(selected.len(), 1);
+                    assert!(matches!(selected[0].action, Action::Page(id) if id == selected_page));
+                    for (bounds, _, style) in &scene.text[scene.navigation_text.clone()] {
+                        if *style == 0 {
+                            for control in scene.controls.iter().filter(|c| matches!(c.kind, ControlKind::Navigation)) {
+                                assert!(bounds.bottom <= control.bounds.top || bounds.top >= control.bounds.bottom);
+                            }
+                        }
+                    }
+                    let brand = scene.text[0].0;
+                    scene.reveal_navigation(&mut offset);
+                    scene.scroll_navigation(&mut offset);
+                    assert_eq!(scene.text[0].0.top, brand.top);
+                    let viewport = scene.navigation_viewport.unwrap();
+                    let selected = scene.controls.iter().find(|c| matches!(c.kind, ControlKind::Navigation) && c.selected).unwrap();
+                    assert!(selected.bounds.top >= viewport.top && selected.bounds.bottom <= viewport.bottom);
+                }
+            }
+        });
+    }
+}

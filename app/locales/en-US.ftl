@@ -1290,3 +1290,8 @@ error-unknown = { "No error details were provided." }
 error-copy-hint = Press Ctrl+C to copy this entire message.
 
 error-open-item = { "Unable to open the selected item.\u000A\u000AItem:\u000A" }{ $path }{ "\u000A\u000AError details:\u000A" }{ $error }
+
+settings-nav-basics = Basics
+settings-nav-appearance = Appearance and layout
+settings-nav-files = Files and tools
+settings-nav-maintenance = Maintenance

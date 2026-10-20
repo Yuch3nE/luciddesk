@@ -280,3 +280,15 @@ Windows 本机结果：设置 45 项、菜单 6 项、下拉 4 项、搜索 24 �
 `cargo metadata --no-deps --format-version 1 --locked --offline` 确认 13 个内部包解析为 `0.21.2`、监控插件为 `0.1.0`；发布工作流改读根目录版本，现有打包脚本继续通过 Cargo metadata 读取解析后的版本。发布回归校验每个成员的版本继承或独立声明、锁文件、双语版本记录与 README 徽章。
 
 `python -m unittest discover -s tools/validation -p 'test_*release*.py'` 共 7 项通过；测试临时目录设为工作区 `target/issue3-temp`，避免沙箱默认临时目录权限限制。`cargo check --workspace --all-targets --locked --offline --target-dir target/issue3-focus` 通过，日志为 `target/control-polish/workspace-version-check.log`；`git diff --check` 通过。本轮未生成安装包或执行发布。
+
+### 设置侧栏分类
+
+侧栏按基础设置（通用、语言）、外观与布局（主题与材质、面板布局、字体）、文件与工具（文件夹面板、Everything 搜索、文件预览）、维护（备份与恢复、关于）以及按安装情况出现的插件分组。语言使用独立图标；原页面编号及子页归属保持不变。分组标题参与宽度计算，标题与项目一起滚动，品牌标题固定；单次侧栏布局复用测量后的宽度。
+
+新增七语言回归覆盖分类顺序、标题与项目不重叠、每页唯一选中项、颜色和备份子页归属，以及低矮窗口中选中项滚动可见。构建通过，语言 5 项、设置 32 项、插件设置模块 4 项通过，4 项原有交互测试忽略；设置测试包含七语言布局和多缩放绘制。插件模块中依赖专用插件环境变量的测试本次未启用真实插件夹具，不计作真实插件验收。日志为 `target/control-polish/settings-nav-*.log`。本轮未替换安装版或进行人工全界面验收。
+
+图标兼容复查：微软的 [Segoe MDL2 Assets 目录](https://learn.microsoft.com/en-us/windows/apps/design/iconography/segoe-ui-symbol-font)列出语言图标 `F2B7 / LocaleLanguage`。保留现有字体选择机制，仅在 Fluent 字体存在且覆盖所需字形时使用，否则使用 Windows 10 的 MDL2 字体；将新增语言图标及此前漏列的通用、插件图标加入覆盖集合。分类回归检查实际侧栏图标均被覆盖集合收录，多缩放绘制测试扩展到全部侧栏图标。
+
+构建及 3 项针对性回归通过：MDL2 实际字形覆盖、MDL2/当前图标字体在 100%/150%/200% 缩放下的图标绘制和垂直居中、七语言分组导航。日志为 `target/control-polish/settings-nav-icons-*.log`。测试使用当前系统安装的 MDL2 字体，未在独立 Windows 10 系统或各历史字体版本上实机验收。
+
+提交前复查补齐首次打开、页面切换及窗口尺寸变化时的选中项滚动定位，避免分类增加高度后选中项落在侧栏可视区域外；手动滚动仍保持用户位置。分组导航回归扩展为从顶部及已有较大滚动偏移出发，验证七语言和三种窗口高度下的选中项可见性。最终构建通过，语言 5 项、设置 32 项、插件模块 4 项、图标覆盖及多缩放绘制各 1 项，共 43 项通过，4 项原有交互测试忽略。插件夹具与独立 Windows 10 实机验证限制同上。日志为 `target/control-polish/settings-nav-review-*.log`。

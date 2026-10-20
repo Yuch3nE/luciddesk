@@ -1290,3 +1290,8 @@ error-unknown = { "오류 세부 정보가 제공되지 않았습니다." }
 error-copy-hint = Ctrl+C를 눌러 이 메시지 전체를 복사할 수 있습니다.
 
 error-open-item = { "선택한 항목을 열 수 없습니다.\u000A\u000A항목:\u000A" }{ $path }{ "\u000A\u000A오류 세부 정보:\u000A" }{ $error }
+
+settings-nav-basics = 기본 설정
+settings-nav-appearance = 모양 및 레이아웃
+settings-nav-files = 파일 및 도구
+settings-nav-maintenance = 유지 관리
