@@ -6,15 +6,15 @@ fn report() -> String {
     REPORTS.fetch_add(1, Ordering::Relaxed);
     "host report".into()
 }
+fn filtered_argument() -> &'static str {
+    panic!("filtered argument was evaluated")
+}
 #[test]
 fn host_and_library_share_filter_destination_metadata_and_cache() {
     let dir = tempfile::tempdir().unwrap();
     let database = dir.path().join("workspace.db");
     diagnostics::initialize(&database, "test-version", "test-revision", report);
     assert!(!dir.path().join("logs").exists());
-    fn filtered_argument() -> &'static str {
-        panic!("filtered argument was evaluated")
-    }
     diagnostics::emit!(Level::Trace, "library", "{}", filtered_argument());
     assert_eq!(REPORTS.load(Ordering::Relaxed), 0);
     diagnostics::emit!(Level::Error, "host", "startup failure");

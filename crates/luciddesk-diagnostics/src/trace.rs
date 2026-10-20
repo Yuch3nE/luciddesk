@@ -19,6 +19,9 @@ pub struct TraceFile {
 
 impl TraceFile {
     /// Creates/truncates a support trace and writes a bounded, escaped report header.
+    ///
+    /// # Errors
+    /// Returns file creation or header-write failures.
     pub fn create(
         path: &Path,
         version: &str,
@@ -38,6 +41,10 @@ impl TraceFile {
     }
 
     /// Each attempt consumes one slot, including failed writes, to bound driver storms.
+    ///
+    /// # Errors
+    /// Returns the file-write failure; a failed attempt still consumes its slot.
+    #[track_caller]
     pub fn write(&mut self, component: &str, event: std::fmt::Arguments<'_>) -> io::Result<()> {
         if self.remaining == 0 {
             return Ok(());

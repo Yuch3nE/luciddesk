@@ -8,6 +8,10 @@ Exit the app before upgrading a portable installation and preserve its `data` fo
 
 ## Unreleased
 
+- Use readable computer-local dates with milliseconds and the system time-zone offset in logs, first-occurrence times and diagnostic reports; group messages, source locations and runtime fields for easier reading.
+
+- Improve independent logging with shared event IDs, threads and source locations, byte/count bounds and duplicate coalescing, separate error budgets, accurate I/O/backoff status, Rust panic backtraces, and report collection after releasing application borrows.
+
 - Expand copied diagnostics with independently retained error categories, source locations, original HRESULTs, recent events, native Hook state, and current/rotated logs. Logging does not borrow application state; retain failures after recovery and verify real startup and graceful shutdown.
 
 - Refine the About desktop connection card with a prominent status, aligned status and actions when connected, and stable button positions after copying diagnostics.

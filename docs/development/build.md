@@ -144,6 +144,10 @@ cargo test -p luciddesk --bin luciddesk updates::tests --locked --offline
 cargo test -p luciddesk --bin luciddesk updates::tests::live_release_check --locked --offline -- --ignored --exact
 ```
 
+### 日志系统
+
+常规日志、内存保留、级别过滤、输出故障、panic 记录和复制报告的接入约定见[日志与诊断](logging.md)。
+
 ### 便携与诊断包
 
 便携版使用以下命令，产物位于 `target\portable\时间戳`，含 `portable`，配置保存在包旁的 `data` 中：

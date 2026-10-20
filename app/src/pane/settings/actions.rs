@@ -293,7 +293,8 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
             invalidate = true;
         }
         Action::CopyDiagnostics => {
-            let report = diagnostics::report(&state.borrow());
+            let snapshot = diagnostics::Snapshot::capture(&state.borrow());
+            let report = snapshot.report();
             match crate::clipboard::copy(hwnd as isize, &report) {
                 Ok(()) => {
                     *context.diagnostics_copied = true;

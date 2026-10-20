@@ -5,8 +5,10 @@ Only windows belonging to the test process are closed. User configuration is not
 """
 import argparse
 import ctypes
+from datetime import datetime
 from ctypes import wintypes
 import os
+import re
 from pathlib import Path
 import sqlite3
 import subprocess
@@ -43,6 +45,7 @@ def owned_windows(pid):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--executable", type=Path, required=True)
+    parser.add_argument("--expect-local-time", action="store_true", help="Verify readable timestamps against this computer clock")
     args = parser.parse_args()
     executable = args.executable.resolve(strict=True)
     data = ROOT / "target" / "startup-diagnostics" / str(uuid.uuid4())
@@ -66,6 +69,9 @@ def main():
             started = time.monotonic()
             while True:
                 if process.poll() is not None:
+                    if process.returncode == 0:
+                        raise AssertionError("Startup was not exercised: app exited successfully; "
+                                             "another LucidDesk instance may own the single-instance mutex")
                     raise AssertionError(f"App exited during startup: {process.returncode}; "
                                          f"stderr={stderr_path.read_text(encoding='utf-8', errors='replace')}")
                 windows = owned_windows(process.pid)
@@ -79,6 +85,18 @@ def main():
                 assert any(f'component="{operation}"' in line and "outcome=ok" in line
                            for line in text.splitlines()), f"Operation did not complete: {operation}"
             assert 'component="app.startup"' not in text, "Startup logged a failure"
+            if args.expect_local_time:
+                records = [line for line in text.splitlines() if not line.startswith("#") and line]
+                assert records, "No timestamped records"
+                now = datetime.now().astimezone()
+                for line in records:
+                    match = re.match(r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} [+-]\d{2}:\d{2})\] ", line)
+                    assert match, f"Unreadable event timestamp: {line}"
+                    captured = datetime.strptime(match[1], "%Y-%m-%d %H:%M:%S.%f %z")
+                    assert captured.utcoffset() == now.utcoffset(), "Log uses a different computer time zone"
+                    assert abs((now - captured).total_seconds()) < 30, "Log timestamp differs from computer clock"
+                assert "format=luciddesk-log-v2" in text
+                print(f"PASS: readable local timestamps match computer clock; sample={records[0]}", flush=True)
             assert "RefCell already borrowed" not in stderr_path.read_text(encoding="utf-8", errors="replace")
             print("PASS: real app reached desktop diagnostics, audit worker and tray", flush=True)
         finally:

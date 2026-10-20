@@ -75,16 +75,12 @@ fn notify_connection(state: &Rc<RefCell<PaneApp>>) {
     let (path, error, generation, notify) = {
         let mut s = state.borrow_mut();
         let Some(runtime) = &mut s.runtime else { return; };
-        if let Some(error) = &runtime.desktop_error {
-            luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Error, "desktop.connection", error);
-        }
         let notify = runtime.notice.transition(runtime.desktop_error.is_some());
-        let changed = runtime.notice.error_changed(runtime.desktop_error.as_deref());
-        if !notify && !changed { return; }
+        runtime.notice.error_changed(runtime.desktop_error.as_deref());
         (runtime.path.clone(), runtime.desktop_error.clone(), runtime.notice.generation, notify)
     };
     let logged = desktop_connection_log(&path, error.as_deref());
-    // Changed failure reasons are logged without repeating the modal warning.
+    // One log outside the app borrow; the sink coalesces retries independently of notices.
     if !notify {
         if let Err(error) = logged { luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Error, "desktop.connection", &format!("Desktop connection log: {error}")); }
         return;
@@ -572,7 +568,8 @@ mod tests {
     #[test]
     fn connection_failure_capture_survives_recovery_and_notice_deduplication() {
         let mut app = super::super::tests::test_state();
-        let mut runtime = super::State::new("diagnostics-test/workspace.db".into());
+        let directory = tempfile::tempdir().unwrap();
+        let mut runtime = super::State::new(directory.path().join("workspace.db"));
         let error = "Hook load failed: 0x80070005";
         runtime.desktop_error = Some(error.into());
         runtime.notice.transition(true);
@@ -590,7 +587,8 @@ mod tests {
             r.notice.error_changed(None);
         }
         super::notify_connection(&state);
-        let report = diagnostics::report(&state.borrow());
+        let snapshot = diagnostics::Snapshot::capture(&state.borrow());
+        let report = snapshot.report();
         assert!(report.contains(error));
         assert!(report.matches(error).count() >= 2);
         assert!(report.contains("Current desktop connection error:\r\nNone"));

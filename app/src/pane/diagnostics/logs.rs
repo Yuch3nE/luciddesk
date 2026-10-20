@@ -45,6 +45,9 @@ pub(super) fn append(report: &mut String, path: &Path) {
             }
             report.push('\n');
         }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            writeln!(report, "[Log file does not exist; kind=NotFound]").unwrap();
+        }
         Err(error) => {
             writeln!(
                 report,
@@ -99,6 +102,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut report = String::new();
         append(&mut report, &dir.path().join("missing.log"));
+        assert!(report.contains("Log file does not exist"));
+        append(&mut report, dir.path());
         assert!(report.contains("Unable to read log:"));
         assert!(report.contains("NotFound"));
         let invalid = dir.path().join("invalid.log");

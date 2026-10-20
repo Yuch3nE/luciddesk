@@ -303,7 +303,9 @@ dependencies = [
 name = "luciddesk-diagnostics"
 version = "0.21.2"
 dependencies = [
+ "libc",
  "tempfile",
+ "windows-sys",
 ]
 
 [[package]]

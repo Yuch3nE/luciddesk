@@ -38,7 +38,7 @@ If you enable Everything search or Peek/QuickLook previews, LucidDesk passes sea
 
 ## Diagnostics and information you share
 
-Diagnostics and debugging information are handled locally. Diagnostic builds or tracing options may create local logs; LucidDesk does not automatically send them to the maintainer. Diagnostics, screenshots, logs or settings that you post to GitHub issues may be public. Remove usernames, personal paths, sensitive file names and other information you do not want to disclose before sharing.
+Diagnostics and debugging information are handled locally. The app may write local error logs by default and retains a bounded recent history for the current run; higher log levels or explicit tracing capture more detail. Rust panic records may contain source locations, backtraces and personal paths from the original error. LucidDesk does not automatically send these logs to the maintainer. Diagnostics, screenshots, logs or settings that you post to GitHub issues may be public. Remove usernames, personal paths, sensitive file names and other information you do not want to disclose before sharing.
 
 ## Retention and deletion
 

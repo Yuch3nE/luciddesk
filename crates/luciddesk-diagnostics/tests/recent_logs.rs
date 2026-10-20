@@ -16,6 +16,11 @@ fn memory_survives_missing_logger_failed_file_output_and_worker_recovery() {
     );
     diagnostics::log(Level::Info, "worker.start", "filtered from file");
     assert!(diagnostics::try_log(Level::Error, "hook.attach", "HRESULT=0x80070005").is_err());
+    let health = diagnostics::storage_report();
+    assert!(health.contains("io_failures=1"));
+    assert!(health.contains("last_io_error="));
+    assert!(diagnostics::try_log(Level::Error, "hook.attach", "HRESULT=0x80070005").is_err());
+    assert!(diagnostics::storage_report().contains("io_failures=1"));
     std::thread::spawn(|| diagnostics::log(Level::Info, "hook.attach", "recovered"))
         .join()
         .unwrap();

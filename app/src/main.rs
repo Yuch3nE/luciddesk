@@ -18,6 +18,7 @@ use luciddesk_shell::{ShellApartment, local_app_data_path};
 use std::{ffi::OsString, fs, path::PathBuf};
 
 fn main() -> Result<(), String> {
+    luciddesk_diagnostics::install_panic_hook();
     let monitor_child = std::env::args_os().any(|arg| arg == "--monitor-child");
     run().inspect_err(|error| {
         // Monitor children report through IPC; never open an invisible child dialog.

@@ -1,80 +1,72 @@
-//! On-demand reports retain desktop failures independently of recovery and log filtering.
+//! Capture app state briefly, then collect native/file diagnostics without an app borrow.
 use super::*;
-use std::{
-    fmt::Write,
-    time::{SystemTime, UNIX_EPOCH},
-};
-
+use std::{fmt::Write, path::PathBuf};
 mod logs;
 mod stages;
 pub(super) use stages::{Operation, completed, failure};
 
-fn timestamp() -> u128 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis()
+pub(super) struct Snapshot {
+    state: String,
+    log: Option<PathBuf>,
 }
-
-pub(super) fn report(s: &PaneApp) -> String {
-    let mut report = crate::system_info::report();
-    writeln!(report, "Report timestamp_unix_ms: {}", timestamp()).unwrap();
-    writeln!(
-        report,
-        "Native desktop filter snapshot:\n{}",
-        luciddesk_explorer::filter::desktop_filter_diagnostics()
-            .as_deref()
-            .unwrap_or("Unavailable: desktop view could not be discovered")
-    )
-    .unwrap();
-    writeln!(report, "Process ID: {}", std::process::id()).unwrap();
-    writeln!(
-        report,
-        "Diagnostic level: {}",
-        luciddesk_diagnostics::level().label()
-    )
-    .unwrap();
-    writeln!(
-        report,
-        "Desktop session: {}",
-        if s.session.is_some() {
-            "connected"
+impl Snapshot {
+    /// No file I/O, Shell discovery or callbacks; the caller can release PaneApp immediately.
+    pub fn capture(s: &PaneApp) -> Self {
+        let mut state = format!(
+            "Desktop session: {}\nDesktop membership: {}\n",
+            if s.session.is_some() {
+                "connected"
+            } else {
+                "disconnected"
+            },
+            hybrid::membership_status(s)
+        );
+        let log = if let Some(runtime) = &s.runtime {
+            writeln!(state, "Reconnecting: {}\nConsecutive reconnect failures: {}\nLast connection attempt elapsed (ms): {}\n\nCurrent desktop connection error:\n{}",
+                runtime.reconnecting, runtime.reconnect_failures, runtime.last_attempt.elapsed().as_millis(),
+                runtime.desktop_error.as_deref().unwrap_or("None")).unwrap();
+            Some(runtime.path.with_file_name("logs").join("diagnostic.log"))
         } else {
-            "disconnected"
-        }
-    )
-    .unwrap();
-    writeln!(
-        report,
-        "Desktop membership: {}",
-        hybrid::membership_status(s)
-    )
-    .unwrap();
-    if let Some(runtime) = &s.runtime {
-        writeln!(report, "Reconnecting: {}\nConsecutive reconnect failures: {}\nLast connection attempt elapsed (ms): {}",
-            runtime.reconnecting, runtime.reconnect_failures, runtime.last_attempt.elapsed().as_millis()).unwrap();
+            state.push_str("Desktop runtime: unavailable\n");
+            None
+        };
+        Self { state, log }
+    }
+
+    pub fn report(self) -> String {
+        let mut report = crate::system_info::report();
         writeln!(
             report,
-            "\nCurrent desktop connection error:\n{}",
-            runtime.desktop_error.as_deref().unwrap_or("None")
+            "Report generated at (computer local time): {}\nProcess ID: {}\nDiagnostic level: {}",
+            luciddesk_diagnostics::local_timestamp(),
+            std::process::id(),
+            luciddesk_diagnostics::level().label()
         )
         .unwrap();
-        let log = luciddesk_diagnostics::path()
-            .unwrap_or_else(|| runtime.path.with_file_name("logs").join("diagnostic.log"));
-        writeln!(report, "Diagnostic log path: {}", log.display()).unwrap();
-        logs::append(&mut report, &log.with_file_name("diagnostic.previous.log"));
-        logs::append(&mut report, &log);
-    } else {
-        writeln!(report, "Desktop runtime: unavailable").unwrap();
+        report.push_str(&self.state);
+        writeln!(
+            report,
+            "\nNative desktop filter snapshot:\n{}",
+            luciddesk_explorer::filter::desktop_filter_diagnostics()
+                .as_deref()
+                .unwrap_or("Unavailable: desktop view could not be discovered")
+        )
+        .unwrap();
+        report.push_str(&luciddesk_diagnostics::storage_report());
+        // Capture recent records before file I/O; event sequences correlate the two sources.
+        report.push_str(&luciddesk_diagnostics::recent_report());
+        if let Some(log) = luciddesk_diagnostics::path().or(self.log) {
+            writeln!(report, "Diagnostic log path: {}", log.display()).unwrap();
+            logs::append(&mut report, &log.with_file_name("diagnostic.previous.log"));
+            logs::append(&mut report, &log);
+        }
+        // CF_UNICODETEXT must not silently stop at a NUL in an original error.
+        report
+            .replace('\0', "␀")
+            .replace("\r\n", "\n")
+            .replace('\r', "\n")
+            .replace('\n', "\r\n")
     }
-    report.push('\n');
-    report.push_str(&luciddesk_diagnostics::recent_report());
-    // CF_UNICODETEXT must not silently stop at a NUL in an original error.
-    report
-        .replace('\0', "␀")
-        .replace("\r\n", "\n")
-        .replace('\r', "\n")
-        .replace('\n', "\r\n")
 }
 
 #[cfg(test)]
@@ -99,7 +91,7 @@ mod tests {
         std::thread::spawn(|| completed(Operation::AttachHook, "recovered"))
             .join()
             .unwrap();
-        let report = report(&app);
+        let report = Snapshot::capture(&app).report();
         assert!(report.contains("category=hook-ipc"));
         assert!(report.contains("location=app"));
         assert!(report.contains("HRESULT=0x80070005"));
@@ -112,8 +104,21 @@ mod tests {
     }
 
     #[test]
+    fn captured_snapshot_outlives_the_app_borrow_and_keeps_original_state() {
+        let app = Rc::new(RefCell::new(super::super::tests::test_state()));
+        let snapshot = Snapshot::capture(&app.borrow());
+        assert!(app.try_borrow_mut().is_ok());
+        drop(app);
+        assert!(snapshot.report().contains("Desktop runtime: unavailable"));
+    }
+
+    #[test]
     fn missing_runtime_is_explicit() {
         let s = super::super::tests::test_state();
-        assert!(report(&s).contains("Desktop runtime: unavailable"));
+        assert!(
+            Snapshot::capture(&s)
+                .report()
+                .contains("Desktop runtime: unavailable")
+        );
     }
 }
