@@ -473,6 +473,39 @@ fn backup_in_progress_preserves_policy_controls_and_prevents_duplicate_jobs() {
 }
 
 #[test]
+fn backup_page_groups_policy_before_manual_actions_in_every_language() {
+    for locale in 0..7 {
+        crate::i18n::with_locale(locale, || {
+            for busy in [false, true] {
+                let mut body = scene(800.0, 560.0, 6, false,
+                    (PanelTheme::Dark, Backdrop::Mica), Default::default());
+                let undo = std::path::PathBuf::from("before-restore.db");
+                let view = recovery::View { busy, undo: Some(undo.clone()), ..Default::default() };
+                layout::backup_page(&mut body, 800.0, &view, Default::default(), false);
+                let find = |predicate: fn(&Action) -> bool| {
+                    body.controls.iter().find(|c| predicate(&c.action)).unwrap()
+                };
+                let policy = find(|a| matches!(a, Action::BackupPolicy(2)));
+                let create = find(|a| matches!(a, Action::Change(Event::CreateBackup)));
+                let restore = find(|a| matches!(a, Action::Change(Event::RestoreBackup)));
+                let rollback = find(|a| matches!(a, Action::Change(Event::RestoreBackupPath(_))));
+                let advanced = find(|a| matches!(a, Action::BackupAdvanced));
+                assert!(policy.bounds.bottom <= create.bounds.top);
+                assert!(restore.bounds.bottom <= rollback.bounds.top);
+                assert!(rollback.bounds.bottom <= advanced.bounds.top);
+                for control in [create, restore, rollback] { assert_eq!(control.enabled, !busy); }
+                assert!(matches!(&rollback.action, Action::Change(Event::RestoreBackupPath(path)) if path == &undo));
+                for pair in body.cards.windows(2) {
+                    assert!(pair[0].bottom <= pair[1].top, "backup cards overlap");
+                }
+                assert!(body.text.iter().any(|(_, text, _)| text ==
+                    crate::i18n::text("ui-backups-contain-settings-and-layouts-not-your-actual-files")));
+            }
+        });
+    }
+}
+
+#[test]
 fn folder_modes_fit_minimum_window_and_show_current_choice() {
     for mode in [folder::EntryMode::Inline, folder::EntryMode::Explorer] {
         let mut body = scene(

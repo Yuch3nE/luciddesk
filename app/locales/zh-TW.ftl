@@ -987,7 +987,7 @@ ui-copied = { "已複製" }
 ui-copy-diagnostics = { "複製診斷" }
 
 # 备份仅保存配置和布局，不包含实际文件。
-ui-backups-contain-settings-and-layouts-not-your-actual-files = { "備份僅儲存設定及配置，不包含實際檔案。" }
+ui-backups-contain-settings-and-layouts-not-your-actual-files = { "備份會儲存 LucidDesk 的設定與面板配置，不包含你的檔案或外掛各自的設定。" }
 
 # 返回备份与恢复
 ui-back-to-backup-restore = { "返回備份與還原" }
@@ -1034,13 +1034,13 @@ ui-view-details = { "檢視詳細資料" }
 ui-automatic-backups = { "自動備份" }
 
 # 按设定间隔保存配置和布局。
-ui-save-settings-and-layouts-at-the-chosen-interval = { "設定有變更時自動備份，兩次嘗試之間至少間隔設定時長。" }
+ui-save-settings-and-layouts-at-the-chosen-interval = { "設定或配置有變更時自動儲存，內容與上次備份相同則不重複備份。" }
 
 # 备份间隔
-ui-backup-interval = { "備份間隔" }
+ui-backup-interval = { "最短備份間隔" }
 
 # 自动备份的执行频率。
-ui-how-often-automatic-backups-run = { "設定兩次自動備份嘗試的最短間隔。" }
+ui-how-often-automatic-backups-run = { "設定自動備份的最短間隔。沒有新變更時，不會定時重複備份。" }
 
 # {} 分钟
 ui-minutes = { $arg0 }{ " 分鐘" }
@@ -1049,7 +1049,7 @@ ui-minutes = { $arg0 }{ " 分鐘" }
 ui-keep-automatic-backups = { "保留自動備份" }
 
 # 超出数量的旧自动备份会被清理。
-ui-older-automatic-backups-beyond-this-limit-are-removed = { "超過數量的舊自動備份將被清除。" }
+ui-older-automatic-backups-beyond-this-limit-are-removed = { "只保留最近的指定份數，自動刪除更早的自動備份。手動備份會保留。" }
 
 # 最近 {} 份
 ui-last-backups = { "最近 " }{ $arg0 }{ " 份" }
@@ -1058,7 +1058,7 @@ ui-last-backups = { "最近 " }{ $arg0 }{ " 份" }
 ui-manual-actions = { "手動操作" }
 
 # 立即创建备份，或从已有备份文件恢复。
-ui-create-a-backup-now-or-restore-an-existing-one = { "立即建立備份，或從現有備份檔還原。" }
+ui-create-a-backup-now-or-restore-an-existing-one = { "隨時儲存一份新備份，即使內容未變；也可從備份檔案還原設定與配置。" }
 
 # 立即备份
 ui-back-up-now = { "立即備份" }
@@ -1073,7 +1073,7 @@ ui-view-restore-export-or-delete-existing-backups = { "檢視、還原、匯出�
 ui-undo-this-restore = { "復原此次還原" }
 
 # 恢复到本次还原操作之前的配置。
-ui-return-to-the-configuration-before-this-restore = { "還原至此次還原操作之前的設定。" }
+ui-return-to-the-configuration-before-this-restore = { "回到這次還原之前的設定與配置。" }
 
 # 撤销恢复…
 ui-undo-restore = { "復原還原…" }

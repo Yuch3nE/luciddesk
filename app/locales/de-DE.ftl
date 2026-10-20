@@ -987,7 +987,7 @@ ui-copied = { "Kopiert" }
 ui-copy-diagnostics = { "Diagnose kopieren" }
 
 # 备份仅保存配置和布局，不包含实际文件。
-ui-backups-contain-settings-and-layouts-not-your-actual-files = { "Sicherungen enthalten Einstellungen und Layouts, keine persönlichen Dateien." }
+ui-backups-contain-settings-and-layouts-not-your-actual-files = { "Sicherungen speichern Ihre LucidDesk-Einstellungen und Panel-Layouts, aber nicht Ihre Dateien oder die eigenen Einstellungen der Plugins." }
 
 # 返回备份与恢复
 ui-back-to-backup-restore = { "Zurück zu Sicherungen" }
@@ -1034,13 +1034,13 @@ ui-view-details = { "Details anzeigen" }
 ui-automatic-backups = { "Automatische Sicherung" }
 
 # 按设定间隔保存配置和布局。
-ui-save-settings-and-layouts-at-the-chosen-interval = { "Bei Konfigurationsänderungen automatisch sichern. Zwischen Versuchen liegt mindestens das eingestellte Intervall." }
+ui-save-settings-and-layouts-at-the-chosen-interval = { "Änderungen an Einstellungen oder Layouts automatisch sichern. Gleiche Inhalte wie in der letzten Sicherung werden nicht erneut gesichert." }
 
 # 备份间隔
-ui-backup-interval = { "Sicherungsintervall" }
+ui-backup-interval = { "Mindestintervall" }
 
 # 自动备份的执行频率。
-ui-how-often-automatic-backups-run = { "Mindestintervall zwischen automatischen Sicherungsversuchen festlegen." }
+ui-how-often-automatic-backups-run = { "Mindestabstand zwischen automatischen Sicherungen festlegen. Unveränderte Inhalte werden nicht regelmäßig erneut gesichert." }
 
 # {} 分钟
 ui-minutes = { "Minuten: " }{ $arg0 }
@@ -1049,7 +1049,7 @@ ui-minutes = { "Minuten: " }{ $arg0 }
 ui-keep-automatic-backups = { "Automatische Kopien behalten" }
 
 # 超出数量的旧自动备份会被清理。
-ui-older-automatic-backups-beyond-this-limit-are-removed = { "Ältere automatische Sicherungen über dem Limit werden entfernt." }
+ui-older-automatic-backups-beyond-this-limit-are-removed = { "Diese Anzahl der neuesten automatischen Sicherungen behalten und ältere automatisch löschen. Manuelle Sicherungen bleiben erhalten." }
 
 # 最近 {} 份
 ui-last-backups = { "Letzte " }{ $arg0 }{ " Sicherungen" }
@@ -1058,7 +1058,7 @@ ui-last-backups = { "Letzte " }{ $arg0 }{ " Sicherungen" }
 ui-manual-actions = { "Manuelle Aktionen" }
 
 # 立即创建备份，或从已有备份文件恢复。
-ui-create-a-backup-now-or-restore-an-existing-one = { "Jetzt sichern oder eine vorhandene Sicherung wiederherstellen." }
+ui-create-a-backup-now-or-restore-an-existing-one = { "Jederzeit eine neue Sicherung erstellen, auch ohne Änderungen, oder Einstellungen und Layouts aus einer Sicherungsdatei wiederherstellen." }
 
 # 立即备份
 ui-back-up-now = { "Jetzt sichern" }
@@ -1073,7 +1073,7 @@ ui-view-restore-export-or-delete-existing-backups = { "Sicherungen anzeigen, wie
 ui-undo-this-restore = { "Wiederherstellung rückgängig" }
 
 # 恢复到本次还原操作之前的配置。
-ui-return-to-the-configuration-before-this-restore = { "Zur Konfiguration vor dieser Wiederherstellung zurückkehren." }
+ui-return-to-the-configuration-before-this-restore = { "Zu den Einstellungen und Layouts vor dieser Wiederherstellung zurückkehren." }
 
 # 撤销恢复…
 ui-undo-restore = { "Wiederherstellung rückgängig…" }

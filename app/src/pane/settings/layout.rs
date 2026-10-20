@@ -841,6 +841,25 @@ pub(super) fn backup_page(
         } else {
             form.info(crate::i18n::text("ui-backup-status"), status);
         }
+        form.section(crate::i18n::text("ui-automatic-backups"));
+        form.toggle(
+            crate::i18n::text("ui-automatic-backups"),
+            crate::i18n::text("ui-save-settings-and-layouts-at-the-chosen-interval"),
+            policy.enabled,
+            Action::BackupPolicy(0),
+        );
+        form.combo(
+            crate::i18n::text("ui-backup-interval"),
+            crate::i18n::text("ui-how-often-automatic-backups-run"),
+            &crate::i18n::format("ui-minutes", &[("arg0", format!("{}", policy.minutes))]),
+            Action::BackupPolicy(1),
+        );
+        form.combo(
+            crate::i18n::text("ui-keep-automatic-backups"),
+            crate::i18n::text("ui-older-automatic-backups-beyond-this-limit-are-removed"),
+            &crate::i18n::format("ui-last-backups", &[("arg0", format!("{}", policy.keep))]),
+            Action::BackupPolicy(2),
+        );
         form.section(crate::i18n::text("ui-backup-restore"));
         form.actions(
             crate::i18n::text("ui-manual-actions"),
@@ -860,25 +879,6 @@ pub(super) fn backup_page(
             crate::i18n::text("ui-manage-backups"),
             crate::i18n::text("ui-view-restore-export-or-delete-existing-backups"),
             Action::Page(9),
-        );
-        form.section(crate::i18n::text("ui-automatic-backups"));
-        form.toggle(
-            crate::i18n::text("ui-automatic-backups"),
-            crate::i18n::text("ui-save-settings-and-layouts-at-the-chosen-interval"),
-            policy.enabled,
-            Action::BackupPolicy(0),
-        );
-        form.combo(
-            crate::i18n::text("ui-backup-interval"),
-            crate::i18n::text("ui-how-often-automatic-backups-run"),
-            &crate::i18n::format("ui-minutes", &[("arg0", format!("{}", policy.minutes))]),
-            Action::BackupPolicy(1),
-        );
-        form.combo(
-            crate::i18n::text("ui-keep-automatic-backups"),
-            crate::i18n::text("ui-older-automatic-backups-beyond-this-limit-are-removed"),
-            &crate::i18n::format("ui-last-backups", &[("arg0", format!("{}", policy.keep))]),
-            Action::BackupPolicy(2),
         );
         if let Some(path) = &view.undo {
             form.button(

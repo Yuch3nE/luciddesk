@@ -987,7 +987,7 @@ ui-copied = { "コピーしました" }
 ui-copy-diagnostics = { "診断情報をコピー" }
 
 # 备份仅保存配置和布局，不包含实际文件。
-ui-backups-contain-settings-and-layouts-not-your-actual-files = { "バックアップには設定と配置のみが含まれ、実際のファイルは含まれません。" }
+ui-backups-contain-settings-and-layouts-not-your-actual-files = { "LucidDesk の設定とパネルのレイアウトを保存します。実際のファイルや各プラグインの設定は含まれません。" }
 
 # 返回备份与恢复
 ui-back-to-backup-restore = { "バックアップと復元に戻る" }
@@ -1034,13 +1034,13 @@ ui-view-details = { "詳細を表示" }
 ui-automatic-backups = { "自動バックアップ" }
 
 # 按设定间隔保存配置和布局。
-ui-save-settings-and-layouts-at-the-chosen-interval = { "設定が変更された場合に自動バックアップします。次の試行まで、設定した間隔以上の時間を空けます。" }
+ui-save-settings-and-layouts-at-the-chosen-interval = { "設定やレイアウトの変更を自動保存します。前回のバックアップと内容が同じ場合は、重複して作成しません。" }
 
 # 备份间隔
-ui-backup-interval = { "バックアップ間隔" }
+ui-backup-interval = { "最短バックアップ間隔" }
 
 # 自动备份的执行频率。
-ui-how-often-automatic-backups-run = { "自動バックアップの試行間隔の最小値を設定します。" }
+ui-how-often-automatic-backups-run = { "自動バックアップの最短間隔を設定します。変更がない場合、定期的に同じ内容を保存することはありません。" }
 
 # {} 分钟
 ui-minutes = { $arg0 }{ " 分" }
@@ -1049,7 +1049,7 @@ ui-minutes = { $arg0 }{ " 分" }
 ui-keep-automatic-backups = { "自動バックアップの保持数" }
 
 # 超出数量的旧自动备份会被清理。
-ui-older-automatic-backups-beyond-this-limit-are-removed = { "上限を超えた古い自動バックアップは削除されます。" }
+ui-older-automatic-backups-beyond-this-limit-are-removed = { "指定した数の最新の自動バックアップを残し、古いものを自動削除します。手動バックアップは残ります。" }
 
 # 最近 {} 份
 ui-last-backups = { "最新 " }{ $arg0 }{ " 件" }
@@ -1058,7 +1058,7 @@ ui-last-backups = { "最新 " }{ $arg0 }{ " 件" }
 ui-manual-actions = { "手動操作" }
 
 # 立即创建备份，或从已有备份文件恢复。
-ui-create-a-backup-now-or-restore-an-existing-one = { "今すぐバックアップするか、既存のファイルから復元します。" }
+ui-create-a-backup-now-or-restore-an-existing-one = { "変更がなくても、いつでも新しいバックアップを保存できます。バックアップファイルから設定やレイアウトを復元することもできます。" }
 
 # 立即备份
 ui-back-up-now = { "今すぐバックアップ" }
@@ -1073,7 +1073,7 @@ ui-view-restore-export-or-delete-existing-backups = { "既存のバックアッ�
 ui-undo-this-restore = { "この復元を元に戻す" }
 
 # 恢复到本次还原操作之前的配置。
-ui-return-to-the-configuration-before-this-restore = { "今回の復元前の設定に戻します。" }
+ui-return-to-the-configuration-before-this-restore = { "今回の復元前の設定とレイアウトに戻します。" }
 
 # 撤销恢复…
 ui-undo-restore = { "復元を元に戻す…" }

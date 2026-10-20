@@ -987,7 +987,7 @@ ui-copied = { "Copied" }
 ui-copy-diagnostics = { "Copy diagnostics" }
 
 # 备份仅保存配置和布局，不包含实际文件。
-ui-backups-contain-settings-and-layouts-not-your-actual-files = { "Backups contain settings and layouts, not your actual files." }
+ui-backups-contain-settings-and-layouts-not-your-actual-files = { "Backups save your LucidDesk settings and panel layouts, but not your files or each plugin’s own settings." }
 
 # 返回备份与恢复
 ui-back-to-backup-restore = { "Back to backup & restore" }
@@ -1034,13 +1034,13 @@ ui-view-details = { "View details" }
 ui-automatic-backups = { "Automatic backups" }
 
 # 按设定间隔保存配置和布局。
-ui-save-settings-and-layouts-at-the-chosen-interval = { "Back up automatically when the configuration changes, with at least the selected interval between attempts." }
+ui-save-settings-and-layouts-at-the-chosen-interval = { "Automatically save changes to settings or layouts. No duplicate backup is created if the contents match the last backup." }
 
 # 备份间隔
-ui-backup-interval = { "Backup interval" }
+ui-backup-interval = { "Minimum backup interval" }
 
 # 自动备份的执行频率。
-ui-how-often-automatic-backups-run = { "Set the minimum interval between automatic backup attempts." }
+ui-how-often-automatic-backups-run = { "Set the minimum time between automatic backups. Unchanged contents are not backed up repeatedly on a schedule." }
 
 # {} 分钟
 ui-minutes = { "Minutes: " }{ $arg0 }
@@ -1049,7 +1049,7 @@ ui-minutes = { "Minutes: " }{ $arg0 }
 ui-keep-automatic-backups = { "Keep automatic backups" }
 
 # 超出数量的旧自动备份会被清理。
-ui-older-automatic-backups-beyond-this-limit-are-removed = { "Older automatic backups beyond this limit are removed." }
+ui-older-automatic-backups-beyond-this-limit-are-removed = { "Keep this many recent automatic backups and delete older ones automatically. Manual backups are kept." }
 
 # 最近 {} 份
 ui-last-backups = { "Last " }{ $arg0 }{ " backups" }
@@ -1058,7 +1058,7 @@ ui-last-backups = { "Last " }{ $arg0 }{ " backups" }
 ui-manual-actions = { "Manual actions" }
 
 # 立即创建备份，或从已有备份文件恢复。
-ui-create-a-backup-now-or-restore-an-existing-one = { "Create a backup now or restore an existing one." }
+ui-create-a-backup-now-or-restore-an-existing-one = { "Save a new backup at any time, even without changes, or restore settings and layouts from a backup file." }
 
 # 立即备份
 ui-back-up-now = { "Back up now" }
@@ -1073,7 +1073,7 @@ ui-view-restore-export-or-delete-existing-backups = { "View, restore, export or 
 ui-undo-this-restore = { "Undo this restore" }
 
 # 恢复到本次还原操作之前的配置。
-ui-return-to-the-configuration-before-this-restore = { "Return to the configuration before this restore." }
+ui-return-to-the-configuration-before-this-restore = { "Go back to the settings and layouts you had before this restore." }
 
 # 撤销恢复…
 ui-undo-restore = { "Undo restore…" }

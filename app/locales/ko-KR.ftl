@@ -987,7 +987,7 @@ ui-copied = { "복사됨" }
 ui-copy-diagnostics = { "진단 정보 복사" }
 
 # 备份仅保存配置和布局，不包含实际文件。
-ui-backups-contain-settings-and-layouts-not-your-actual-files = { "백업에는 설정과 배치만 포함되며 실제 파일은 포함되지 않습니다." }
+ui-backups-contain-settings-and-layouts-not-your-actual-files = { "LucidDesk 설정과 패널 배치를 저장합니다. 실제 파일이나 각 플러그인의 자체 설정은 포함하지 않습니다." }
 
 # 返回备份与恢复
 ui-back-to-backup-restore = { "백업 및 복원으로 돌아가기" }
@@ -1034,13 +1034,13 @@ ui-view-details = { "자세히 보기" }
 ui-automatic-backups = { "자동 백업" }
 
 # 按设定间隔保存配置和布局。
-ui-save-settings-and-layouts-at-the-chosen-interval = { "설정이 변경되면 자동으로 백업하며, 각 시도 사이에 설정한 간격 이상을 둡니다." }
+ui-save-settings-and-layouts-at-the-chosen-interval = { "설정이나 배치의 변경 사항을 자동으로 저장합니다. 이전 백업과 내용이 같으면 중복 백업하지 않습니다." }
 
 # 备份间隔
-ui-backup-interval = { "백업 간격" }
+ui-backup-interval = { "최소 백업 간격" }
 
 # 自动备份的执行频率。
-ui-how-often-automatic-backups-run = { "자동 백업 시도 사이의 최소 간격을 설정합니다." }
+ui-how-often-automatic-backups-run = { "자동 백업의 최소 간격을 설정합니다. 변경 사항이 없으면 같은 내용을 주기적으로 다시 백업하지 않습니다." }
 
 # {} 分钟
 ui-minutes = { $arg0 }{ "분" }
@@ -1049,7 +1049,7 @@ ui-minutes = { $arg0 }{ "분" }
 ui-keep-automatic-backups = { "자동 백업 보관" }
 
 # 超出数量的旧自动备份会被清理。
-ui-older-automatic-backups-beyond-this-limit-are-removed = { "개수를 초과한 오래된 자동 백업은 삭제됩니다." }
+ui-older-automatic-backups-beyond-this-limit-are-removed = { "최근 자동 백업을 지정한 개수만큼 보관하고 오래된 자동 백업은 삭제합니다. 수동 백업은 유지됩니다." }
 
 # 最近 {} 份
 ui-last-backups = { "최근 " }{ $arg0 }{ "개" }
@@ -1058,7 +1058,7 @@ ui-last-backups = { "최근 " }{ $arg0 }{ "개" }
 ui-manual-actions = { "수동 작업" }
 
 # 立即创建备份，或从已有备份文件恢复。
-ui-create-a-backup-now-or-restore-an-existing-one = { "지금 백업을 만들거나 기존 백업에서 복원합니다." }
+ui-create-a-backup-now-or-restore-an-existing-one = { "변경 사항이 없어도 언제든 새 백업을 저장하거나, 백업 파일에서 설정과 배치를 복원할 수 있습니다." }
 
 # 立即备份
 ui-back-up-now = { "지금 백업" }
@@ -1073,7 +1073,7 @@ ui-view-restore-export-or-delete-existing-backups = { "기존 백업을 확인, 
 ui-undo-this-restore = { "이 복원 실행 취소" }
 
 # 恢复到本次还原操作之前的配置。
-ui-return-to-the-configuration-before-this-restore = { "이번 복원 이전의 설정으로 돌아갑니다." }
+ui-return-to-the-configuration-before-this-restore = { "이번 복원 전의 설정과 배치로 돌아갑니다." }
 
 # 撤销恢复…
 ui-undo-restore = { "복원 실행 취소…" }

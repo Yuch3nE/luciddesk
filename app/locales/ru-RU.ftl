@@ -987,7 +987,7 @@ ui-copied = { "Скопировано" }
 ui-copy-diagnostics = { "Копировать диагностику" }
 
 # 备份仅保存配置和布局，不包含实际文件。
-ui-backups-contain-settings-and-layouts-not-your-actual-files = { "Копии содержат настройки и размещение, но не сами файлы." }
+ui-backups-contain-settings-and-layouts-not-your-actual-files = { "Сохраняются настройки LucidDesk и расположение панелей, но не ваши файлы и собственные настройки плагинов." }
 
 # 返回备份与恢复
 ui-back-to-backup-restore = { "Назад к копиям и восстановлению" }
@@ -1034,13 +1034,13 @@ ui-view-details = { "Подробнее" }
 ui-automatic-backups = { "Автоматические копии" }
 
 # 按设定间隔保存配置和布局。
-ui-save-settings-and-layouts-at-the-chosen-interval = { "Создавать резервные копии автоматически при изменении конфигурации, выдерживая не менее заданного интервала между попытками." }
+ui-save-settings-and-layouts-at-the-chosen-interval = { "Автоматически сохранять изменения настроек и расположения. Если содержимое совпадает с последней копией, повторная копия не создаётся." }
 
 # 备份间隔
-ui-backup-interval = { "Интервал копирования" }
+ui-backup-interval = { "Минимальный интервал" }
 
 # 自动备份的执行频率。
-ui-how-often-automatic-backups-run = { "Задайте минимальный интервал между попытками автоматического резервного копирования." }
+ui-how-often-automatic-backups-run = { "Минимальное время между автоматическими копиями. Без изменений одинаковые копии по расписанию не создаются." }
 
 # {} 分钟
 ui-minutes = { "Минут: " }{ $arg0 }
@@ -1049,7 +1049,7 @@ ui-minutes = { "Минут: " }{ $arg0 }
 ui-keep-automatic-backups = { "Хранить автоматические копии" }
 
 # 超出数量的旧自动备份会被清理。
-ui-older-automatic-backups-beyond-this-limit-are-removed = { "Старые автоматические копии сверх лимита удаляются." }
+ui-older-automatic-backups-beyond-this-limit-are-removed = { "Хранить указанное число последних автоматических копий, удаляя более старые. Ручные копии сохраняются." }
 
 # 最近 {} 份
 ui-last-backups = { "Последних копий: " }{ $arg0 }
@@ -1058,7 +1058,7 @@ ui-last-backups = { "Последних копий: " }{ $arg0 }
 ui-manual-actions = { "Ручные действия" }
 
 # 立即创建备份，或从已有备份文件恢复。
-ui-create-a-backup-now-or-restore-an-existing-one = { "Создайте копию сейчас или восстановите существующую." }
+ui-create-a-backup-now-or-restore-an-existing-one = { "В любой момент создать новую копию, даже без изменений, или восстановить настройки и расположение из файла копии." }
 
 # 立即备份
 ui-back-up-now = { "Создать копию" }
@@ -1073,7 +1073,7 @@ ui-view-restore-export-or-delete-existing-backups = { "Просматривай�
 ui-undo-this-restore = { "Отменить восстановление" }
 
 # 恢复到本次还原操作之前的配置。
-ui-return-to-the-configuration-before-this-restore = { "Вернуть настройки до этого восстановления." }
+ui-return-to-the-configuration-before-this-restore = { "Вернуться к настройкам и расположению до этого восстановления." }
 
 # 撤销恢复…
 ui-undo-restore = { "Отменить восстановление…" }
