@@ -2,58 +2,32 @@
 
 [简体中文](CHANGELOG.md) · English
 
-Current version: **0.21.2**. Features and fixes by release.
+Current version: **0.22.0**. Features and fixes by release.
 
 Exit the app before upgrading a portable installation and preserve its `data` folder. See the [portable guide](docs/portable.md) (Chinese).
 
-## Unreleased
+## 0.22.0 · 2026-10-21
 
-- Add an opt-in blank-desktop double-click gesture to hide all icons and panels, then restore them with another double-click or the tray. Preserve prior icon visibility and panel layout, including monitor subprocesses and panels created while hidden.
+### New features
 
-- Render color emoji in pane and tab title rename fields, including selected text, honoring the title color emoji setting while retaining native caret, selection and IME handling.
+- Add **Settings → General → Double-click to hide desktop**, off by default. Once enabled, double-click an empty desktop area to hide all icons and panels. Double-click again or click the tray icon to restore them without changing your layout.
+- Add **Automatically check for updates** to About, enabled by default. Check at startup and every 24 hours, and show the latest version number when an update is available. You can turn it off, check manually, or open the update page to download.
+- Show color emoji when renaming panels and tabs, including selected text, following the **Title color emoji** setting.
 
-- Use readable computer-local dates with milliseconds and the system time-zone offset in logs, first-occurrence times and diagnostic reports; group messages, source locations and runtime fields for easier reading.
+### Everyday use
 
-- Improve independent logging with shared event IDs, threads and source locations, byte/count bounds and duplicate coalescing, separate error budgets, accurate I/O/backoff status, Rust panic backtraces, and report collection after releasing application borrows.
+- Group Settings navigation by purpose and make Language easier to find. Dropdowns support keyboard navigation, wheel scrolling and prefix search; cancelling keeps the original value.
+- Make the desktop connection status and buttons clearer in About. Add a build identifier to help identify your version when reporting a problem.
+- Improve prompts in all seven languages and Simplified Chinese interface text. Explain the outcome before showing error details, use consistent error dialogs, and reduce duplicate popups.
+- Improve metric presentation and the compact layout of the optional system monitor plugin, and reduce drawing overhead in Settings and monitor panels. Default installers and ZIPs still exclude plugins.
 
-- Expand copied diagnostics with independently retained error categories, source locations, original HRESULTs, recent events, native Hook state, and current/rotated logs. Logging does not borrow application state; retain failures after recovery and verify real startup and graceful shutdown.
+### Reliability and troubleshooting
 
-- Refine the About desktop connection card with a prominent status, aligned status and actions when connected, and stable button positions after copying diagnostics.
-
-- Add an automatic update switch to About, enabled by default. Check stable releases at startup and every 24 hours, and notify with the latest version number; manual checks and downloads remain available when disabled.
-
-- Show the embedded Git commit in About, preserving the dirty-build marker to distinguish builds of the same version.
-
-- Group settings navigation into basics, appearance and layout, files and tools, maintenance, and plugins. Move language next to general settings, give it a distinct icon, and translate group headings into all seven languages.
-
-- Centralize application, CLI and internal crate versions in the workspace; keep plugin package and compatibility protocol versions independent, with updated release-note automation and version checks.
-
-- Make prompts easier to understand in all seven languages by leading with the affected operation and separating technical details.
-- Audit message text and IDs against call sites, distinguish missing runtime state, unresolved paths and dispatch failures, and fix literal Fluent wrappers in monitor plugin text.
-- Polish Simplified Chinese settings, menus, search, backup and system monitor text, clarifying option scope and outcomes, including matching monitor plugin labels.
-- Clarify Simplified Chinese error descriptions and recovery guidance. Separate desktop connection, item opening and backup restore details while preserving error codes and paths.
-
-### Fixes
-
-- Unify error dialog titles, icons, complete details and copy hints. Settings, file operations and rename dialogs belong to the initiating window; suppress only identical dialogs already open, without delaying errors or hiding later retry failures.
-- Report early startup failures, treat explicit Windows user cancellation as a non-error for file operations, and use informational presentation for backup details.
-- Defer desktop selection synchronization until the pane's focus callback returns, avoiding a circular wait with Explorer's synchronous focus notification that can cause a filtering timeout.
-- Retry desktop filtering work when Explorer's nested message handling consumes its wake, preventing lost-wake request timeouts, and include more timeout diagnostics.
-- Retire and reconnect sessions after ordinary desktop filtering requests time out, avoiding repeated waits and dialogs when returning focus to a group with a selected item.
-
-- Fix event callback borrow conflicts that could occur while an error dialog processes nested Windows/COM messages.
-- Prevent file previews from overlapping context menus, including queued previews and requests from other groups; reject nested desktop filtering requests so they cannot overwrite an active request.
-- Fix completed Explorer connection handshakes being incorrectly reported as timed out after a long-running message callback.
-
-### Interface and interaction
-
-- Settings dropdowns locate the current selection and support keyboard navigation, wheel scrolling and prefix search; cancellation preserves the original value.
-- Align shared control dimensions and focus feedback across Settings, menus, search and system monitoring; menus support Home/End navigation to the first or last enabled item.
-- Improve the optional system monitor plugin's compact dashboard and metric presentation. Default installers still exclude plugins.
-
-### Performance
-
-- Reuse solid-color brushes in Settings and system monitoring to reduce drawing resource allocation; keep the monitor brush cache bounded.
+- Improve connection stability when returning to the desktop or switching panels, reducing freezes, false connection timeouts and repeated error dialogs.
+- Improve reliability when file previews and context menus overlap, and fix failures that could occur while displaying some error dialogs.
+- Make hiding and restoring the desktop smoother, reducing panel flicker and lingering busy cursors. Restore the previous icon visibility when the app exits.
+- Include more complete error details and recent logs in **Copy diagnostics**. Logs use your computer's local date and time, and recent errors remain available after recovery.
+- Report early startup failures, stop treating cancelled file operations as errors, and make backup information clearer.
 
 ## 0.21.2 · 2026-10-19
 

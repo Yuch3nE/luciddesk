@@ -12,7 +12,7 @@ Desktop panels · Folder panels · Everything search · Spacebar preview · Agen
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Build CI](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml/badge.svg)](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml)
-[![Version](https://img.shields.io/badge/version-0.21.2-087EA4?style=flat-square)](CHANGELOG.en.md)
+[![Version](https://img.shields.io/badge/version-0.22.0-087EA4?style=flat-square)](CHANGELOG.en.md)
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square)](#compatibility)
 [![Architecture](https://img.shields.io/badge/arch-x64-475569?style=flat-square)](docs/portable.md)
 
@@ -47,6 +47,7 @@ Click a screenshot to view the original. These show dark Acrylic; the appearance
 | Feature | What you can do |
 | --- | --- |
 | Desktop panels | Group files, folders and shortcuts; use compact arrangement, manual grids with empty cells or free positioning, and sort by name, type, modified date or size |
+| Double-click to hide desktop | Hide all icons and panels by double-clicking an empty desktop area; double-click again to restore. Enable it in General settings |
 | Panel tabs | Switch between panels, reorder tabs, merge them or detach them into separate windows |
 | Folder panels | Browse directories, sort by name, type, date or size, and follow file changes automatically |
 | File search | Find local files through Everything and open files or their locations |
@@ -88,6 +89,8 @@ See the [installer](docs/installer.md), [standard ZIP](docs/package.md) or [port
 3. Drag desktop icons into a panel. Use the tray menu to create panels or folder panels and open Settings.
 
 Click the tray icon to show panels. Its menu also provides creation, search, refresh, configuration folder and exit actions.
+
+To temporarily clear the desktop, enable **Settings → General → Double-click to hide desktop** (off by default). Double-click an empty desktop area to hide all icons and panels, then double-click again or click the tray icon to restore them. Previously hidden icons and panels stay hidden, and your layout is preserved.
 
 ### Enable search and preview
 
@@ -164,11 +167,11 @@ Language changes update open windows in place while preserving panels, item sele
 
 Translations are embedded in the executable. Saved panel names and file names are unchanged. Native Windows Shell menus follow the system language. Translation contributions and corrections are welcome.
 
-Version 0.21.2 installers and ZIPs exclude plugins, and the plugin list remains hidden in Settings while under development. See the [plugin guide](docs/development/plugins.md) (Chinese) for optional builds and plugin-owned configuration.
+Default installers and ZIPs exclude plugins, and the plugin list remains hidden in Settings while under development. See the [plugin guide](docs/development/plugins.md) (Chinese) for optional builds and plugin-owned configuration.
 
-Managed shortcuts recreated at the same path within five minutes recover their group and position in the current desktop session. Retention is memory-only and does not survive restart. Official 0.19.1–0.20.4 installations can upgrade directly: keep the installation format and scope, or preserve `data` for portable builds. Back up before upgrading.
+Managed shortcuts recreated at the same path within five minutes recover their group and position in the current desktop session. Retention is memory-only and does not survive restart. Keep your existing settings and layouts when upgrading: keep the installation format and scope, or preserve `data` for portable builds. Back up before upgrading.
 
-Unmanaged icons remain on the native Explorer desktop. Turning off Show desktop icons alone does not prevent a connection; the actual desktop windows and Shell interfaces must still be available. Version 0.21.2 improves connection diagnostics and per-item recovery. See the [changelog](CHANGELOG.en.md).
+Unmanaged icons remain on the Windows desktop. For connection problems, open **Settings → About** to check the status, reconnect or copy diagnostics. See the [changelog](CHANGELOG.en.md) for recent improvements.
 
 <a id="compatibility"></a>
 
@@ -192,7 +195,9 @@ When Windows disables background effects, LucidDesk uses a theme-aware solid fal
 
 **A disconnection warning after restarting Explorer:** exiting Explorer interrupts the desktop connection. LucidDesk retries automatically when Explorer returns. The dialog records the state at disconnection and does not update after recovery. Dismiss it and check **Settings → About** or run `luciddesk-cli status --json` for the current state. `desktop_connected=true` means the connection is established; `desktop_sync_status=applied` means group synchronization is complete. If failures persist, retain the error details from the diagnostic log.
 
-The current source fixes circular waits in filtering requests when returning to the desktop and false handshake timeouts after message callbacks. It also improves preview/context-menu coordination, Settings dropdowns and control interactions. See [Unreleased changes](CHANGELOG.en.md#unreleased) for changes not yet released.
+**Icons and panels disappeared:** if **Double-click to hide desktop** is enabled, double-click an empty desktop area again or click the tray icon to restore them. You can turn this feature off in **Settings → General**.
+
+**Reporting a problem:** include steps to reproduce it, what you expected, what happened, and the text from **Settings → About → Copy diagnostics**. It includes recent errors and logs using your computer's local time. Check for personal paths before sharing. For display issues, include a screenshot, display scaling and the selected background material.
 
 <a id="build-from-source"></a>
 
