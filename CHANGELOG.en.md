@@ -8,6 +8,8 @@ Exit the app before upgrading a portable installation and preserve its `data` fo
 
 ## Unreleased
 
+- Centralize application, CLI and internal crate versions in the workspace; keep plugin package and compatibility protocol versions independent, with updated release-note automation and version checks.
+
 - Make prompts easier to understand in all seven languages by leading with the affected operation and separating technical details.
 - Audit message text and IDs against call sites, distinguish missing runtime state, unresolved paths and dispatch failures, and fix literal Fluent wrappers in monitor plugin text.
 - Polish Simplified Chinese settings, menus, search, backup and system monitor text, clarifying option scope and outcomes, including matching monitor plugin labels.

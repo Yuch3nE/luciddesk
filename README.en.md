@@ -200,6 +200,8 @@ The current source fixes circular waits in filtering requests when returning to 
 
 Requires Windows x64, rustup, Visual Studio C++ Build Tools and the Windows SDK. The repository selects Rust through `rust-toolchain.toml`; the setup script selects an installed x64 MSVC toolchain and SDK that meet the minimum versions. See the [build guide](docs/development/build.md) for details.
 
+The application, CLI and internal components share the release version in the root `Cargo.toml`. Plugin versions and compatibility protocol versions are maintained independently.
+
 ```powershell
 git clone https://github.com/Yuch3nE/luciddesk.git
 cd luciddesk

@@ -37,7 +37,7 @@ EXE、窗口、托盘和关于页共用程序内嵌图标资源；安装器使�
 | 安装程序 | `LucidDesk-<版本>-windows-x64-setup.exe` / `LucidDesk-<版本>-windows-x64.msi` |
 | 应用及安装快捷方式的 AppUserModelID | `Yuchen95.LucidDesk` |
 
-应用版本以 `app/Cargo.toml` 为构建来源，自动进入程序版本信息；不要单独修改 EXE 文件属性制造不同版本。MSIX 的包名、发布者和四段版本由包身份规则决定，不能仅按展示名称推导，详见 [MSIX 打包与运行](msix.md)。
+应用版本以根目录 `Cargo.toml` 的 `[workspace.package].version` 为构建来源，主程序继承后自动写入程序版本信息；不要单独修改 EXE 文件属性制造不同版本。MSIX 的包名、发布者和四段版本由包身份规则决定，不能仅按展示名称推导，详见 [MSIX 打包与运行](msix.md)。
 
 AppUserModelID、安装器 AppId 和 MSIX 包身份承担不同职责，不是可互换的字符串。品牌文案调整不应顺带改变这些身份或在每次版本更新时生成新值；相关变更需要单独评估快捷方式、升级与包注册行为。
 

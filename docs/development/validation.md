@@ -272,3 +272,11 @@ Windows 本机结果：设置 45 项、菜单 6 项、下拉 4 项、搜索 24 �
 提交前沿调用链复查，纠正标签页编号错误的含义：`tabs::add` 对最大 `PanelId` 执行 `checked_add(1)`，溢出的是标识编号，并非排序编号。七种语言同步更正详情，消息 ID 改为 `tab-id-overflow`，调用点同步更新。新增真实入口回归，以最大编号验证七语言错误及失败后工作区不变；语言目录回归同时比较各语言的参数名和出现次数，避免漏译参数仍能通过格式化检查。
 
 最终构建及 47 项回归通过（上述 46 项加编号溢出 1 项），4 项原有设置交互测试忽略；`git diff --check` 通过。日志为 `target/control-polish/user-copy-review-*.log`。验证范围包含七语言布局和多缩放绘制，不包含七语言逐页人工验收。
+
+### 工作区版本统一管理
+
+根目录 `[workspace.package].version` 为 `0.21.2`，主程序、CLI 和 11 个内部 crates 继承该版本。系统监控插件仍独立声明 `0.1.0`，插件 ABI、JSON 协议及 CLI 协议常量未修改。Cargo 更新锁文件时仅调整 11 个内部包版本，第三方依赖保持不变。
+
+`cargo metadata --no-deps --format-version 1 --locked --offline` 确认 13 个内部包解析为 `0.21.2`、监控插件为 `0.1.0`；发布工作流改读根目录版本，现有打包脚本继续通过 Cargo metadata 读取解析后的版本。发布回归校验每个成员的版本继承或独立声明、锁文件、双语版本记录与 README 徽章。
+
+`python -m unittest discover -s tools/validation -p 'test_*release*.py'` 共 7 项通过；测试临时目录设为工作区 `target/issue3-temp`，避免沙箱默认临时目录权限限制。`cargo check --workspace --all-targets --locked --offline --target-dir target/issue3-focus` 通过，日志为 `target/control-polish/workspace-version-check.log`；`git diff --check` 通过。本轮未生成安装包或执行发布。

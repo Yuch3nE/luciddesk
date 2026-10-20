@@ -1,7 +1,7 @@
 [package]
 name = "luciddesk"
 default-run = "luciddesk"
-version = "0.21.2"
+version.workspace = true
 authors = ["Yuchen95"]
 edition.workspace = true
 rust-version.workspace = true

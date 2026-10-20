@@ -277,7 +277,7 @@ dependencies = [
 
 [[package]]
 name = "luciddesk-api"
-version = "0.1.0"
+version = "0.21.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -294,21 +294,21 @@ dependencies = [
 
 [[package]]
 name = "luciddesk-core"
-version = "0.1.0"
+version = "0.21.2"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "luciddesk-diagnostics"
-version = "0.1.0"
+version = "0.21.2"
 dependencies = [
  "tempfile",
 ]
 
 [[package]]
 name = "luciddesk-explorer"
-version = "0.1.0"
+version = "0.21.2"
 dependencies = [
  "luciddesk-menu",
  "windows",
@@ -318,7 +318,7 @@ dependencies = [
 
 [[package]]
 name = "luciddesk-graphics"
-version = "0.1.0"
+version = "0.21.2"
 dependencies = [
  "windows-core 0.100.0",
  "windows-link 0.100.0",
@@ -326,7 +326,7 @@ dependencies = [
 
 [[package]]
 name = "luciddesk-menu"
-version = "0.1.0"
+version = "0.21.2"
 dependencies = [
  "windows-sys",
 ]
@@ -350,7 +350,7 @@ dependencies = [
 
 [[package]]
 name = "luciddesk-plugin-api"
-version = "0.1.0"
+version = "0.21.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -358,7 +358,7 @@ dependencies = [
 
 [[package]]
 name = "luciddesk-plugin-host"
-version = "0.1.0"
+version = "0.21.2"
 dependencies = [
  "luciddesk-plugin-api",
  "serde_json",
@@ -369,7 +369,7 @@ dependencies = [
 
 [[package]]
 name = "luciddesk-shell"
-version = "0.1.0"
+version = "0.21.2"
 dependencies = [
  "luciddesk-core",
  "luciddesk-diagnostics",
@@ -385,7 +385,7 @@ dependencies = [
 
 [[package]]
 name = "luciddesk-storage"
-version = "0.1.0"
+version = "0.21.2"
 dependencies = [
  "luciddesk-core",
  "rusqlite",
@@ -395,7 +395,7 @@ dependencies = [
 
 [[package]]
 name = "luciddesk-window"
-version = "0.1.0"
+version = "0.21.2"
 dependencies = [
  "luciddesk-core",
  "windows-sys",

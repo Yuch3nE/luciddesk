@@ -199,6 +199,8 @@ EXE 与 DLL 必须来自同次构建。安装版卸载时默认勾选“保留�
 
 准备 Windows x64、rustup、Visual Studio C++ 构建工具和 Windows SDK。仓库通过 `rust-toolchain.toml` 指定 Rust 版本，环境脚本自动选择满足最低版本要求的已安装 x64 MSVC 和 SDK；详见[构建指南](docs/development/build.md)。
 
+主程序、CLI 和内部组件的发布版本统一来自根目录 `Cargo.toml`；插件版本和协议兼容版本独立维护。
+
 先获取公开仓库：
 
 ```powershell

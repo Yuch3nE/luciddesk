@@ -51,12 +51,10 @@ class ReleaseNotesTests(unittest.TestCase):
         en = (ROOT / "CHANGELOG.en.md").read_text(encoding="utf-8-sig")
         versions = lambda text: re.findall(r"^## (\d+\.\d+\.\d+)\b", text, re.M)
         self.assertEqual(versions(zh), versions(en))
-        version = tomllib.loads((ROOT / "app/Cargo.toml").read_text())["package"]["version"]
+        version = tomllib.loads((ROOT / "Cargo.toml").read_text())["workspace"]["package"]["version"]
         self.assertEqual(versions(zh)[0], version)
         lock = tomllib.loads((ROOT / "Cargo.lock").read_text())
         self.assertEqual(next(p["version"] for p in lock["package"] if p["name"] == "luciddesk"), version)
-        cli_version = tomllib.loads((ROOT / "cli/Cargo.toml").read_text())["package"]["version"]
-        self.assertEqual(cli_version, version, "GUI and CLI versions must match")
         self.assertEqual(next(p["version"] for p in lock["package"] if p["name"] == "luciddesk-cli"), version)
         for name in ["README.md", "README.en.md"]:
             badges = re.findall(r"badge/version-([0-9]+\.[0-9]+\.[0-9]+)-", (ROOT / name).read_text(encoding="utf-8"))
@@ -67,6 +65,24 @@ class ReleaseNotesTests(unittest.TestCase):
         for ver in versions(zh):
             for tag in (ver, "v" + ver):
                 notes.bilingual(zh, en, tag, "Yuch3nE/luciddesk")
+
+    def test_workspace_packages_inherit_version_and_plugins_remain_independent(self):
+        workspace = tomllib.loads((ROOT / "Cargo.toml").read_text())["workspace"]
+        version = workspace["package"]["version"]
+        self.assertRegex(version, r"^\d+\.\d+\.\d+$")
+        lock = tomllib.loads((ROOT / "Cargo.lock").read_text())["package"]
+        for member in workspace["members"]:
+            package = tomllib.loads((ROOT / member / "Cargo.toml").read_text())["package"]
+            with self.subTest(member=member):
+                if member.startswith("plugins/"):
+                    self.assertIsInstance(package["version"], str)
+                    expected = package["version"]
+                else:
+                    self.assertEqual(package["version"], {"workspace": True})
+                    expected = version
+                entries = [p for p in lock if p["name"] == package["name"] and "source" not in p]
+                self.assertEqual(len(entries), 1)
+                self.assertEqual(entries[0]["version"], expected)
 
 
 if __name__ == "__main__":

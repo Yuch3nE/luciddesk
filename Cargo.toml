@@ -22,6 +22,7 @@ lto = "thin"
 codegen-units = 1
 
 [workspace.package]
+version = "0.21.2"
 edition = "2024"
 rust-version = "1.99"
 license = "MIT"

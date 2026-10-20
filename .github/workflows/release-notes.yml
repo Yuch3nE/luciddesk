@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
     paths:
+      - Cargo.toml
+      - Cargo.lock
+      - app/Cargo.toml
+      - cli/Cargo.toml
+      - crates/**/Cargo.toml
+      - plugins/**/Cargo.toml
       - CHANGELOG.md
       - CHANGELOG.en.md
       - tools/release/release-notes.py
@@ -33,7 +39,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          version=$(python3 -c 'import tomllib; from pathlib import Path; print(tomllib.loads(Path("app/Cargo.toml").read_text())["package"]["version"])')
+          version=$(python3 -c 'import tomllib; from pathlib import Path; print(tomllib.loads(Path("Cargo.toml").read_text())["workspace"]["package"]["version"])')
           updated=false
           for tag in "v$version" "$version"; do
             if gh release view "$tag" --json tagName >/dev/null 2>&1; then

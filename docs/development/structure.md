@@ -6,7 +6,7 @@
 
 | 路径 | 内容与维护边界 |
 | --- | --- |
-| `Cargo.toml`、`Cargo.lock` | 主 workspace 成员、共享依赖和依赖锁定 |
+| `Cargo.toml`、`Cargo.lock` | 主 workspace 成员、统一应用版本、共享依赖和依赖锁定 |
 | `rust-toolchain.toml`、`.cargo/` | Rust 工具链与 Cargo 构建配置 |
 | `cli/`、`skills/` | 控制台命令、离线帮助和随包分发的 Agent 操作指南 |
 | `app/` | 主程序、窗口交互、内嵌资源及应用测试 |
