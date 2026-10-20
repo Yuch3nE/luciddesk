@@ -88,7 +88,11 @@ mod tests {
         for pair in nav.windows(2) {
             assert!(pair[0].bounds.bottom <= pair[1].bounds.top);
         }
-        assert!(nav.last().unwrap().bounds.bottom <= 520.0);
+        let mut offset = f32::MAX;
+        scene.scroll_navigation(&mut offset);
+        let last = scene.controls.iter().filter(|c| matches!(c.kind, ControlKind::Navigation)).last().unwrap();
+        let viewport = scene.navigation_viewport.unwrap();
+        assert!(last.bounds.top >= viewport.top && last.bounds.bottom <= viewport.bottom);
         draw(&mut scene, 900.0);
         for plugin in crate::plugins::installed() {
             assert!(scene.controls.iter().any(|c| matches!(&c.action,

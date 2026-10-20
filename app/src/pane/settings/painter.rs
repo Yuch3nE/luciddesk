@@ -36,6 +36,8 @@ impl Painter {
             Style::NAV_ICON,
             12.0,
             14.0,
+            Style::NAV_HEADING,
+            Style::NAV_TEXT,
         ]
         .iter()
         .enumerate()
@@ -761,7 +763,9 @@ impl Painter {
                         }
                         t.clipped_text(
                             &c.label,
-                            if navigation || plain || c.kind.is_back() {
+                            if navigation {
+                                &self.formats[9]
+                            } else if plain || c.kind.is_back() {
                                 &self.formats[1]
                             } else {
                                 &self.button_format
@@ -782,7 +786,7 @@ impl Painter {
                         text,
                         &self.formats[*size],
                         r,
-                        if matches!(*size, 0 | 6) { muted } else { ink },
+                        if matches!(*size, 0 | 6 | 8) { muted } else { ink },
                     );
                 }
                 for thumb in [s.scroll_thumb(), s.navigation_thumb()].into_iter().flatten() {

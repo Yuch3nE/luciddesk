@@ -308,14 +308,12 @@ fn scene_with_mica(
     let entries = navigation();
     let content_x = Tokens::content_x();
     let heading_height = 28.0;
-    let sections = entries.iter().filter(|entry| entry.section.is_some()).count();
-    let stride = ((_height - 114.0 - heading_height * sections as f32)
-        / entries.len().max(1) as f32).clamp(32.0, 42.0);
+    let stride = Style::NAV_HEIGHT + 4.0;
     let start = s.text.len();
     let mut y = 78.0;
     for entry in &entries {
         if let Some(section) = entry.section {
-            s.text(Rect::from_xywh(28.0, y + 4.0, content_x - 52.0, 20.0), section, 0);
+            s.text(Rect::from_xywh(28.0, y + 4.0, content_x - 52.0, 20.0), section, 8);
             y += heading_height;
         }
         let selected = match &entry.action {
@@ -323,8 +321,8 @@ fn scene_with_mica(
             Action::Page(id) => plugin.is_none() && (page == *id || (page == 7 && *id == 0) || (matches!(page, 9 | 10) && *id == 6)),
             _ => false,
         };
-        s.control(ControlKind::Navigation, Rect::from_xywh(12.0, y, content_x-48.0, (stride-2.0).min(38.0)), &entry.label, entry.action.clone(), selected);
-        s.text(Rect::from_xywh(30.0, y, 22.0, (stride-2.0).min(38.0)), entry.icon, 5);
+        s.control(ControlKind::Navigation, Rect::from_xywh(12.0, y, content_x-48.0, Style::NAV_HEIGHT), &entry.label, entry.action.clone(), selected);
+        s.text(Rect::from_xywh(30.0, y, Style::NAV_ICON_SLOT, Style::NAV_HEIGHT), entry.icon, 5);
         y += stride;
     }
     s.navigation_text = start..s.text.len();

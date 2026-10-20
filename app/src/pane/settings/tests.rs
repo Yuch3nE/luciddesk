@@ -1,6 +1,38 @@
 use super::*;
 
 #[test]
+#[ignore = "Requires an operator to inspect and navigate a real settings window"]
+fn sidebar_interactive_validation() {
+    let _sta = crate::pane::test_support::apartment();
+    let directory = tempfile::tempdir().unwrap();
+    let state = Rc::new(RefCell::new(super::super::tests::test_state()));
+    state.borrow_mut().store =
+        WorkspaceStore::open(&directory.path().join("workspace.db")).unwrap();
+    host::show_at(&state, PanelId::new(1), 13).unwrap();
+    let hwnd = state.borrow().settings.as_ref().unwrap().hwnd().cast();
+    unsafe {
+        // Expose this standalone tool window to desktop automation discovery.
+        // Production settings keep their existing tool-window ownership.
+        let style = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
+        SetWindowLongW(hwnd, GWL_EXSTYLE, ((style & !WS_EX_TOOLWINDOW) | WS_EX_APPWINDOW) as i32);
+        ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        let scale = GetDpiForWindow(hwnd).max(96) as f32 / 96.0;
+        SetWindowPos(hwnd, std::ptr::null_mut(), 0, 0,
+            (800.0 * scale) as i32, (600.0 * scale) as i32,
+            SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        println!("sidebar validation dpi={}", GetDpiForWindow(hwnd));
+    }
+    // Use real pointer input to scroll the sidebar, visit its last and first
+    // pages, resize the window, then close it. No production data is used.
+    let started = std::time::Instant::now();
+    while unsafe { IsWindow(hwnd) } != 0 && started.elapsed().as_secs() < 240 {
+        windows_window::pump();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert_eq!(unsafe { IsWindow(hwnd) }, 0, "operator must close the settings fixture");
+}
+
+#[test]
 fn diagnostics_uses_one_dropdown_with_the_current_level_and_all_five_options() {
     let mut body = scene(
         800.0,
@@ -836,17 +868,21 @@ fn settings_layout_and_rendering_at_multiple_scales() {
                                     crate::startup::Status::DisabledByWindows, false, true, false);
                             }
                             let mut s = with_titlebar(body, viewport_width, false);
+                            s.scroll_navigation(&mut if at_bottom { f32::MAX } else { 0.0 });
                             s.scroll_to(
                                 viewport_width,
                                 viewport_height,
                                 &mut if at_bottom { f32::MAX } else { 0.0 },
                             );
                             for c in &s.controls {
+                                let scroll_max = if matches!(c.kind, ControlKind::Navigation) {
+                                    s.navigation_max
+                                } else { s.scroll_max };
                                 assert!(
                                     c.bounds.left >= 0.0
-                                        && c.bounds.top >= -s.scroll_max
+                                        && c.bounds.top >= -scroll_max
                                         && c.bounds.right <= viewport_width
-                                        && c.bounds.bottom <= viewport_height + s.scroll_max
+                                        && c.bounds.bottom <= viewport_height + scroll_max
                                 );
                                 assert!(contains(
                                     &c.bounds,
@@ -2198,11 +2234,18 @@ fn grouped_navigation_keeps_routes_selection_and_scrolling_in_all_languages() {
                     assert_eq!(selected.len(), 1);
                     assert!(matches!(selected[0].action, Action::Page(id) if id == selected_page));
                     for (bounds, _, style) in &scene.text[scene.navigation_text.clone()] {
-                        if *style == 0 {
+                        if *style == 8 {
                             for control in scene.controls.iter().filter(|c| matches!(c.kind, ControlKind::Navigation)) {
                                 assert!(bounds.bottom <= control.bounds.top || bounds.top >= control.bounds.bottom);
                             }
                         }
+                    }
+                    for control in scene.controls.iter().filter(|c| matches!(c.kind, ControlKind::Navigation)) {
+                        assert_eq!(control.bounds.bottom - control.bounds.top, Style::NAV_HEIGHT);
+                        let icon = scene.text[scene.navigation_text.clone()].iter()
+                            .find(|(bounds, _, style)| *style == 5 && bounds.top == control.bounds.top).unwrap();
+                        assert_eq!(icon.0.bottom, control.bounds.bottom);
+                        assert!(icon.0.right + 8.0 <= control.bounds.left + Style::NAV_TEXT_INSET);
                     }
                     let brand = scene.text[0].0;
                     scene.reveal_navigation(&mut offset);

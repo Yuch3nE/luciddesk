@@ -56,7 +56,11 @@ fn screen_anchor(
 pub(super) struct Style;
 impl Style {
     pub const ICON: f32 = 12.0;
-    pub const NAV_ICON: f32 = 18.0;
+    pub const NAV_ICON: f32 = 16.0;
+    pub const NAV_TEXT: f32 = 14.0;
+    pub const NAV_HEADING: f32 = 11.0;
+    pub const NAV_HEIGHT: f32 = 40.0;
+    pub const NAV_ICON_SLOT: f32 = 20.0;
     pub const ICON_SLOT: f32 = 16.0;
     pub const ICON_GAP: f32 = 8.0;
     pub const NAV_TEXT_INSET: f32 = 48.0;
