@@ -119,16 +119,20 @@ impl Logger {
         ));
         self.write_record(record, now)
     }
-    fn write_record(&mut self, record: Arc<format::Record>, now: Instant) -> io::Result<()> {
-        if record.level > self.level {
-            return Ok(());
-        }
+    fn check_backoff(&self, now: Instant) -> io::Result<()> {
         if self.retry_after.is_some_and(|deadline| now < deadline) {
             return Err(self.last_error.as_ref().map_or_else(
                 || io::Error::other("diagnostic storage retry pending"),
                 WriteFailure::error,
             ));
         }
+        Ok(())
+    }
+    fn write_record(&mut self, record: Arc<format::Record>, now: Instant) -> io::Result<()> {
+        if record.level > self.level {
+            return Ok(());
+        }
+        self.check_backoff(now)?;
         let written = self.total_written;
         match self.write_ready(record, now) {
             Ok(()) => {
@@ -387,15 +391,7 @@ pub fn try_log(level: Level, component: &str, message: &str) -> io::Result<()> {
     // Host callbacks may query/log diagnostics. Never invoke one under a logger lock.
     let report = {
         let logger = lock_writer(logger)?;
-        if logger
-            .retry_after
-            .is_some_and(|deadline| Instant::now() < deadline)
-        {
-            return Err(logger.last_error.as_ref().map_or_else(
-                || io::Error::other("diagnostic storage retry pending"),
-                WriteFailure::error,
-            ));
-        }
+        logger.check_backoff(Instant::now())?;
         logger.header.is_none().then_some(logger.report)
     };
     let header = report.map(|report| {
