@@ -8,6 +8,18 @@ use windows::{
     core::{HSTRING, PCSTR, PSTR, Result},
 };
 
+// Only an explicit Windows cancellation is benign. Do not hide generic E_ABORT,
+// permission failures or an extension's unknown error as user cancellation.
+pub(crate) fn command_completed(result: Result<()>) -> Result<bool> {
+    match result {
+        Ok(()) => Ok(true),
+        Err(error) if error.code() == windows::core::HRESULT::from_win32(
+            windows::Win32::Foundation::ERROR_CANCELLED.0,
+        ) => Ok(false),
+        Err(error) => Err(error),
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FileCommand {
     Copy,
@@ -47,7 +59,7 @@ pub fn copy_to_folder(
         operation.SetOwnerWindow(owner)?;
         operation.SetOperationFlags(FOF_ALLOWUNDO)?;
         operation.CopyItems(&shell_items(selected)?, &target)?;
-        operation.PerformOperations()?;
+        command_completed(operation.PerformOperations())?;
     }
     Ok(())
 }
@@ -79,8 +91,7 @@ fn paste_into_item(owner: HWND, item: &IShellItem) -> Result<bool> {
             nShow: SW_SHOWNORMAL.0,
             ..Default::default()
         };
-        context.InvokeCommand(&info)?;
-        Ok(true)
+        command_completed(context.InvokeCommand(&info))
     }
 }
 
@@ -229,7 +240,7 @@ pub fn show_file_items_menu(
             nShow: SW_SHOWNORMAL.0,
             ..Default::default()
         };
-        context.InvokeCommand(&command)?;
+        command_completed(context.InvokeCommand(&command))?;
         Ok(false)
     }
 }
@@ -319,7 +330,7 @@ fn invoke_batch(owner: HWND, selected: &[ShellIdentity], command: FileCommand) -
             operation
                 .SetOperationFlags(FOF_ALLOWUNDO | FOF_WANTNUKEWARNING | FOFX_RECYCLEONDELETE)?;
             operation.DeleteItems(&items)?;
-            operation.PerformOperations()?;
+            if !command_completed(operation.PerformOperations())? { return Ok(false); }
             return Ok(!operation.GetAnyOperationsAborted()?.as_bool());
         }
         let data: IDataObject = items.BindToHandler(None, &BHID_DataObject)?;
@@ -423,8 +434,7 @@ pub fn invoke_file_commands(
                 nShow: SW_SHOWNORMAL.0,
                 ..Default::default()
             };
-            context.InvokeCommand(&info)?;
-            return Ok(true);
+            return command_completed(context.InvokeCommand(&info));
         }
         Ok(false)
     }
@@ -432,6 +442,16 @@ pub fn invoke_file_commands(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn explicit_cancellation_is_not_an_error_but_failures_keep_their_hresult() {
+        use windows::Win32::Foundation::{ERROR_CANCELLED, E_ACCESSDENIED, E_ABORT};
+        use windows::core::{Error, HRESULT};
+        assert!(super::command_completed(Ok(())).unwrap());
+        assert!(!super::command_completed(Err(Error::from_hresult(HRESULT::from_win32(ERROR_CANCELLED.0)))).unwrap());
+        for code in [E_ACCESSDENIED, E_ABORT] {
+            assert_eq!(super::command_completed(Err(Error::from_hresult(code))).unwrap_err().code(), code);
+        }
+    }
     #[test]
     fn drag_image_preserves_native_file_data() {
         use super::*;

@@ -55,7 +55,7 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
             controls::open_dropdown(hwnd, appearance, scale, c, context.dropdown_sender.clone());
         }
         Action::PluginEnabled(id, enabled) => {
-            if let Err(error) = plugin_page::set_enabled(state, id, *enabled) { window::error(&error); }
+            if let Err(error) = plugin_page::set_enabled(state, id, *enabled) { window::error_for(hwnd, &error); }
             invalidate = true;
         }
         Action::PluginPage(id) => {
@@ -70,13 +70,13 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
             invalidate = true;
         }
         Action::PluginAction(id, action) => {
-            if let Err(error) = plugin_content::execute(state, selected, id, action.clone()) { window::error(&error); }
+            if let Err(error) = plugin_content::execute(state, selected, id, action.clone()) { window::error_for(hwnd, &error); }
             invalidate = true;
         }
         Action::BackupStatus => {
             let message = backup_view.status.clone();
             window::defer_action(move || {
-                window::error(&message);
+                crate::error_report::show(hwnd as isize, crate::i18n::text("ui-view-details"), &message, luciddesk_window::MessageKind::Information);
             });
         }
         Action::BackupAdvanced => {
@@ -104,7 +104,7 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
                 let mut policy = match loaded {
                     Ok(policy) => policy,
                     Err(error) => {
-                        window::error(&error);
+                        window::error_for(hwnd, &error);
                         return;
                     }
                 };
@@ -140,7 +140,7 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
                 }
                 let saved = policy.save(&state.borrow().store);
                 if let Err(e) = saved {
-                    window::error(&e);
+                    window::error_for(hwnd, &e);
                 }
                 unsafe {
                     InvalidateRect(hwnd, std::ptr::null(), 0);
@@ -186,7 +186,7 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
                     *context.folder_entry_mode = *value;
                     invalidate = true;
                 }
-                Err(error) => window::error(&error),
+                Err(error) => window::error_for(hwnd, &error),
             }
         }
         Action::LayoutDefaults(value) => {
@@ -196,7 +196,7 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
                     *context.layout_defaults = *value;
                     invalidate = true;
                 }
-                Err(error) => window::error(&error),
+                Err(error) => window::error_for(hwnd, &error),
             }
         }
         Action::FolderDefaults(value) => {
@@ -206,7 +206,7 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
                     *context.folder_defaults = *value;
                     invalidate = true;
                 }
-                Err(error) => window::error(&error),
+                Err(error) => window::error_for(hwnd, &error),
             }
         }
         Action::StyleInput(percentage) => {
@@ -229,25 +229,25 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
                         opacity,
                     }),
                 ) {
-                    window::error(&error);
+                    window::error_for(hwnd, &error);
                 }
             }
         }
         Action::StrengthReset => {
             if let Err(error) = handle(&state, selected, Event::Material(appearance.1.base())) {
-                window::error(&error);
+                window::error_for(hwnd, &error);
             }
         }
         Action::SolidReset => {
             let value = Backdrop::solid_default(dark);
             if let Err(error) = handle(&state, selected, Event::Material(value)) {
-                window::error(&error);
+                window::error_for(hwnd, &error);
             }
         }
         Action::Change(Event::Material(Backdrop::Solid { .. })) => {
             let value = solid_style(&state.borrow().store, dark);
             if let Err(error) = handle(&state, selected, Event::Material(value)) {
-                window::error(&error);
+                window::error_for(hwnd, &error);
             }
         }
         Action::CliEnabled(enabled) => {
@@ -256,7 +256,7 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
                 .store
                 .save_preference("cli_enabled", &enabled.to_string());
             if let Err(error) = result {
-                window::error(&error.to_string());
+                window::error_for(hwnd, &error.to_string());
             }
             invalidate = true;
         }
@@ -266,7 +266,7 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
             });
             match result {
                 Ok(()) => *context.skill_prompt_copied = true,
-                Err(error) => window::error(&error),
+                Err(error) => window::error_for(hwnd, &error),
             }
             invalidate = true;
         }
@@ -277,20 +277,20 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
                 .save_preference("log_level", &level.label().to_ascii_lowercase());
             match result {
                 Ok(()) => luciddesk_diagnostics::set_level(*level),
-                Err(error) => window::error(&error.to_string()),
+                Err(error) => window::error_for(hwnd, &error.to_string()),
             }
             invalidate = true;
         }
         Action::Language(code) => {
             let result = state.borrow().store.save_preference("language", code);
             if let Err(error) = result {
-                window::error(&error.to_string());
+                window::error_for(hwnd, &error.to_string());
             }
             invalidate = true;
         }
         Action::Startup(enabled) => {
             if let Err(error) = start_login_operation(&mut *context.startup, hwnd, Some(*enabled)) {
-                window::error(&error);
+                window::error_for(hwnd, &error);
             }
             invalidate = true;
         }
@@ -305,19 +305,19 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
                     *context.diagnostics_copied = true;
                     invalidate = true;
                 }
-                Err(error) => window::error(&error.to_string()),
+                Err(error) => window::error_for(hwnd, &error.to_string()),
             }
         }
         Action::Update => {
             if !context.updates.busy() {
                 let result = context.updates.check();
                 if let Err(error) = result {
-                    window::error(&error);
+                    window::error_for(hwnd, &error);
                 }
                 if context.updates.busy() && unsafe { SetTimer(hwnd, UPDATE_TIMER, 200, None) } == 0
                 {
                     *context.updates = crate::updates::Controller::default();
-                    window::error(crate::i18n::text("update-failed"));
+                    window::error_for(hwnd, crate::i18n::text("update-failed"));
                 }
                 invalidate = true;
             }
@@ -329,7 +329,7 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
                     parsing_name: (*url).into(),
                 },
             ) {
-                window::error(&error.to_string());
+                window::error_for(hwnd, &error.to_string());
             }
         }
         Action::EverythingBrowse | Action::EverythingDetect | Action::EverythingLaunch => {
@@ -349,7 +349,7 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
                 everything_settings::save(&state.borrow().store, value)
             })();
             if let Err(error) = result {
-                window::error(&error);
+                window::error_for(hwnd, &error);
             }
             invalidate = true;
         }
@@ -361,7 +361,7 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
                     .save_preference("show_panels_enabled", if enabled { "1" } else { "0" })
             };
             if let Err(error) = saved {
-                window::error(&error.to_string());
+                window::error_for(hwnd, &error.to_string());
             }
             *context.recording_show_panels = false;
         }
@@ -373,7 +373,7 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
         Action::ShowPanelsReset => {
             let saved = show_hotkey::save(&state.borrow().store, show_hotkey::default_shortcut());
             if let Err(error) = saved {
-                window::error(&error);
+                window::error_for(hwnd, &error);
             }
             *context.recording_show_panels = false;
         }
@@ -385,7 +385,7 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
         Action::SearchReset => {
             let saved = search_hotkey::save(&state.borrow().store, Default::default());
             if let Err(error) = saved {
-                window::error(&error);
+                window::error_for(hwnd, &error);
             }
             *context.recording_search = false;
         }
@@ -422,7 +422,7 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
                 peek::save(&state.borrow().store, value)
             })();
             if let Err(error) = result {
-                window::error(&error);
+                window::error_for(hwnd, &error);
             }
             invalidate = true;
         }
@@ -445,7 +445,7 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
                 Ok(())
             })();
             if let Err(error) = result {
-                window::error(&error);
+                window::error_for(hwnd, &error);
             }
             invalidate = true;
         }
@@ -453,7 +453,7 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
             *context.selected_plugin = None;
             if *value == 13 {
                 if let Err(error) = start_login_operation(&mut *context.startup, hwnd, None) {
-                    window::error(&error);
+                    window::error_for(hwnd, &error);
                 }
             }
             if *value == 11 {
@@ -484,12 +484,12 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
         Action::Change(Event::Material(value)) if value.strength().is_some() => {
             let backdrop = material_style(&state.borrow().store, *value);
             if let Err(error) = handle(&state, selected, Event::Material(backdrop)) {
-                window::error(&error);
+                window::error_for(hwnd, &error);
             }
         }
         Action::Change(event) => {
             if let Err(e) = handle(&state, selected, event.clone()) {
-                window::error(&e);
+                window::error_for(hwnd, &e);
             }
         }
     }

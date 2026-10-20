@@ -108,11 +108,12 @@ impl Default for Manager {
     }
 }
 pub(super) fn directory(s: &PaneApp) -> Result<PathBuf, String> {
-    s.runtime
+    let runtime = s.runtime
         .as_ref()
-        .and_then(|r| r.path.parent())
+        .ok_or(crate::i18n::text("backup-runtime-state-missing"))?;
+    runtime.path.parent()
         .map(|p| p.join("backups"))
-        .ok_or_else(|| crate::i18n::text("ui-configuration-folder-unavailable").into())
+        .ok_or_else(|| crate::i18n::text("configuration-directory-path-unavailable").into())
 }
 fn name(label: &str) -> String {
     let mut time = windows_sys::Win32::Foundation::SYSTEMTIME::default();
@@ -218,7 +219,7 @@ fn begin(
     let mut s = state.borrow_mut();
     let directory = directory(&s)?;
     let wake = s.wake.clone();
-    let manager = &mut s.runtime.as_mut().ok_or(crate::i18n::text("ui-runtime-unavailable"))?.backup;
+    let manager = &mut s.runtime.as_mut().ok_or(crate::i18n::text("backup-runtime-state-missing"))?.backup;
     if manager.view.busy {
         return Err(crate::i18n::text("ui-a-backup-task-is-running-please-wait").into());
     }
@@ -331,7 +332,7 @@ pub(super) fn maintain(state: &Rc<RefCell<PaneApp>>) {
                     }
                 });
             }
-            Err(error) => set_status(state, &crate::i18n::format("ui-operation-failed", &[("error", format!("{}", error))])),
+            Err(error) => set_status(state, &crate::i18n::format("backup-task-failed", &[("error", format!("{}", error))])),
         }
         return;
     }
@@ -621,7 +622,7 @@ pub(super) fn request(state: &Rc<RefCell<PaneApp>>, event: &Event) {
     window::defer_action(move || {
         if let Some(state) = weak.upgrade() {
             if let Err(e) = execute(&state, &event) {
-                set_status(&state, &crate::i18n::format("ui-operation-failed-0ea2", &[("e", format!("{}", e))]));
+                set_status(&state, &crate::i18n::format("configuration-operation-failed", &[("e", format!("{}", e))]));
                 window::error(&e);
             }
         }
@@ -653,7 +654,7 @@ fn execute(state: &Rc<RefCell<PaneApp>>, event: &Event) -> Result<(), String> {
                 .store
                 .config_path()
                 .and_then(|p| p.parent().map(Path::to_path_buf))
-                .ok_or(crate::i18n::text("ui-configuration-folder-unavailable"))?
+                .ok_or(crate::i18n::text("configuration-directory-path-unavailable"))?
         };
         std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
         return open_shell_identity(owner, &folder::identity(path)).map_err(|e| e.to_string());
@@ -735,7 +736,7 @@ fn execute(state: &Rc<RefCell<PaneApp>>, event: &Event) -> Result<(), String> {
                     .file_name()
                     .is_some_and(|p| p == "workspace.db" || p == "config.toml")
             {
-                return Err(crate::i18n::text("ui-cannot-overwrite-the-active-configuration").into());
+                return Err(crate::i18n::text("backup-export-path-reserved").into());
             }
             let snapshot = if let Event::ExportBackupPath(source) = event {
                 WorkspaceStore::read_backup(source).map_err(|e| e.to_string())?
@@ -756,6 +757,34 @@ fn execute(state: &Rc<RefCell<PaneApp>>, event: &Event) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn backup_task_reports_missing_runtime_before_resolving_directory() {
+        let app = Rc::new(RefCell::new(super::super::tests::test_state()));
+        assert!(app.borrow().runtime.is_none());
+        let missing = crate::i18n::text("backup-runtime-state-missing");
+        assert_eq!(directory(&app.borrow()).unwrap_err(), missing);
+        assert_eq!(begin(&app, "unused", |_| panic!("must not start a worker without runtime state")).unwrap_err(), missing);
+
+        // A missing parent is a path derivation error, not a permission error.
+        app.borrow_mut().runtime = Some(runtime::State::new(PathBuf::from(r"C:\")));
+        let missing_path = crate::i18n::text("configuration-directory-path-unavailable");
+        assert_eq!(begin(&app, "unused", |_| panic!("must not start a worker without a directory path")).unwrap_err(), missing_path);
+        let app = app.borrow();
+        let manager = &app.runtime.as_ref().unwrap().backup;
+        assert!(!manager.view.busy);
+        assert!(manager.receiver.is_none());
+    }
+
+    #[test]
+    fn backup_directory_resolution_does_not_claim_to_check_access() {
+        let root = tempfile::tempdir().unwrap();
+        let absent = root.path().join("not-created");
+        let mut app = super::super::tests::test_state();
+        app.runtime = Some(runtime::State::new(absent.join("workspace.db")));
+        assert_eq!(directory(&app).unwrap(), absent.join("backups"));
+        assert!(!absent.exists());
+    }
+
     #[test]
     fn backup_defaults_only_apply_to_missing_preferences() {
         assert_eq!(super::Policy::decode(Ok(None)).unwrap(), super::Policy::default());
@@ -855,7 +884,7 @@ mod tests {
         create(&state, true).unwrap();
         finish(&state);
         assert_eq!(view(&state.borrow()).records.len(), 1);
-        assert!(view(&state.borrow()).status.contains("暂无变化"));
+        assert_eq!(view(&state.borrow()).status, crate::i18n::text("ui-configuration-unchanged-no-new-backup-needed"));
         state
             .borrow()
             .store
@@ -960,6 +989,6 @@ mod tests {
                 .as_deref(),
             Some("0")
         );
-        assert!(view(&state.borrow()).status.contains("已回退"));
+        assert!(view(&state.borrow()).status.contains("已还原为恢复前的配置"));
     }
 }

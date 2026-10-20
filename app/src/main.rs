@@ -2,6 +2,7 @@
 
 mod plugins;
 
+mod error_report;
 mod app_icon;
 mod clipboard;
 mod desktop_component;
@@ -17,6 +18,17 @@ use luciddesk_shell::{ShellApartment, local_app_data_path};
 use std::{ffi::OsString, fs, path::PathBuf};
 
 fn main() -> Result<(), String> {
+    let monitor_child = std::env::args_os().any(|arg| arg == "--monitor-child");
+    run().inspect_err(|error| {
+        // Monitor children report through IPC; never open an invisible child dialog.
+        if !monitor_child {
+            luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Error, "app.startup", error);
+            error_report::show(0, i18n::text("error-startup-title"), error, luciddesk_window::MessageKind::Error);
+        }
+    })
+}
+
+fn run() -> Result<(), String> {
     // Installer preflight only: no COM, application windows, data access or hooks.
     if std::env::args_os()
         .skip(1)
@@ -58,10 +70,7 @@ fn main() -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    pane::run(&path, title).inspect_err(|error| {
-        luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Error, "app.startup", error);
-        luciddesk_window::show_error(error);
-    })
+    pane::run(&path, title)
 }
 
 fn init_logging(database: &std::path::Path) {

@@ -25,7 +25,10 @@ pub(in crate::pane) fn activate_with(
                 return;
             }
             if let Err(error) = open(owner, &identity) {
-                window::error(&error);
+                window::error_for(owner as _, &crate::i18n::format("error-open-item", &[
+                    ("path", identity.activation_name().to_string_lossy().into_owned()),
+                    ("error", error),
+                ]));
             }
         }) {
             return Err(crate::i18n::text("ui-could-not-schedule-opening-the-item").into());
@@ -71,7 +74,7 @@ pub(super) fn route(
                     &items,
                     image.as_ref(),
                 ) {
-                    window::error(&error.to_string());
+                    window::error_for(owner as _, &crate::i18n::format("ui-file-operation-failed", &[("error", error.to_string())]));
                 }
             });
         }
@@ -133,7 +136,10 @@ pub(super) fn route(
         if let Some((owner, identity)) = target {
             window::defer_action(move || {
                 if let Err(error) = open_shell_identity(owner, &identity) {
-                    window::error(&error.to_string());
+                    window::error_for(owner as _, &crate::i18n::format("error-open-item", &[
+                        ("path", identity.activation_name().to_string_lossy().into_owned()),
+                        ("error", error.to_string()),
+                    ]));
                 }
             });
         }
@@ -207,7 +213,7 @@ pub(super) fn route(
                     )
                 };
                 if let Err(error) = result {
-                    window::error(&crate::i18n::format(
+                    window::error_for(owner.cast(), &crate::i18n::format(
                         "ui-file-operation-failed",
                         &[("error", format!("{}", error))],
                     ));

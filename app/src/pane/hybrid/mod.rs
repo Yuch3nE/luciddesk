@@ -499,7 +499,7 @@ pub(super) fn register_drop(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result
                         &items,
                         &path,
                     ) {
-                        window::error(&error.to_string());
+                        window::error_for(hwnd.cast(), &error.to_string());
                     }
                 });
             }

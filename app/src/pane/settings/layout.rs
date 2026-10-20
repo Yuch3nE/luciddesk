@@ -815,7 +815,7 @@ pub(super) fn backup_page(
         );
     } else {
         let status = if view.status.is_empty() {
-            crate::i18n::text("ui-no-backups-yet")
+            crate::i18n::text("backup-status-pending")
         } else {
             &view.status
         };

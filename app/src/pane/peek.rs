@@ -300,7 +300,7 @@ pub(super) fn browse(owner: isize, provider: Provider) -> Result<Option<String>,
         owner,
         match provider { Provider::Peek => "PowerToys Peek", Provider::QuickLook => "QuickLook" },
         provider.executable(),
-        "ui-could-not-select-preview-app",
+        "preview-program-picker-failed",
         &crate::i18n::format("ui-select", &[("arg0", provider.executable().into())]),
     )
 }

@@ -63,7 +63,7 @@ fn error_dialog_runs_after_event_borrow_and_keeps_pane_input_callable() {
         {
             let _event = callback.borrow_mut();
             if deferred {
-                defer_error("Deferred event error regression".into());
+                defer_error(0, "Deferred event error regression".into());
                 assert!(!PROBE.with(|slot| slot.borrow().as_ref().unwrap().observed.get()));
             } else {
                 error("Inline event error regression");

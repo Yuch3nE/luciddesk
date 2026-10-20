@@ -40,7 +40,7 @@ mod tests {
             let path = format!(r"C:\工具\{}", executable.to_uppercase());
             let buffer: Vec<_> = path.encode_utf16().chain([0, 65]).collect();
             let finish = |selected, error, expected| selection(&buffer, selected, error,
-                expected, "ui-could-not-select-preview-app", "wrong executable");
+                expected, "preview-program-picker-failed", "wrong executable");
             assert_eq!(finish(false, 0, executable).unwrap(), None);
             assert!(finish(false, 0x3003, executable).is_err());
             assert_eq!(finish(true, 0, executable).unwrap(), Some(path));

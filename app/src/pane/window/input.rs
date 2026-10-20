@@ -145,9 +145,6 @@ pub(super) fn frame_hit(r: RECT, p: POINT, scale: f32, collapsed: bool, locked: 
     }
 }
 
-pub(super) fn wide(s: &str) -> Vec<u16> {
-    s.encode_utf16().chain(Some(0)).collect()
-}
 pub(super) fn point(value: isize) -> POINT {
     POINT {
         x: (value as u16).cast_signed().into(),

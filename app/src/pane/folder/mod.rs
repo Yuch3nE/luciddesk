@@ -740,7 +740,7 @@ pub(super) fn request_picker(
             Ok(())
         })();
         if let Err(error) = result {
-            window::error(&error);
+            window::error_for(owner as _, &error);
         }
     }) {
         return Err(crate::i18n::text("ui-could-not-open-folder-picker").into());

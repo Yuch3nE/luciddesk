@@ -1158,7 +1158,7 @@ pub(super) fn create(
                                 return;
                             }
                             if let Err(error) = everything_settings::launch() {
-                                super::window::error(&error);
+                                super::window::error_for(owner as _, &error);
                             } else {
                                 unsafe {
                                     PostMessageW(owner as _, WM_COMMAND, REFRESH, 0);
@@ -1482,7 +1482,7 @@ fn action(hwnd: HWND, command: usize, items: Vec<ShellIdentity>) {
             _ => Ok(()),
         };
         if let Err(error) = result {
-            super::window::error(&error);
+            super::window::error_for(owner as _, &error);
         }
         if command == DELETE {
             unsafe {

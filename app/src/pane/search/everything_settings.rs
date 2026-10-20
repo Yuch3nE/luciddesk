@@ -82,7 +82,7 @@ pub(in crate::pane) fn launch() -> Result<(), String> {
 }
 pub(in crate::pane) fn browse(owner: isize) -> Result<Option<String>, String> {
     super::super::executable_picker::browse(
-        owner, "Everything", "Everything.exe", "ui-could-not-select-everything",
+        owner, "Everything", "Everything.exe", "search-program-picker-failed",
         crate::i18n::text("ui-select-everything-exe"),
     )
 }

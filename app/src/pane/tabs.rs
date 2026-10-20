@@ -53,7 +53,7 @@ fn select_impl(state: &Rc<RefCell<PaneApp>>, from: PanelId, to: PanelId, persist
     }
     let (hwnd, previous) = {
         let s = state.borrow();
-        let group = s.workspace.tab_group(from).ok_or(crate::i18n::text("ui-tab-group-closed"))?;
+        let group = s.workspace.tab_group(from).ok_or(crate::i18n::text("tab-group-unavailable"))?;
         if !group.members.contains(&to) {
             return Err(crate::i18n::text("ui-target-tab-does-not-belong-to-this-panel").into());
         }
@@ -175,7 +175,7 @@ pub(super) fn add(
                 .max()
                 .unwrap_or(0)
                 .checked_add(1)
-                .ok_or(crate::i18n::text("ui-tab-limit-exceeded"))?,
+                .ok_or(crate::i18n::text("tab-order-overflow"))?,
         );
         let title = folder
             .as_ref()
@@ -273,17 +273,17 @@ pub(super) fn reorder(
     let group = groups
         .iter_mut()
         .find(|g| g.members.contains(&id))
-        .ok_or(crate::i18n::text("ui-tab-group-closed"))?;
+        .ok_or(crate::i18n::text("tab-group-unavailable"))?;
     let from = group
         .members
         .iter()
         .position(|member| *member == moved)
-        .ok_or(crate::i18n::text("ui-tab-closed"))?;
+        .ok_or(crate::i18n::text("panel-or-tab-unavailable"))?;
     let to = group
         .members
         .iter()
         .position(|member| *member == before)
-        .ok_or(crate::i18n::text("ui-tab-closed"))?;
+        .ok_or(crate::i18n::text("panel-or-tab-unavailable"))?;
     group.members.remove(from);
     group.members.insert(to, moved);
     s.workspace
@@ -657,14 +657,14 @@ pub(super) fn finish_move(
                 unsafe {
                     PostMessageW(owner as _, window::RESTORE_MERGE, 0, 0);
                 }
-                window::error(&error);
+                window::error_for(owner as _, &error);
             }
         }
     }) {
         unsafe {
             PostMessageW(owner as _, window::RESTORE_MERGE, 0, 0);
         }
-        return Err(crate::i18n::text("ui-could-not-merge-panels").into());
+        return Err(crate::i18n::text("panel-merge-dispatch-failed").into());
     }
     Ok(())
 }

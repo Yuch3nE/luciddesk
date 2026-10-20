@@ -38,3 +38,20 @@ pub fn text(key: &'static str) -> &'static str {
         .copied()
         .unwrap_or(key)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn catalogs_are_literal_text_not_fluent_expressions() {
+        for catalog in CATALOGS.iter() {
+            for (key, value) in catalog {
+                assert!(!value.contains(['{', '}']), "{key}: plugin catalogs do not parse Fluent: {value}");
+                assert!(!value.trim().is_empty(), "{key}");
+            }
+        }
+        assert_eq!(CATALOGS[0]["monitor-pause"], "暂停监控");
+        assert_eq!(CATALOGS[0]["monitor-device-settings"], "监控设备");
+    }
+}

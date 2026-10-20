@@ -51,8 +51,7 @@ ui-file-operation-failed = { "파일 작업 실패: " }{ $error }
 # 无法安排文件操作
 ui-could-not-schedule-file-operation = { "파일 작업을 예약할 수 없음" }
 
-# 面板已关闭
-ui-group-closed = { "패널이 닫혔습니다" }
+rename-context-unavailable = { "이름 변경에 필요한 앱 상태가 해제되었습니다." }
 
 # Everything 搜索
 ui-everything-search = { "Everything 검색" }
@@ -185,8 +184,7 @@ ui-size = { "크기" }
 # 面板菜单
 ui-group-menu = { "패널 메뉴" }
 
-# 标签已关闭
-ui-tab-closed = { "탭이 닫혔습니다" }
+panel-or-tab-unavailable = { "패널 또는 탭을 찾을 수 없습니다." }
 
 # 保存面板失败：{e}
 ui-could-not-save-group = { "패널 저장 실패: " }{ $e }
@@ -197,8 +195,7 @@ ui-target-panel-unavailable = { "대상 패널 사용 불가" }
 # 选中项目已变化，请重新拖动
 ui-selection-changed-drag-again = { "선택 항목이 변경되었습니다. 다시 끌어오세요." }
 
-# 无法选择预览程序：{error}
-ui-could-not-select-preview-app = { "미리 보기 앱 선택 실패: " }{ $error }
+preview-program-picker-failed = { "미리 보기 앱 선택 대화 상자 오류입니다.\u000A\u000A오류 세부 정보:\u000A" }{ $error }
 
 # 请选择 {}
 ui-select = { $arg0 }{ " 선택" }
@@ -227,8 +224,7 @@ ui-quicklook-started-but-its-preview-service-is-unavailable = { "QuickLook 시�
 # 预览已取消
 ui-preview-canceled = { "미리 보기 취소됨" }
 
-# 配置目录不可用
-ui-configuration-folder-unavailable = { "설정 폴더 사용 불가" }
+configuration-directory-path-unavailable = { "설정 폴더 경로를 확인할 수 없습니다." }
 
 # 自动
 ui-automatic = { "자동" }
@@ -242,8 +238,7 @@ ui-manual = { "수동" }
 # ；{failed} 份旧备份清理失败
 ui-old-backups-not-removed = { "; 삭제하지 못한 이전 백업: " }{ $failed }
 
-# 运行时不可用
-ui-runtime-unavailable = { "런타임 사용 불가" }
+backup-runtime-state-missing = { "앱 실행 상태가 없어 백업 관리 작업을 실행할 수 없습니다." }
 
 # 备份任务正在进行，请稍候。
 ui-a-backup-task-is-running-please-wait = { "백업 작업 중입니다. 잠시 기다려 주세요." }
@@ -254,8 +249,7 @@ ui-backup-task-ended-unexpectedly-try-again = { "백업 작업이 예기치 않�
 # 配置暂无变化，无需重复备份
 ui-configuration-unchanged-no-new-backup-needed = { "설정이 변경되지 않아 새 백업이 필요하지 않습니다" }
 
-# 操作失败：{error}
-ui-operation-failed = { "작업 실패: " }{ $error }
+backup-task-failed = { "백업 관리 작업 실패: " }{ $error }
 
 # 读取备份记录…
 ui-loading-backup-history = { "백업 기록 불러오는 중…" }
@@ -311,8 +305,7 @@ ui-restore-failed-rolled-back = { "복원 실패, 이전 상태로 돌아감: " 
 # 恢复失败：{error}；回退失败：{e}。恢复前备份：{}
 ui-restore-failed-rollback-failed-previous-backup = { "복원 실패: " }{ $error }{ "; 롤백 실패: " }{ $e }{ ". 이전 백업: " }{ $arg0 }
 
-# 操作失败：{e}
-ui-operation-failed-0ea2 = { "작업 실패: " }{ $e }
+configuration-operation-failed = { "설정 작업 실패: " }{ $e }
 
 # 正在校验备份…
 ui-validating-backup = { "백업 확인 중…" }
@@ -335,8 +328,7 @@ ui-deleting = { "삭제 중…" }
 # 备份已删除
 ui-backup-deleted = { "백업 삭제됨" }
 
-# 不能覆盖正在使用的配置文件
-ui-cannot-overwrite-the-active-configuration = { "사용 중인 설정 파일을 덮어쓸 수 없습니다" }
+backup-export-path-reserved = { "현재 데이터베이스 경로 또는 workspace.db, config.toml 파일명으로 내보낼 수 없습니다. 다른 경로나 파일명을 선택하세요." }
 
 # 正在导出…
 ui-exporting = { "내보내는 중…" }
@@ -387,7 +379,7 @@ ui-desktop-groups-connected = { "바탕 화면 패널 연결됨" }
 ui-desktop-groups-unavailable-folder-panels-and-search-still-work-n = { "바탕 화면 패널을 사용할 수 없습니다. 폴더와 검색은 사용 가능합니다.\u000A" }{ $error }
 
 # Explorer 连接已断开，正在等待恢复
-ui-explorer-disconnected-waiting-to-reconnect = { "Explorer 연결 끊김, 재연결 대기 중" }
+ui-explorer-disconnected-waiting-to-reconnect = { "Windows 탐색기와의 연결이 끊어졌습니다." }
 
 # LucidDesk 设置
 ui-luciddesk-settings = { "LucidDesk 설정" }
@@ -449,8 +441,7 @@ ui-could-not-initialize-settings-window-frame = { "설정 창 테두리를 초�
 # 无法打开 Explorer 图标菜单：{error}
 ui-could-not-open-explorer-icon-menu = { "Explorer 아이콘 메뉴 열기 실패: " }{ $error }
 
-# 标签组已关闭
-ui-tab-group-closed = { "탭 그룹이 닫혔습니다" }
+tab-group-unavailable = { "탭 그룹을 찾을 수 없습니다." }
 
 # 目标标签不属于此面板
 ui-target-tab-does-not-belong-to-this-panel = { "대상 탭이 이 패널에 속하지 않습니다" }
@@ -461,8 +452,7 @@ ui-only-group-panels-support-tabs = { "바탕 화면 패널만 탭을 지원합�
 # 请先解锁面板
 ui-unlock-the-panel-first = { "먼저 패널 잠금을 해제하세요" }
 
-# 标签数量超出限制
-ui-tab-limit-exceeded = { "탭 개수 제한 초과" }
+tab-order-overflow = { "새 탭에 정렬 번호를 지정할 수 없습니다. 번호 범위를 초과했습니다." }
 
 # 文件夹面板不支持标签，请新建独立文件夹面板
 ui-folder-panels-do-not-support-tabs-create-a-separate-panel = { "폴더 패널은 탭을 지원하지 않습니다. 별도 패널을 만드세요" }
@@ -473,8 +463,7 @@ ui-select-an-unlocked-group-panel = { "잠기지 않은 바탕 화면 패널을 
 # 面板已关闭或活动标签已改变
 ui-panel-closed-or-active-tab-changed = { "패널이 닫혔거나 활성 탭이 변경되었습니다" }
 
-# 无法完成面板合并
-ui-could-not-merge-panels = { "패널을 병합할 수 없음" }
+panel-merge-dispatch-failed = { "패널 병합 작업을 제출하지 못했습니다. 병합은 실행되지 않았습니다." }
 
 # ＋ {remaining} 个标签
 ui-tabs-a81a = { "＋ " }{ $remaining }{ "개 탭" }
@@ -569,8 +558,7 @@ ui-everything-not-found-select-everything-exe-in-settings = { "Everything을 찾
 # 无法启动 Everything：{e}
 ui-could-not-start-everything = { "Everything 시작 실패: " }{ $e }
 
-# 无法选择 Everything：{error}
-ui-could-not-select-everything = { "Everything 선택 실패: " }{ $error }
+search-program-picker-failed = { "Everything 선택 대화 상자 오류입니다.\u000A\u000A오류 세부 정보:\u000A" }{ $error }
 
 # 请选择 Everything.exe
 ui-select-everything-exe = { "Everything.exe 선택" }
@@ -1031,8 +1019,7 @@ ui-export-configuration = { "설정 내보내기" }
 # 选择位置保存一份配置副本。
 ui-choose-where-to-save-a-configuration-copy = { "설정 복사본을 저장할 위치를 선택합니다." }
 
-# 尚无备份
-ui-no-backups-yet = { "아직 백업 없음" }
+backup-status-pending = 백업 상태를 아직 가져오지 못했습니다.
 
 # 失败
 ui-failed = { "실패" }
@@ -1222,9 +1209,9 @@ startup-package-invalid = MSIX 패키지 ID 또는 표시 파일이 잘못되었
 title-emoji-rendering = 컬러 아이콘 렌더링
 title-emoji-rendering-description = 모든 패널 및 탭 제목에 즉시 적용됩니다.
 
-ui-desktop-connection-warning = The desktop component is unavailable. Desktop panels are temporarily unavailable; folder panels and search still work. LucidDesk will retry automatically. { "\u000A" }Reason: { $error }{ "\u000A" }{ $log }
-ui-desktop-log-saved = Diagnostic log: { $path }
-ui-desktop-log-failed = Could not write diagnostic log: { $error }
+ui-desktop-connection-warning = { "데스크톱 패널을 일시적으로 사용할 수 없습니다. 폴더 패널과 검색은 계속 사용할 수 있습니다.\u000ALucidDesk가 자동으로 다시 연결을 시도합니다.\u000A\u000A연결 세부 정보:\u000A" }{ $error }{ "\u000A\u000A" }{ $log }
+ui-desktop-log-saved = { "진단 로그 위치:\u000A" }{ $path }
+ui-desktop-log-failed = { "진단 로그를 기록하지 못했습니다. 문제 확인을 위해 이 메시지를 복사하세요.\u000A\u000A로그 기록 오류:\u000A" }{ $error }
 
 diagnostics-section = Diagnostic logging
 diagnostics-level = 로그 수준
@@ -1294,3 +1281,12 @@ plugins-description = 설치된 플러그인을 관리합니다. 변경 사항�
 plugins-empty = 설치된 플러그인이 없습니다. 앱 옆의 plugins 폴더에 DLL을 넣고 다시 시작하세요.
 
 plugins-manage = 플러그인 관리
+
+# Shared error presentation
+error-operation-title = 작업을 완료하지 못했습니다
+error-startup-title = 시작할 수 없습니다
+error-connection-title = { "데스크톱 연결 사용 불가" }
+error-unknown = { "오류 세부 정보가 제공되지 않았습니다." }
+error-copy-hint = Ctrl+C를 눌러 이 메시지 전체를 복사할 수 있습니다.
+
+error-open-item = { "선택한 항목을 열 수 없습니다.\u000A\u000A항목:\u000A" }{ $path }{ "\u000A\u000A오류 세부 정보:\u000A" }{ $error }

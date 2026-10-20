@@ -51,8 +51,7 @@ ui-file-operation-failed = { "Ошибка операции с файлом: " }
 # 无法安排文件操作
 ui-could-not-schedule-file-operation = { "Не удалось запланировать операцию с файлом" }
 
-# 面板已关闭
-ui-group-closed = { "Панель закрыта" }
+rename-context-unavailable = { "Состояние приложения, необходимое для переименования, уже освобождено." }
 
 # Everything 搜索
 ui-everything-search = { "Поиск Everything" }
@@ -185,8 +184,7 @@ ui-size = { "Размер" }
 # 面板菜单
 ui-group-menu = { "Меню панели" }
 
-# 标签已关闭
-ui-tab-closed = { "Вкладка закрыта" }
+panel-or-tab-unavailable = { "Панель или вкладка не найдена." }
 
 # 保存面板失败：{e}
 ui-could-not-save-group = { "Не удалось сохранить панель: " }{ $e }
@@ -197,8 +195,7 @@ ui-target-panel-unavailable = { "Целевая панель недоступн�
 # 选中项目已变化，请重新拖动
 ui-selection-changed-drag-again = { "Выбор изменился. Перетащите снова." }
 
-# 无法选择预览程序：{error}
-ui-could-not-select-preview-app = { "Не удалось выбрать программу просмотра: " }{ $error }
+preview-program-picker-failed = { "Ошибка диалога выбора приложения предпросмотра.\u000A\u000AСведения об ошибке:\u000A" }{ $error }
 
 # 请选择 {}
 ui-select = { "Выберите " }{ $arg0 }
@@ -227,8 +224,7 @@ ui-quicklook-started-but-its-preview-service-is-unavailable = { "QuickLook за�
 # 预览已取消
 ui-preview-canceled = { "Предпросмотр отменён" }
 
-# 配置目录不可用
-ui-configuration-folder-unavailable = { "Папка настроек недоступна" }
+configuration-directory-path-unavailable = { "Не удалось определить путь к папке конфигурации." }
 
 # 自动
 ui-automatic = { "Автоматически" }
@@ -242,8 +238,7 @@ ui-manual = { "Вручную" }
 # ；{failed} 份旧备份清理失败
 ui-old-backups-not-removed = { "; не удалено старых копий: " }{ $failed }
 
-# 运行时不可用
-ui-runtime-unavailable = { "Среда выполнения недоступна" }
+backup-runtime-state-missing = { "Отсутствует состояние приложения; задачи управления резервными копиями недоступны." }
 
 # 备份任务正在进行，请稍候。
 ui-a-backup-task-is-running-please-wait = { "Выполняется копирование. Подождите." }
@@ -254,8 +249,7 @@ ui-backup-task-ended-unexpectedly-try-again = { "Копирование неож
 # 配置暂无变化，无需重复备份
 ui-configuration-unchanged-no-new-backup-needed = { "Настройки не изменились; новая копия не нужна" }
 
-# 操作失败：{error}
-ui-operation-failed = { "Ошибка операции: " }{ $error }
+backup-task-failed = { "Ошибка задачи управления резервными копиями: " }{ $error }
 
 # 读取备份记录…
 ui-loading-backup-history = { "Загрузка истории копий…" }
@@ -311,8 +305,7 @@ ui-restore-failed-rolled-back = { "Ошибка восстановления, в
 # 恢复失败：{error}；回退失败：{e}。恢复前备份：{}
 ui-restore-failed-rollback-failed-previous-backup = { "Ошибка восстановления: " }{ $error }{ "; ошибка отката: " }{ $e }{ ". Предыдущая копия: " }{ $arg0 }
 
-# 操作失败：{e}
-ui-operation-failed-0ea2 = { "Ошибка операции: " }{ $e }
+configuration-operation-failed = { "Ошибка операции с конфигурацией: " }{ $e }
 
 # 正在校验备份…
 ui-validating-backup = { "Проверка копии…" }
@@ -335,8 +328,7 @@ ui-deleting = { "Удаление…" }
 # 备份已删除
 ui-backup-deleted = { "Копия удалена" }
 
-# 不能覆盖正在使用的配置文件
-ui-cannot-overwrite-the-active-configuration = { "Нельзя перезаписать используемые настройки" }
+backup-export-path-reserved = { "Нельзя экспортировать в текущую базу данных или использовать имена workspace.db и config.toml. Выберите другой путь или имя." }
 
 # 正在导出…
 ui-exporting = { "Экспорт…" }
@@ -387,7 +379,7 @@ ui-desktop-groups-connected = { "Панели рабочего стола под
 ui-desktop-groups-unavailable-folder-panels-and-search-still-work-n = { "Панели недоступны. Панели папок и поиск продолжают работать.\u000A" }{ $error }
 
 # Explorer 连接已断开，正在等待恢复
-ui-explorer-disconnected-waiting-to-reconnect = { "Explorer отключён, ожидание подключения" }
+ui-explorer-disconnected-waiting-to-reconnect = { "Соединение с Проводником Windows потеряно." }
 
 # LucidDesk 设置
 ui-luciddesk-settings = { "Настройки LucidDesk" }
@@ -449,8 +441,7 @@ ui-could-not-initialize-settings-window-frame = { "Не удалось иниц�
 # 无法打开 Explorer 图标菜单：{error}
 ui-could-not-open-explorer-icon-menu = { "Не удалось открыть меню значка Explorer: " }{ $error }
 
-# 标签组已关闭
-ui-tab-group-closed = { "Группа вкладок закрыта" }
+tab-group-unavailable = { "Группа вкладок не найдена." }
 
 # 目标标签不属于此面板
 ui-target-tab-does-not-belong-to-this-panel = { "Целевая вкладка не принадлежит этой панели" }
@@ -461,8 +452,7 @@ ui-only-group-panels-support-tabs = { "Вкладки поддерживаютс
 # 请先解锁面板
 ui-unlock-the-panel-first = { "Сначала открепите панель" }
 
-# 标签数量超出限制
-ui-tab-limit-exceeded = { "Превышен лимит вкладок" }
+tab-order-overflow = { "Не удалось назначить номер порядка новой вкладке: превышен диапазон номеров." }
 
 # 文件夹面板不支持标签，请新建独立文件夹面板
 ui-folder-panels-do-not-support-tabs-create-a-separate-panel = { "Панели папок не поддерживают вкладки. Создайте отдельную панель" }
@@ -473,8 +463,7 @@ ui-select-an-unlocked-group-panel = { "Выберите незакреплённ
 # 面板已关闭或活动标签已改变
 ui-panel-closed-or-active-tab-changed = { "Панель закрыта или активная вкладка изменилась" }
 
-# 无法完成面板合并
-ui-could-not-merge-panels = { "Не удалось объединить панели" }
+panel-merge-dispatch-failed = { "Не удалось запустить задачу объединения панелей. Объединение не выполнено." }
 
 # ＋ {remaining} 个标签
 ui-tabs-a81a = { "＋ вкладок: " }{ $remaining }
@@ -569,8 +558,7 @@ ui-everything-not-found-select-everything-exe-in-settings = { "Everything не �
 # 无法启动 Everything：{e}
 ui-could-not-start-everything = { "Не удалось запустить Everything: " }{ $e }
 
-# 无法选择 Everything：{error}
-ui-could-not-select-everything = { "Не удалось выбрать Everything: " }{ $error }
+search-program-picker-failed = { "Ошибка диалога выбора Everything.\u000A\u000AСведения об ошибке:\u000A" }{ $error }
 
 # 请选择 Everything.exe
 ui-select-everything-exe = { "Выберите Everything.exe" }
@@ -1031,8 +1019,7 @@ ui-export-configuration = { "Экспорт настроек" }
 # 选择位置保存一份配置副本。
 ui-choose-where-to-save-a-configuration-copy = { "Выберите место для сохранения копии настроек." }
 
-# 尚无备份
-ui-no-backups-yet = { "Копий пока нет" }
+backup-status-pending = Состояние резервного копирования ещё не получено.
 
 # 失败
 ui-failed = { "Ошибка" }
@@ -1222,9 +1209,9 @@ startup-package-invalid = Недопустимый идентификатор и
 title-emoji-rendering = Цветное отображение значков
 title-emoji-rendering-description = Сразу применяется к заголовкам всех панелей и вкладок.
 
-ui-desktop-connection-warning = The desktop component is unavailable. Desktop panels are temporarily unavailable; folder panels and search still work. LucidDesk will retry automatically. { "\u000A" }Reason: { $error }{ "\u000A" }{ $log }
-ui-desktop-log-saved = Diagnostic log: { $path }
-ui-desktop-log-failed = Could not write diagnostic log: { $error }
+ui-desktop-connection-warning = { "Панели рабочего стола временно недоступны. Панели папок и поиск продолжают работать.\u000ALucidDesk автоматически попытается восстановить соединение.\u000A\u000AСведения о подключении:\u000A" }{ $error }{ "\u000A\u000A" }{ $log }
+ui-desktop-log-saved = { "Расположение журнала диагностики:\u000A" }{ $path }
+ui-desktop-log-failed = { "Не удалось записать журнал диагностики. Скопируйте это сообщение для проверки ошибки.\u000A\u000AОшибка записи журнала:\u000A" }{ $error }
 
 diagnostics-section = Diagnostic logging
 diagnostics-level = Уровень журналирования
@@ -1294,3 +1281,12 @@ plugins-description = Управление установленными плаг
 plugins-empty = Плагины не установлены. Поместите DLL в папку plugins рядом с приложением и перезапустите его.
 
 plugins-manage = Управление плагинами
+
+# Shared error presentation
+error-operation-title = Не удалось завершить операцию
+error-startup-title = Не удалось запустить
+error-connection-title = { "Подключение к рабочему столу недоступно" }
+error-unknown = { "Сведения об ошибке отсутствуют." }
+error-copy-hint = Нажмите Ctrl+C, чтобы скопировать сообщение целиком.
+
+error-open-item = { "Не удалось открыть выбранный объект.\u000A\u000AОбъект:\u000A" }{ $path }{ "\u000A\u000AСведения об ошибке:\u000A" }{ $error }

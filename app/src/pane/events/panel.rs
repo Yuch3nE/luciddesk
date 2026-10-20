@@ -358,7 +358,7 @@ pub(super) fn apply(
                             &identities,
                             &path,
                         ) {
-                            window::error(&error.to_string());
+                            window::error_for(owner as _, &error.to_string());
                         }
                     });
                     return Ok(false);

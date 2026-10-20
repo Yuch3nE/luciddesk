@@ -51,8 +51,7 @@ ui-file-operation-failed = { "檔案操作失敗：" }{ $error }
 # 无法安排文件操作
 ui-could-not-schedule-file-operation = { "無法排程檔案操作" }
 
-# 面板已关闭
-ui-group-closed = { "面板已關閉" }
+rename-context-unavailable = { "重新命名所需的應用程式狀態已釋放。" }
 
 # Everything 搜索
 ui-everything-search = { "Everything 搜尋" }
@@ -185,8 +184,7 @@ ui-size = { "大小" }
 # 面板菜单
 ui-group-menu = { "面板選單" }
 
-# 标签已关闭
-ui-tab-closed = { "分頁已關閉" }
+panel-or-tab-unavailable = { "找不到此面板或標籤頁。" }
 
 # 保存面板失败：{e}
 ui-could-not-save-group = { "儲存面板失敗：" }{ $e }
@@ -197,8 +195,7 @@ ui-target-panel-unavailable = { "目標面板無法使用" }
 # 选中项目已变化，请重新拖动
 ui-selection-changed-drag-again = { "所選項目已變更，請重新拖曳" }
 
-# 无法选择预览程序：{error}
-ui-could-not-select-preview-app = { "無法選擇預覽程式：" }{ $error }
+preview-program-picker-failed = { "選擇預覽程式的檔案對話方塊發生錯誤。\u000A\u000A錯誤詳細資訊：\u000A" }{ $error }
 
 # 请选择 {}
 ui-select = { "請選擇 " }{ $arg0 }
@@ -227,8 +224,7 @@ ui-quicklook-started-but-its-preview-service-is-unavailable = { "QuickLook 啟�
 # 预览已取消
 ui-preview-canceled = { "預覽已取消" }
 
-# 配置目录不可用
-ui-configuration-folder-unavailable = { "設定目錄無法使用" }
+configuration-directory-path-unavailable = { "無法確定設定資料夾的路徑。" }
 
 # 自动
 ui-automatic = { "自動" }
@@ -242,8 +238,7 @@ ui-manual = { "手動" }
 # ；{failed} 份旧备份清理失败
 ui-old-backups-not-removed = { "；" }{ $failed }{ " 份舊備份清理失敗" }
 
-# 运行时不可用
-ui-runtime-unavailable = { "執行階段無法使用" }
+backup-runtime-state-missing = { "缺少應用程式執行狀態，無法執行備份管理工作。" }
 
 # 备份任务正在进行，请稍候。
 ui-a-backup-task-is-running-please-wait = { "備份作業正在進行，請稍候。" }
@@ -254,8 +249,7 @@ ui-backup-task-ended-unexpectedly-try-again = { "備份作業意外結束，請�
 # 配置暂无变化，无需重复备份
 ui-configuration-unchanged-no-new-backup-needed = { "設定未變更，無須重複備份" }
 
-# 操作失败：{error}
-ui-operation-failed = { "操作失敗：" }{ $error }
+backup-task-failed = { "備份管理工作失敗：" }{ $error }
 
 # 读取备份记录…
 ui-loading-backup-history = { "讀取備份記錄…" }
@@ -311,8 +305,7 @@ ui-restore-failed-rolled-back = { "還原失敗，已復原：" }{ $error }
 # 恢复失败：{error}；回退失败：{e}。恢复前备份：{}
 ui-restore-failed-rollback-failed-previous-backup = { "還原失敗：" }{ $error }{ "；復原失敗：" }{ $e }{ "。還原前備份：" }{ $arg0 }
 
-# 操作失败：{e}
-ui-operation-failed-0ea2 = { "操作失敗：" }{ $e }
+configuration-operation-failed = { "設定操作失敗：" }{ $e }
 
 # 正在校验备份…
 ui-validating-backup = { "正在驗證備份…" }
@@ -335,8 +328,7 @@ ui-deleting = { "正在刪除…" }
 # 备份已删除
 ui-backup-deleted = { "備份已刪除" }
 
-# 不能覆盖正在使用的配置文件
-ui-cannot-overwrite-the-active-configuration = { "無法覆寫使用中的設定檔" }
+backup-export-path-reserved = { "無法匯出至目前資料庫路徑，或使用 workspace.db、config.toml 作為檔名。請選擇其他路徑或檔名。" }
 
 # 正在导出…
 ui-exporting = { "正在匯出…" }
@@ -387,7 +379,7 @@ ui-desktop-groups-connected = { "桌面面板已連線" }
 ui-desktop-groups-unavailable-folder-panels-and-search-still-work-n = { "桌面面板暫時無法使用，資料夾與搜尋仍可使用。\u000A" }{ $error }
 
 # Explorer 连接已断开，正在等待恢复
-ui-explorer-disconnected-waiting-to-reconnect = { "Explorer 連線已中斷，正在等待恢復" }
+ui-explorer-disconnected-waiting-to-reconnect = { "與 Windows 檔案總管（Explorer）的連線已中斷。" }
 
 # LucidDesk 设置
 ui-luciddesk-settings = { "LucidDesk 設定" }
@@ -449,8 +441,7 @@ ui-could-not-initialize-settings-window-frame = { "無法初始化設定視窗�
 # 无法打开 Explorer 图标菜单：{error}
 ui-could-not-open-explorer-icon-menu = { "無法開啟 Explorer 圖示選單：" }{ $error }
 
-# 标签组已关闭
-ui-tab-group-closed = { "分頁群組已關閉" }
+tab-group-unavailable = { "找不到此標籤群組。" }
 
 # 目标标签不属于此面板
 ui-target-tab-does-not-belong-to-this-panel = { "目標分頁不屬於此面板" }
@@ -461,8 +452,7 @@ ui-only-group-panels-support-tabs = { "僅一般面板支援分頁" }
 # 请先解锁面板
 ui-unlock-the-panel-first = { "請先解除鎖定面板" }
 
-# 标签数量超出限制
-ui-tab-limit-exceeded = { "分頁數量超出限制" }
+tab-order-overflow = { "無法為新標籤頁分配排序編號：編號超出可用範圍。" }
 
 # 文件夹面板不支持标签，请新建独立文件夹面板
 ui-folder-panels-do-not-support-tabs-create-a-separate-panel = { "資料夾面板不支援分頁，請新增獨立資料夾面板" }
@@ -473,8 +463,7 @@ ui-select-an-unlocked-group-panel = { "請選擇未鎖定的一般面板" }
 # 面板已关闭或活动标签已改变
 ui-panel-closed-or-active-tab-changed = { "面板已關閉或作用中分頁已變更" }
 
-# 无法完成面板合并
-ui-could-not-merge-panels = { "無法完成面板合併" }
+panel-merge-dispatch-failed = { "無法提交面板合併工作，此次合併未執行。" }
 
 # ＋ {remaining} 个标签
 ui-tabs-a81a = { "＋ " }{ $remaining }{ " 個分頁" }
@@ -569,8 +558,7 @@ ui-everything-not-found-select-everything-exe-in-settings = { "找不到 Everyth
 # 无法启动 Everything：{e}
 ui-could-not-start-everything = { "無法啟動 Everything：" }{ $e }
 
-# 无法选择 Everything：{error}
-ui-could-not-select-everything = { "無法選擇 Everything：" }{ $error }
+search-program-picker-failed = { "選擇 Everything 程式的檔案對話方塊發生錯誤。\u000A\u000A錯誤詳細資訊：\u000A" }{ $error }
 
 # 请选择 Everything.exe
 ui-select-everything-exe = { "請選擇 Everything.exe" }
@@ -1031,8 +1019,7 @@ ui-export-configuration = { "匯出目前設定" }
 # 选择位置保存一份配置副本。
 ui-choose-where-to-save-a-configuration-copy = { "選擇位置儲存設定副本。" }
 
-# 尚无备份
-ui-no-backups-yet = { "尚無備份" }
+backup-status-pending = 尚未取得備份狀態
 
 # 失败
 ui-failed = { "失敗" }
@@ -1222,9 +1209,9 @@ startup-package-invalid = MSIX 套件身分或標記無效，未修改啟動設�
 title-emoji-rendering = 彩色圖示呈現
 title-emoji-rendering-description = 套用於所有面板和分頁標題，切換後立即生效。
 
-ui-desktop-connection-warning = The desktop component is unavailable. Desktop panels are temporarily unavailable; folder panels and search still work. LucidDesk will retry automatically. { "\u000A" }Reason: { $error }{ "\u000A" }{ $log }
-ui-desktop-log-saved = Diagnostic log: { $path }
-ui-desktop-log-failed = Could not write diagnostic log: { $error }
+ui-desktop-connection-warning = { "桌面面板暫時無法使用，資料夾面板和搜尋仍可使用。\u000ALucidDesk 會自動嘗試重新連線。\u000A\u000A連線詳細資訊：\u000A" }{ $error }{ "\u000A\u000A" }{ $log }
+ui-desktop-log-saved = { "診斷記錄位置：\u000A" }{ $path }
+ui-desktop-log-failed = { "無法寫入診斷記錄，請複製此提示以便排查。\u000A\u000A記錄寫入錯誤：\u000A" }{ $error }
 
 diagnostics-section = Diagnostic logging
 diagnostics-level = 記錄等級
@@ -1294,3 +1281,12 @@ plugins-description = 管理已安裝外掛；開關立即生效並保留設定�
 plugins-empty = 未安裝外掛。將 DLL 放入程式目錄的 plugins 資料夾後重新啟動。
 
 plugins-manage = 外掛程式管理
+
+# Shared error presentation
+error-operation-title = 操作未完成
+error-startup-title = 無法啟動
+error-connection-title = { "桌面連線無法使用" }
+error-unknown = { "未提供錯誤詳細資訊。" }
+error-copy-hint = 按 Ctrl+C 可複製此提示的完整內容。
+
+error-open-item = { "無法開啟所選項目。\u000A\u000A項目：\u000A" }{ $path }{ "\u000A\u000A錯誤詳細資訊：\u000A" }{ $error }

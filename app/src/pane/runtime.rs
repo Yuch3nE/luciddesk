@@ -99,7 +99,7 @@ fn notify_connection(state: &Rc<RefCell<PaneApp>>) {
         let still_unavailable = weak.upgrade().is_some_and(|state| {
             state.borrow().runtime.as_ref().is_some_and(|r| r.notice.unavailable && r.notice.generation == generation)
         });
-        if still_unavailable { window::error(&message); }
+        if still_unavailable { crate::error_report::show(0, crate::i18n::text("error-connection-title"), &message, luciddesk_window::MessageKind::Warning); }
     });
 }
 

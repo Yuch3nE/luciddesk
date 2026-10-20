@@ -44,7 +44,9 @@ pub fn rename_shell_item(
         let outcome = Rc::new(RefCell::new(None));
         let sink: IFileOperationProgressSink = RenameResult(outcome.clone()).into();
         operation.RenameItem(&item, &HSTRING::from(name), &sink)?;
-        operation.PerformOperations()?;
+        if !crate::file_command::command_completed(operation.PerformOperations())? {
+            return Ok(None);
+        }
         if operation.GetAnyOperationsAborted()?.as_bool() {
             return Ok(None);
         }

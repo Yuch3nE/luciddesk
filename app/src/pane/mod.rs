@@ -358,7 +358,7 @@ fn create_model(state: &PaneApp, id: PanelId) -> Result<GroupModel, String> {
     let panel = state
         .workspace
         .panel(id)
-        .ok_or(crate::i18n::text("ui-tab-closed"))?;
+        .ok_or(crate::i18n::text("panel-or-tab-unavailable"))?;
     let items = items_for(state, id);
     Ok(GroupModel {
         monitor: panel
@@ -499,8 +499,12 @@ fn create_view(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result<(), String> 
                     &format!("{error}"),
                 );
                 // A posted focus callback still owns its event RefMut here.
-                // MessageBox pumps input for our ownerless, enabled panes.
-                window::defer_error(error);
+                // Defer until it is released, even with an owned dialog: other
+                // panes and Shell callbacks can still run in the modal loop.
+                let owner = state.borrow().views.iter()
+                    .find(|view| view.id == event_target.get())
+                    .map_or(0, |view| view.window.hwnd() as isize);
+                window::defer_error(owner, error);
                 false
             }
         }

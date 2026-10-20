@@ -143,7 +143,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 return Some(0);
             }
             if msg == WM_TIMER && wp == STARTUP_TIMER {
-                if let Some(error) = startup.poll() { window::error(&error); }
+                if let Some(error) = startup.poll() { window::error_for(hwnd, &error); }
                 if !startup.busy() { unsafe { KillTimer(hwnd, STARTUP_TIMER); } }
                 scene_key = None;
                 unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
@@ -231,9 +231,9 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     if wp == VK_ESCAPE as usize { style_input = None; }
                     else if wp == VK_RETURN as usize {
                         if let Some(value) = edited_solid(appearance.1, *percentage, text) {
-                            if let Err(error) = handle(&state, selected, Event::Material(value)) { window::error(&error); }
+                            if let Err(error) = handle(&state, selected, Event::Material(value)) { window::error_for(hwnd, &error); }
                             style_input = None;
-                        } else { window::error(crate::i18n::text("ui-enter-a-six-digit-hex-color-or-a-percentage-from-0-to-100")); }
+                        } else { window::error_for(hwnd, crate::i18n::text("ui-enter-a-six-digit-hex-color-or-a-percentage-from-0-to-100")); }
                     } else { return Some(0); }
                     scene_key = None;
                     unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
@@ -668,7 +668,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     // the application. Only an external application switch needs
                     // to recheck changes made in Windows startup settings.
                     if wp != 0 && page == 13 {
-                        if let Err(error) = start_login_operation(&mut startup, hwnd, None) { window::error(&error); }
+                        if let Err(error) = start_login_operation(&mut startup, hwnd, None) { window::error_for(hwnd, &error); }
                         scene_key = None;
                     }
                 }
@@ -784,7 +784,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                         if key != VK_ESCAPE {
                             let value = search_hotkey::Shortcut { key, modifiers: peek::modifier_bits(&keyboard::Modifiers::current()) };
                             let result = if recording_show_panels { show_hotkey::save(&state.borrow().store, value) } else { search_hotkey::save(&state.borrow().store, value) };
-                            if let Err(error) = result { window::error(&error); return Some(0); }
+                            if let Err(error) = result { window::error_for(hwnd, &error); return Some(0); }
                         }
                         recording_search = false;
                         recording_show_panels = false;
@@ -798,12 +798,12 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                         if key != VK_ESCAPE {
                             let bits = peek::modifier_bits(&keyboard::Modifiers::current());
                             if !peek::valid_shortcut(key, bits) {
-                                window::error(crate::i18n::text("ui-shortcut-conflicts-or-is-unsupported-use-letters-digits-function-key"));
+                                window::error_for(hwnd, crate::i18n::text("ui-shortcut-conflicts-or-is-unsupported-use-letters-digits-function-key"));
                                 return Some(0);
                             }
                             let mut value = peek::settings(); value.key = key; value.modifiers = bits;
                             let saved = peek::save(&state.borrow().store, value);
-                            if let Err(error) = saved { window::error(&error); }
+                            if let Err(error) = saved { window::error_for(hwnd, &error); }
                         }
                         recording_peek = false;
                         unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
@@ -911,7 +911,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
             // preview/commit path regardless of the material property edited.
             let mut apply_material = |backdrop| {
                 if msg == WM_KEYDOWN {
-                    if let Err(error) = handle(&state, selected, Event::Material(backdrop)) { window::error(&error); }
+                    if let Err(error) = handle(&state, selected, Event::Material(backdrop)) { window::error_for(hwnd, &error); }
                 } else {
                     pending_styles.material.get_or_insert(appearance.1);
                     events::preview_material(&mut state.borrow_mut(), backdrop);
@@ -936,12 +936,12 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
             if available && matches!(msg, WM_LBUTTONUP | WM_CAPTURECHANGED | WM_CANCELMODE) {
                 if let Some(original) = pending_styles.material.take() {
                     let saved = events::commit_material(&mut state.borrow_mut(), original);
-                    if let Err(error) = saved { window::error(&error); }
+                    if let Err(error) = saved { window::error_for(hwnd, &error); }
                 }
             }
             if let Some(value) = grid_change.filter(|_| available) {
                 if msg == WM_KEYDOWN {
-                    if let Err(error) = handle(&state, selected, Event::SetIconGrid(value)) { window::error(&error); }
+                    if let Err(error) = handle(&state, selected, Event::SetIconGrid(value)) { window::error_for(hwnd, &error); }
                 } else {
                     let mut owner = state.borrow_mut();
                     let options = owner.workspace.pane_options();
@@ -952,13 +952,13 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
             if available && matches!(msg, WM_LBUTTONUP | WM_CAPTURECHANGED | WM_CANCELMODE) {
                 if let Some(original) = pending_styles.grid.take() {
                     let saved = events::commit_grid(&mut state.borrow_mut(), original);
-                    if let Err(error) = saved { window::error(&error); }
+                    if let Err(error) = saved { window::error_for(hwnd, &error); }
                 }
             }
             if let Some(radius) = radius_change.filter(|_| available) {
                 if msg == WM_KEYDOWN {
                     if let Err(error) = handle(&state, selected, Event::SetCornerRadius(radius)) {
-                        window::error(&error);
+                        window::error_for(hwnd, &error);
                     }
                 } else {
                     let mut owner = state.borrow_mut();
@@ -970,7 +970,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 if let Some(original) = pending_styles.radius.take() {
                     let saved = events::commit_radius(&mut state.borrow_mut(), original);
                     if let Err(error) = saved {
-                        window::error(&error);
+                        window::error_for(hwnd, &error);
                     }
                 }
             }

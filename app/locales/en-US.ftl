@@ -51,8 +51,7 @@ ui-file-operation-failed = { "File operation failed: " }{ $error }
 # 无法安排文件操作
 ui-could-not-schedule-file-operation = { "Could not schedule file operation" }
 
-# 面板已关闭
-ui-group-closed = { "Panel closed" }
+rename-context-unavailable = { "The application state needed for renaming has been released." }
 
 # Everything 搜索
 ui-everything-search = { "Everything search" }
@@ -185,8 +184,7 @@ ui-size = { "Size" }
 # 面板菜单
 ui-group-menu = { "Panel menu" }
 
-# 标签已关闭
-ui-tab-closed = { "Tab closed" }
+panel-or-tab-unavailable = { "The panel or tab could not be found." }
 
 # 保存面板失败：{e}
 ui-could-not-save-group = { "Could not save panel: " }{ $e }
@@ -197,8 +195,7 @@ ui-target-panel-unavailable = { "Target panel unavailable" }
 # 选中项目已变化，请重新拖动
 ui-selection-changed-drag-again = { "Selection changed. Drag again." }
 
-# 无法选择预览程序：{error}
-ui-could-not-select-preview-app = { "Could not select preview app: " }{ $error }
+preview-program-picker-failed = { "The preview app file dialog failed.\u000A\u000AError details:\u000A" }{ $error }
 
 # 请选择 {}
 ui-select = { "Select " }{ $arg0 }
@@ -227,8 +224,7 @@ ui-quicklook-started-but-its-preview-service-is-unavailable = { "QuickLook start
 # 预览已取消
 ui-preview-canceled = { "Preview canceled" }
 
-# 配置目录不可用
-ui-configuration-folder-unavailable = { "Configuration folder unavailable" }
+configuration-directory-path-unavailable = { "The configuration folder path could not be determined." }
 
 # 自动
 ui-automatic = { "Automatic" }
@@ -242,8 +238,7 @@ ui-manual = { "Manual" }
 # ；{failed} 份旧备份清理失败
 ui-old-backups-not-removed = { "; old backups not removed: " }{ $failed }
 
-# 运行时不可用
-ui-runtime-unavailable = { "Runtime unavailable" }
+backup-runtime-state-missing = { "Application runtime state is missing; backup management tasks cannot run." }
 
 # 备份任务正在进行，请稍候。
 ui-a-backup-task-is-running-please-wait = { "A backup task is running. Please wait." }
@@ -254,8 +249,7 @@ ui-backup-task-ended-unexpectedly-try-again = { "Backup task ended unexpectedly.
 # 配置暂无变化，无需重复备份
 ui-configuration-unchanged-no-new-backup-needed = { "Configuration unchanged; no new backup needed" }
 
-# 操作失败：{error}
-ui-operation-failed = { "Operation failed: " }{ $error }
+backup-task-failed = { "Backup management task failed: " }{ $error }
 
 # 读取备份记录…
 ui-loading-backup-history = { "Loading backup history…" }
@@ -311,8 +305,7 @@ ui-restore-failed-rolled-back = { "Restore failed; rolled back: " }{ $error }
 # 恢复失败：{error}；回退失败：{e}。恢复前备份：{}
 ui-restore-failed-rollback-failed-previous-backup = { "Restore failed: " }{ $error }{ "; rollback failed: " }{ $e }{ ". Previous backup: " }{ $arg0 }
 
-# 操作失败：{e}
-ui-operation-failed-0ea2 = { "Operation failed: " }{ $e }
+configuration-operation-failed = { "Configuration operation failed: " }{ $e }
 
 # 正在校验备份…
 ui-validating-backup = { "Validating backup…" }
@@ -335,8 +328,7 @@ ui-deleting = { "Deleting…" }
 # 备份已删除
 ui-backup-deleted = { "Backup deleted" }
 
-# 不能覆盖正在使用的配置文件
-ui-cannot-overwrite-the-active-configuration = { "Cannot overwrite the active configuration" }
+backup-export-path-reserved = { "Cannot export to the current database path or use workspace.db or config.toml as the filename. Choose another path or filename." }
 
 # 正在导出…
 ui-exporting = { "Exporting…" }
@@ -387,7 +379,7 @@ ui-desktop-groups-connected = { "Desktop panels connected" }
 ui-desktop-groups-unavailable-folder-panels-and-search-still-work-n = { "Desktop panels unavailable. Folder panels and search still work.\u000A" }{ $error }
 
 # Explorer 连接已断开，正在等待恢复
-ui-explorer-disconnected-waiting-to-reconnect = { "Explorer disconnected; waiting to reconnect" }
+ui-explorer-disconnected-waiting-to-reconnect = { "The connection to Windows Explorer has been lost." }
 
 # LucidDesk 设置
 ui-luciddesk-settings = { "LucidDesk Settings" }
@@ -449,8 +441,7 @@ ui-could-not-initialize-settings-window-frame = { "Could not initialize settings
 # 无法打开 Explorer 图标菜单：{error}
 ui-could-not-open-explorer-icon-menu = { "Could not open Explorer icon menu: " }{ $error }
 
-# 标签组已关闭
-ui-tab-group-closed = { "Tab group closed" }
+tab-group-unavailable = { "The tab group could not be found." }
 
 # 目标标签不属于此面板
 ui-target-tab-does-not-belong-to-this-panel = { "Target tab does not belong to this panel" }
@@ -461,8 +452,7 @@ ui-only-group-panels-support-tabs = { "Only desktop panels support tabs" }
 # 请先解锁面板
 ui-unlock-the-panel-first = { "Unlock the panel first" }
 
-# 标签数量超出限制
-ui-tab-limit-exceeded = { "Tab limit exceeded" }
+tab-order-overflow = { "A sort number could not be assigned to the new tab: the number range was exceeded." }
 
 # 文件夹面板不支持标签，请新建独立文件夹面板
 ui-folder-panels-do-not-support-tabs-create-a-separate-panel = { "Folder panels do not support tabs. Create a separate panel." }
@@ -473,8 +463,7 @@ ui-select-an-unlocked-group-panel = { "Select an unlocked desktop panel" }
 # 面板已关闭或活动标签已改变
 ui-panel-closed-or-active-tab-changed = { "Panel closed or active tab changed" }
 
-# 无法完成面板合并
-ui-could-not-merge-panels = { "Could not merge panels" }
+panel-merge-dispatch-failed = { "The panel merge task could not be submitted. The merge was not performed." }
 
 # ＋ {remaining} 个标签
 ui-tabs-a81a = { "＋ " }{ $remaining }{ " tabs" }
@@ -569,8 +558,7 @@ ui-everything-not-found-select-everything-exe-in-settings = { "Everything not fo
 # 无法启动 Everything：{e}
 ui-could-not-start-everything = { "Could not start Everything: " }{ $e }
 
-# 无法选择 Everything：{error}
-ui-could-not-select-everything = { "Could not select Everything: " }{ $error }
+search-program-picker-failed = { "The Everything app file dialog failed.\u000A\u000AError details:\u000A" }{ $error }
 
 # 请选择 Everything.exe
 ui-select-everything-exe = { "Select Everything.exe" }
@@ -1031,8 +1019,7 @@ ui-export-configuration = { "Export configuration" }
 # 选择位置保存一份配置副本。
 ui-choose-where-to-save-a-configuration-copy = { "Choose where to save a configuration copy." }
 
-# 尚无备份
-ui-no-backups-yet = { "No backups yet" }
+backup-status-pending = Backup status has not been loaded.
 
 # 失败
 ui-failed = { "Failed" }
@@ -1222,9 +1209,9 @@ startup-package-invalid = MSIX identity or marker is invalid. Startup settings w
 title-emoji-rendering = Color icon rendering
 title-emoji-rendering-description = Applies immediately to all panel and tab titles.
 
-ui-desktop-connection-warning = The desktop component is unavailable. Desktop panels are temporarily unavailable; folder panels and search still work. LucidDesk will retry automatically. { "\u000A" }Reason: { $error }{ "\u000A" }{ $log }
-ui-desktop-log-saved = Diagnostic log: { $path }
-ui-desktop-log-failed = Could not write diagnostic log: { $error }
+ui-desktop-connection-warning = { "Desktop panels are temporarily unavailable. Folder panels and search are still available.\u000ALucidDesk will automatically try to reconnect.\u000A\u000AConnection details:\u000A" }{ $error }{ "\u000A\u000A" }{ $log }
+ui-desktop-log-saved = { "Diagnostic log location:\u000A" }{ $path }
+ui-desktop-log-failed = { "The diagnostic log could not be written. Copy this message for troubleshooting.\u000A\u000ALog write error:\u000A" }{ $error }
 
 diagnostics-section = Diagnostic logging
 diagnostics-level = Log level
@@ -1294,3 +1281,12 @@ plugins-description = Manage installed plugins. Changes apply immediately and pr
 plugins-empty = No plugins installed. Place plugin DLLs in the plugins folder beside the app and restart.
 
 plugins-manage = Manage plugins
+
+# Shared error presentation
+error-operation-title = Operation could not be completed
+error-startup-title = Unable to start
+error-connection-title = { "Desktop connection unavailable" }
+error-unknown = { "No error details were provided." }
+error-copy-hint = Press Ctrl+C to copy this entire message.
+
+error-open-item = { "Unable to open the selected item.\u000A\u000AItem:\u000A" }{ $path }{ "\u000A\u000AError details:\u000A" }{ $error }

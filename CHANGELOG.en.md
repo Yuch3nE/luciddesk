@@ -8,8 +8,14 @@ Exit the app before upgrading a portable installation and preserve its `data` fo
 
 ## Unreleased
 
+- Audit message text and IDs against call sites, distinguish missing runtime state, unresolved paths and dispatch failures, and fix literal Fluent wrappers in monitor plugin text.
+- Polish Simplified Chinese settings, menus, search, backup and system monitor text, clarifying option scope and outcomes, including matching monitor plugin labels.
+- Clarify Simplified Chinese error descriptions and recovery guidance. Separate desktop connection, item opening and backup restore details while preserving error codes and paths.
+
 ### Fixes
 
+- Unify error dialog titles, icons, complete details and copy hints. Settings, file operations and rename dialogs belong to the initiating window; suppress only identical dialogs already open, without delaying errors or hiding later retry failures.
+- Report early startup failures, treat explicit Windows user cancellation as a non-error for file operations, and use informational presentation for backup details.
 - Defer desktop selection synchronization until the pane's focus callback returns, avoiding a circular wait with Explorer's synchronous focus notification that can cause a filtering timeout.
 - Retry desktop filtering work when Explorer's nested message handling consumes its wake, preventing lost-wake request timeouts, and include more timeout diagnostics.
 - Retire and reconnect sessions after ordinary desktop filtering requests time out, avoiding repeated waits and dialogs when returning focus to a group with a selected item.

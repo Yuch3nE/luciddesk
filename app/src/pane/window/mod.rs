@@ -1542,19 +1542,16 @@ where
 }
 
 
-pub(super) fn defer_error(message: String) {
+pub(super) fn defer_error(owner: isize, message: String) {
     // Do not fall back to an inline dialog on scheduling failure: the caller
     // may still own an event callback. Its diagnostic log retains the error.
-    defer_action(move || error(&message));
+    defer_action(move || error_for(owner as _, &message));
 }
 
 pub fn error(message: &str) {
-    unsafe {
-        MessageBoxW(
-            std::ptr::null_mut(),
-            wide(message).as_ptr(),
-            wide("LucidDesk").as_ptr(),
-            MB_OK | MB_ICONWARNING,
-        );
-    }
+    crate::error_report::error(0, message);
+}
+
+pub fn error_for(owner: HWND, message: &str) {
+    crate::error_report::error(owner as isize, message);
 }

@@ -218,6 +218,34 @@ mod tests {
         }
     }
     #[test]
+    fn error_descriptions_preserve_diagnostics_and_separate_sections() {
+        let error = "Access denied (0x80070005)\nAdditional COM detail";
+        let path = "C:\\Users\\测试\\A & B\\diagnostic.log";
+        for locale in 0..SOURCES.len() {
+            let log = format_locale(locale, "ui-desktop-log-saved", &[("path", path.into())]);
+            let warning = format_locale(locale, "ui-desktop-connection-warning", &[
+                ("error", error.into()), ("log", log.clone()),
+            ]);
+            assert!(warning.contains(&format!("\n{error}\n\n{log}")), "{locale}: {warning}");
+            assert_eq!(warning.matches(path).count(), 1);
+            let opening = format_locale(locale, "error-open-item", &[
+                ("path", path.into()), ("error", error.into()),
+            ]);
+            assert!(opening.contains(&format!("\n{path}\n\n")), "{locale}: {opening}");
+            assert!(opening.ends_with(error));
+            let log_failure = format_locale(locale, "ui-desktop-log-failed", &[("error", error.into())]);
+            assert!(log_failure.ends_with(error));
+        }
+        let rollback = format_locale(0, "ui-restore-failed-rollback-failed-previous-backup", &[
+            ("error", "restore HRESULT=0x80070005".into()),
+            ("e", "rollback HRESULT=0x80070020".into()), ("arg0", path.into()),
+        ]);
+        assert!(rollback.contains("\nrestore HRESULT=0x80070005\n\n"));
+        assert!(rollback.contains("\nrollback HRESULT=0x80070020\n\n"));
+        assert!(rollback.ends_with(path));
+    }
+
+    #[test]
     fn all_messages_format_in_all_languages() {
         let ids: Vec<_> = SOURCES[0]
             .lines()

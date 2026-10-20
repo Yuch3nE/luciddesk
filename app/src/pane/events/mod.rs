@@ -80,7 +80,7 @@ pub(super) fn handle(
                 };
                 if let Some(rect) = monitor::resize_layout(hwnd as _, compact) {
                     if let Err(error) = handle(&state, id, Event::Geometry(rect)) {
-                        window::error(&error);
+                        window::error_for(hwnd as _, &error);
                     }
                 }
             });
@@ -340,7 +340,7 @@ pub(super) fn handle(
                 &label,
                 model,
                 Rc::new(move |identity, name| {
-                    let state = weak.upgrade().ok_or(crate::i18n::text("ui-group-closed"))?;
+                    let state = weak.upgrade().ok_or(crate::i18n::text("rename-context-unavailable"))?;
                     hybrid::rename_item(&state, owner, identity, name)
                 }),
             )?;

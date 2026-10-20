@@ -472,12 +472,8 @@ unsafe fn finish(edit: HWND, pointer: *mut Editor, commit: bool) {
         unsafe {
             if let Err(error) = result {
                 (*pointer).finishing = false;
-                MessageBoxW(
-                    edit,
-                    wide(&error).as_ptr(),
-                    crate::i18n::wide("ui-rename-failed"),
-                    MB_OK | MB_ICONERROR,
-                );
+                let message = crate::i18n::format("ui-rename-failed-9e1f", &[("error", error)]);
+                crate::error_report::show(edit as isize, crate::i18n::text("ui-rename-failed"), &message, luciddesk_window::MessageKind::Error);
                 SetFocus(edit);
             } else {
                 DestroyWindow(edit);
@@ -515,12 +511,8 @@ unsafe fn finish(edit: HWND, pointer: *mut Editor, commit: bool) {
         },
         outcome => unsafe {
             if let Err(error) = outcome {
-                MessageBoxW(
-                    owner,
-                    wide(&crate::i18n::format("ui-rename-failed-9e1f", &[("error", format!("{}", error))])).as_ptr(),
-                    windows_sys::w!("LucidDesk"),
-                    MB_OK | MB_ICONERROR,
-                );
+                let message = crate::i18n::format("ui-rename-failed-9e1f", &[("error", error)]);
+                crate::error_report::show(owner as isize, crate::i18n::text("ui-rename-failed"), &message, luciddesk_window::MessageKind::Error);
             }
             if GetPropW(owner, PROPERTY) == edit {
                 (*pointer).finishing = false;

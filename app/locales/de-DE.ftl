@@ -51,8 +51,7 @@ ui-file-operation-failed = { "Dateioperation fehlgeschlagen: " }{ $error }
 # 无法安排文件操作
 ui-could-not-schedule-file-operation = { "Dateioperation konnte nicht geplant werden" }
 
-# 面板已关闭
-ui-group-closed = { "Panel geschlossen" }
+rename-context-unavailable = { "Der zum Umbenennen erforderliche Anwendungszustand wurde freigegeben." }
 
 # Everything 搜索
 ui-everything-search = { "Everything-Suche" }
@@ -185,8 +184,7 @@ ui-size = { "Größe" }
 # 面板菜单
 ui-group-menu = { "Panelmenü" }
 
-# 标签已关闭
-ui-tab-closed = { "Tab geschlossen" }
+panel-or-tab-unavailable = { "Das Panel oder der Tab wurde nicht gefunden." }
 
 # 保存面板失败：{e}
 ui-could-not-save-group = { "Panel konnte nicht gespeichert werden: " }{ $e }
@@ -197,8 +195,7 @@ ui-target-panel-unavailable = { "Zielpanel nicht verfügbar" }
 # 选中项目已变化，请重新拖动
 ui-selection-changed-drag-again = { "Auswahl geändert. Erneut ziehen." }
 
-# 无法选择预览程序：{error}
-ui-could-not-select-preview-app = { "Vorschau-App konnte nicht gewählt werden: " }{ $error }
+preview-program-picker-failed = { "Fehler im Dateidialog zur Auswahl der Vorschau-App.\u000A\u000AFehlerdetails:\u000A" }{ $error }
 
 # 请选择 {}
 ui-select = { $arg0 }{ " auswählen" }
@@ -227,8 +224,7 @@ ui-quicklook-started-but-its-preview-service-is-unavailable = { "QuickLook gesta
 # 预览已取消
 ui-preview-canceled = { "Vorschau abgebrochen" }
 
-# 配置目录不可用
-ui-configuration-folder-unavailable = { "Konfigurationsordner nicht verfügbar" }
+configuration-directory-path-unavailable = { "Der Pfad des Konfigurationsordners konnte nicht ermittelt werden." }
 
 # 自动
 ui-automatic = { "Automatisch" }
@@ -242,8 +238,7 @@ ui-manual = { "Manuell" }
 # ；{failed} 份旧备份清理失败
 ui-old-backups-not-removed = { "; nicht entfernte alte Sicherungen: " }{ $failed }
 
-# 运行时不可用
-ui-runtime-unavailable = { "Laufzeit nicht verfügbar" }
+backup-runtime-state-missing = { "Der Laufzeitstatus der Anwendung fehlt; die Sicherungsverwaltung kann keine Aufgaben ausführen." }
 
 # 备份任务正在进行，请稍候。
 ui-a-backup-task-is-running-please-wait = { "Eine Sicherung läuft. Bitte warten." }
@@ -254,8 +249,7 @@ ui-backup-task-ended-unexpectedly-try-again = { "Sicherung unerwartet beendet. E
 # 配置暂无变化，无需重复备份
 ui-configuration-unchanged-no-new-backup-needed = { "Konfiguration unverändert; keine neue Sicherung nötig" }
 
-# 操作失败：{error}
-ui-operation-failed = { "Vorgang fehlgeschlagen: " }{ $error }
+backup-task-failed = { "Aufgabe der Sicherungsverwaltung fehlgeschlagen: " }{ $error }
 
 # 读取备份记录…
 ui-loading-backup-history = { "Sicherungsverlauf wird geladen…" }
@@ -311,8 +305,7 @@ ui-restore-failed-rolled-back = { "Wiederherstellung fehlgeschlagen; zurückgese
 # 恢复失败：{error}；回退失败：{e}。恢复前备份：{}
 ui-restore-failed-rollback-failed-previous-backup = { "Wiederherstellung fehlgeschlagen: " }{ $error }{ "; Rücknahme fehlgeschlagen: " }{ $e }{ ". Vorherige Sicherung: " }{ $arg0 }
 
-# 操作失败：{e}
-ui-operation-failed-0ea2 = { "Vorgang fehlgeschlagen: " }{ $e }
+configuration-operation-failed = { "Konfigurationsvorgang fehlgeschlagen: " }{ $e }
 
 # 正在校验备份…
 ui-validating-backup = { "Sicherung wird geprüft…" }
@@ -335,8 +328,7 @@ ui-deleting = { "Wird gelöscht…" }
 # 备份已删除
 ui-backup-deleted = { "Sicherung gelöscht" }
 
-# 不能覆盖正在使用的配置文件
-ui-cannot-overwrite-the-active-configuration = { "Aktive Konfiguration kann nicht überschrieben werden" }
+backup-export-path-reserved = { "Export zum aktuellen Datenbankpfad oder mit dem Dateinamen workspace.db bzw. config.toml ist nicht zulässig. Wählen Sie einen anderen Pfad oder Namen." }
 
 # 正在导出…
 ui-exporting = { "Wird exportiert…" }
@@ -387,7 +379,7 @@ ui-desktop-groups-connected = { "Desktoppanels verbunden" }
 ui-desktop-groups-unavailable-folder-panels-and-search-still-work-n = { "Desktoppanels nicht verfügbar. Ordner und Suche funktionieren weiterhin.\u000A" }{ $error }
 
 # Explorer 连接已断开，正在等待恢复
-ui-explorer-disconnected-waiting-to-reconnect = { "Explorer getrennt; warte auf Verbindung" }
+ui-explorer-disconnected-waiting-to-reconnect = { "Die Verbindung zum Windows-Explorer wurde getrennt." }
 
 # LucidDesk 设置
 ui-luciddesk-settings = { "LucidDesk-Einstellungen" }
@@ -449,8 +441,7 @@ ui-could-not-initialize-settings-window-frame = { "Einstellungsfensterrahmen kon
 # 无法打开 Explorer 图标菜单：{error}
 ui-could-not-open-explorer-icon-menu = { "Explorer-Symbolmenü konnte nicht geöffnet werden: " }{ $error }
 
-# 标签组已关闭
-ui-tab-group-closed = { "Tabgruppe geschlossen" }
+tab-group-unavailable = { "Die Tab-Gruppe wurde nicht gefunden." }
 
 # 目标标签不属于此面板
 ui-target-tab-does-not-belong-to-this-panel = { "Zieltab gehört nicht zu diesem Panel" }
@@ -461,8 +452,7 @@ ui-only-group-panels-support-tabs = { "Nur Desktoppanels unterstützen Tabs" }
 # 请先解锁面板
 ui-unlock-the-panel-first = { "Panel zuerst entsperren" }
 
-# 标签数量超出限制
-ui-tab-limit-exceeded = { "Tablimit überschritten" }
+tab-order-overflow = { "Der neue Tab kann keine Sortiernummer erhalten: Der Zahlenbereich wurde überschritten." }
 
 # 文件夹面板不支持标签，请新建独立文件夹面板
 ui-folder-panels-do-not-support-tabs-create-a-separate-panel = { "Ordnerpanels unterstützen keine Tabs. Separates Panel erstellen" }
@@ -473,8 +463,7 @@ ui-select-an-unlocked-group-panel = { "Entsperrtes Desktoppanel wählen" }
 # 面板已关闭或活动标签已改变
 ui-panel-closed-or-active-tab-changed = { "Panel geschlossen oder aktiver Tab geändert" }
 
-# 无法完成面板合并
-ui-could-not-merge-panels = { "Panels konnten nicht zusammengeführt werden" }
+panel-merge-dispatch-failed = { "Die Zusammenführung konnte nicht eingeleitet werden und wurde nicht ausgeführt." }
 
 # ＋ {remaining} 个标签
 ui-tabs-a81a = { "＋ " }{ $remaining }{ " Tabs" }
@@ -569,8 +558,7 @@ ui-everything-not-found-select-everything-exe-in-settings = { "Everything nicht 
 # 无法启动 Everything：{e}
 ui-could-not-start-everything = { "Everything konnte nicht gestartet werden: " }{ $e }
 
-# 无法选择 Everything：{error}
-ui-could-not-select-everything = { "Everything konnte nicht gewählt werden: " }{ $error }
+search-program-picker-failed = { "Fehler im Dateidialog zur Auswahl von Everything.\u000A\u000AFehlerdetails:\u000A" }{ $error }
 
 # 请选择 Everything.exe
 ui-select-everything-exe = { "Everything.exe auswählen" }
@@ -1031,8 +1019,7 @@ ui-export-configuration = { "Konfiguration exportieren" }
 # 选择位置保存一份配置副本。
 ui-choose-where-to-save-a-configuration-copy = { "Speicherort für eine Konfigurationskopie wählen." }
 
-# 尚无备份
-ui-no-backups-yet = { "Noch keine Sicherungen" }
+backup-status-pending = Der Sicherungsstatus wurde noch nicht geladen.
 
 # 失败
 ui-failed = { "Fehlgeschlagen" }
@@ -1222,9 +1209,9 @@ startup-package-invalid = Ungültige MSIX-Identität oder Markierungsdatei. Auto
 title-emoji-rendering = Farbige Symboldarstellung
 title-emoji-rendering-description = Gilt sofort für alle Panel- und Tab-Titel.
 
-ui-desktop-connection-warning = The desktop component is unavailable. Desktop panels are temporarily unavailable; folder panels and search still work. LucidDesk will retry automatically. { "\u000A" }Reason: { $error }{ "\u000A" }{ $log }
-ui-desktop-log-saved = Diagnostic log: { $path }
-ui-desktop-log-failed = Could not write diagnostic log: { $error }
+ui-desktop-connection-warning = { "Desktop-Panels sind vorübergehend nicht verfügbar. Ordner-Panels und Suche bleiben verfügbar.\u000ALucidDesk versucht automatisch, die Verbindung wiederherzustellen.\u000A\u000AVerbindungsdetails:\u000A" }{ $error }{ "\u000A\u000A" }{ $log }
+ui-desktop-log-saved = { "Speicherort des Diagnoseprotokolls:\u000A" }{ $path }
+ui-desktop-log-failed = { "Das Diagnoseprotokoll konnte nicht geschrieben werden. Kopieren Sie diese Meldung zur Fehleranalyse.\u000A\u000AFehler beim Schreiben des Protokolls:\u000A" }{ $error }
 
 diagnostics-section = Diagnostic logging
 diagnostics-level = Protokollstufe
@@ -1294,3 +1281,12 @@ plugins-description = Installierte Plugins verwalten. Änderungen gelten sofort;
 plugins-empty = Keine Plugins installiert. DLLs im Ordner plugins neben der App ablegen und neu starten.
 
 plugins-manage = Plugins verwalten
+
+# Shared error presentation
+error-operation-title = Vorgang konnte nicht abgeschlossen werden
+error-startup-title = Start nicht möglich
+error-connection-title = { "Desktop-Verbindung nicht verfügbar" }
+error-unknown = { "Es wurden keine Fehlerdetails angegeben." }
+error-copy-hint = Drücken Sie Strg+C, um die gesamte Meldung zu kopieren.
+
+error-open-item = { "Das ausgewählte Element kann nicht geöffnet werden.\u000A\u000AElement:\u000A" }{ $path }{ "\u000A\u000AFehlerdetails:\u000A" }{ $error }
