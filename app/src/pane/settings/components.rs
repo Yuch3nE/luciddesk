@@ -401,7 +401,7 @@ impl<'a> SettingsForm<'a> {
         );
         self.scene.text(
             Rect::from_xywh(self.x + 104.0, self.y + 54.0, self.width - 120.0, 28.0),
-            concat!("v", env!("CARGO_PKG_VERSION"), " · ", env!("CARGO_PKG_AUTHORS"), " · ", env!("CARGO_PKG_LICENSE")),
+            concat!("v", env!("CARGO_PKG_VERSION"), " (", env!("LUCIDDESK_BUILD_REVISION"), ") · ", env!("CARGO_PKG_AUTHORS"), " · ", env!("CARGO_PKG_LICENSE")),
             6,
         );
         self.y += 112.0;

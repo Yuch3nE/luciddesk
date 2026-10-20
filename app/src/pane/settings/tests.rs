@@ -2292,3 +2292,17 @@ fn grouped_navigation_keeps_routes_selection_and_scrolling_in_all_languages() {
         });
     }
 }
+
+#[test]
+fn about_shows_the_embedded_build_commit_in_all_languages() {
+    for locale in 0..7 {
+        crate::i18n::with_locale(locale, || {
+            let mut body = layout::scene(1000.0, 700.0, 5, false,
+                (PanelTheme::Dark, Backdrop::Acrylic), Default::default());
+            layout::about_status(&mut body, 1000.0, "桌面面板已连接", false);
+            let version = concat!("v", env!("CARGO_PKG_VERSION"), " (", env!("LUCIDDESK_BUILD_REVISION"), ")");
+            assert_eq!(body.text.iter().filter(|(_, text, _)|
+                text.starts_with(version)).count(), 1);
+        });
+    }
+}
