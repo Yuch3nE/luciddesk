@@ -33,7 +33,7 @@ impl DesktopVisibility {
     }
     pub fn enable(&mut self, enabled: bool) {
         self.enabled = enabled;
-        self.clicks = Clicks::default();
+        self.cancel_gesture();
     }
 
     /// A recognized blank-area pair belongs to us. Letting Shell dispatch its
@@ -90,23 +90,11 @@ impl DesktopVisibility {
     }
 
     pub unsafe fn message(&mut self, view: HWND, message: &MSG, blocked: bool) -> bool {
-        if !self.enabled || blocked {
-            self.clicks = Clicks::default();
-            return false;
-        }
-        if interrupts_gesture(message.message) {
+        if !self.enabled || blocked || interrupts_gesture(message.message) {
             self.cancel_gesture();
             return false;
         }
-        if !matches!(
-            message.message,
-            WM_LBUTTONDOWN
-                | WM_LBUTTONDBLCLK
-                | WM_LBUTTONUP
-                | WM_RBUTTONDOWN
-                | WM_MBUTTONDOWN
-                | WM_MOUSEMOVE
-        ) {
+        if !observes(message.message) {
             return false;
         }
         if message.message == WM_MOUSEMOVE && self.clicks.down.is_none() {
@@ -119,7 +107,7 @@ impl DesktopVisibility {
                 || message.hwnd == GetParent(view)
                 || message.hwnd == GetAncestor(view, GA_ROOT);
             if !desktop {
-                self.clicks = Clicks::default();
+                self.cancel_gesture();
                 return false;
             }
             if message.wParam & (MK_CONTROL | MK_SHIFT) as usize != 0
@@ -183,17 +171,12 @@ unsafe fn restore_pointer(view: HWND) {
         let desktop = !under.is_null()
             && (under == view || under == GetParent(view) || under == GetAncestor(view, GA_ROOT));
         let current = GetCursor();
-        if should_restore_pointer(desktop,
-            current == LoadCursorW(std::ptr::null_mut(), IDC_WAIT)
-                || current == LoadCursorW(std::ptr::null_mut(), IDC_APPSTARTING))
-        {
+        let busy = current == LoadCursorW(std::ptr::null_mut(), IDC_WAIT)
+            || current == LoadCursorW(std::ptr::null_mut(), IDC_APPSTARTING);
+        if desktop && busy {
             SetCursor(LoadCursorW(std::ptr::null_mut(), IDC_ARROW));
         }
     }
-}
-
-fn should_restore_pointer(over_desktop: bool, busy: bool) -> bool {
-    over_desktop && busy
 }
 
 fn interrupts_gesture(message: u32) -> bool {
