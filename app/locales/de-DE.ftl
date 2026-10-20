@@ -1185,6 +1185,8 @@ update-checking = Suche nach Updates…
 update-current = Die Version ist aktuell.
 update-available = Version { $version } ist verfügbar
 update-failed = Suche fehlgeschlagen. Bitte erneut versuchen
+update-auto-check = Automatisch nach Updates suchen
+update-notification = Version { $version } ist verfügbar. Öffnen Sie Einstellungen → Info und dort die Update-Seite zum Herunterladen.
 
 # Login startup
 startup-general = Allgemein

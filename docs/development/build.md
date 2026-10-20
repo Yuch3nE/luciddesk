@@ -131,7 +131,7 @@ EXE 默认采用 `lzma2/fast` 固实压缩，以较小的体积增量缩短打�
 
 ### 应用更新检查
 
-关于页仅支持手动检查新版本与打开 Release 页面。检查使用后台 WinHTTP 请求 GitHub Releases API，支持 Windows 代理和显式 `HTTPS_PROXY` HTTP 代理，并比较稳定版本号（标签可有 `v` 前缀）。更新包由用户在浏览器中自行下载。
+关于页支持自动与手动检查新版本及打开 Release 页面。`config.toml` 的 `[updates].auto_check` 默认为 `true`，启动时及之后每 24 小时检查；关闭开关会取消当前自动检查，手动检查仍可使用。运行时共享检查结果，关闭设置窗口后后台检查继续；每次运行对同一新版只自动提示一次版本号，后台失败不弹窗。检查使用后台 WinHTTP 请求 GitHub Releases API，支持 Windows 代理和显式 `HTTPS_PROXY` HTTP 代理，并比较稳定版本号（标签可有 `v` 前缀）。更新包由用户在浏览器中自行下载。
 
 验证命令（MSI 安装器测试使用随机测试产品名称和 UpgradeCode、快捷方式名称和工作区临时目录，安装与卸载自己的测试注册项）：
 

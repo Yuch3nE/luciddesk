@@ -723,6 +723,7 @@ pub(super) fn about_status(s: &mut Scene, width: f32, status: &str, copied: bool
         status,
         copied,
         &crate::updates::Controller::default(),
+        true,
     );
 }
 
@@ -732,10 +733,11 @@ pub(super) fn about_updates(
     status: &str,
     copied: bool,
     updates: &crate::updates::Controller,
+    auto_check: bool,
 ) {
     let mut form = SettingsForm::continuation(s, width, 76.0);
     form.brand();
-    form.actions(
+    form.actions_with_toggle(
         crate::i18n::text("update-title"),
         &updates.status(),
         vec![
@@ -745,6 +747,7 @@ pub(super) fn about_updates(
                 Action::ProjectLink(crate::updates::PAGE),
             ),
         ],
+        (crate::i18n::text("update-auto-check"), Action::AutoCheckUpdates(!auto_check), auto_check),
     );
     form.info(
         crate::i18n::text("ui-operating-system"),

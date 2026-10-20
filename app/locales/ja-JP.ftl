@@ -1185,6 +1185,8 @@ update-checking = 新しいバージョンを確認中…
 update-current = 最新バージョンです。
 update-available = バージョン { $version } が利用可能です
 update-failed = 確認に失敗しました。再試行してください
+update-auto-check = 更新を自動的に確認
+update-notification = 新しいバージョン { $version } があります。「設定 → このアプリについて」から更新ページを開いてダウンロードしてください。
 
 # Login startup
 startup-general = 全般

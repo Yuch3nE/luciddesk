@@ -2,7 +2,7 @@
 
 简体中文 · [English](PRIVACY.en.md)
 
-更新日期：2026 年 10 月 1 日。维护者：Yuchen95。
+更新日期：2026 年 10 月 20 日。维护者：Yuchen95。
 
 本政策说明 LucidDesk 当前应用对数据的处理方式，适用于官方安装版、普通 ZIP 和便携版。第三方修改版可能有不同的行为。
 
@@ -30,7 +30,7 @@ MSIX 版通过 Windows StartupTask 管理当前包的登录自启，读取包身
 
 ## 网络与第三方功能
 
-点击“检查更新”时，应用通过 HTTPS 访问 GitHub Releases API，发送包含应用名称与版本的 User-Agent。GitHub 及网络服务可能处理 IP 地址、请求时间及请求信息；应用不会在这个请求中发送工作区、配置、搜索词或个人文件内容。检查结果在本机比较，应用不自动下载安装包。
+自动检查更新默认开启，可在“设置 → 关于”关闭。开启时，应用在启动时及之后每 24 小时检查更新；点击“检查更新”也可手动检查。检查时通过 HTTPS 访问 GitHub Releases API，发送包含应用名称与版本的 User-Agent。GitHub 及网络服务可能处理 IP 地址、请求时间及请求信息；应用不会在这个请求中发送工作区、配置、搜索词或个人文件内容。检查结果在本机比较，应用不自动下载安装包。
 
 点击“打开更新页面”或其他外部链接时，会使用浏览器访问对应网站，受该网站及浏览器的隐私设置约束。GitHub 的数据处理说明见[GitHub 隐私声明](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement)。
 

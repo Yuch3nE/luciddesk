@@ -2,7 +2,7 @@
 
 [简体中文](PRIVACY.md) · English
 
-Last updated: October 1, 2026. Maintainer: Yuchen95.
+Last updated: October 20, 2026. Maintainer: Yuchen95.
 
 This policy describes data handling by the current official installer, standard ZIP and portable editions of LucidDesk. Third-party modified builds may behave differently.
 
@@ -30,7 +30,7 @@ The MSIX edition uses Windows StartupTask to manage login startup for its packag
 
 ## Network access and third-party features
 
-When you click **Check for updates**, LucidDesk requests release metadata from the GitHub Releases API over HTTPS. Its User-Agent includes the application name and version. GitHub and network services may process your IP address, request time and request information. The request does not transmit your workspace, configuration, search terms or personal file contents. Version comparison is local; LucidDesk does not automatically download installers.
+Automatic update checks are enabled by default and can be disabled in **Settings → About**. While enabled, LucidDesk checks at startup and every 24 hours. You can also click **Check for updates** manually. These checks request release metadata from the GitHub Releases API over HTTPS. Its User-Agent includes the application name and version. GitHub and network services may process your IP address, request time and request information. The request does not transmit your workspace, configuration, search terms or personal file contents. Version comparison is local; LucidDesk does not automatically download installers.
 
 Opening the update page or another external link uses your browser. The destination website and browser settings govern that visit. See the [GitHub Privacy Statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
 

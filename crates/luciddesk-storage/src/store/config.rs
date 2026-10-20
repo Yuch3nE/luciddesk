@@ -11,6 +11,7 @@ pub(super) const KEYS: &[&str] = &[
     "language",
     "log_level",
     "cli_enabled",
+    "auto_check_updates",
     "appearance",
     "pane_options",
     "solid_style",
@@ -29,6 +30,9 @@ language = "system"
 
 [cli]
 enabled = true
+
+[updates]
+auto_check = true
 
 [diagnostics]
 level = "error"
@@ -196,6 +200,7 @@ pub(super) fn decode(doc: &DocumentMut) -> Result<BTreeMap<String, String>, Stor
     // A scalar in place of a table is an error, not a missing configuration section.
     for path in [
         &["cli"][..],
+        &["updates"],
         &["diagnostics"],
         &["appearance"],
         &["panel_defaults"],
@@ -241,6 +246,7 @@ pub(super) fn decode(doc: &DocumentMut) -> Result<BTreeMap<String, String>, Stor
     validate_log_level(&log_level)?;
     map.insert("log_level".into(), log_level);
     map.insert("cli_enabled".into(), b(&["cli", "enabled"])?.to_string());
+    map.insert("auto_check_updates".into(), b(&["updates", "auto_check"])?.to_string());
     for material in ["acrylic", "mica"] {
         let strength = n(&["appearance", material, "strength"], 100.0)?;
         if strength.fract() != 0.0 {
@@ -350,6 +356,7 @@ fn update(doc: &mut DocumentMut, key: &str, raw: &str) -> Result<(), StoreError>
     let flag = |s: &str| s.parse::<bool>().map_err(io);
     match key {
         "cli_enabled" => { set(doc, &["cli", "enabled"], value(flag(raw)?)); }
+        "auto_check_updates" => { set(doc, &["updates", "auto_check"], value(flag(raw)?)); }
         "log_level" => { validate_log_level(raw)?; set(doc, &["diagnostics", "level"], value(raw)); }
         "language" => { validate_language(raw)?; set(doc, &["language"], value(raw)); }
         "pane_options" if (3..=5).contains(&parts.len()) || parts.len() == 6 => {

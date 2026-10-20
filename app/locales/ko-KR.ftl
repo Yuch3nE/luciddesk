@@ -1185,6 +1185,8 @@ update-checking = 새 버전 확인 중…
 update-current = 최신 버전입니다.
 update-available = 버전 { $version } 사용 가능
 update-failed = 확인 실패. 다시 시도하세요
+update-auto-check = 자동으로 업데이트 확인
+update-notification = 새 버전 { $version }이 있습니다. 설정 → 정보에서 업데이트 페이지를 열어 다운로드하세요.
 
 # Login startup
 startup-general = 일반

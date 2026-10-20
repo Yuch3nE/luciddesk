@@ -463,6 +463,33 @@ fn cli_control_defaults_persists_and_skips_repeated_writes() {
 }
 
 #[test]
+fn automatic_updates_default_on_and_persist_for_old_and_new_configs() {
+    for source in ["config_version = 1\nupdates = false", "config_version = 1\n[updates]\nauto_check = 'yes'"] {
+        assert!(config::decode(&source.parse().unwrap()).is_err());
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("workspace.db");
+    // Existing installations have no updates table.
+    std::fs::write(dir.path().join("config.toml"), "config_version = 1\n[cli]\nenabled = false\n").unwrap();
+    let store = WorkspaceStore::open(&path).unwrap();
+    assert_eq!(store.preference("auto_check_updates").unwrap().as_deref(), Some("true"));
+    assert_eq!(store.settings().unwrap()["updates.auto_check"], crate::SettingValue::Boolean(true));
+    store.save_preference("auto_check_updates", "false").unwrap();
+    let changes = store.change_count();
+    store.save_preference("auto_check_updates", "false").unwrap();
+    assert_eq!(store.change_count(), changes);
+    assert_eq!(store.preference("cli_enabled").unwrap().as_deref(), Some("false"));
+    assert!(store.save_preference("auto_check_updates", "yes").is_err());
+    let reopened = WorkspaceStore::open(&path).unwrap();
+    assert_eq!(reopened.preference("auto_check_updates").unwrap().as_deref(), Some("false"));
+    reopened.save_settings(&[("updates.auto_check".into(), crate::SettingValue::Boolean(true))].into_iter().collect()).unwrap();
+    assert_eq!(reopened.preference("auto_check_updates").unwrap().as_deref(), Some("true"));
+    let fresh = tempfile::tempdir().unwrap();
+    let store = WorkspaceStore::open(&fresh.path().join("workspace.db")).unwrap();
+    assert_eq!(store.preference("auto_check_updates").unwrap().as_deref(), Some("true"));
+}
+
+#[test]
 fn released_search_and_preview_toml_keep_paths_without_internal_legacy_encodings() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("workspace.db");

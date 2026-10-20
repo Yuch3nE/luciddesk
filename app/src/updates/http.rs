@@ -56,6 +56,9 @@ fn explicit_proxy() -> Option<Vec<u16>> {
 }
 
 pub(super) fn get(cancel: &AtomicBool) -> Result<Vec<u8>, String> {
+    if cancel.load(Ordering::Relaxed) {
+        return Err("Update canceled".into());
+    }
     let url = super::API;
     let (host, path) = url
         .strip_prefix("https://")

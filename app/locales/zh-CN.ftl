@@ -1185,6 +1185,8 @@ update-checking = 正在检查新版本…
 update-current = 已是最新版本。
 update-available = 发现新版本 { $version }
 update-failed = 检查失败，请重试
+update-auto-check = 自动检查更新
+update-notification = 发现新版本 { $version }。请前往“设置 → 关于”打开更新页面下载。
 
 # Login startup
 startup-general = 通用

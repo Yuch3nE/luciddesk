@@ -8,6 +8,8 @@ Exit the app before upgrading a portable installation and preserve its `data` fo
 
 ## Unreleased
 
+- Add an automatic update switch to About, enabled by default. Check stable releases at startup and every 24 hours, and notify with the latest version number; manual checks and downloads remain available when disabled.
+
 - Show the embedded Git commit in About, preserving the dirty-build marker to distinguish builds of the same version.
 
 - Group settings navigation into basics, appearance and layout, files and tools, maintenance, and plugins. Move language next to general settings, give it a distinct icon, and translate group headings into all seven languages.

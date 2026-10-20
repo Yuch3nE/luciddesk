@@ -140,7 +140,7 @@ The Skill uses progressive disclosure: [SKILL.md](skills/luciddesk-control/SKILL
 
 ## 🔄 Upgrading and backups
 
-Use **Settings → About → Check for updates**, then **Open update page** to download the appropriate package from GitHub Releases.
+**Settings → About → Automatically check for updates** is enabled by default. LucidDesk checks stable releases at startup and every 24 hours, and notifies you of the latest version number. You can also **Check for updates** manually, then **Open update page** to download the appropriate package from GitHub Releases.
 
 | Package | Upgrade |
 | --- | --- |

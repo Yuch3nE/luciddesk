@@ -1176,7 +1176,7 @@ ui-rename-panel = { "Rename panel…" }
 
 compact-menu-title = Use Windows 11 context menus
 compact-menu-description = Use compact menus for items in regular panels. Turn off for classic menus. Applies the next time a menu opens.
-# Manual updates
+# Software updates
 update-title = Software updates
 update-check = Check for updates
 update-open-page = Open update page
@@ -1185,6 +1185,8 @@ update-checking = Checking for updates…
 update-current = You are up to date.
 update-available = Version { $version } is available
 update-failed = Check failed. Please retry
+update-auto-check = Automatically check for updates
+update-notification = Version { $version } is available. Open Settings → About to visit the update page and download it.
 
 # Login startup
 startup-general = General

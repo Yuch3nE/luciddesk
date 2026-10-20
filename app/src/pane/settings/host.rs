@@ -100,7 +100,8 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
     let mut diagnostics_copied = false;
     let mut skill_prompt_copied = false;
     let mut cli_enabled = control::enabled(&state.borrow().store);
-    let mut updates = crate::updates::Controller::default();
+    let updates = state.borrow().runtime.as_ref().map(|r| Rc::clone(&r.updates)).unwrap_or_default();
+    let mut auto_check_updates = crate::updates::automatic_enabled(&state.borrow().store);
     let mut startup = crate::startup::Controller::default();
     let mut backup_view = recovery::View::default();
     let mut backup_policy = recovery::Policy::default();
@@ -136,8 +137,8 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 }));
             }
             if msg == WM_TIMER && wp == UPDATE_TIMER {
-                updates.poll();
-                if !updates.busy() { unsafe { KillTimer(hwnd, UPDATE_TIMER); } }
+                if state.borrow().runtime.is_none() { updates.borrow_mut().poll(); }
+                if !updates.borrow().busy() { unsafe { KillTimer(hwnd, UPDATE_TIMER); } }
                 scene_key = None;
                 unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
                 return Some(0);
@@ -302,7 +303,6 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 return Some(0);
             }
             if msg == WM_CLOSE {
-                updates = crate::updates::Controller::default();
                 if !lifecycle::close(&state, hwnd, &mut pending_styles) {
                     unsafe { PostMessageW(hwnd, WM_CLOSE, 0, 0); }
                 }
@@ -444,6 +444,9 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 let fresh_cli = control::enabled(&state.store);
                 snapshot_changed |= cli_enabled != fresh_cli;
                 cli_enabled = fresh_cli;
+                let fresh_auto_check = crate::updates::automatic_enabled(&state.store);
+                snapshot_changed |= auto_check_updates != fresh_auto_check;
+                auto_check_updates = fresh_auto_check;
                 search_visible = state.views.iter().any(|v| state.workspace.panel(v.id).is_some_and(Panel::is_search));
                 desktop_status = runtime::status(&state);
                 let fresh = recovery::view(&state);
@@ -498,7 +501,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     show_panels_shortcut, show_hotkey::status()),
                 unsafe { IsZoomed(hwnd) } != 0,
                 search_visible,
-                (desktop_status.clone(), interface_flags::HEADER_DIVIDER.get(), interface_flags::COMPACT_MENU.get(), updates.status(), startup.status(), startup.busy(),
+                (desktop_status.clone(), interface_flags::HEADER_DIVIDER.get(), interface_flags::COMPACT_MENU.get(), updates.borrow().status(), startup.status(), startup.busy(),
                     (selected_plugin.clone(), navigation_offset.to_bits(), plugin_pages.iter().map(|p| (p.id.clone(), p.name.clone())).collect::<Vec<_>>())),
             );
             if scroll_page != page {
@@ -535,7 +538,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     if page==9 {layout::backup_history(&mut body,w,&backup_view,backup_offset);} else {layout::backup_page(&mut body,w,&backup_view,backup_policy,page==10);}
                 }
                 if page == 5 {
-                    layout::about_updates(&mut body, w, &desktop_status, diagnostics_copied, &updates);
+                    layout::about_updates(&mut body, w, &desktop_status, diagnostics_copied, &updates.borrow(), auto_check_updates);
                 }
                 let mut full = with_titlebar(body, w, key.9);
                 full.scroll_to(w, h, &mut scroll_offset);
@@ -1001,7 +1004,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     startup: &mut startup,
                     diagnostics_copied: &mut diagnostics_copied,
                     skill_prompt_copied: &mut skill_prompt_copied,
-                    updates: &mut updates,
+                    updates: &updates,
                     recording_show_panels: &mut recording_show_panels,
                     recording_search: &mut recording_search,
                     recording_peek: &mut recording_peek,

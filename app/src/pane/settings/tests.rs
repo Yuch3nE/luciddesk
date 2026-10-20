@@ -2306,3 +2306,34 @@ fn about_shows_the_embedded_build_commit_in_all_languages() {
         });
     }
 }
+
+#[test]
+fn about_exposes_automatic_update_switch_and_manual_actions_in_all_languages() {
+    for locale in 0..7 {
+        crate::i18n::with_locale(locale, || {
+            for enabled in [false, true] {
+                let mut body = layout::scene(900.0, 568.0, 5, false,
+                    (PanelTheme::Dark, Backdrop::Mica), Default::default());
+                layout::about_updates(&mut body, 900.0, "桌面面板已连接", false,
+                    &crate::updates::Controller::default(), enabled);
+                let toggle = body.controls.iter().find(|c| matches!(c.action, Action::AutoCheckUpdates(_))).unwrap();
+                assert!(toggle.enabled);
+                assert!(matches!(toggle.action, Action::AutoCheckUpdates(value) if value != enabled));
+                assert!(toggle.is_toggle());
+                assert_eq!(toggle.selected, enabled);
+                let card = body.cards.iter().find(|card|
+                    contains(card, toggle.bounds.left, toggle.bounds.top)).unwrap();
+                for control in body.controls.iter().filter(|c|
+                    matches!(c.action, Action::Update | Action::ProjectLink(crate::updates::PAGE))) {
+                    assert!(contains(card, control.bounds.left, control.bounds.top));
+                    assert!(control.bounds.bottom < toggle.bounds.top);
+                }
+                assert!(body.controls.iter().any(|c| matches!(c.action, Action::Update) && c.enabled));
+                assert!(body.controls.iter().any(|c| matches!(c.action, Action::ProjectLink(url) if url == crate::updates::PAGE)));
+                let notice = crate::i18n::format("update-notification", &[("version", "99.1.2".into())]);
+                assert!(notice.contains("99.1.2"));
+                assert!(!notice.contains("update-notification"));
+            }
+        });
+    }
+}

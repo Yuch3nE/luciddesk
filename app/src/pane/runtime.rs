@@ -17,6 +17,7 @@ pub(super) struct State {
     last_maintenance: Instant,
     pub layouts: display_layout::Layouts,
     pub backup: recovery::Manager,
+    pub updates: Rc<RefCell<crate::updates::Controller>>,
 }
 
 impl State {
@@ -31,6 +32,7 @@ impl State {
             last_maintenance: Instant::now(),
             layouts: Default::default(),
             backup: recovery::Manager::default(),
+            updates: Default::default(),
         }
     }
 }
@@ -180,7 +182,40 @@ fn suspend(state: &Rc<RefCell<PaneApp>>) {
     notify_connection(state);
 }
 
+fn maintain_updates(state: &Rc<RefCell<PaneApp>>) {
+    let notice = {
+        let s = state.borrow();
+        let Some(runtime) = &s.runtime else { return; };
+        let mut updates = runtime.updates.borrow_mut();
+        let before = updates.status();
+        let notice = updates.maintain(crate::updates::automatic_enabled(&s.store), Instant::now());
+        if before != updates.status() && let Some(settings) = &s.settings {
+            unsafe { InvalidateRect(settings.hwnd().cast(), std::ptr::null(), 0); }
+        }
+        notice
+    };
+    if let Some(version) = notice {
+        let weak = Rc::downgrade(state);
+        // A native dialog pumps messages; never keep app/controller borrows here.
+        window::defer_action(move || {
+            let Some(state) = weak.upgrade() else { return; };
+            let owner = {
+                let s = state.borrow();
+                if !crate::updates::automatic_enabled(&s.store) { return; }
+                s.settings.as_ref().map_or(0, |window| window.hwnd() as isize)
+            };
+            luciddesk_window::show_message(
+                owner,
+                crate::i18n::text("update-title"),
+                &crate::i18n::format("update-notification", &[("version", version)]),
+                luciddesk_window::MessageKind::Information,
+            );
+        });
+    }
+}
+
 pub(super) fn maintain(state: &Rc<RefCell<PaneApp>>, force: bool) -> Result<(), String> {
+    maintain_updates(state);
     if let Some(runtime) = &mut state.borrow_mut().runtime {
         runtime.last_maintenance = Instant::now();
     }
@@ -262,6 +297,7 @@ fn next_work(s: &PaneApp, hotkey: &search_hotkey::Registration, reveal: &search_
     hybrid::next_work(s).map(u64::from).map(Duration::from_millis)
         .map(|delay| now + delay).into_iter()
         .chain(maintenance)
+        .chain(runtime.filter(|r| r.updates.borrow().busy()).map(|_| now + Duration::from_millis(200)))
         .chain(reconnect)
         .chain(runtime.and_then(|r| r.layouts.deadline()))
         .chain(recovery::deadline(s))

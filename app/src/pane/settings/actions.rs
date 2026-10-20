@@ -27,7 +27,7 @@ pub(super) struct Context<'a> {
     pub startup: &'a mut crate::startup::Controller,
     pub diagnostics_copied: &'a mut bool,
     pub skill_prompt_copied: &'a mut bool,
-    pub updates: &'a mut crate::updates::Controller,
+    pub updates: &'a RefCell<crate::updates::Controller>,
     pub recording_show_panels: &'a mut bool,
     pub recording_search: &'a mut bool,
     pub recording_peek: &'a mut bool,
@@ -309,18 +309,30 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
             }
         }
         Action::Update => {
-            if !context.updates.busy() {
-                let result = context.updates.check();
+            if !context.updates.borrow().busy() {
+                let result = context.updates.borrow_mut().check();
                 if let Err(error) = result {
                     window::error_for(hwnd, &error);
                 }
-                if context.updates.busy() && unsafe { SetTimer(hwnd, UPDATE_TIMER, 200, None) } == 0
+                state.borrow().wake.notify();
+                if context.updates.borrow().busy() && unsafe { SetTimer(hwnd, UPDATE_TIMER, 200, None) } == 0
                 {
-                    *context.updates = crate::updates::Controller::default();
+                    *context.updates.borrow_mut() = crate::updates::Controller::default();
                     window::error_for(hwnd, crate::i18n::text("update-failed"));
                 }
                 invalidate = true;
             }
+        }
+        Action::AutoCheckUpdates(enabled) => {
+            let result = state.borrow().store.save_preference("auto_check_updates", &enabled.to_string());
+            match result {
+                Ok(()) => {
+                    context.updates.borrow_mut().set_automatic_enabled(*enabled);
+                    state.borrow().wake.notify();
+                }
+                Err(error) => window::error_for(hwnd, &error.to_string()),
+            }
+            invalidate = true;
         }
         Action::ProjectLink(url) => {
             if let Err(error) = luciddesk_shell::open_shell_identity(

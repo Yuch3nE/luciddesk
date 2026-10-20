@@ -1185,6 +1185,8 @@ update-checking = Проверка новой версии…
 update-current = Установлена последняя версия.
 update-available = Доступна версия { $version }
 update-failed = Ошибка проверки. Повторите попытку
+update-auto-check = Автоматически проверять обновления
+update-notification = Доступна версия { $version }. Откройте Настройки → О программе и перейдите на страницу обновлений для загрузки.
 
 # Login startup
 startup-general = Общие

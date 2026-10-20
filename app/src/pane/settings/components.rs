@@ -227,6 +227,38 @@ impl<'a> SettingsForm<'a> {
     pub fn actions(&mut self, title: &str, description: &str, actions: Vec<(&str, Action)>) {
         self.action_group(title, description, actions, false);
     }
+    /// Keep related actions and a compact switch in one card, including when
+    /// long button labels require the actions to wrap onto separate rows.
+    pub fn actions_with_toggle(
+        &mut self,
+        title: &str,
+        description: &str,
+        actions: Vec<(&str, Action)>,
+        toggle: (&str, Action, bool),
+    ) {
+        let first_card = self.scene.cards.len();
+        let top = self.y;
+        self.actions(title, description, actions);
+        let footer_top = self.y - Tokens::GAP;
+        let label_width = self.width - 2.0 * Tokens::INSET - 46.0 - 16.0;
+        let label_height = text_height(toggle.0, 14.0, label_width).max(24.0);
+        let footer_height = label_height + 2.0 * Tokens::INSET;
+        self.scene.cards.truncate(first_card);
+        self.scene.cards.push(Rect::from_xywh(
+            self.x, top, self.width, footer_top + footer_height - top,
+        ));
+        self.scene.separators.push(Rect::from_xywh(
+            self.x + Tokens::INSET, footer_top, self.width - 2.0 * Tokens::INSET, 1.0,
+        ));
+        self.scene.text(Rect::from_xywh(
+            self.x + Tokens::INSET, footer_top + Tokens::INSET, label_width, label_height,
+        ), toggle.0, 1);
+        self.scene.toggle(Rect::from_xywh(
+            self.x + self.width - Tokens::INSET - 46.0,
+            footer_top + (footer_height - 24.0) / 2.0, 46.0, 24.0,
+        ), toggle.1, toggle.2, true);
+        self.y = footer_top + footer_height + Tokens::GAP;
+    }
     pub fn path(&mut self, title: &str, path: &str, actions: Vec<(&str, Action)>) {
         self.action_group(title, path, actions, true);
     }

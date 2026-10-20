@@ -1,4 +1,4 @@
-//! User-initiated release checks. Updates are downloaded manually from the release page.
+//! Background and user-initiated release checks. Downloads remain manual.
 mod http;
 use crate::i18n;
 use semver::Version;
@@ -11,6 +11,16 @@ use std::sync::{
 
 const API: &str = "https://api.github.com/repos/Yuch3nE/luciddesk/releases/latest";
 pub const PAGE: &str = "https://github.com/Yuch3nE/luciddesk/releases/latest";
+const CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
+pub fn automatic_enabled(store: &luciddesk_storage::WorkspaceStore) -> bool {
+    store
+        .preference("auto_check_updates")
+        .ok()
+        .flatten()
+        .as_deref()
+        != Some("false")
+}
 
 #[derive(Deserialize)]
 struct Release {
@@ -52,8 +62,53 @@ pub struct Controller {
     available: Option<String>,
     checked: bool,
     error: Option<String>,
+    last_attempt: Option<std::time::Instant>,
+    automatic: bool,
+    notified: Option<String>,
 }
 impl Controller {
+    /// Poll from the runtime, independently of the settings window's lifetime.
+    /// Only a new version from an automatic check produces a notification.
+    pub fn maintain(&mut self, enabled: bool, now: std::time::Instant) -> Option<String> {
+        self.set_automatic_enabled(enabled);
+        let completed_automatic = self.automatic && self.busy();
+        self.poll();
+        let notice = if enabled && completed_automatic && !self.busy() {
+            self.available
+                .as_ref()
+                .filter(|version| self.notified.as_ref() != Some(version))
+                .cloned()
+        } else {
+            None
+        };
+        if let Some(version) = &notice {
+            self.notified = Some(version.clone());
+        }
+        if self.automatic_due(enabled, now) {
+            if let Err(error) = self.check() {
+                self.error = Some(error);
+            }
+            self.last_attempt = Some(now);
+            self.automatic = self.busy();
+        }
+        notice
+    }
+
+    fn automatic_due(&self, enabled: bool, now: std::time::Instant) -> bool {
+        enabled
+            && !self.busy()
+            && self
+                .last_attempt
+                .is_none_or(|last| now.saturating_duration_since(last) >= CHECK_INTERVAL)
+    }
+
+    pub fn set_automatic_enabled(&mut self, enabled: bool) {
+        if !enabled && self.automatic {
+            self.work = None;
+            self.automatic = false;
+        }
+    }
+
     pub fn busy(&self) -> bool {
         self.work.is_some()
     }
@@ -87,6 +142,8 @@ impl Controller {
         if self.busy() {
             return Ok(());
         }
+        self.last_attempt = Some(std::time::Instant::now());
+        self.automatic = false;
         self.available = None;
         self.checked = false;
         self.error = None;
@@ -98,7 +155,10 @@ impl Controller {
             .spawn(move || {
                 let _ = sender.send(job(worker_cancel));
             })
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| {
+                self.error = Some(e.to_string());
+                e.to_string()
+            })?;
         self.work = Some(Work { receiver, cancel });
         Ok(())
     }
@@ -124,6 +184,78 @@ impl Controller {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn automatic_checks_obey_switch_interval_and_busy_work() {
+        let now = std::time::Instant::now();
+        let mut controller = Controller::default();
+        assert!(!controller.automatic_due(false, now));
+        assert!(controller.maintain(false, now).is_none());
+        assert!(!controller.busy());
+        assert!(controller.automatic_due(true, now));
+        controller.last_attempt = Some(now);
+        assert!(!controller.automatic_due(
+            true,
+            now + CHECK_INTERVAL - std::time::Duration::from_secs(1)
+        ));
+        assert!(controller.automatic_due(true, now + CHECK_INTERVAL));
+        let (_sender, receiver) = mpsc::channel();
+        controller.work = Some(Work {
+            receiver,
+            cancel: Arc::new(AtomicBool::new(false)),
+        });
+        assert!(!controller.automatic_due(true, now + CHECK_INTERVAL));
+        // Disabling automatic checks must leave a user-initiated check running.
+        controller.set_automatic_enabled(false);
+        assert!(controller.busy());
+        controller.automatic = true;
+        let cancel = controller.work.as_ref().unwrap().cancel.clone();
+        controller.set_automatic_enabled(false);
+        assert!(cancel.load(Ordering::Relaxed));
+        assert!(!controller.busy());
+        assert!(controller.maintain(false, now + CHECK_INTERVAL).is_none());
+    }
+
+    fn completed(
+        controller: &mut Controller,
+        result: CheckResult,
+        automatic: bool,
+        now: std::time::Instant,
+    ) {
+        let (sender, receiver) = mpsc::channel();
+        sender.send(result).unwrap();
+        controller.work = Some(Work {
+            receiver,
+            cancel: Arc::new(AtomicBool::new(false)),
+        });
+        controller.automatic = automatic;
+        controller.last_attempt = Some(now);
+    }
+
+    #[test]
+    fn automatic_results_notify_once_per_version_and_failures_stay_silent() {
+        let now = std::time::Instant::now();
+        let mut controller = Controller::default();
+        completed(&mut controller, Ok(Some("1.0.0".into())), true, now);
+        assert_eq!(controller.maintain(true, now).as_deref(), Some("1.0.0"));
+        assert!(controller.maintain(true, now).is_none());
+        completed(&mut controller, Ok(Some("1.0.0".into())), true, now);
+        assert!(controller.maintain(true, now).is_none());
+        completed(&mut controller, Err("offline".into()), true, now);
+        assert!(controller.maintain(true, now).is_none());
+        assert!(!controller.busy());
+        assert!(!controller.automatic_due(true, now));
+        completed(&mut controller, Ok(Some("1.1.0".into())), false, now);
+        assert!(controller.maintain(true, now).is_none());
+        assert_eq!(controller.available.as_deref(), Some("1.1.0"));
+        completed(&mut controller, Ok(Some("1.1.0".into())), true, now);
+        assert_eq!(controller.maintain(true, now).as_deref(), Some("1.1.0"));
+        completed(&mut controller, Ok(Some("1.2.0".into())), true, now);
+        assert!(controller.maintain(false, now).is_none());
+        completed(&mut controller, Ok(None), true, now);
+        assert!(controller.maintain(true, now).is_none());
+        assert!(controller.available.is_none());
+    }
+
     fn release(tag: &str) -> Vec<u8> {
         serde_json::to_vec(&serde_json::json!({
             "tag_name": tag, "draft": false, "prerelease": false
