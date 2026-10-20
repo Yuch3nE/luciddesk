@@ -11,6 +11,7 @@ use std::{cell::RefCell, rc::Rc};
 use windows_sys::Win32::{
     Foundation::{HWND, POINT, RECT},
     Graphics::Gdi::*,
+    System::SystemServices::MK_LBUTTON,
     UI::{
         Controls::*,
         HiDpi::{GetDpiForWindow, SystemParametersInfoForDpi},
@@ -22,6 +23,7 @@ use windows_sys::Win32::{
 const PROPERTY: windows_sys::core::PCWSTR = windows_sys::w!("LucidDesk.RenameEdit");
 const SUBCLASS: usize = 0x4c50_524e;
 const FINISH: u32 = WM_APP + 71;
+mod emoji;
 
 struct Name {
     text: String,
@@ -71,6 +73,7 @@ struct Editor {
     title_commit: Option<Box<dyn Fn(String) -> Result<(), String>>>,
     item_commit: Option<Rc<dyn Fn(&ShellIdentity, &str) -> Result<bool, String>>>,
     background: HBRUSH,
+    emoji: Option<emoji::Painter>,
 }
 pub(super) fn show_title(
     owner: HWND,
@@ -196,6 +199,16 @@ fn show_editor(
             font,
             composing: false,
             finishing: false,
+            emoji: if title {
+                match emoji::Painter::new(&logical_font) {
+                    Ok(painter) => Some(painter),
+                    Err(error) => {
+                        luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Warn,
+                            "pane.rename.emoji", "Color emoji renderer unavailable: {error}");
+                        None
+                    }
+                }
+            } else { None },
             title_commit,
             title_target,
             item_commit,
@@ -537,6 +550,7 @@ unsafe extern "system" fn edit_proc(
             let mut rect = RECT::default();
             GetClientRect(edit, &raw mut rect);
             let dark = (*pointer).model.borrow().dark;
+            paint_emoji(edit, pointer, dc);
             // Outline the actual clipped region. RoundRect and window regions
             // rasterize corner pixels differently, leaving dark corner seams.
             let region = CreateRectRgn(0, 0, 0, 0);
@@ -550,6 +564,11 @@ unsafe extern "system" fn edit_proc(
             DeleteObject(client);
             DeleteObject(region);
             ReleaseDC(edit, dc);
+            return result;
+        },
+        WM_PRINTCLIENT if wp != 0 => unsafe {
+            let result = DefSubclassProc(edit, msg, wp, lp);
+            paint_emoji(edit, pointer, wp as HDC);
             return result;
         },
         WM_ERASEBKGND if unsafe { !(*pointer).background.is_null() } => unsafe {
@@ -606,7 +625,33 @@ unsafe extern "system" fn edit_proc(
         }
         _ => {}
     }
-    unsafe { DefSubclassProc(edit, msg, wp, lp) }
+    let result = unsafe { DefSubclassProc(edit, msg, wp, lp) };
+    // EDIT can draw selection/scroll changes directly, without WM_PAINT. Queue
+    // our color pass after those native operations; the native caret and IME
+    // remain responsible for editing and UTF-16 hit testing.
+    if matches!(msg, WM_KEYDOWN | WM_CHAR | WM_LBUTTONDOWN | WM_LBUTTONUP
+        | WM_HSCROLL | EM_SETSEL | EM_REPLACESEL | WM_SETTEXT
+        | WM_IME_ENDCOMPOSITION)
+        || (msg == WM_MOUSEMOVE && wp & MK_LBUTTON as usize != 0)
+    {
+        unsafe { InvalidateRect(edit, std::ptr::null(), 0); }
+    }
+    result
+}
+
+unsafe fn paint_emoji(edit: HWND, pointer: *mut Editor, dc: HDC) {
+    unsafe {
+        if super::interface_flags::TITLE_EMOJI.get() && !(*pointer).composing
+            && let Some(painter) = &(*pointer).emoji {
+                let dark = (*pointer).model.borrow().dark;
+                HideCaret(edit);
+                if let Err(error) = painter.paint(edit, dc, &text(edit), dark) {
+                    luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Warn,
+                        "pane.rename.emoji", "Color emoji paint failed: {error}");
+                }
+                ShowCaret(edit);
+        }
+    }
 }
 unsafe extern "system" fn owner_proc(
     owner: HWND,
@@ -883,6 +928,25 @@ mod tests {
                 before,
                 "pane repaint must preserve the edit border"
             );
+            SetWindowTextW(edit, windows_sys::w!("🎮 游戏"));
+            SendMessageW(edit, EM_SETSEL, 0, -1);
+            UpdateWindow(edit);
+            let dc = GetDC(edit);
+            let mut red_pixels = 0;
+            let mut client = RECT::default();
+            GetClientRect(edit, &raw mut client);
+            for y in 1..client.bottom - 1 {
+                for x in 1..client.right - 1 {
+                    let pixel = GetPixel(dc, x, y);
+                    let red = pixel & 255;
+                    let blue = (pixel >> 16) & 255;
+                    // A white GDI glyph over the blue selection cannot produce
+                    // the red buttons of the color gamepad glyph.
+                    red_pixels += usize::from(red > blue + 30);
+                }
+            }
+            ReleaseDC(edit, dc);
+            assert!(red_pixels > 1, "selected title emoji must retain its color layers");
             SetWindowTextW(edit, windows_sys::w!("  工作分组  "));
             SendMessageW(edit, WM_IME_STARTCOMPOSITION, 0, 0);
             SendMessageW(edit, WM_KEYDOWN, VK_RETURN as usize, 0);

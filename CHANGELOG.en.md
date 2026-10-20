@@ -8,6 +8,8 @@ Exit the app before upgrading a portable installation and preserve its `data` fo
 
 ## Unreleased
 
+- Render color emoji in pane and tab title rename fields, including selected text, honoring the title color emoji setting while retaining native caret, selection and IME handling.
+
 - Use readable computer-local dates with milliseconds and the system time-zone offset in logs, first-occurrence times and diagnostic reports; group messages, source locations and runtime fields for easier reading.
 
 - Improve independent logging with shared event IDs, threads and source locations, byte/count bounds and duplicate coalescing, separate error budgets, accurate I/O/backoff status, Rust panic backtraces, and report collection after releasing application borrows.

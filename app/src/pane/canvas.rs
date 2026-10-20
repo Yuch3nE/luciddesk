@@ -382,14 +382,14 @@ impl DrawPass<'_> {
     }
 }
 
-fn emoji_cluster(wide: &[u16]) -> bool {
+pub(super) fn emoji_cluster(wide: &[u16]) -> bool {
     !wide.contains(&0xfe0e)
         && char::decode_utf16(wide.iter().copied())
             .filter_map(std::result::Result::ok)
             .any(emoji_character)
 }
 
-fn emoji_character(ch: char) -> bool {
+pub(super) fn emoji_character(ch: char) -> bool {
     matches!(ch as u32, 0x1f000..=0x1faff | 0x2600..=0x27bf | 0x20e3)
 }
 impl Drop for DrawPass<'_> {
