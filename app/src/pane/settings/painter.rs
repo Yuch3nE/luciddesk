@@ -38,6 +38,8 @@ impl Painter {
             14.0,
             Style::NAV_HEADING,
             Style::NAV_TEXT,
+            14.0,
+            14.0,
         ]
         .iter()
         .enumerate()
@@ -52,7 +54,7 @@ impl Painter {
                 FontWeight(if i == 2 || i == 3 { 600 } else { 400 }),
             ))?
             .with_paragraph_alignment(ParagraphAlignment::Center)
-            .with_word_wrapping(if matches!(i, 1 | 6) {
+            .with_word_wrapping(if matches!(i, 1 | 6 | Tokens::STATUS_GOOD | Tokens::STATUS_ERROR) {
                 WordWrapping::Wrap
             } else {
                 WordWrapping::NoWrap
@@ -786,7 +788,12 @@ impl Painter {
                         text,
                         &self.formats[*size],
                         r,
-                        if matches!(*size, 0 | 6 | 8) { muted } else { ink },
+                        match *size {
+                            Tokens::STATUS_GOOD => green,
+                            Tokens::STATUS_ERROR => red,
+                            0 | 6 | 8 => muted,
+                            _ => ink,
+                        },
                     );
                 }
                 for thumb in [s.scroll_thumb(), s.navigation_thumb()].into_iter().flatten() {

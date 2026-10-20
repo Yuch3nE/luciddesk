@@ -976,6 +976,8 @@ ui-operating-system = { "操作系统" }
 
 # 桌面连接
 ui-desktop-connection = { "桌面连接" }
+desktop-status-connected = 已连接
+desktop-status-unavailable = 暂不可用
 
 # 重新连接
 ui-reconnect = { "重新连接" }

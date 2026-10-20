@@ -716,11 +716,11 @@ fn scene_with_mica(
 
 // Shared by the live page and raster tests so status and actions use the same layout.
 #[cfg(test)]
-pub(super) fn about_status(s: &mut Scene, width: f32, status: &str, copied: bool) {
+pub(super) fn about_status(s: &mut Scene, width: f32, copied: bool) {
     about_updates(
         s,
         width,
-        status,
+        true,
         copied,
         &crate::updates::Controller::default(),
         true,
@@ -730,7 +730,7 @@ pub(super) fn about_status(s: &mut Scene, width: f32, status: &str, copied: bool
 pub(super) fn about_updates(
     s: &mut Scene,
     width: f32,
-    status: &str,
+    connected: bool,
     copied: bool,
     updates: &crate::updates::Controller,
     auto_check: bool,
@@ -757,24 +757,7 @@ pub(super) fn about_updates(
             std::env::consts::ARCH
         ),
     );
-    form.actions(
-        crate::i18n::text("ui-desktop-connection"),
-        status,
-        vec![
-            (
-                crate::i18n::text("ui-reconnect"),
-                Action::Change(Event::RetryDesktop),
-            ),
-            (
-                if copied {
-                    crate::i18n::text("ui-copied")
-                } else {
-                    crate::i18n::text("ui-copy-diagnostics")
-                },
-                Action::CopyDiagnostics,
-            ),
-        ],
-    );
+    form.desktop_connection(connected, copied);
     form.actions(
         crate::i18n::text("ui-project-resources"),
         "",

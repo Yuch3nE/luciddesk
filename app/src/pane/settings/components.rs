@@ -19,6 +19,8 @@ impl Tokens {
     pub const ROW_HEIGHT: f32 = 40.0;
     pub const MAX_WIDTH: f32 = 1000.0;
     pub const VALUE_TEXT: usize = 7;
+    pub const STATUS_GOOD: usize = 10;
+    pub const STATUS_ERROR: usize = 11;
 }
 
 pub(super) struct Palette {
@@ -226,6 +228,68 @@ impl<'a> SettingsForm<'a> {
     }
     pub fn actions(&mut self, title: &str, description: &str, actions: Vec<(&str, Action)>) {
         self.action_group(title, description, actions, false);
+    }
+    pub fn desktop_connection(&mut self, connected: bool, copied: bool) {
+        let title = crate::i18n::text("ui-desktop-connection");
+        let actions = vec![
+            (crate::i18n::text("ui-reconnect"), Action::Change(Event::RetryDesktop)),
+            (crate::i18n::text(if copied { "ui-copied" } else { "ui-copy-diagnostics" }), Action::CopyDiagnostics),
+        ];
+        let inner = self.width - 2.0 * Tokens::INSET;
+        let left = self.x + Tokens::INSET;
+        let top = self.y;
+        let summary = crate::i18n::text(if connected { "desktop-status-connected" } else { "desktop-status-unavailable" });
+        let status_style = if connected { Tokens::STATUS_GOOD } else { Tokens::STATUS_ERROR };
+        let title_width = text_width(title, 14.0);
+        let cell = actions.iter().map(|(label, action)| {
+            let label = if matches!(action, Action::CopyDiagnostics) {
+                crate::i18n::text("ui-copy-diagnostics")
+            } else { label };
+            text_width(label, 14.0) + 32.0
+        }).fold(112.0_f32, f32::max).min(inner);
+        let action_width = actions.len() as f32 * (cell + Tokens::GAP) - Tokens::GAP;
+        if title_width + 16.0 + text_width(summary, 14.0) + 24.0 + action_width <= inner {
+            let height = 72.0;
+            let center = top + height / 2.0;
+            self.scene.cards.push(Rect::from_xywh(self.x, top, self.width, height));
+            self.scene.text(Rect::from_xywh(left, center - 12.0, title_width, 24.0), title, 1);
+            self.scene.text(Rect::from_xywh(left + title_width + 16.0, center - 12.0,
+                inner - title_width - 16.0 - action_width - 24.0, 24.0), summary, status_style);
+            for (index, (label, action)) in actions.into_iter().enumerate() {
+                self.scene.button(Rect::from_xywh(left + inner - action_width + index as f32 * (cell + Tokens::GAP),
+                    center - Tokens::CONTROL_HEIGHT / 2.0, cell, Tokens::CONTROL_HEIGHT), label, action, false);
+            }
+            self.y = top + height + Tokens::GAP;
+            return;
+        }
+        let inline = title_width + 16.0 + text_width(summary, 14.0) <= inner;
+        let title_height = text_height(title, 14.0, inner).max(24.0);
+        self.scene.text(Rect::from_xywh(left, top + Tokens::INSET,
+            if inline { title_width } else { inner }, title_height), title, 1);
+        let status_width = if inline { inner - title_width - 16.0 } else { inner };
+        let status_height = text_height(summary, 14.0, status_width).max(24.0);
+        let status_top = top + Tokens::INSET + if inline { 0.0 } else { title_height + 4.0 };
+        self.scene.text(Rect::from_xywh(
+            if inline { left + title_width + 16.0 } else { left },
+            status_top, status_width, status_height,
+        ), summary, status_style);
+        let mut y = (top + Tokens::INSET + title_height).max(status_top + status_height);
+        let columns = ((inner + Tokens::GAP) / (cell + Tokens::GAP)).floor().max(1.0) as usize;
+        let columns = columns.min(actions.len());
+        let rows = actions.len().div_ceil(columns);
+        y += 12.0;
+        for (index, (label, action)) in actions.into_iter().enumerate() {
+            let column = index % columns;
+            let row = index / columns;
+            self.scene.button(Rect::from_xywh(
+                self.x + self.width - Tokens::INSET - columns as f32 * (cell + Tokens::GAP)
+                    + Tokens::GAP + column as f32 * (cell + Tokens::GAP),
+                y + row as f32 * (Tokens::CONTROL_HEIGHT + Tokens::GAP), cell, Tokens::CONTROL_HEIGHT,
+            ), label, action, false);
+        }
+        let bottom = y + rows as f32 * (Tokens::CONTROL_HEIGHT + Tokens::GAP) - Tokens::GAP + Tokens::INSET;
+        self.scene.cards.push(Rect::from_xywh(self.x, top, self.width, bottom - top));
+        self.y = bottom + Tokens::GAP;
     }
     /// Keep related actions and a compact switch in one card, including when
     /// long button labels require the actions to wrap onto separate rows.

@@ -109,13 +109,13 @@ fn notify_connection(state: &Rc<RefCell<PaneApp>>) {
 }
 
 pub(super) fn status(s: &PaneApp) -> String {
-    s.runtime
-        .as_ref()
-        .and_then(|r| r.desktop_error.as_ref())
-        .map_or_else(
-            || crate::i18n::text("ui-desktop-groups-connected").into(),
-            |error| crate::i18n::format("ui-desktop-groups-unavailable-folder-panels-and-search-still-work-n", &[("error", format!("{}", error))]),
-        )
+    if s.session.is_none() {
+        return crate::i18n::format(
+            "ui-desktop-groups-unavailable-folder-panels-and-search-still-work-n",
+            &[("error", s.runtime.as_ref().and_then(|r| r.desktop_error.clone()).unwrap_or_default())],
+        ).trim_end().to_owned();
+    }
+    crate::i18n::text("ui-desktop-groups-connected").into()
 }
 
 pub(super) fn reconnect(state: &Rc<RefCell<PaneApp>>) {

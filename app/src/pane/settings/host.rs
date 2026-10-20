@@ -96,7 +96,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
     let mut scroll_offset = 0.0f32;
     let mut scroll_drag = None;
     let mut scroll_page = page;
-    let mut desktop_status = String::new();
+    let mut desktop_connected = false;
     let mut diagnostics_copied = false;
     let mut skill_prompt_copied = false;
     let mut cli_enabled = control::enabled(&state.borrow().store);
@@ -448,7 +448,9 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 snapshot_changed |= auto_check_updates != fresh_auto_check;
                 auto_check_updates = fresh_auto_check;
                 search_visible = state.views.iter().any(|v| state.workspace.panel(v.id).is_some_and(Panel::is_search));
-                desktop_status = runtime::status(&state);
+                let connected = state.session.is_some();
+                snapshot_changed |= desktop_connected != connected;
+                desktop_connected = connected;
                 let fresh = recovery::view(&state);
                 let policy = recovery::Policy::load(&state.store).unwrap_or(backup_policy);
                 snapshot_changed |= fresh != backup_view || policy != backup_policy;
@@ -501,7 +503,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     show_panels_shortcut, show_hotkey::status()),
                 unsafe { IsZoomed(hwnd) } != 0,
                 search_visible,
-                (desktop_status.clone(), interface_flags::HEADER_DIVIDER.get(), interface_flags::COMPACT_MENU.get(), updates.borrow().status(), startup.status(), startup.busy(),
+                (desktop_connected, interface_flags::HEADER_DIVIDER.get(), interface_flags::COMPACT_MENU.get(), updates.borrow().status(), startup.status(), startup.busy(),
                     (selected_plugin.clone(), navigation_offset.to_bits(), plugin_pages.iter().map(|p| (p.id.clone(), p.name.clone())).collect::<Vec<_>>())),
             );
             if scroll_page != page {
@@ -538,7 +540,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     if page==9 {layout::backup_history(&mut body,w,&backup_view,backup_offset);} else {layout::backup_page(&mut body,w,&backup_view,backup_policy,page==10);}
                 }
                 if page == 5 {
-                    layout::about_updates(&mut body, w, &desktop_status, diagnostics_copied, &updates.borrow(), auto_check_updates);
+                    layout::about_updates(&mut body, w, desktop_connected, diagnostics_copied, &updates.borrow(), auto_check_updates);
                 }
                 let mut full = with_titlebar(body, w, key.9);
                 full.scroll_to(w, h, &mut scroll_offset);

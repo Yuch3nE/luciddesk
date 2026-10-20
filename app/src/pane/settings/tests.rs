@@ -889,7 +889,6 @@ fn settings_layout_and_rendering_at_multiple_scales() {
                                 layout::about_status(
                                     &mut body,
                                     viewport_width,
-                                    "桌面面板已连接",
                                     false,
                                 );
                             }
@@ -1106,7 +1105,7 @@ fn setting_cards_scroll_without_moving_navigation_or_hitting_caption() {
                     ..Default::default()
                 };
                 match page {
-                    5 => layout::about_status(&mut body, width, "桌面面板已连接", false),
+                    5 => layout::about_status(&mut body, width, false),
                     6 | 10 => layout::backup_page(
                         &mut body,
                         width,
@@ -1710,7 +1709,7 @@ fn all_languages_layout_and_render_without_control_overflow() {
                         false,
                         show_hotkey::default_shortcut(),
                     ),
-                    5 => layout::about_status(&mut body, width, "桌面面板已连接", true),
+                    5 => layout::about_status(&mut body, width, true),
                     8 => layout::folder_defaults(
                         &mut body,
                         width,
@@ -2299,7 +2298,7 @@ fn about_shows_the_embedded_build_commit_in_all_languages() {
         crate::i18n::with_locale(locale, || {
             let mut body = layout::scene(1000.0, 700.0, 5, false,
                 (PanelTheme::Dark, Backdrop::Acrylic), Default::default());
-            layout::about_status(&mut body, 1000.0, "桌面面板已连接", false);
+            layout::about_status(&mut body, 1000.0, false);
             let version = concat!("v", env!("CARGO_PKG_VERSION"), " (", env!("LUCIDDESK_BUILD_REVISION"), ")");
             assert_eq!(body.text.iter().filter(|(_, text, _)|
                 text.starts_with(version)).count(), 1);
@@ -2314,7 +2313,7 @@ fn about_exposes_automatic_update_switch_and_manual_actions_in_all_languages() {
             for enabled in [false, true] {
                 let mut body = layout::scene(900.0, 568.0, 5, false,
                     (PanelTheme::Dark, Backdrop::Mica), Default::default());
-                layout::about_updates(&mut body, 900.0, "桌面面板已连接", false,
+                layout::about_updates(&mut body, 900.0, true, false,
                     &crate::updates::Controller::default(), enabled);
                 let toggle = body.controls.iter().find(|c| matches!(c.action, Action::AutoCheckUpdates(_))).unwrap();
                 assert!(toggle.enabled);
@@ -2334,6 +2333,53 @@ fn about_exposes_automatic_update_switch_and_manual_actions_in_all_languages() {
                 assert!(notice.contains("99.1.2"));
                 assert!(!notice.contains("update-notification"));
             }
+        });
+    }
+}
+
+#[test]
+fn desktop_connection_card_aligns_both_states_without_technical_details() {
+    for locale in 0..7 {
+        crate::i18n::with_locale(locale, || {
+            for width in [800.0, 940.0, 1440.0] {
+                for connected in [false, true] {
+                    let make = |copied| {
+                        let mut body = scene(width, 560.0, usize::MAX, false,
+                            (PanelTheme::Dark, Backdrop::Mica), Default::default());
+                        SettingsForm::continuation(&mut body, width, 76.0).desktop_connection(connected, copied);
+                        body
+                    };
+                    let body = make(false);
+                    let copied = make(true);
+                    assert_eq!(body.cards.len(), 1);
+                    let card = body.cards[0];
+                    assert_eq!(body.text.iter().filter(|(bounds, _, _)| bounds.left >= card.left && bounds.top >= card.top).count(), 2);
+                    let actions: Vec<_> = body.controls.iter().filter(|c|
+                        matches!(c.action, Action::CopyDiagnostics | Action::Change(Event::RetryDesktop))).collect();
+                    assert_eq!(actions.len(), 2);
+                    for action in actions {
+                        assert!(action.bounds.left >= card.left + Tokens::INSET);
+                        assert!(action.bounds.right <= card.right - Tokens::INSET);
+                        assert!(action.bounds.bottom <= card.bottom - Tokens::INSET);
+                        for (bounds, _, _) in body.text.iter().filter(|(bounds, _, _)| bounds.left >= card.left && bounds.top >= card.top) {
+                            assert!(bounds.right <= action.bounds.left || bounds.left >= action.bounds.right
+                                || bounds.bottom <= action.bounds.top || bounds.top >= action.bounds.bottom);
+                        }
+                        if locale == 0 || width == 1440.0 {
+                            assert_eq!(card.bottom - card.top, 72.0);
+                            let status = body.text.iter().find(|(_, _, style)| matches!(*style, Tokens::STATUS_GOOD | Tokens::STATUS_ERROR)).unwrap().0;
+                            assert_eq!((status.top + status.bottom) / 2.0,
+                                (action.bounds.top + action.bounds.bottom) / 2.0);
+                        }
+                        let after = copied.controls.iter().find(|c| std::mem::discriminant(&c.action) == std::mem::discriminant(&action.action)
+                            && c.bounds.top == action.bounds.top).unwrap();
+                        assert_eq!(action.bounds, after.bounds);
+                    }
+                    assert!(body.text.iter().any(|(_, _, style)| *style == if connected { Tokens::STATUS_GOOD } else { Tokens::STATUS_ERROR }));
+                }
+            }
+            let state = super::super::tests::test_state();
+            assert_ne!(runtime::status(&state), crate::i18n::text("ui-desktop-groups-connected"));
         });
     }
 }
