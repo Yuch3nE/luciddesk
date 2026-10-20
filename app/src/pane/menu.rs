@@ -105,20 +105,23 @@ pub fn show(
     fixed_grid: bool,
     free_layout: bool,
     sort_order: Option<(u8, bool)>,
+    tab_position: Option<(usize, usize)>,
 ) -> i32 {
     let topmost = super::quick_reveal::permanent_topmost(owner);
-    let mut rows = pane_entries_fixed(folder, visible_columns, auto_hide, locked, topmost, collapsed, fixed_grid, free_layout);
+    let mut rows = pane_entries_fixed(folder, visible_columns, auto_hide, locked, topmost, collapsed, fixed_grid, free_layout, tab_position);
     set_sort_entries(&mut rows, sort_order);
     show_entries(owner, anchor, anchored, theme, backdrop, rows)
 }
 
+#[cfg(test)]
 fn pane_entries(folder: (bool, bool), visible_columns: u8,
     auto_hide: bool, locked: bool, topmost: bool, collapsed: bool) -> Vec<Entry> {
-    pane_entries_fixed(folder, visible_columns, auto_hide, locked, topmost, collapsed, false, false)
+    pane_entries_fixed(folder, visible_columns, auto_hide, locked, topmost, collapsed, false, false, None)
 }
 #[allow(clippy::too_many_arguments)]
 fn pane_entries_fixed(folder: (bool, bool), visible_columns: u8,
-    auto_hide: bool, locked: bool, topmost: bool, collapsed: bool, fixed_grid: bool, free_layout: bool) -> Vec<Entry> {
+    auto_hide: bool, locked: bool, topmost: bool, collapsed: bool, fixed_grid: bool, free_layout: bool,
+    tab_position: Option<(usize, usize)>) -> Vec<Entry> {
     let mut rows = Vec::new();
     if folder.0 {
         rows.push(entry(20, crate::i18n::text("ui-open-in-file-explorer"), "", ""));
@@ -167,7 +170,12 @@ fn pane_entries_fixed(folder: (bool, bool), visible_columns: u8,
     ];
     rows.push(create);
     if !folder.0 {
-        rows.push(Entry { children: tab_entries(), ..entry(39, crate::i18n::text("ui-tabs"), "", "") });
+        let mut children = tab_entries(tab_position, locked);
+        if children.len() == 1 {
+            rows.push(children.remove(0));
+        } else {
+            rows.push(Entry { children, ..entry(39, crate::i18n::text("ui-tabs"), "", "") });
+        }
     }
     rows.extend([
         entry(0, "", "", ""),
@@ -188,9 +196,18 @@ fn sort_menu_is_available_only_when_unlocked() {
     }
 }
 
-pub(super) fn tab_entries() -> Vec<Entry> {
-    vec![
-        entry(40, crate::i18n::text("ui-new-group-tab"), "", ""),
+pub(super) fn tab_position(model: &super::GroupModel, target: luciddesk_core::PanelId) -> Option<(usize, usize)> {
+    model.tabs.iter().position(|(id, _)| *id == target).map(|index| (index, model.tabs.len()))
+}
+
+fn tab_entries(position: Option<(usize, usize)>, locked: bool) -> Vec<Entry> {
+    let mut create = entry(40, crate::i18n::text("ui-new-group-tab"), "", "");
+    create.enabled = !locked;
+    let Some((index, count)) = position.filter(|(index, count)| *count > 1 && index < count) else {
+        return vec![create];
+    };
+    let mut rows = vec![
+        create,
         entry(0, "", "", ""),
         entry(46, crate::i18n::text("ui-previous-tab"), "", "Ctrl+Shift+Tab"),
         entry(47, crate::i18n::text("ui-next-tab"), "", "Ctrl+Tab"),
@@ -199,16 +216,30 @@ pub(super) fn tab_entries() -> Vec<Entry> {
         entry(49, crate::i18n::text("ui-detach-as-panel"), "", ""),
         entry(0, "", "", ""),
         entry(42, crate::i18n::text("ui-close-tab"), "", "Ctrl+W"),
-    ]
+    ];
+    for row in &mut rows {
+        row.enabled = match row.id {
+            44 => !locked && index > 0,
+            45 => !locked && index + 1 < count,
+            42 | 49 => !locked,
+            _ => row.enabled,
+        };
+    }
+    rows
 }
 
 pub(super) fn tab_context_entries(model: &super::GroupModel, topmost: bool, target: luciddesk_core::PanelId) -> Vec<Entry> {
     // Keep every ordinary pane command directly accessible from a tab.
-    let mut entries = pane_entries((model.folder.is_some(), model.is_list()),
-        model.folder_visible_columns, model.auto_hide, model.locked, topmost, model.collapsed);
+    let position = tab_position(model, target);
+    let mut entries = pane_entries_fixed((model.folder.is_some(), model.is_list()),
+        model.folder_visible_columns, model.auto_hide, model.locked, topmost, model.collapsed,
+        model.fixed_grid, model.free_layout, position);
     let order = if model.folder.is_some() && target == model.active_tab { Some(model.folder_sort) }
         else { model.sort_orders.borrow().get(&target).copied() };
     set_sort_entries(&mut entries, order);
+    if position.is_none_or(|(_, count)| count <= 1) {
+        return entries;
+    }
     entries.retain(|row| row.id != 43);
     for row in &mut entries {
         if row.id == 22 {
@@ -222,11 +253,12 @@ pub(super) fn tab_context_entries(model: &super::GroupModel, topmost: bool, targ
             row.children.pop();
         }
     }
-    let mut tab_actions = vec![entry(49, crate::i18n::text("ui-detach-as-panel"), "", "")];
+    let actions = tab_entries(position, model.locked);
+    let mut tab_actions = vec![actions.iter().find(|row| row.id == 49).unwrap().clone()];
     if !model.locked {
         tab_actions.push(entry(43, crate::i18n::text("ui-rename-tab"), "", ""));
     }
-    tab_actions.extend([entry(42, crate::i18n::text("ui-close-tab"), "", "Ctrl+W"), entry(0, "", "", "")]);
+    tab_actions.extend([actions.iter().find(|row| row.id == 42).unwrap().clone(), entry(0, "", "", "")]);
     entries.splice(0..0, tab_actions);
     entries
 }
@@ -720,6 +752,125 @@ mod tests {
     use super::*;
     use windows_sys::Win32::System::{ProcessStatus::*, Threading::*};
 
+    fn tab_commands(rows: &[Entry]) -> Vec<(i32, bool)> {
+        let mut commands = Vec::new();
+        for row in rows {
+            if matches!(row.id, 40 | 42 | 44..=47 | 49) {
+                commands.push((row.id, row.enabled));
+            }
+            commands.extend(tab_commands(&row.children));
+        }
+        commands.sort();
+        commands
+    }
+
+    fn assert_clean_separators(rows: &[Entry]) {
+        assert!(rows.first().is_none_or(|row| row.id != 0));
+        assert!(rows.last().is_none_or(|row| row.id != 0));
+        assert!(!rows.windows(2).any(|pair| pair[0].id == 0 && pair[1].id == 0));
+        for row in rows { assert_clean_separators(&row.children); }
+    }
+
+    #[test]
+    fn tab_menus_follow_count_target_position_and_lock_state() {
+        use luciddesk_core::PanelId;
+        for count in [0, 1, 2, 3] {
+            for index in 0..count.max(1) {
+                for locked in [false, true] {
+                    let mut model = super::super::tests::test_model("Tabs");
+                    model.tabs = (0..count).map(|i| (PanelId::new(i + 1), format!("Tab {i}"))).collect();
+                    model.active_tab = PanelId::new(1);
+                    model.locked = locked;
+                    let target = PanelId::new(index + 1);
+                    let position = tab_position(&model, target);
+                    let pane = pane_entries_fixed((false, false), 15, false, locked, false, false, false, false, position);
+                    let context = tab_context_entries(&model, false, target);
+                    assert_eq!(tab_commands(&pane), tab_commands(&context));
+                    for rows in [&pane, &context] {
+                        assert_clean_separators(rows);
+                        let commands = tab_commands(rows);
+                        if count <= 1 {
+                            assert_eq!(commands, vec![(40, !locked)]);
+                            assert!(!rows.iter().any(|row| row.id == 39));
+                            assert!(rows.iter().any(|row| row.id == 40));
+                        } else {
+                            assert_eq!(commands, vec![
+                                (40, !locked), (42, !locked),
+                                (44, !locked && index > 0),
+                                (45, !locked && index + 1 < count),
+                                (46, true), (47, true), (49, !locked),
+                            ]);
+                            assert!(rows.iter().any(|row| row.id == 39));
+                        }
+                    }
+                    if count > 1 {
+                        assert_eq!(super::super::tabs::adjacent_from(&model, target, 1),
+                            Some(PanelId::new((index + 1) % count + 1)));
+                        assert_eq!(super::super::tabs::adjacent_from(&model, target, -1),
+                            Some(PanelId::new((index + count - 1) % count + 1)));
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "Requires an operator to select commands in real menus"]
+    fn tab_menus_interactive_validation() {
+        let _sta = crate::pane::test_support::apartment();
+        let ready = Rc::new(Cell::new(false));
+        let ready_handler = ready.clone();
+        let owner = windows_window::Window::new("Tab menu validation - press Enter")
+            .style(WS_OVERLAPPEDWINDOW)
+            .size(320, 240)
+            .on_message(move |_, msg, key, _| {
+                if msg == WM_KEYDOWN && key == VK_RETURN as usize {
+                    ready_handler.set(true);
+                    return Some(0);
+                }
+                (msg == WM_DESTROY).then_some(0)
+            })
+            .create().unwrap();
+        unsafe { ShowWindow(owner.hwnd().cast(), SW_SHOWNOACTIVATE); }
+        let started = Instant::now();
+        while !ready.get() && started.elapsed().as_secs() < 180 {
+            unsafe {
+                let mut message = MSG::default();
+                while PeekMessageW(&raw mut message, std::ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
+                    TranslateMessage(&message);
+                    DispatchMessageW(&message);
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(ready.get(), "operator must activate the fixture and press Enter");
+        assert_eq!(unsafe { GetForegroundWindow() }, owner.hwnd().cast());
+        // Select New tab; Move right; Move left; Next tab, in that order.
+        // The final locked menu must keep structural commands disabled.
+        for (count, index, locked, context, expected) in [
+            (1, 0, false, false, 40),
+            (3, 0, false, false, 45),
+            (3, 2, false, true, 44),
+            (3, 1, true, true, 47),
+        ] {
+            let mut model = super::super::tests::test_model("Tabs");
+            model.tabs = (0..count).map(|i| (luciddesk_core::PanelId::new(i + 1), format!("Tab {i}"))).collect();
+            model.active_tab = luciddesk_core::PanelId::new(1);
+            model.locked = locked;
+            let target = luciddesk_core::PanelId::new(index + 1);
+            let rows = if context {
+                tab_context_entries(&model, false, target)
+            } else {
+                pane_entries_fixed((false, false), 15, false, locked, false, false,
+                    false, false, tab_position(&model, target))
+            };
+            println!("count={count} target={index} locked={locked} context={context} expected={expected}");
+            let actual = show_entries(owner.hwnd().cast(), POINT { x: 100, y: 100 }, false,
+                luciddesk_core::PanelTheme::Dark, Backdrop::Acrylic, rows);
+            assert_eq!(actual, expected);
+        }
+    }
+
     #[test]
     fn pane_actions_follow_state_and_keep_exit_in_tray() {
         let open = pane_entries((false, false), 7, false, false, false, false);
@@ -741,8 +892,8 @@ mod tests {
     #[test]
     fn folder_menus_exclude_tabs_and_ordinary_tabs_exclude_folders() {
         assert!(!pane_entries((true, false), 7, false, false, false, false).iter().any(|r| r.id == 39));
-        assert!(pane_entries((false, false), 7, false, false, false, false).iter().any(|r| r.id == 39));
-        assert!(!tab_entries().iter().any(|r| r.id == 41));
+        assert!(pane_entries((false, false), 7, false, false, false, false).iter().any(|r| r.id == 40));
+        assert!(!tab_entries(Some((0, 2)), false).iter().any(|r| r.id == 41));
     }
 
     #[test]
@@ -898,7 +1049,7 @@ mod tests {
                 false,
                 luciddesk_core::PanelTheme::Dark,
                 Backdrop::Acrylic,
-                (false, false), 15, false, false, false, None
+                (false, false), 15, false, false, false, None, None
             ),
             0
         );
@@ -956,7 +1107,7 @@ mod tests {
                         false,
                         luciddesk_core::PanelTheme::Dark,
                         Backdrop::Mica,
-                        (false, false), 15, false, false, false, None
+                        (false, false), 15, false, false, false, None, None
                     ),
                     0
                 );
@@ -1042,7 +1193,7 @@ fn keyboard_navigation_skips_disabled_rows_and_wraps() {
 #[test]
 fn view_contains_only_grid_alignment_and_auto_arrangement() {
     for (fixed, free) in [(false, false), (true, false), (true, true)] {
-        let rows = pane_entries_fixed((false, false), 7, false, false, false, false, fixed, free);
+        let rows = pane_entries_fixed((false, false), 7, false, false, false, false, fixed, free, None);
         let view = rows.iter().find(|r| r.id == 22).unwrap();
         for (id, checked) in [(54, !fixed), (55, !free)] {
             let entry = view.children.iter().find(|r| r.id == id).unwrap();

@@ -777,10 +777,14 @@ pub(super) fn hit(model: &GroupModel, width: f32, x: f32, y: f32) -> Option<Pane
 }
 
 pub(super) fn adjacent(model: &GroupModel, step: i8) -> Option<PanelId> {
+    adjacent_from(model, model.active_tab, step)
+}
+
+pub(super) fn adjacent_from(model: &GroupModel, target: PanelId, step: i8) -> Option<PanelId> {
     let at = model
         .tabs
         .iter()
-        .position(|(id, _)| *id == model.active_tab)?;
+        .position(|(id, _)| *id == target)?;
     let next = (at as isize + step as isize).rem_euclid(model.tabs.len() as isize) as usize;
     Some(model.tabs[next].0)
 }

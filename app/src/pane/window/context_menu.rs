@@ -202,6 +202,10 @@ pub(super) fn show<F: FnMut(Event) -> bool>(
     let visible_columns = model.borrow().folder_visible_columns;
     let fixed_grid = model.borrow().fixed_grid;
     let free_layout = model.borrow().free_layout;
+    let tab_position = {
+        let model = model.borrow();
+        crate::pane::menu::tab_position(&model, model.active_tab)
+    };
     let command = if tab_context.is_some() {
         let entries = crate::pane::menu::tab_context_entries(
             &model.borrow(),
@@ -223,6 +227,7 @@ pub(super) fn show<F: FnMut(Event) -> bool>(
             fixed_grid,
             free_layout,
             { let m = model.borrow(); if m.folder.is_some() { Some(m.folder_sort) } else { m.sort_orders.borrow().get(&m.active_tab).copied() } },
+            tab_position,
         )
     };
     update_pointer(hwnd, &model, None);
@@ -266,8 +271,11 @@ pub(super) fn show<F: FnMut(Event) -> bool>(
             }
         }
         46 | 47 => {
-            let next =
-                crate::pane::tabs::adjacent(&model.borrow(), if command == 46 { -1 } else { 1 });
+            let next = {
+                let model = model.borrow();
+                crate::pane::tabs::adjacent_from(
+                    &model, tab_context.unwrap_or(model.active_tab), if command == 46 { -1 } else { 1 })
+            };
             if let Some(next) = next {
                 event(Event::SelectTab(next));
             }
@@ -330,6 +338,7 @@ fn menu(
     fixed_grid: bool,
     free_layout: bool,
     sort_order: Option<(u8, bool)>,
+    tab_position: Option<(usize, usize)>,
 ) -> i32 {
     let anchored = lparam == -1;
     let mut anchor = point(lparam);
@@ -357,5 +366,6 @@ fn menu(
         fixed_grid,
         free_layout,
         sort_order,
+        tab_position,
     )
 }
