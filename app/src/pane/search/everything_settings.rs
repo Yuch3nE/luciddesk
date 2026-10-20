@@ -112,11 +112,13 @@ mod tests {
 
     #[test]
     fn settings_preserve_unicode_path_without_unused_flags() {
+        let previous = settings();
         let store = WorkspaceStore::open_in_memory().unwrap();
         let value = Settings { path: "D:/应用/Everything.exe".into() };
         save(&store, value.clone()).unwrap();
         assert_eq!(store.preference("everything").unwrap().as_deref(), Some(value.path.as_str()));
         load(&store).unwrap();
         assert_eq!(settings(), value);
+        *SETTINGS.write().unwrap() = previous;
     }
 }
