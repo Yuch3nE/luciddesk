@@ -10,7 +10,7 @@ ui-missing-hook-dll-build-the-entire-workspace = { "Hook-DLL " }{ $arg0 }{ " feh
 ui-invalid-configuration-path = { "Ungültiger Konfigurationspfad" }
 
 # 无法注册托盘恢复消息
-ui-could-not-register-tray-recovery-message = { "Tray-Wiederherstellung nicht registriert" }
+ui-could-not-register-tray-recovery-message = { "Das Symbol im Infobereich konnte nicht vollständig eingerichtet werden.\u000A\u000AFehlerdetails:\u000ABenachrichtigungen über die Neuerstellung der Windows-Taskleiste können nicht empfangen werden." }
 
 # LucidDesk · 桌面面板与文件整理
 ui-luciddesk-desktop-organization = { "LucidDesk · Desktop organisieren" }
@@ -19,7 +19,7 @@ ui-luciddesk-desktop-organization = { "LucidDesk · Desktop organisieren" }
 ui-could-not-add-luciddesk-tray-icon = { "LucidDesk-Traysymbol konnte nicht hinzugefügt werden" }
 
 # 无法初始化托盘交互
-ui-could-not-initialize-tray-interaction = { "Tray-Interaktion konnte nicht initialisiert werden" }
+ui-could-not-initialize-tray-interaction = { "Das LucidDesk-Symbol im Infobereich konnte nicht aktiviert werden.\u000A\u000AFehlerdetails:\u000AWindows hat die Interaktionseinstellungen für das Symbol nicht akzeptiert." }
 
 # 显示面板
 ui-show-panels = { "Panels anzeigen" }
@@ -37,10 +37,10 @@ ui-settings = { "Einstellungen" }
 ui-exit-luciddesk = { "LucidDesk beenden" }
 
 # 无法安排打开项目
-ui-could-not-schedule-opening-the-item = { "Öffnen des Elements konnte nicht geplant werden" }
+ui-could-not-schedule-opening-the-item = { "Das Öffnen des ausgewählten Elements konnte nicht gestartet werden." }
 
 # 面板已关闭
-ui-panel-closed = { "Panel geschlossen" }
+ui-panel-closed = { "Dieses Panel ist derzeit nicht verfügbar. Der Vorgang kann nicht fortgesetzt werden." }
 
 # 此面板不是文件夹面板
 ui-this-is-not-a-folder-panel = { "Dies ist kein Ordnerpanel" }
@@ -49,15 +49,15 @@ ui-this-is-not-a-folder-panel = { "Dies ist kein Ordnerpanel" }
 ui-file-operation-failed = { "Dateioperation fehlgeschlagen: " }{ $error }
 
 # 无法安排文件操作
-ui-could-not-schedule-file-operation = { "Dateioperation konnte nicht geplant werden" }
+ui-could-not-schedule-file-operation = { "Dieser Dateivorgang konnte nicht gestartet werden." }
 
-rename-context-unavailable = { "Der zum Umbenennen erforderliche Anwendungszustand wurde freigegeben." }
+rename-context-unavailable = { "Das Umbenennen konnte nicht fortgesetzt werden.\u000A\u000AFehlerdetails:\u000ADer für diesen Vorgang erforderliche Anwendungszustand ist nicht mehr verfügbar." }
 
 # Everything 搜索
 ui-everything-search = { "Everything-Suche" }
 
 # 面板不存在
-ui-group-not-found = { "Panel nicht gefunden" }
+ui-group-not-found = { "Dieses Panel wurde nicht gefunden. Der Vorgang kann nicht fortgesetzt werden." }
 
 # 无法读取文件夹，请检查路径或访问权限。\n{error}
 ui-cannot-read-folder-check-the-path-and-permissions-n = { "Ordner nicht lesbar. Pfad und Berechtigungen prüfen.\u000A" }{ $error }
@@ -69,7 +69,7 @@ ui-folder-inaccessible = { "Ordner nicht zugänglich" }
 ui-select-a-folder-to-display = { "Anzuzeigenden Ordner wählen" }
 
 # 无法打开文件夹选择器
-ui-could-not-open-folder-picker = { "Ordnerauswahl konnte nicht geöffnet werden" }
+ui-could-not-open-folder-picker = { "Das Fenster zur Ordnerauswahl konnte nicht geöffnet werden." }
 
 # 该字体未安装，或不支持所需的中英文字符
 ui-font-not-installed-or-missing-required-chinese-latin-glyphs = { "Schrift fehlt oder unterstützt benötigte chinesische/lateinische Zeichen nicht" }
@@ -80,7 +80,7 @@ ui-close-other-desktop-organizers-first = { "Andere Desktop-Organizer zuerst bee
 # 请先退出旧的全桌面接管版本，恢复桌面图标显示
 
 # 读取清单期间桌面视图已替换，将重新定位
-ui-desktop-view-changed-while-reading-reconnecting = { "Desktopansicht beim Lesen geändert; Verbindung wird erneuert" }
+ui-desktop-view-changed-while-reading-reconnecting = { "Der Desktop hat sich geändert, bevor die Verbindung hergestellt werden konnte." }
 
 # Explorer 视图过滤连接已断开
 ui-explorer-view-filter-disconnected = { "Explorer-Ansichtsfilter getrennt" }
@@ -187,21 +187,21 @@ ui-group-menu = { "Panelmenü" }
 panel-or-tab-unavailable = { "Das Panel oder der Tab wurde nicht gefunden." }
 
 # 保存面板失败：{e}
-ui-could-not-save-group = { "Panel konnte nicht gespeichert werden: " }{ $e }
+ui-could-not-save-group = { "Panel-Einstellungen und Layout konnten nicht gespeichert werden.\u000A\u000AFehlerdetails:\u000A" }{ $e }
 
 # 目标面板不可用
-ui-target-panel-unavailable = { "Zielpanel nicht verfügbar" }
+ui-target-panel-unavailable = { "Das Zielpanel wurde nicht gefunden." }
 
 # 选中项目已变化，请重新拖动
 ui-selection-changed-drag-again = { "Auswahl geändert. Erneut ziehen." }
 
-preview-program-picker-failed = { "Fehler im Dateidialog zur Auswahl der Vorschau-App.\u000A\u000AFehlerdetails:\u000A" }{ $error }
+preview-program-picker-failed = { "Die Auswahl des Vorschauprogramms konnte nicht abgeschlossen werden.\u000A\u000AFehler bei der Dateiauswahl:\u000A" }{ $error }
 
 # 请选择 {}
 ui-select = { $arg0 }{ " auswählen" }
 
 # 无法检查 Peek 进程
-ui-could-not-inspect-peek-process = { "Peek-Prozess konnte nicht geprüft werden" }
+ui-could-not-inspect-peek-process = { "Es konnte nicht ermittelt werden, ob PowerToys Peek ausgeführt wird." }
 
 # 无法启动 Peek：{e}
 ui-could-not-start-peek = { "Peek konnte nicht gestartet werden: " }{ $e }
@@ -224,7 +224,7 @@ ui-quicklook-started-but-its-preview-service-is-unavailable = { "QuickLook gesta
 # 预览已取消
 ui-preview-canceled = { "Vorschau abgebrochen" }
 
-configuration-directory-path-unavailable = { "Der Pfad des Konfigurationsordners konnte nicht ermittelt werden." }
+configuration-directory-path-unavailable = { "Der Speicherort der Konfigurationsdateien konnte nicht ermittelt werden." }
 
 # 自动
 ui-automatic = { "Automatisch" }
@@ -238,7 +238,7 @@ ui-manual = { "Manuell" }
 # ；{failed} 份旧备份清理失败
 ui-old-backups-not-removed = { "; nicht entfernte alte Sicherungen: " }{ $failed }
 
-backup-runtime-state-missing = { "Der Laufzeitstatus der Anwendung fehlt; die Sicherungsverwaltung kann keine Aufgaben ausführen." }
+backup-runtime-state-missing = { "Die Sicherungsverwaltung ist vorübergehend nicht verfügbar.\u000A\u000AFehlerdetails:\u000ADer dafür erforderliche Anwendungszustand ist nicht verfügbar." }
 
 # 备份任务正在进行，请稍候。
 ui-a-backup-task-is-running-please-wait = { "Eine Sicherung läuft. Bitte warten." }
@@ -249,7 +249,7 @@ ui-backup-task-ended-unexpectedly-try-again = { "Sicherung unerwartet beendet. E
 # 配置暂无变化，无需重复备份
 ui-configuration-unchanged-no-new-backup-needed = { "Konfiguration unverändert; keine neue Sicherung nötig" }
 
-backup-task-failed = { "Aufgabe der Sicherungsverwaltung fehlgeschlagen: " }{ $error }
+backup-task-failed = { "Fehlgeschlagen: Der Vorgang zur Sicherungsverwaltung konnte nicht abgeschlossen werden.\u000A\u000AFehlerdetails:\u000A" }{ $error }
 
 # 读取备份记录…
 ui-loading-backup-history = { "Sicherungsverlauf wird geladen…" }
@@ -303,9 +303,9 @@ ui-restored-you-can-undo-this-restore = { "Wiederhergestellt. Rückgängig mache
 ui-restore-failed-rolled-back = { "Wiederherstellung fehlgeschlagen; zurückgesetzt: " }{ $error }
 
 # 恢复失败：{error}；回退失败：{e}。恢复前备份：{}
-ui-restore-failed-rollback-failed-previous-backup = { "Wiederherstellung fehlgeschlagen: " }{ $error }{ "; Rücknahme fehlgeschlagen: " }{ $e }{ ". Vorherige Sicherung: " }{ $arg0 }
+ui-restore-failed-rollback-failed-previous-backup = { "Fehlgeschlagen: Weder die Sicherung noch die vorherige Konfiguration konnten wiederhergestellt werden. Bewahren Sie die unten angegebene Sicherungsdatei auf.\u000A\u000AFehler beim Wiederherstellen:\u000A" }{ $error }{ "\u000A\u000AFehler beim Zurücksetzen:\u000A" }{ $e }{ "\u000A\u000ASicherung vor dem Wiederherstellungsversuch:\u000A" }{ $arg0 }
 
-configuration-operation-failed = { "Konfigurationsvorgang fehlgeschlagen: " }{ $e }
+configuration-operation-failed = { "Fehlgeschlagen: Der Vorgang für Einstellungen oder Sicherungen konnte nicht abgeschlossen werden.\u000A\u000AFehlerdetails:\u000A" }{ $e }
 
 # 正在校验备份…
 ui-validating-backup = { "Sicherung wird geprüft…" }
@@ -328,7 +328,7 @@ ui-deleting = { "Wird gelöscht…" }
 # 备份已删除
 ui-backup-deleted = { "Sicherung gelöscht" }
 
-backup-export-path-reserved = { "Export zum aktuellen Datenbankpfad oder mit dem Dateinamen workspace.db bzw. config.toml ist nicht zulässig. Wählen Sie einen anderen Pfad oder Namen." }
+backup-export-path-reserved = { "Dieser Speicherort oder Dateiname kann nicht verwendet werden. Wählen Sie einen anderen Ort oder Namen.\u000A\u000AExportbeschränkungen:\u000ADie aktuelle Datenbank darf nicht überschrieben werden. Die Dateinamen workspace.db und config.toml sind nicht zulässig." }
 
 # 正在导出…
 ui-exporting = { "Wird exportiert…" }
@@ -337,19 +337,19 @@ ui-exporting = { "Wird exportiert…" }
 ui-exported = { "Exportiert: " }{ $arg0 }
 
 # 无法读取桌面字体
-ui-could-not-read-desktop-font = { "Desktopschrift konnte nicht gelesen werden" }
+ui-could-not-read-desktop-font = { "Das Eingabefeld zum Umbenennen konnte nicht geöffnet werden.\u000A\u000AFehlerdetails:\u000ADie Schriftarteinstellungen des Windows-Desktops konnten nicht gelesen werden." }
 
 # 无法创建重命名字体
-ui-could-not-create-rename-font = { "Schrift für Umbenennung konnte nicht erstellt werden" }
+ui-could-not-create-rename-font = { "Das Eingabefeld zum Umbenennen konnte nicht geöffnet werden.\u000A\u000AFehlerdetails:\u000ADie für das Eingabefeld benötigte Schriftart konnte nicht erstellt werden." }
 
 # 无法创建图标名称编辑框
 ui-could-not-create-icon-name-editor = { "Symbolnamen-Editor konnte nicht erstellt werden" }
 
 # 无法连接名称编辑框
-ui-could-not-attach-name-editor = { "Namenseditor konnte nicht verbunden werden" }
+ui-could-not-attach-name-editor = { "Das Eingabefeld zum Umbenennen konnte nicht aktiviert werden.\u000A\u000AFehlerdetails:\u000ADer Bearbeitungszustand des Eingabefelds konnte nicht eingerichtet werden." }
 
 # 无法连接面板编辑状态
-ui-could-not-attach-group-editing-state = { "Panelbearbeitungszustand konnte nicht verbunden werden" }
+ui-could-not-attach-group-editing-state = { "Das Umbenennen in diesem Panel konnte nicht gestartet werden.\u000A\u000AFehlerdetails:\u000ADas Eingabefeld konnte dem Panelfenster nicht zugeordnet werden." }
 
 # 重命名失败
 ui-rename-failed = { "Umbenennen fehlgeschlagen" }
@@ -436,7 +436,7 @@ ui-export = { "Exportieren…" }
 ui-delete = { "Löschen…" }
 
 # 无法初始化设置窗口边框
-ui-could-not-initialize-settings-window-frame = { "Einstellungsfensterrahmen konnte nicht initialisiert werden" }
+ui-could-not-initialize-settings-window-frame = { "Das Einstellungsfenster konnte nicht vollständig vorbereitet werden.\u000A\u000AFehlerdetails:\u000ADie Verarbeitung des Fensterrahmens konnte nicht eingerichtet werden." }
 
 # 无法打开 Explorer 图标菜单：{error}
 ui-could-not-open-explorer-icon-menu = { "Explorer-Symbolmenü konnte nicht geöffnet werden: " }{ $error }
@@ -452,7 +452,7 @@ ui-only-group-panels-support-tabs = { "Nur Desktoppanels unterstützen Tabs" }
 # 请先解锁面板
 ui-unlock-the-panel-first = { "Panel zuerst entsperren" }
 
-tab-order-overflow = { "Der neue Tab kann keine Sortiernummer erhalten: Der Zahlenbereich wurde überschritten." }
+tab-id-overflow = { "Ein neuer Tab konnte nicht hinzugefügt werden.\u000A\u000AFehlerdetails:\u000AEs konnte keine neue Tab-ID vergeben werden, da der zulässige Zahlenbereich überschritten wurde." }
 
 # 文件夹面板不支持标签，请新建独立文件夹面板
 ui-folder-panels-do-not-support-tabs-create-a-separate-panel = { "Ordnerpanels unterstützen keine Tabs. Separates Panel erstellen" }
@@ -461,24 +461,24 @@ ui-folder-panels-do-not-support-tabs-create-a-separate-panel = { "Ordnerpanels u
 ui-select-an-unlocked-group-panel = { "Entsperrtes Desktoppanel wählen" }
 
 # 面板已关闭或活动标签已改变
-ui-panel-closed-or-active-tab-changed = { "Panel geschlossen oder aktiver Tab geändert" }
+ui-panel-closed-or-active-tab-changed = { "Das Zusammenführen der Panels kann nicht fortgesetzt werden. Ein ausgewähltes Panel wurde möglicherweise geschlossen oder zu einem anderen Tab gewechselt." }
 
-panel-merge-dispatch-failed = { "Die Zusammenführung konnte nicht eingeleitet werden und wurde nicht ausgeführt." }
+panel-merge-dispatch-failed = { "Das Zusammenführen der Panels konnte nicht gestartet werden." }
 
 # ＋ {remaining} 个标签
 ui-tabs-a81a = { "＋ " }{ $remaining }{ " Tabs" }
 
 # 无法注册面板运行时通知
-ui-could-not-register-panel-notifications = { "Panelbenachrichtigungen konnten nicht registriert werden" }
+ui-could-not-register-panel-notifications = { "Die Anwendung konnte nicht vollständig vorbereitet werden.\u000A\u000AFehlerdetails:\u000ABenachrichtigungen über abgeschlossene Hintergrundaufgaben können nicht empfangen werden." }
 
 # 面板渲染失败：{error}
 ui-group-rendering-failed = { "Paneldarstellung fehlgeschlagen: " }{ $error }
 
 # 菜单准备未完成
-ui-menu-is-not-ready = { "Menü noch nicht bereit" }
+ui-menu-is-not-ready = { "Dieses Menü kann noch nicht angezeigt werden, da sein Inhalt noch nicht bereit ist." }
 
 # 无法初始化无边框面板窗口
-ui-could-not-initialize-borderless-group-window = { "Rahmenloses Panelfenster konnte nicht initialisiert werden" }
+ui-could-not-initialize-borderless-group-window = { "Das Panelfenster konnte nicht vollständig vorbereitet werden.\u000A\u000AFehlerdetails:\u000ADas rahmenlose Fenster konnte nicht eingerichtet werden." }
 
 # 桌面检查线程已退出，将重建检查线程
 ui-desktop-audit-thread-stopped-restarting = { "Desktop-Prüfthread beendet; Neustart" }
@@ -517,16 +517,16 @@ ui-retry-f5 = { "Erneut versuchen · F5" }
 ui-start-everything = { "Everything starten" }
 
 # 数据溢出
-ui-data-overflow = { "Datenüberlauf" }
+ui-data-overflow = { "Die Suchergebnisse von Everything können nicht gelesen werden: Die Daten überschreiten den unterstützten Bereich." }
 
 # Everything 返回的数据不完整
 ui-incomplete-data-from-everything = { "Unvollständige Daten von Everything" }
 
 # Everything 返回的结果格式不受支持
-ui-unsupported-everything-result-format = { "Everything-Ergebnisformat nicht unterstützt" }
+ui-unsupported-everything-result-format = { "Die Suchergebnisse von Everything können nicht gelesen werden: Format oder Anzahl der Ergebnisse sind ungültig." }
 
 # Everything 返回的偏移无效
-ui-invalid-offset-from-everything = { "Ungültiger Offset von Everything" }
+ui-invalid-offset-from-everything = { "Die Suchergebnisse von Everything können nicht gelesen werden: Die Dateipfaddaten sind ungültig." }
 
 # Everything 返回的路径过长
 ui-path-from-everything-is-too-long = { "Pfad von Everything zu lang" }
@@ -535,10 +535,10 @@ ui-path-from-everything-is-too-long = { "Pfad von Everything zu lang" }
 ui-incomplete-path-from-everything = { "Unvollständiger Pfad von Everything" }
 
 # Everything 返回的路径无效
-ui-invalid-path-from-everything = { "Ungültiger Pfad von Everything" }
+ui-invalid-path-from-everything = { "Die Suchergebnisse von Everything können nicht gelesen werden: Das Dateipfadformat ist ungültig." }
 
 # Everything 返回的路径不是绝对路径
-ui-everything-returned-a-relative-path = { "Everything lieferte einen relativen Pfad" }
+ui-everything-returned-a-relative-path = { "Dieses Suchergebnis kann nicht verwendet werden: Everything hat keinen vollständigen Dateipfad geliefert." }
 
 # 搜索内容过长或无效
 ui-search-query-is-too-long-or-invalid = { "Suchanfrage zu lang oder ungültig" }
@@ -558,7 +558,7 @@ ui-everything-not-found-select-everything-exe-in-settings = { "Everything nicht 
 # 无法启动 Everything：{e}
 ui-could-not-start-everything = { "Everything konnte nicht gestartet werden: " }{ $e }
 
-search-program-picker-failed = { "Fehler im Dateidialog zur Auswahl von Everything.\u000A\u000AFehlerdetails:\u000A" }{ $error }
+search-program-picker-failed = { "Die Auswahl des Everything-Programms konnte nicht abgeschlossen werden.\u000A\u000AFehler bei der Dateiauswahl:\u000A" }{ $error }
 
 # 请选择 Everything.exe
 ui-select-everything-exe = { "Everything.exe auswählen" }
@@ -567,16 +567,16 @@ ui-select-everything-exe = { "Everything.exe auswählen" }
 ui-use-ctrl-or-alt-with-a-letter-digit-space-or-function-key-avoid-exis = { "Ctrl oder Alt mit Buchstaben, Ziffern, Leertaste oder F-Tasten verwenden. Belegte Kürzel vermeiden." }
 
 # 搜索已关闭，全局快捷键未注册
-ui-search-is-disabled-global-shortcut-is-not-registered = { "Suche deaktiviert; globales Kürzel nicht registriert" }
+ui-search-is-disabled-global-shortcut-is-not-registered = { "Die Suche ist deaktiviert; das Tastenkürzel ist nicht verfügbar" }
 
 # 全局生效；Esc 取消录入
 ui-works-globally-esc-cancels-recording = { "Global gültig; Esc bricht Eingabe ab" }
 
 # {} 已被占用或无法注册，请更换快捷键
-ui-is-unavailable-choose-another-shortcut = { $arg0 }{ " ist nicht verfügbar. Anderes Kürzel wählen" }
+ui-is-unavailable-choose-another-shortcut = { $arg0 }{ " ist nicht verfügbar. Wählen Sie ein anderes Tastenkürzel" }
 
 # 搜索线程已停止，请重新打开面板。
-ui-search-thread-stopped-reopen-the-panel = { "Suchthread beendet. Panel erneut öffnen." }
+ui-search-thread-stopped-reopen-the-panel = { "Die Suche wurde angehalten. Öffnen Sie das Suchpanel erneut." }
 
 # 没有找到匹配的文件
 ui-no-matching-files-found = { "Keine passenden Dateien gefunden" }
@@ -1034,13 +1034,13 @@ ui-view-details = { "Details anzeigen" }
 ui-automatic-backups = { "Automatische Sicherung" }
 
 # 按设定间隔保存配置和布局。
-ui-save-settings-and-layouts-at-the-chosen-interval = { "Einstellungen und Layouts im gewählten Intervall sichern." }
+ui-save-settings-and-layouts-at-the-chosen-interval = { "Bei Konfigurationsänderungen automatisch sichern. Zwischen Versuchen liegt mindestens das eingestellte Intervall." }
 
 # 备份间隔
 ui-backup-interval = { "Sicherungsintervall" }
 
 # 自动备份的执行频率。
-ui-how-often-automatic-backups-run = { "Häufigkeit automatischer Sicherungen." }
+ui-how-often-automatic-backups-run = { "Mindestintervall zwischen automatischen Sicherungsversuchen festlegen." }
 
 # {} 分钟
 ui-minutes = { "Minuten: " }{ $arg0 }
@@ -1151,7 +1151,7 @@ ui-report-an-issue = { "Problem melden" }
 
 ui-changelog-url = { "https://github.com/Yuch3nE/luciddesk/blob/main/CHANGELOG.en.md" }
 
-font-fallback = Standard-Ersatzschrift
+font-fallback = { "Ersatzschriftart" }
 font-preview = Desktoppanels · Dateivorschau  ÄÖÜ 0123
 
 show-panels-hotkey = Alle Panels anzeigen
@@ -1269,7 +1269,7 @@ monitor-history = Letzte 60 Sekunden
 monitor-used = Belegt
 
 monitor-settings = Systemmonitor-Einstellungen
-monitor-settings-description = Monitor-Panels aktivieren und Messwerte und Geräte auswählen. Jedes Panel speichert eigene Einstellungen.
+monitor-settings-description = { "Anzuzeigende Messwerte und Geräte auswählen." }
 monitor-enable = Monitor-Panel aktivieren
 monitor-enable-description = Layout und Einstellungen bleiben beim Deaktivieren erhalten.
 

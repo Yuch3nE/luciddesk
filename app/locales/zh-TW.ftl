@@ -10,7 +10,7 @@ ui-missing-hook-dll-build-the-entire-workspace = { "缺少原生 Hook DLL " }{ $
 ui-invalid-configuration-path = { "設定路徑無效" }
 
 # 无法注册托盘恢复消息
-ui-could-not-register-tray-recovery-message = { "無法註冊系統匣恢復訊息" }
+ui-could-not-register-tray-recovery-message = { "無法完成系統匣圖示設定。\u000A\u000A錯誤詳細資料：\u000A無法接收 Windows 工作列重建通知。" }
 
 # LucidDesk · 桌面面板与文件整理
 ui-luciddesk-desktop-organization = { "LucidDesk · 桌面面板與檔案整理" }
@@ -19,7 +19,7 @@ ui-luciddesk-desktop-organization = { "LucidDesk · 桌面面板與檔案整理"
 ui-could-not-add-luciddesk-tray-icon = { "無法新增 LucidDesk 系統匣圖示" }
 
 # 无法初始化托盘交互
-ui-could-not-initialize-tray-interaction = { "無法初始化系統匣互動" }
+ui-could-not-initialize-tray-interaction = { "無法啟用 LucidDesk 系統匣圖示。\u000A\u000A錯誤詳細資料：\u000AWindows 未接受系統匣圖示的互動設定。" }
 
 # 显示面板
 ui-show-panels = { "顯示面板" }
@@ -37,10 +37,10 @@ ui-settings = { "設定" }
 ui-exit-luciddesk = { "結束 LucidDesk" }
 
 # 无法安排打开项目
-ui-could-not-schedule-opening-the-item = { "無法排程開啟項目" }
+ui-could-not-schedule-opening-the-item = { "未能開始開啟所選項目。" }
 
 # 面板已关闭
-ui-panel-closed = { "面板已關閉" }
+ui-panel-closed = { "此面板目前無法使用，無法繼續操作。" }
 
 # 此面板不是文件夹面板
 ui-this-is-not-a-folder-panel = { "此面板不是資料夾面板" }
@@ -49,15 +49,15 @@ ui-this-is-not-a-folder-panel = { "此面板不是資料夾面板" }
 ui-file-operation-failed = { "檔案操作失敗：" }{ $error }
 
 # 无法安排文件操作
-ui-could-not-schedule-file-operation = { "無法排程檔案操作" }
+ui-could-not-schedule-file-operation = { "未能開始此次檔案操作。" }
 
-rename-context-unavailable = { "重新命名所需的應用程式狀態已釋放。" }
+rename-context-unavailable = { "無法繼續重新命名。\u000A\u000A錯誤詳細資料：\u000A此次操作所需的應用程式狀態已無法使用。" }
 
 # Everything 搜索
 ui-everything-search = { "Everything 搜尋" }
 
 # 面板不存在
-ui-group-not-found = { "面板不存在" }
+ui-group-not-found = { "找不到此面板，無法繼續操作。" }
 
 # 无法读取文件夹，请检查路径或访问权限。\n{error}
 ui-cannot-read-folder-check-the-path-and-permissions-n = { "無法讀取資料夾，請檢查路徑或存取權限。\u000A" }{ $error }
@@ -69,7 +69,7 @@ ui-folder-inaccessible = { "資料夾無法存取" }
 ui-select-a-folder-to-display = { "選擇要對應的資料夾" }
 
 # 无法打开文件夹选择器
-ui-could-not-open-folder-picker = { "無法開啟資料夾選擇器" }
+ui-could-not-open-folder-picker = { "無法開啟資料夾選擇視窗。" }
 
 # 该字体未安装，或不支持所需的中英文字符
 ui-font-not-installed-or-missing-required-chinese-latin-glyphs = { "此字型未安裝，或不支援所需的中英文字元" }
@@ -80,7 +80,7 @@ ui-close-other-desktop-organizers-first = { "請先結束其他桌面整理軟�
 # 请先退出旧的全桌面接管版本，恢复桌面图标显示
 
 # 读取清单期间桌面视图已替换，将重新定位
-ui-desktop-view-changed-while-reading-reconnecting = { "讀取清單時桌面檢視已替換，將重新定位" }
+ui-desktop-view-changed-while-reading-reconnecting = { "桌面發生變化，本次連線未完成。" }
 
 # Explorer 视图过滤连接已断开
 ui-explorer-view-filter-disconnected = { "Explorer 檢視篩選連線已中斷" }
@@ -187,21 +187,21 @@ ui-group-menu = { "面板選單" }
 panel-or-tab-unavailable = { "找不到此面板或標籤頁。" }
 
 # 保存面板失败：{e}
-ui-could-not-save-group = { "儲存面板失敗：" }{ $e }
+ui-could-not-save-group = { "無法儲存面板設定和版面配置。\u000A\u000A錯誤詳細資料：\u000A" }{ $e }
 
 # 目标面板不可用
-ui-target-panel-unavailable = { "目標面板無法使用" }
+ui-target-panel-unavailable = { "找不到目標面板。" }
 
 # 选中项目已变化，请重新拖动
 ui-selection-changed-drag-again = { "所選項目已變更，請重新拖曳" }
 
-preview-program-picker-failed = { "選擇預覽程式的檔案對話方塊發生錯誤。\u000A\u000A錯誤詳細資訊：\u000A" }{ $error }
+preview-program-picker-failed = { "無法完成預覽程式的選擇。\u000A\u000A檔案選擇視窗錯誤：\u000A" }{ $error }
 
 # 请选择 {}
 ui-select = { "請選擇 " }{ $arg0 }
 
 # 无法检查 Peek 进程
-ui-could-not-inspect-peek-process = { "無法檢查 Peek 處理程序" }
+ui-could-not-inspect-peek-process = { "無法確認 PowerToys Peek 是否正在執行。" }
 
 # 无法启动 Peek：{e}
 ui-could-not-start-peek = { "無法啟動 Peek：" }{ $e }
@@ -224,7 +224,7 @@ ui-quicklook-started-but-its-preview-service-is-unavailable = { "QuickLook 啟�
 # 预览已取消
 ui-preview-canceled = { "預覽已取消" }
 
-configuration-directory-path-unavailable = { "無法確定設定資料夾的路徑。" }
+configuration-directory-path-unavailable = { "無法找到設定檔的儲存位置。" }
 
 # 自动
 ui-automatic = { "自動" }
@@ -238,7 +238,7 @@ ui-manual = { "手動" }
 # ；{failed} 份旧备份清理失败
 ui-old-backups-not-removed = { "；" }{ $failed }{ " 份舊備份清理失敗" }
 
-backup-runtime-state-missing = { "缺少應用程式執行狀態，無法執行備份管理工作。" }
+backup-runtime-state-missing = { "暫時無法管理備份。\u000A\u000A錯誤詳細資料：\u000A備份功能所需的應用程式狀態無法使用。" }
 
 # 备份任务正在进行，请稍候。
 ui-a-backup-task-is-running-please-wait = { "備份作業正在進行，請稍候。" }
@@ -249,7 +249,7 @@ ui-backup-task-ended-unexpectedly-try-again = { "備份作業意外結束，請�
 # 配置暂无变化，无需重复备份
 ui-configuration-unchanged-no-new-backup-needed = { "設定未變更，無須重複備份" }
 
-backup-task-failed = { "備份管理工作失敗：" }{ $error }
+backup-task-failed = { "備份相關操作失敗。\u000A\u000A錯誤詳細資料：\u000A" }{ $error }
 
 # 读取备份记录…
 ui-loading-backup-history = { "讀取備份記錄…" }
@@ -303,9 +303,9 @@ ui-restored-you-can-undo-this-restore = { "還原成功，可復原此次還原"
 ui-restore-failed-rolled-back = { "還原失敗，已復原：" }{ $error }
 
 # 恢复失败：{error}；回退失败：{e}。恢复前备份：{}
-ui-restore-failed-rollback-failed-previous-backup = { "還原失敗：" }{ $error }{ "；復原失敗：" }{ $e }{ "。還原前備份：" }{ $arg0 }
+ui-restore-failed-rollback-failed-previous-backup = { "還原失敗，也未能回復到還原前的設定。請保留以下備份檔案。\u000A\u000A還原錯誤：\u000A" }{ $error }{ "\u000A\u000A回復錯誤：\u000A" }{ $e }{ "\u000A\u000A還原前的備份：\u000A" }{ $arg0 }
 
-configuration-operation-failed = { "設定操作失敗：" }{ $e }
+configuration-operation-failed = { "此次設定或備份操作失敗。\u000A\u000A錯誤詳細資料：\u000A" }{ $e }
 
 # 正在校验备份…
 ui-validating-backup = { "正在驗證備份…" }
@@ -328,7 +328,7 @@ ui-deleting = { "正在刪除…" }
 # 备份已删除
 ui-backup-deleted = { "備份已刪除" }
 
-backup-export-path-reserved = { "無法匯出至目前資料庫路徑，或使用 workspace.db、config.toml 作為檔名。請選擇其他路徑或檔名。" }
+backup-export-path-reserved = { "無法儲存到此位置或使用此檔案名稱，請選擇其他位置或名稱。\u000A\u000A匯出限制：\u000A不能覆寫目前的資料庫，也不能使用 workspace.db 或 config.toml 作為檔案名稱。" }
 
 # 正在导出…
 ui-exporting = { "正在匯出…" }
@@ -337,19 +337,19 @@ ui-exporting = { "正在匯出…" }
 ui-exported = { "已匯出：" }{ $arg0 }
 
 # 无法读取桌面字体
-ui-could-not-read-desktop-font = { "無法讀取桌面字型" }
+ui-could-not-read-desktop-font = { "無法開啟重新命名輸入框。\u000A\u000A錯誤詳細資料：\u000A無法讀取 Windows 桌面字型設定。" }
 
 # 无法创建重命名字体
-ui-could-not-create-rename-font = { "無法建立重新命名字型" }
+ui-could-not-create-rename-font = { "無法開啟重新命名輸入框。\u000A\u000A錯誤詳細資料：\u000A無法建立輸入框所需的字型。" }
 
 # 无法创建图标名称编辑框
 ui-could-not-create-icon-name-editor = { "無法建立圖示名稱編輯框" }
 
 # 无法连接名称编辑框
-ui-could-not-attach-name-editor = { "無法連接名稱編輯框" }
+ui-could-not-attach-name-editor = { "無法啟用重新命名輸入框。\u000A\u000A錯誤詳細資料：\u000A輸入框的編輯狀態設定失敗。" }
 
 # 无法连接面板编辑状态
-ui-could-not-attach-group-editing-state = { "無法連接面板編輯狀態" }
+ui-could-not-attach-group-editing-state = { "無法在此面板中開始重新命名。\u000A\u000A錯誤詳細資料：\u000A輸入框與面板視窗關聯失敗。" }
 
 # 重命名失败
 ui-rename-failed = { "重新命名失敗" }
@@ -436,7 +436,7 @@ ui-export = { "匯出…" }
 ui-delete = { "刪除…" }
 
 # 无法初始化设置窗口边框
-ui-could-not-initialize-settings-window-frame = { "無法初始化設定視窗框線" }
+ui-could-not-initialize-settings-window-frame = { "無法完成設定視窗的準備。\u000A\u000A錯誤詳細資料：\u000A視窗邊框處理設定失敗。" }
 
 # 无法打开 Explorer 图标菜单：{error}
 ui-could-not-open-explorer-icon-menu = { "無法開啟 Explorer 圖示選單：" }{ $error }
@@ -452,7 +452,7 @@ ui-only-group-panels-support-tabs = { "僅一般面板支援分頁" }
 # 请先解锁面板
 ui-unlock-the-panel-first = { "請先解除鎖定面板" }
 
-tab-order-overflow = { "無法為新標籤頁分配排序編號：編號超出可用範圍。" }
+tab-id-overflow = { "無法新增標籤頁。\u000A\u000A錯誤詳細資料：\u000A無法分配新的標籤頁編號，編號已超出可用範圍。" }
 
 # 文件夹面板不支持标签，请新建独立文件夹面板
 ui-folder-panels-do-not-support-tabs-create-a-separate-panel = { "資料夾面板不支援分頁，請新增獨立資料夾面板" }
@@ -461,24 +461,24 @@ ui-folder-panels-do-not-support-tabs-create-a-separate-panel = { "資料夾面�
 ui-select-an-unlocked-group-panel = { "請選擇未鎖定的一般面板" }
 
 # 面板已关闭或活动标签已改变
-ui-panel-closed-or-active-tab-changed = { "面板已關閉或作用中分頁已變更" }
+ui-panel-closed-or-active-tab-changed = { "無法繼續合併面板。所選面板可能已關閉，或已切換到其他標籤頁。" }
 
-panel-merge-dispatch-failed = { "無法提交面板合併工作，此次合併未執行。" }
+panel-merge-dispatch-failed = { "未能開始合併面板。" }
 
 # ＋ {remaining} 个标签
 ui-tabs-a81a = { "＋ " }{ $remaining }{ " 個分頁" }
 
 # 无法注册面板运行时通知
-ui-could-not-register-panel-notifications = { "無法註冊面板執行階段通知" }
+ui-could-not-register-panel-notifications = { "無法完成應用程式準備。\u000A\u000A錯誤詳細資料：\u000A無法接收背景工作的完成通知。" }
 
 # 面板渲染失败：{error}
 ui-group-rendering-failed = { "面板繪製失敗：" }{ $error }
 
 # 菜单准备未完成
-ui-menu-is-not-ready = { "選單準備未完成" }
+ui-menu-is-not-ready = { "無法顯示此次選單，選單內容尚未準備好。" }
 
 # 无法初始化无边框面板窗口
-ui-could-not-initialize-borderless-group-window = { "無法初始化無框線面板視窗" }
+ui-could-not-initialize-borderless-group-window = { "無法完成面板視窗的準備。\u000A\u000A錯誤詳細資料：\u000A無邊框視窗設定失敗。" }
 
 # 桌面检查线程已退出，将重建检查线程
 ui-desktop-audit-thread-stopped-restarting = { "桌面檢查執行緒已結束，將重新建立" }
@@ -517,16 +517,16 @@ ui-retry-f5 = { "重試 · F5" }
 ui-start-everything = { "啟動 Everything" }
 
 # 数据溢出
-ui-data-overflow = { "資料溢位" }
+ui-data-overflow = { "無法讀取 Everything 的搜尋結果：資料超出可處理範圍。" }
 
 # Everything 返回的数据不完整
 ui-incomplete-data-from-everything = { "Everything 傳回的資料不完整" }
 
 # Everything 返回的结果格式不受支持
-ui-unsupported-everything-result-format = { "Everything 傳回的結果格式不受支援" }
+ui-unsupported-everything-result-format = { "無法讀取 Everything 的搜尋結果：格式或數量資訊有誤。" }
 
 # Everything 返回的偏移无效
-ui-invalid-offset-from-everything = { "Everything 傳回的位移無效" }
+ui-invalid-offset-from-everything = { "無法讀取 Everything 的搜尋結果：檔案路徑資料有誤。" }
 
 # Everything 返回的路径过长
 ui-path-from-everything-is-too-long = { "Everything 傳回的路徑過長" }
@@ -535,10 +535,10 @@ ui-path-from-everything-is-too-long = { "Everything 傳回的路徑過長" }
 ui-incomplete-path-from-everything = { "Everything 傳回的路徑不完整" }
 
 # Everything 返回的路径无效
-ui-invalid-path-from-everything = { "Everything 傳回的路徑無效" }
+ui-invalid-path-from-everything = { "無法讀取 Everything 的搜尋結果：檔案路徑格式有誤。" }
 
 # Everything 返回的路径不是绝对路径
-ui-everything-returned-a-relative-path = { "Everything 傳回的路徑不是絕對路徑" }
+ui-everything-returned-a-relative-path = { "無法使用此搜尋結果：Everything 未提供完整的檔案路徑。" }
 
 # 搜索内容过长或无效
 ui-search-query-is-too-long-or-invalid = { "搜尋內容過長或無效" }
@@ -558,7 +558,7 @@ ui-everything-not-found-select-everything-exe-in-settings = { "找不到 Everyth
 # 无法启动 Everything：{e}
 ui-could-not-start-everything = { "無法啟動 Everything：" }{ $e }
 
-search-program-picker-failed = { "選擇 Everything 程式的檔案對話方塊發生錯誤。\u000A\u000A錯誤詳細資訊：\u000A" }{ $error }
+search-program-picker-failed = { "無法完成 Everything 程式的選擇。\u000A\u000A檔案選擇視窗錯誤：\u000A" }{ $error }
 
 # 请选择 Everything.exe
 ui-select-everything-exe = { "請選擇 Everything.exe" }
@@ -567,16 +567,16 @@ ui-select-everything-exe = { "請選擇 Everything.exe" }
 ui-use-ctrl-or-alt-with-a-letter-digit-space-or-function-key-avoid-exis = { "請使用 Ctrl 或 Alt 搭配字母、數字、空白鍵或功能鍵，避開既有快速鍵。" }
 
 # 搜索已关闭，全局快捷键未注册
-ui-search-is-disabled-global-shortcut-is-not-registered = { "搜尋已關閉，全域快速鍵未註冊" }
+ui-search-is-disabled-global-shortcut-is-not-registered = { "搜尋已關閉，快捷鍵暫時無法使用" }
 
 # 全局生效；Esc 取消录入
 ui-works-globally-esc-cancels-recording = { "全域生效；Esc 取消輸入" }
 
 # {} 已被占用或无法注册，请更换快捷键
-ui-is-unavailable-choose-another-shortcut = { $arg0 }{ " 已被使用或無法註冊，請變更快速鍵" }
+ui-is-unavailable-choose-another-shortcut = { "無法使用 " }{ $arg0 }{ "，請選擇其他快捷鍵" }
 
 # 搜索线程已停止，请重新打开面板。
-ui-search-thread-stopped-reopen-the-panel = { "搜尋執行緒已停止，請重新開啟面板。" }
+ui-search-thread-stopped-reopen-the-panel = { "搜尋已停止，請重新開啟搜尋面板。" }
 
 # 没有找到匹配的文件
 ui-no-matching-files-found = { "找不到符合的檔案" }
@@ -1034,13 +1034,13 @@ ui-view-details = { "檢視詳細資料" }
 ui-automatic-backups = { "自動備份" }
 
 # 按设定间隔保存配置和布局。
-ui-save-settings-and-layouts-at-the-chosen-interval = { "依設定間隔儲存設定及配置。" }
+ui-save-settings-and-layouts-at-the-chosen-interval = { "設定有變更時自動備份，兩次嘗試之間至少間隔設定時長。" }
 
 # 备份间隔
 ui-backup-interval = { "備份間隔" }
 
 # 自动备份的执行频率。
-ui-how-often-automatic-backups-run = { "自動備份的執行頻率。" }
+ui-how-often-automatic-backups-run = { "設定兩次自動備份嘗試的最短間隔。" }
 
 # {} 分钟
 ui-minutes = { $arg0 }{ " 分鐘" }
@@ -1151,7 +1151,7 @@ ui-report-an-issue = { "問題回報" }
 
 ui-changelog-url = { "https://github.com/Yuch3nE/luciddesk/blob/main/CHANGELOG.md" }
 
-font-fallback = 預設後備字型
+font-fallback = { "備用字型" }
 font-preview = 桌面面板 · 檔案預覽  Aa 0123
 
 show-panels-hotkey = 顯示所有面板
@@ -1269,7 +1269,7 @@ monitor-history = 最近 60 秒
 monitor-used = 已用
 
 monitor-settings = 系統監控設定
-monitor-settings-description = 在此啟用監控面板，選擇顯示指標和裝置；每個面板獨立儲存設定。
+monitor-settings-description = { "選擇要顯示的監控指標和裝置。" }
 monitor-enable = 啟用監控面板
 monitor-enable-description = 關閉後保留版面與設定，再次開啟即可恢復。
 

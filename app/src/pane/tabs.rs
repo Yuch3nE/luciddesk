@@ -175,7 +175,7 @@ pub(super) fn add(
                 .max()
                 .unwrap_or(0)
                 .checked_add(1)
-                .ok_or(crate::i18n::text("tab-order-overflow"))?,
+                .ok_or(crate::i18n::text("tab-id-overflow"))?,
         );
         let title = folder
             .as_ref()
@@ -788,6 +788,23 @@ pub(super) fn adjacent(model: &GroupModel, step: i8) -> Option<PanelId> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn exhausted_tab_ids_report_the_identifier_error_without_mutation() {
+        let state = Rc::new(RefCell::new(super::super::tests::test_state()));
+        state.borrow_mut().workspace.add_panel(Panel::new(
+            PanelId::new(u64::MAX), "Last ID", RectDip::default(),
+        )).unwrap();
+        let before = state.borrow().workspace.clone();
+        for locale in 0..7 {
+            crate::i18n::with_locale(locale, || {
+                let expected = crate::i18n::text("tab-id-overflow");
+                assert_ne!(expected, "tab-id-overflow");
+                assert_eq!(add(&state, PanelId::new(1), None).unwrap_err(), expected);
+                assert_eq!(state.borrow().workspace, before);
+            });
+        }
+    }
 
     #[test]
     fn tabs_share_one_window_keep_selection_and_release_only_closed_membership() {

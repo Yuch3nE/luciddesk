@@ -10,7 +10,7 @@ ui-missing-hook-dll-build-the-entire-workspace = { "Hook DLL " }{ $arg0 }{ " が
 ui-invalid-configuration-path = { "設定のパスが無効です" }
 
 # 无法注册托盘恢复消息
-ui-could-not-register-tray-recovery-message = { "トレイ復元メッセージを登録できません" }
+ui-could-not-register-tray-recovery-message = { "通知領域アイコンの設定を完了できません。\u000A\u000Aエラーの詳細：\u000AWindows タスクバーの再作成通知を受信できません。" }
 
 # LucidDesk · 桌面面板与文件整理
 ui-luciddesk-desktop-organization = { "LucidDesk · デスクトップ整理" }
@@ -19,7 +19,7 @@ ui-luciddesk-desktop-organization = { "LucidDesk · デスクトップ整理" }
 ui-could-not-add-luciddesk-tray-icon = { "LucidDesk のトレイアイコンを追加できません" }
 
 # 无法初始化托盘交互
-ui-could-not-initialize-tray-interaction = { "トレイ操作を初期化できません" }
+ui-could-not-initialize-tray-interaction = { "LucidDesk の通知領域アイコンを有効にできません。\u000A\u000Aエラーの詳細：\u000AWindows が通知領域アイコンの操作設定を受け付けませんでした。" }
 
 # 显示面板
 ui-show-panels = { "パネルを表示" }
@@ -37,10 +37,10 @@ ui-settings = { "設定" }
 ui-exit-luciddesk = { "LucidDesk を終了" }
 
 # 无法安排打开项目
-ui-could-not-schedule-opening-the-item = { "項目を開く処理を予約できません" }
+ui-could-not-schedule-opening-the-item = { "選択した項目を開く処理を開始できません。" }
 
 # 面板已关闭
-ui-panel-closed = { "パネルは閉じられました" }
+ui-panel-closed = { "このパネルは現在利用できないため、操作を続行できません。" }
 
 # 此面板不是文件夹面板
 ui-this-is-not-a-folder-panel = { "フォルダーパネルではありません" }
@@ -49,15 +49,15 @@ ui-this-is-not-a-folder-panel = { "フォルダーパネルではありません
 ui-file-operation-failed = { "ファイル操作に失敗しました：" }{ $error }
 
 # 无法安排文件操作
-ui-could-not-schedule-file-operation = { "ファイル操作を予約できません" }
+ui-could-not-schedule-file-operation = { "今回のファイル操作を開始できません。" }
 
-rename-context-unavailable = { "名前の変更に必要なアプリの状態が解放されています。" }
+rename-context-unavailable = { "名前の変更を続行できません。\u000A\u000Aエラーの詳細：\u000Aこの操作に必要なアプリの状態を取得できなくなりました。" }
 
 # Everything 搜索
 ui-everything-search = { "Everything 検索" }
 
 # 面板不存在
-ui-group-not-found = { "パネルがありません" }
+ui-group-not-found = { "このパネルが見つからないため、操作を続行できません。" }
 
 # 无法读取文件夹，请检查路径或访问权限。\n{error}
 ui-cannot-read-folder-check-the-path-and-permissions-n = { "フォルダーを読み込めません。パスと権限を確認してください。\u000A" }{ $error }
@@ -69,7 +69,7 @@ ui-folder-inaccessible = { "フォルダーにアクセスできません" }
 ui-select-a-folder-to-display = { "表示するフォルダーを選択" }
 
 # 无法打开文件夹选择器
-ui-could-not-open-folder-picker = { "フォルダー選択を開けません" }
+ui-could-not-open-folder-picker = { "フォルダー選択ウィンドウを開けません。" }
 
 # 该字体未安装，或不支持所需的中英文字符
 ui-font-not-installed-or-missing-required-chinese-latin-glyphs = { "フォントが未インストールか、必要な中国語・ラテン文字に非対応です" }
@@ -80,7 +80,7 @@ ui-close-other-desktop-organizers-first = { "他のデスクトップ整理ソ�
 # 请先退出旧的全桌面接管版本，恢复桌面图标显示
 
 # 读取清单期间桌面视图已替换，将重新定位
-ui-desktop-view-changed-while-reading-reconnecting = { "読み込み中にデスクトップ表示が変わりました。再接続します" }
+ui-desktop-view-changed-while-reading-reconnecting = { "デスクトップの状態が変わったため、接続を完了できませんでした。" }
 
 # Explorer 视图过滤连接已断开
 ui-explorer-view-filter-disconnected = { "Explorer の表示フィルターが切断されました" }
@@ -187,21 +187,21 @@ ui-group-menu = { "パネルメニュー" }
 panel-or-tab-unavailable = { "パネルまたはタブが見つかりません。" }
 
 # 保存面板失败：{e}
-ui-could-not-save-group = { "パネルを保存できません：" }{ $e }
+ui-could-not-save-group = { "パネルの設定とレイアウトを保存できません。\u000A\u000Aエラーの詳細：\u000A" }{ $e }
 
 # 目标面板不可用
-ui-target-panel-unavailable = { "移動先のパネルを利用できません" }
+ui-target-panel-unavailable = { "対象のパネルが見つかりません。" }
 
 # 选中项目已变化，请重新拖动
 ui-selection-changed-drag-again = { "選択内容が変わりました。再度ドラッグしてください。" }
 
-preview-program-picker-failed = { "プレビューアプリ選択ダイアログでエラーが発生しました。\u000A\u000A詳細：\u000A" }{ $error }
+preview-program-picker-failed = { "プレビュープログラムの選択を完了できません。\u000A\u000Aファイル選択ウィンドウのエラー：\u000A" }{ $error }
 
 # 请选择 {}
 ui-select = { $arg0 }{ " を選択してください" }
 
 # 无法检查 Peek 进程
-ui-could-not-inspect-peek-process = { "Peek プロセスを確認できません" }
+ui-could-not-inspect-peek-process = { "PowerToys Peek が実行中かどうか確認できません。" }
 
 # 无法启动 Peek：{e}
 ui-could-not-start-peek = { "Peek を起動できません：" }{ $e }
@@ -224,7 +224,7 @@ ui-quicklook-started-but-its-preview-service-is-unavailable = { "QuickLook の�
 # 预览已取消
 ui-preview-canceled = { "プレビューをキャンセルしました" }
 
-configuration-directory-path-unavailable = { "設定フォルダーのパスを特定できません。" }
+configuration-directory-path-unavailable = { "設定ファイルの保存先を確認できません。" }
 
 # 自动
 ui-automatic = { "自動" }
@@ -238,7 +238,7 @@ ui-manual = { "手動" }
 # ；{failed} 份旧备份清理失败
 ui-old-backups-not-removed = { "；削除できなかった古いバックアップ：" }{ $failed }
 
-backup-runtime-state-missing = { "アプリの実行状態がないため、バックアップ管理処理を実行できません。" }
+backup-runtime-state-missing = { "現在、バックアップを管理できません。\u000A\u000Aエラーの詳細：\u000Aバックアップ機能に必要なアプリの状態を取得できません。" }
 
 # 备份任务正在进行，请稍候。
 ui-a-backup-task-is-running-please-wait = { "バックアップ処理中です。お待ちください。" }
@@ -249,7 +249,7 @@ ui-backup-task-ended-unexpectedly-try-again = { "バックアップが予期せ�
 # 配置暂无变化，无需重复备份
 ui-configuration-unchanged-no-new-backup-needed = { "設定に変更はありません。新しいバックアップは不要です" }
 
-backup-task-failed = { "バックアップ管理処理に失敗しました：" }{ $error }
+backup-task-failed = { "バックアップに関する操作に失敗しました。\u000A\u000Aエラーの詳細：\u000A" }{ $error }
 
 # 读取备份记录…
 ui-loading-backup-history = { "バックアップ履歴を読み込み中…" }
@@ -303,9 +303,9 @@ ui-restored-you-can-undo-this-restore = { "復元しました。元に戻せま�
 ui-restore-failed-rolled-back = { "復元に失敗し、元に戻しました：" }{ $error }
 
 # 恢复失败：{error}；回退失败：{e}。恢复前备份：{}
-ui-restore-failed-rollback-failed-previous-backup = { "復元失敗：" }{ $error }{ "；ロールバック失敗：" }{ $e }{ "。復元前のバックアップ：" }{ $arg0 }
+ui-restore-failed-rollback-failed-previous-backup = { "復元に失敗し、復元前の設定にも戻せませんでした。以下のバックアップファイルを保管してください。\u000A\u000A復元のエラー：\u000A" }{ $error }{ "\u000A\u000A元に戻す際のエラー：\u000A" }{ $e }{ "\u000A\u000A復元前のバックアップ：\u000A" }{ $arg0 }
 
-configuration-operation-failed = { "設定操作に失敗しました：" }{ $e }
+configuration-operation-failed = { "今回の設定またはバックアップの操作に失敗しました。\u000A\u000Aエラーの詳細：\u000A" }{ $e }
 
 # 正在校验备份…
 ui-validating-backup = { "バックアップを検証中…" }
@@ -328,7 +328,7 @@ ui-deleting = { "削除中…" }
 # 备份已删除
 ui-backup-deleted = { "バックアップを削除しました" }
 
-backup-export-path-reserved = { "現在のデータベースパス、および workspace.db、config.toml というファイル名にはエクスポートできません。別のパスまたは名前を選択してください。" }
+backup-export-path-reserved = { "この場所またはファイル名では保存できません。別の場所または名前を選択してください。\u000A\u000Aエクスポートの制限：\u000A現在のデータベースは上書きできません。また、ファイル名に workspace.db または config.toml は使用できません。" }
 
 # 正在导出…
 ui-exporting = { "エクスポート中…" }
@@ -337,19 +337,19 @@ ui-exporting = { "エクスポート中…" }
 ui-exported = { "エクスポート先：" }{ $arg0 }
 
 # 无法读取桌面字体
-ui-could-not-read-desktop-font = { "デスクトップのフォントを取得できません" }
+ui-could-not-read-desktop-font = { "名前変更の入力欄を開けません。\u000A\u000Aエラーの詳細：\u000AWindows デスクトップのフォント設定を読み取れません。" }
 
 # 无法创建重命名字体
-ui-could-not-create-rename-font = { "名前変更用のフォントを作成できません" }
+ui-could-not-create-rename-font = { "名前変更の入力欄を開けません。\u000A\u000Aエラーの詳細：\u000A入力欄に必要なフォントを作成できません。" }
 
 # 无法创建图标名称编辑框
 ui-could-not-create-icon-name-editor = { "アイコン名の編集欄を作成できません" }
 
 # 无法连接名称编辑框
-ui-could-not-attach-name-editor = { "名前編集欄に接続できません" }
+ui-could-not-attach-name-editor = { "名前変更の入力欄を有効にできません。\u000A\u000Aエラーの詳細：\u000A入力欄の編集状態を設定できません。" }
 
 # 无法连接面板编辑状态
-ui-could-not-attach-group-editing-state = { "パネル編集状態に接続できません" }
+ui-could-not-attach-group-editing-state = { "このパネルで名前の変更を開始できません。\u000A\u000Aエラーの詳細：\u000A入力欄をパネルウィンドウに関連付けられません。" }
 
 # 重命名失败
 ui-rename-failed = { "名前の変更に失敗しました" }
@@ -436,7 +436,7 @@ ui-export = { "エクスポート…" }
 ui-delete = { "削除…" }
 
 # 无法初始化设置窗口边框
-ui-could-not-initialize-settings-window-frame = { "設定ウィンドウの枠を初期化できません" }
+ui-could-not-initialize-settings-window-frame = { "設定ウィンドウの準備を完了できません。\u000A\u000Aエラーの詳細：\u000Aウィンドウ枠の処理を設定できません。" }
 
 # 无法打开 Explorer 图标菜单：{error}
 ui-could-not-open-explorer-icon-menu = { "Explorer のアイコンメニューを開けません：" }{ $error }
@@ -452,7 +452,7 @@ ui-only-group-panels-support-tabs = { "デスクトップパネルのみタブ�
 # 请先解锁面板
 ui-unlock-the-panel-first = { "先にパネルの固定を解除してください" }
 
-tab-order-overflow = { "新しいタブの並び順番号を割り当てられません。番号が範囲を超えています。" }
+tab-id-overflow = { "新しいタブを追加できません。\u000A\u000Aエラーの詳細：\u000A新しいタブの識別番号を割り当てられません。番号が使用可能な範囲を超えています。" }
 
 # 文件夹面板不支持标签，请新建独立文件夹面板
 ui-folder-panels-do-not-support-tabs-create-a-separate-panel = { "フォルダーパネルはタブに非対応です。独立したパネルを作成してください" }
@@ -461,24 +461,24 @@ ui-folder-panels-do-not-support-tabs-create-a-separate-panel = { "フォルダ�
 ui-select-an-unlocked-group-panel = { "固定されていないデスクトップパネルを選択してください" }
 
 # 面板已关闭或活动标签已改变
-ui-panel-closed-or-active-tab-changed = { "パネルが閉じられたか、アクティブタブが変わりました" }
+ui-panel-closed-or-active-tab-changed = { "パネルの結合を続行できません。選択したパネルが閉じられたか、別のタブに切り替わった可能性があります。" }
 
-panel-merge-dispatch-failed = { "パネル結合処理を開始できませんでした。結合は行われていません。" }
+panel-merge-dispatch-failed = { "パネルの結合を開始できません。" }
 
 # ＋ {remaining} 个标签
 ui-tabs-a81a = { "＋ " }{ $remaining }{ " タブ" }
 
 # 无法注册面板运行时通知
-ui-could-not-register-panel-notifications = { "パネル通知を登録できません" }
+ui-could-not-register-panel-notifications = { "アプリの準備を完了できません。\u000A\u000Aエラーの詳細：\u000Aバックグラウンドタスクの完了通知を受信できません。" }
 
 # 面板渲染失败：{error}
 ui-group-rendering-failed = { "パネルの描画に失敗しました：" }{ $error }
 
 # 菜单准备未完成
-ui-menu-is-not-ready = { "メニューの準備ができていません" }
+ui-menu-is-not-ready = { "メニューの内容がまだ準備できていないため、表示できません。" }
 
 # 无法初始化无边框面板窗口
-ui-could-not-initialize-borderless-group-window = { "枠なしパネルウィンドウを初期化できません" }
+ui-could-not-initialize-borderless-group-window = { "パネルウィンドウの準備を完了できません。\u000A\u000Aエラーの詳細：\u000A枠なしウィンドウを設定できません。" }
 
 # 桌面检查线程已退出，将重建检查线程
 ui-desktop-audit-thread-stopped-restarting = { "デスクトップ確認スレッドが終了しました。再起動します" }
@@ -517,16 +517,16 @@ ui-retry-f5 = { "再試行 · F5" }
 ui-start-everything = { "Everything を起動" }
 
 # 数据溢出
-ui-data-overflow = { "データのオーバーフロー" }
+ui-data-overflow = { "Everything の検索結果を読み取れません。データが処理可能な範囲を超えています。" }
 
 # Everything 返回的数据不完整
 ui-incomplete-data-from-everything = { "Everything のデータが不完全です" }
 
 # Everything 返回的结果格式不受支持
-ui-unsupported-everything-result-format = { "Everything の結果形式に対応していません" }
+ui-unsupported-everything-result-format = { "Everything の検索結果を読み取れません。形式または件数の情報に誤りがあります。" }
 
 # Everything 返回的偏移无效
-ui-invalid-offset-from-everything = { "Everything のオフセットが無効です" }
+ui-invalid-offset-from-everything = { "Everything の検索結果を読み取れません。ファイルパスのデータに誤りがあります。" }
 
 # Everything 返回的路径过长
 ui-path-from-everything-is-too-long = { "Everything のパスが長すぎます" }
@@ -535,10 +535,10 @@ ui-path-from-everything-is-too-long = { "Everything のパスが長すぎます"
 ui-incomplete-path-from-everything = { "Everything のパスが不完全です" }
 
 # Everything 返回的路径无效
-ui-invalid-path-from-everything = { "Everything のパスが無効です" }
+ui-invalid-path-from-everything = { "Everything の検索結果を読み取れません。ファイルパスの形式に誤りがあります。" }
 
 # Everything 返回的路径不是绝对路径
-ui-everything-returned-a-relative-path = { "Everything が相対パスを返しました" }
+ui-everything-returned-a-relative-path = { "この検索結果は使用できません。Everything が完全なファイルパスを返しませんでした。" }
 
 # 搜索内容过长或无效
 ui-search-query-is-too-long-or-invalid = { "検索語が長すぎるか無効です" }
@@ -558,7 +558,7 @@ ui-everything-not-found-select-everything-exe-in-settings = { "Everything があ
 # 无法启动 Everything：{e}
 ui-could-not-start-everything = { "Everything を起動できません：" }{ $e }
 
-search-program-picker-failed = { "Everything 選択ダイアログでエラーが発生しました。\u000A\u000A詳細：\u000A" }{ $error }
+search-program-picker-failed = { "Everything プログラムの選択を完了できません。\u000A\u000Aファイル選択ウィンドウのエラー：\u000A" }{ $error }
 
 # 请选择 Everything.exe
 ui-select-everything-exe = { "Everything.exe を選択してください" }
@@ -567,16 +567,16 @@ ui-select-everything-exe = { "Everything.exe を選択してください" }
 ui-use-ctrl-or-alt-with-a-letter-digit-space-or-function-key-avoid-exis = { "Ctrl または Alt と英数字、スペース、F キーを使い、既存のショートカットを避けてください。" }
 
 # 搜索已关闭，全局快捷键未注册
-ui-search-is-disabled-global-shortcut-is-not-registered = { "検索は無効です。グローバルショートカットは未登録です" }
+ui-search-is-disabled-global-shortcut-is-not-registered = { "検索はオフになっています。ショートカットは利用できません" }
 
 # 全局生效；Esc 取消录入
 ui-works-globally-esc-cancels-recording = { "全体で有効。Esc で入力をキャンセル" }
 
 # {} 已被占用或无法注册，请更换快捷键
-ui-is-unavailable-choose-another-shortcut = { $arg0 }{ " は使用できません。別のキーを選択してください" }
+ui-is-unavailable-choose-another-shortcut = { $arg0 }{ " は使用できません。別のショートカットを選択してください" }
 
 # 搜索线程已停止，请重新打开面板。
-ui-search-thread-stopped-reopen-the-panel = { "検索スレッドが停止しました。パネルを開き直してください。" }
+ui-search-thread-stopped-reopen-the-panel = { "検索が停止しました。検索パネルを開き直してください。" }
 
 # 没有找到匹配的文件
 ui-no-matching-files-found = { "一致するファイルが見つかりません" }
@@ -1034,13 +1034,13 @@ ui-view-details = { "詳細を表示" }
 ui-automatic-backups = { "自動バックアップ" }
 
 # 按设定间隔保存配置和布局。
-ui-save-settings-and-layouts-at-the-chosen-interval = { "指定した間隔で設定と配置を保存します。" }
+ui-save-settings-and-layouts-at-the-chosen-interval = { "設定が変更された場合に自動バックアップします。次の試行まで、設定した間隔以上の時間を空けます。" }
 
 # 备份间隔
 ui-backup-interval = { "バックアップ間隔" }
 
 # 自动备份的执行频率。
-ui-how-often-automatic-backups-run = { "自動バックアップの実行間隔です。" }
+ui-how-often-automatic-backups-run = { "自動バックアップの試行間隔の最小値を設定します。" }
 
 # {} 分钟
 ui-minutes = { $arg0 }{ " 分" }
@@ -1151,7 +1151,7 @@ ui-report-an-issue = { "問題を報告" }
 
 ui-changelog-url = { "https://github.com/Yuch3nE/luciddesk/blob/main/CHANGELOG.en.md" }
 
-font-fallback = 既定の代替フォント
+font-fallback = { "代替フォント" }
 font-preview = デスクトップ · ファイル  Aa 0123
 
 show-panels-hotkey = すべてのパネルを表示
@@ -1269,7 +1269,7 @@ monitor-history = 直近 60 秒
 monitor-used = 使用済み
 
 monitor-settings = システムモニター設定
-monitor-settings-description = モニターパネルを有効にし、指標とデバイスを選択します。設定はパネルごとに保存されます。
+monitor-settings-description = { "表示する監視項目とデバイスを選択します。" }
 monitor-enable = モニターパネルを有効にする
 monitor-enable-description = 無効にしてもレイアウトと設定は保持されます。
 

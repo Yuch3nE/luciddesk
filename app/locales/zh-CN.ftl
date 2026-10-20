@@ -10,7 +10,7 @@ ui-missing-hook-dll-build-the-entire-workspace = { "缺少原生 Hook DLL " }{ $
 ui-invalid-configuration-path = { "配置路径无效" }
 
 # 无法注册托盘恢复消息
-ui-could-not-register-tray-recovery-message = { "无法注册 Windows 任务栏重建通知，托盘初始化未完成。" }
+ui-could-not-register-tray-recovery-message = { "无法完成托盘图标设置。\u000A\u000A错误详情：\u000A无法接收 Windows 任务栏重建通知。" }
 
 # LucidDesk · 桌面面板与文件整理
 ui-luciddesk-desktop-organization = { "LucidDesk · 桌面面板与文件整理" }
@@ -19,7 +19,7 @@ ui-luciddesk-desktop-organization = { "LucidDesk · 桌面面板与文件整理"
 ui-could-not-add-luciddesk-tray-icon = { "无法向 Windows 任务栏添加 LucidDesk 托盘图标。" }
 
 # 无法初始化托盘交互
-ui-could-not-initialize-tray-interaction = { "无法设置托盘图标的交互方式，托盘初始化未完成。" }
+ui-could-not-initialize-tray-interaction = { "无法启用 LucidDesk 托盘图标。\u000A\u000A错误详情：\u000AWindows 未接受托盘图标的交互设置。" }
 
 # 显示面板
 ui-show-panels = { "显示所有面板" }
@@ -37,10 +37,10 @@ ui-settings = { "设置" }
 ui-exit-luciddesk = { "退出 LucidDesk" }
 
 # 无法安排打开项目
-ui-could-not-schedule-opening-the-item = { "未能提交打开项目的任务，此次打开操作未执行。" }
+ui-could-not-schedule-opening-the-item = { "未能开始打开所选项目。" }
 
 # 面板已关闭
-ui-panel-closed = { "找不到此面板或其窗口，无法继续操作。" }
+ui-panel-closed = { "此面板当前不可用，无法继续操作。" }
 
 # 此面板不是文件夹面板
 ui-this-is-not-a-folder-panel = { "此面板不是文件夹面板" }
@@ -49,15 +49,15 @@ ui-this-is-not-a-folder-panel = { "此面板不是文件夹面板" }
 ui-file-operation-failed = { "未能完成文件操作。\u000A\u000A错误详情：\u000A" }{ $error }
 
 # 无法安排文件操作
-ui-could-not-schedule-file-operation = { "未能提交文件操作任务，此次操作未执行。" }
+ui-could-not-schedule-file-operation = { "未能开始此次文件操作。" }
 
-rename-context-unavailable = { "重命名所需的应用状态已释放，无法继续操作。" }
+rename-context-unavailable = { "无法继续重命名。\u000A\u000A错误详情：\u000A此次操作所需的应用状态已不可用。" }
 
 # Everything 搜索
 ui-everything-search = { "Everything 搜索" }
 
 # 面板不存在
-ui-group-not-found = { "当前工作区中找不到此面板，无法继续操作。" }
+ui-group-not-found = { "找不到此面板，无法继续操作。" }
 
 # 无法读取文件夹，请检查路径或访问权限。\n{error}
 ui-cannot-read-folder-check-the-path-and-permissions-n = { "无法读取此文件夹的内容。\u000A\u000A错误详情：\u000A" }{ $error }
@@ -69,7 +69,7 @@ ui-folder-inaccessible = { "文件夹不可访问" }
 ui-select-a-folder-to-display = { "选择要显示的文件夹" }
 
 # 无法打开文件夹选择器
-ui-could-not-open-folder-picker = { "未能提交文件夹选择任务，选择窗口未打开。" }
+ui-could-not-open-folder-picker = { "无法打开文件夹选择窗口。" }
 
 # 该字体未安装，或不支持所需的中英文字符
 ui-font-not-installed-or-missing-required-chinese-latin-glyphs = { "该字体未安装，或不支持所需的中英文字符" }
@@ -80,7 +80,7 @@ ui-close-other-desktop-organizers-first = { "请先退出其他桌面整理软�
 # 请先退出旧的全桌面接管版本，恢复桌面图标显示
 
 # 读取清单期间桌面视图已替换，将重新定位
-ui-desktop-view-changed-while-reading-reconnecting = { "读取桌面项目期间，Windows 桌面视图已被替换，本次连接未完成。" }
+ui-desktop-view-changed-while-reading-reconnecting = { "桌面发生变化，本次连接未完成。" }
 
 # Explorer 视图过滤连接已断开
 ui-explorer-view-filter-disconnected = { "与 Windows 资源管理器的桌面连接已断开。" }
@@ -187,21 +187,21 @@ ui-group-menu = { "面板菜单" }
 panel-or-tab-unavailable = { "找不到此面板或标签页，无法继续操作。" }
 
 # 保存面板失败：{e}
-ui-could-not-save-group = { "无法保存工作区中的面板数据。\u000A\u000A错误详情：\u000A" }{ $e }
+ui-could-not-save-group = { "无法保存面板设置和布局。\u000A\u000A错误详情：\u000A" }{ $e }
 
 # 目标面板不可用
-ui-target-panel-unavailable = { "当前工作区中找不到目标面板。" }
+ui-target-panel-unavailable = { "找不到目标面板。" }
 
 # 选中项目已变化，请重新拖动
 ui-selection-changed-drag-again = { "选中项目已变化，请重新拖动" }
 
-preview-program-picker-failed = { "选择预览程序的文件对话框发生错误。\u000A\u000A错误详情：\u000A" }{ $error }
+preview-program-picker-failed = { "无法完成预览程序的选择。\u000A\u000A文件选择窗口错误：\u000A" }{ $error }
 
 # 请选择 {}
 ui-select = { "请选择 " }{ $arg0 }
 
 # 无法检查 Peek 进程
-ui-could-not-inspect-peek-process = { "无法读取进程列表，不能确认 PowerToys Peek 的运行状态。" }
+ui-could-not-inspect-peek-process = { "无法确认 PowerToys Peek 是否正在运行。" }
 
 # 无法启动 Peek：{e}
 ui-could-not-start-peek = { "无法启动 PowerToys Peek。\u000A\u000A错误详情：\u000A" }{ $e }
@@ -224,7 +224,7 @@ ui-quicklook-started-but-its-preview-service-is-unavailable = { "已启动 Quick
 # 预览已取消
 ui-preview-canceled = { "预览已取消" }
 
-configuration-directory-path-unavailable = { "无法确定配置文件夹的路径。" }
+configuration-directory-path-unavailable = { "无法找到配置文件的保存位置。" }
 
 # 自动
 ui-automatic = { "自动" }
@@ -238,7 +238,7 @@ ui-manual = { "手动" }
 # ；{failed} 份旧备份清理失败
 ui-old-backups-not-removed = { "；" }{ $failed }{ " 份旧备份清理失败" }
 
-backup-runtime-state-missing = { "缺少应用运行状态，无法执行备份管理任务。" }
+backup-runtime-state-missing = { "暂时无法管理备份。\u000A\u000A错误详情：\u000A备份功能所需的应用状态不可用。" }
 
 # 备份任务正在进行，请稍候。
 ui-a-backup-task-is-running-please-wait = { "备份任务正在进行，请稍候。" }
@@ -249,7 +249,7 @@ ui-backup-task-ended-unexpectedly-try-again = { "备份任务意外结束，请�
 # 配置暂无变化，无需重复备份
 ui-configuration-unchanged-no-new-backup-needed = { "配置未变化，无需重复备份" }
 
-backup-task-failed = { "备份管理任务失败：" }{ $error }
+backup-task-failed = { "备份相关操作失败。\u000A\u000A错误详情：\u000A" }{ $error }
 
 # 读取备份记录…
 ui-loading-backup-history = { "正在读取备份记录…" }
@@ -303,9 +303,9 @@ ui-restored-you-can-undo-this-restore = { "恢复成功，可撤销本次恢复"
 ui-restore-failed-rolled-back = { "恢复失败，已还原为恢复前的配置。\u000A\u000A错误详情：\u000A" }{ $error }
 
 # 恢复失败：{error}；回退失败：{e}。恢复前备份：{}
-ui-restore-failed-rollback-failed-previous-backup = { "恢复失败，自动回退也未完成。请保留恢复前的备份，以便再次恢复。\u000A\u000A恢复错误：\u000A" }{ $error }{ "\u000A\u000A回退错误：\u000A" }{ $e }{ "\u000A\u000A恢复前的备份：\u000A" }{ $arg0 }
+ui-restore-failed-rollback-failed-previous-backup = { "恢复失败，也未能还原到恢复前的配置。请保留下面的备份文件。\u000A\u000A恢复错误：\u000A" }{ $error }{ "\u000A\u000A还原错误：\u000A" }{ $e }{ "\u000A\u000A恢复前的备份：\u000A" }{ $arg0 }
 
-configuration-operation-failed = { "配置操作失败：" }{ $e }
+configuration-operation-failed = { "此次设置或备份操作失败。\u000A\u000A错误详情：\u000A" }{ $e }
 
 # 正在校验备份…
 ui-validating-backup = { "正在校验备份…" }
@@ -328,7 +328,7 @@ ui-deleting = { "正在删除…" }
 # 备份已删除
 ui-backup-deleted = { "备份已删除" }
 
-backup-export-path-reserved = { "不能导出到当前数据库路径，或使用 workspace.db、config.toml 作为文件名。请选择其他保存位置或文件名。" }
+backup-export-path-reserved = { "无法保存到此位置或使用此文件名，请选择其他位置或名称。\u000A\u000A导出限制：\u000A不能覆盖当前数据库，也不能使用 workspace.db 或 config.toml 作为文件名。" }
 
 # 正在导出…
 ui-exporting = { "正在导出…" }
@@ -337,19 +337,19 @@ ui-exporting = { "正在导出…" }
 ui-exported = { "已导出：" }{ $arg0 }
 
 # 无法读取桌面字体
-ui-could-not-read-desktop-font = { "无法读取 Windows 桌面字体设置，重命名输入框未创建。" }
+ui-could-not-read-desktop-font = { "无法打开重命名输入框。\u000A\u000A错误详情：\u000A无法读取 Windows 桌面字体设置。" }
 
 # 无法创建重命名字体
-ui-could-not-create-rename-font = { "无法创建重命名输入框所需的字体。" }
+ui-could-not-create-rename-font = { "无法打开重命名输入框。\u000A\u000A错误详情：\u000A无法创建输入框所需的字体。" }
 
 # 无法创建图标名称编辑框
 ui-could-not-create-icon-name-editor = { "无法创建重命名输入框。" }
 
 # 无法连接名称编辑框
-ui-could-not-attach-name-editor = { "无法初始化重命名输入框的编辑状态。" }
+ui-could-not-attach-name-editor = { "无法启用重命名输入框。\u000A\u000A错误详情：\u000A输入框的编辑状态设置失败。" }
 
 # 无法连接面板编辑状态
-ui-could-not-attach-group-editing-state = { "无法将重命名输入框关联到面板窗口。" }
+ui-could-not-attach-group-editing-state = { "无法在此面板中开始重命名。\u000A\u000A错误详情：\u000A输入框与面板窗口关联失败。" }
 
 # 重命名失败
 ui-rename-failed = { "重命名失败" }
@@ -436,7 +436,7 @@ ui-export = { "导出…" }
 ui-delete = { "删除…" }
 
 # 无法初始化设置窗口边框
-ui-could-not-initialize-settings-window-frame = { "无法初始化设置窗口的边框处理。" }
+ui-could-not-initialize-settings-window-frame = { "无法完成设置窗口的准备。\u000A\u000A错误详情：\u000A窗口边框处理设置失败。" }
 
 # 无法打开 Explorer 图标菜单：{error}
 ui-could-not-open-explorer-icon-menu = { "无法打开此项目的右键菜单。\u000A\u000A错误详情：\u000A" }{ $error }
@@ -452,7 +452,7 @@ ui-only-group-panels-support-tabs = { "仅普通面板支持标签" }
 # 请先解锁面板
 ui-unlock-the-panel-first = { "请先解锁面板" }
 
-tab-order-overflow = { "无法为新标签页分配排序编号：编号已超出可用范围。" }
+tab-id-overflow = { "无法添加新标签页。\u000A\u000A错误详情：\u000A无法分配新的标签页编号，编号已超出可用范围。" }
 
 # 文件夹面板不支持标签，请新建独立文件夹面板
 ui-folder-panels-do-not-support-tabs-create-a-separate-panel = { "文件夹面板不支持标签，请新建独立文件夹面板" }
@@ -461,24 +461,24 @@ ui-folder-panels-do-not-support-tabs-create-a-separate-panel = { "文件夹面�
 ui-select-an-unlocked-group-panel = { "请选择未锁定的普通面板" }
 
 # 面板已关闭或活动标签已改变
-ui-panel-closed-or-active-tab-changed = { "所选面板当前没有对应窗口，可能已关闭或已切换标签，无法继续合并。" }
+ui-panel-closed-or-active-tab-changed = { "无法继续合并面板。所选面板可能已关闭，或已切换到其他标签页。" }
 
-panel-merge-dispatch-failed = { "未能提交面板合并任务，此次合并未执行。" }
+panel-merge-dispatch-failed = { "未能开始合并面板。" }
 
 # ＋ {remaining} 个标签
 ui-tabs-a81a = { "＋ " }{ $remaining }{ " 个标签" }
 
 # 无法注册面板运行时通知
-ui-could-not-register-panel-notifications = { "无法注册应用后台任务的完成通知。" }
+ui-could-not-register-panel-notifications = { "无法完成应用准备。\u000A\u000A错误详情：\u000A无法接收后台任务的完成通知。" }
 
 # 面板渲染失败：{error}
 ui-group-rendering-failed = { "面板渲染失败：" }{ $error }
 
 # 菜单准备未完成
-ui-menu-is-not-ready = { "菜单准备未完成，无法显示此次菜单。" }
+ui-menu-is-not-ready = { "无法显示此次菜单，菜单内容尚未准备好。" }
 
 # 无法初始化无边框面板窗口
-ui-could-not-initialize-borderless-group-window = { "无法初始化面板窗口的无边框处理。" }
+ui-could-not-initialize-borderless-group-window = { "无法完成面板窗口的准备。\u000A\u000A错误详情：\u000A无边框窗口设置失败。" }
 
 # 桌面检查线程已退出，将重建检查线程
 ui-desktop-audit-thread-stopped-restarting = { "桌面检查线程已退出，将重建检查线程" }
@@ -517,16 +517,16 @@ ui-retry-f5 = { "重试 · F5" }
 ui-start-everything = { "启动 Everything" }
 
 # 数据溢出
-ui-data-overflow = { "Everything 返回的数据位置超出可处理范围。" }
+ui-data-overflow = { "无法读取 Everything 的搜索结果：数据超出可处理范围。" }
 
 # Everything 返回的数据不完整
 ui-incomplete-data-from-everything = { "Everything 返回的搜索结果数据不完整。" }
 
 # Everything 返回的结果格式不受支持
-ui-unsupported-everything-result-format = { "Everything 返回的结果格式或数量信息无效。" }
+ui-unsupported-everything-result-format = { "无法读取 Everything 的搜索结果：格式或数量信息有误。" }
 
 # Everything 返回的偏移无效
-ui-invalid-offset-from-everything = { "Everything 返回的文件路径数据位置无效。" }
+ui-invalid-offset-from-everything = { "无法读取 Everything 的搜索结果：文件路径数据有误。" }
 
 # Everything 返回的路径过长
 ui-path-from-everything-is-too-long = { "Everything 返回的文件路径数据长度超出可处理范围。" }
@@ -535,10 +535,10 @@ ui-path-from-everything-is-too-long = { "Everything 返回的文件路径数据�
 ui-incomplete-path-from-everything = { "Everything 返回的文件路径数据不完整。" }
 
 # Everything 返回的路径无效
-ui-invalid-path-from-everything = { "Everything 返回的文件路径包含无效的结束标记。" }
+ui-invalid-path-from-everything = { "无法读取 Everything 的搜索结果：文件路径格式有误。" }
 
 # Everything 返回的路径不是绝对路径
-ui-everything-returned-a-relative-path = { "Everything 返回了非绝对路径，无法作为搜索结果使用。" }
+ui-everything-returned-a-relative-path = { "无法使用此搜索结果：Everything 未提供完整的文件路径。" }
 
 # 搜索内容过长或无效
 ui-search-query-is-too-long-or-invalid = { "无法使用当前搜索条件，请缩短关键词或检查输入内容。" }
@@ -558,7 +558,7 @@ ui-everything-not-found-select-everything-exe-in-settings = { "未找到 Everyth
 # 无法启动 Everything：{e}
 ui-could-not-start-everything = { "无法启动 Everything。\u000A\u000A错误详情：\u000A" }{ $e }
 
-search-program-picker-failed = { "选择 Everything 程序的文件对话框发生错误。\u000A\u000A错误详情：\u000A" }{ $error }
+search-program-picker-failed = { "无法完成 Everything 程序的选择。\u000A\u000A文件选择窗口错误：\u000A" }{ $error }
 
 # 请选择 Everything.exe
 ui-select-everything-exe = { "请选择 Everything.exe" }
@@ -567,16 +567,16 @@ ui-select-everything-exe = { "请选择 Everything.exe" }
 ui-use-ctrl-or-alt-with-a-letter-digit-space-or-function-key-avoid-exis = { "请使用 Ctrl 或 Alt 搭配字母、数字、空格或功能键，避开现有文件操作和系统快捷键。" }
 
 # 搜索已关闭，全局快捷键未注册
-ui-search-is-disabled-global-shortcut-is-not-registered = { "搜索已关闭，全局快捷键未注册" }
+ui-search-is-disabled-global-shortcut-is-not-registered = { "搜索已关闭，快捷键暂不可用" }
 
 # 全局生效；Esc 取消录入
 ui-works-globally-esc-cancels-recording = { "全局生效；Esc 取消录入" }
 
 # {} 已被占用或无法注册，请更换快捷键
-ui-is-unavailable-choose-another-shortcut = { $arg0 }{ " 已被占用或无法注册，请更换快捷键" }
+ui-is-unavailable-choose-another-shortcut = { "无法使用 " }{ $arg0 }{ "，请选择其他快捷键" }
 
 # 搜索线程已停止，请重新打开面板。
-ui-search-thread-stopped-reopen-the-panel = { "搜索线程已停止，请重新打开面板。" }
+ui-search-thread-stopped-reopen-the-panel = { "搜索已停止，请重新打开搜索面板。" }
 
 # 没有找到匹配的文件
 ui-no-matching-files-found = { "没有找到匹配的文件" }
@@ -1034,13 +1034,13 @@ ui-view-details = { "查看详情" }
 ui-automatic-backups = { "自动备份" }
 
 # 按设定间隔保存配置和布局。
-ui-save-settings-and-layouts-at-the-chosen-interval = { "配置有变化时自动备份，相邻尝试至少间隔设定时长。" }
+ui-save-settings-and-layouts-at-the-chosen-interval = { "配置有变化时自动备份，两次尝试之间至少间隔设定时长。" }
 
 # 备份间隔
 ui-backup-interval = { "备份间隔" }
 
 # 自动备份的执行频率。
-ui-how-often-automatic-backups-run = { "两次自动备份尝试之间的最短间隔。" }
+ui-how-often-automatic-backups-run = { "设置两次自动备份尝试的最短间隔。" }
 
 # {} 分钟
 ui-minutes = { $arg0 }{ " 分钟" }
@@ -1151,7 +1151,7 @@ ui-report-an-issue = { "问题反馈" }
 
 ui-changelog-url = { "https://github.com/Yuch3nE/luciddesk/blob/main/CHANGELOG.md" }
 
-font-fallback = { "默认回退字体" }
+font-fallback = { "备用字体" }
 font-preview = 桌面面板 · 文件预览  Aa 0123
 
 show-panels-hotkey = 显示所有面板
@@ -1269,7 +1269,7 @@ monitor-history = 最近 60 秒
 monitor-used = 已用
 
 monitor-settings = 系统监控设置
-monitor-settings-description = { "选择系统监控的显示指标和设备，设置保存在监控插件中。" }
+monitor-settings-description = { "选择要显示的监控指标和设备。" }
 monitor-enable = 启用监控面板
 monitor-enable-description = 关闭后保留布局与设置，再次开启即可恢复。
 

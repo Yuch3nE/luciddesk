@@ -246,7 +246,40 @@ mod tests {
     }
 
     #[test]
+    fn backup_failure_translations_preserve_status_marker_and_details() {
+        // Settings classifies backup failures using the localized ui-failed marker.
+        for locale in 0..SOURCES.len() {
+            let marker = format_locale(locale, "ui-failed", &[]);
+            for (id, args) in [
+                ("backup-task-failed", vec![("error", "backup error 0x80070005".into())]),
+                ("configuration-operation-failed", vec![("e", "configuration error 0x80070020".into())]),
+                ("ui-restore-failed-rollback-failed-previous-backup", vec![
+                    ("error", "restore error 0x80070005".into()),
+                    ("e", "rollback error 0x80070020".into()),
+                    ("arg0", "C:\\Backups\\配置.db".into()),
+                ]),
+            ] {
+                let message = format_locale(locale, id, &args);
+                assert!(message.contains(&marker), "{locale}/{id}: {message}");
+                for (_, value) in &args {
+                    assert!(message.contains(&format!("\n{value}")), "{locale}/{id}: {message}");
+                    assert_eq!(message.matches(value.as_str()).count(), 1);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn all_messages_format_in_all_languages() {
+        let variables = |line: &str| {
+            let mut names: Vec<_> = line.split("{ $").skip(1)
+                .map(|part| part.split(' ').next().unwrap().to_owned()).collect();
+            names.sort();
+            names
+        };
+        let source_variables: std::collections::HashMap<_, _> = SOURCES[0].lines()
+            .filter(|line| !line.starts_with('#') && line.contains(" = "))
+            .map(|line| (line.split(" = ").next().unwrap(), variables(line))).collect();
         let ids: Vec<_> = SOURCES[0]
             .lines()
             .filter(|l| !l.starts_with('#') && l.contains(" = "))
@@ -264,6 +297,7 @@ mod tests {
                 .filter(|l| !l.starts_with('#') && l.contains(" = "))
             {
                 let id = line.split(" = ").next().unwrap();
+                assert_eq!(variables(line), source_variables[id], "{index}/{id}: translation parameters differ");
                 let mut args = FluentArgs::new();
                 for part in line.split("{ $").skip(1) {
                     args.set(part.split(' ').next().unwrap(), "example");

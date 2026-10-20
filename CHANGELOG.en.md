@@ -8,6 +8,7 @@ Exit the app before upgrading a portable installation and preserve its `data` fo
 
 ## Unreleased
 
+- Make prompts easier to understand in all seven languages by leading with the affected operation and separating technical details.
 - Audit message text and IDs against call sites, distinguish missing runtime state, unresolved paths and dispatch failures, and fix literal Fluent wrappers in monitor plugin text.
 - Polish Simplified Chinese settings, menus, search, backup and system monitor text, clarifying option scope and outcomes, including matching monitor plugin labels.
 - Clarify Simplified Chinese error descriptions and recovery guidance. Separate desktop connection, item opening and backup restore details while preserving error codes and paths.

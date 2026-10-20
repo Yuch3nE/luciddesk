@@ -10,7 +10,7 @@ ui-missing-hook-dll-build-the-entire-workspace = { "Missing Hook DLL " }{ $arg0 
 ui-invalid-configuration-path = { "Invalid configuration path" }
 
 # 无法注册托盘恢复消息
-ui-could-not-register-tray-recovery-message = { "Could not register tray recovery message" }
+ui-could-not-register-tray-recovery-message = { "Could not finish setting up the tray icon.\u000A\u000AError details:\u000ACould not receive notifications when Windows recreates the taskbar." }
 
 # LucidDesk · 桌面面板与文件整理
 ui-luciddesk-desktop-organization = { "LucidDesk · Desktop organization" }
@@ -19,7 +19,7 @@ ui-luciddesk-desktop-organization = { "LucidDesk · Desktop organization" }
 ui-could-not-add-luciddesk-tray-icon = { "Could not add LucidDesk tray icon" }
 
 # 无法初始化托盘交互
-ui-could-not-initialize-tray-interaction = { "Could not initialize tray interaction" }
+ui-could-not-initialize-tray-interaction = { "Could not enable the LucidDesk tray icon.\u000A\u000AError details:\u000AWindows did not accept the interaction settings for the tray icon." }
 
 # 显示面板
 ui-show-panels = { "Show panels" }
@@ -37,10 +37,10 @@ ui-settings = { "Settings" }
 ui-exit-luciddesk = { "Exit LucidDesk" }
 
 # 无法安排打开项目
-ui-could-not-schedule-opening-the-item = { "Could not schedule opening the item" }
+ui-could-not-schedule-opening-the-item = { "Could not begin opening the selected item." }
 
 # 面板已关闭
-ui-panel-closed = { "Panel closed" }
+ui-panel-closed = { "This panel is currently unavailable. The operation cannot continue." }
 
 # 此面板不是文件夹面板
 ui-this-is-not-a-folder-panel = { "This is not a folder panel" }
@@ -49,15 +49,15 @@ ui-this-is-not-a-folder-panel = { "This is not a folder panel" }
 ui-file-operation-failed = { "File operation failed: " }{ $error }
 
 # 无法安排文件操作
-ui-could-not-schedule-file-operation = { "Could not schedule file operation" }
+ui-could-not-schedule-file-operation = { "Could not start this file operation." }
 
-rename-context-unavailable = { "The application state needed for renaming has been released." }
+rename-context-unavailable = { "Could not continue renaming.\u000A\u000AError details:\u000AThe application state needed for this operation is no longer available." }
 
 # Everything 搜索
 ui-everything-search = { "Everything search" }
 
 # 面板不存在
-ui-group-not-found = { "Panel not found" }
+ui-group-not-found = { "This panel could not be found. The operation cannot continue." }
 
 # 无法读取文件夹，请检查路径或访问权限。\n{error}
 ui-cannot-read-folder-check-the-path-and-permissions-n = { "Cannot read folder. Check the path and permissions.\u000A" }{ $error }
@@ -69,7 +69,7 @@ ui-folder-inaccessible = { "Folder inaccessible" }
 ui-select-a-folder-to-display = { "Select a folder to display" }
 
 # 无法打开文件夹选择器
-ui-could-not-open-folder-picker = { "Could not open folder picker" }
+ui-could-not-open-folder-picker = { "Could not open the folder selection window." }
 
 # 该字体未安装，或不支持所需的中英文字符
 ui-font-not-installed-or-missing-required-chinese-latin-glyphs = { "Font not installed or missing required Chinese/Latin glyphs" }
@@ -80,7 +80,7 @@ ui-close-other-desktop-organizers-first = { "Close other desktop organizers firs
 # 请先退出旧的全桌面接管版本，恢复桌面图标显示
 
 # 读取清单期间桌面视图已替换，将重新定位
-ui-desktop-view-changed-while-reading-reconnecting = { "Desktop view changed while reading; reconnecting" }
+ui-desktop-view-changed-while-reading-reconnecting = { "The desktop changed before the connection could be completed." }
 
 # Explorer 视图过滤连接已断开
 ui-explorer-view-filter-disconnected = { "Explorer view filter disconnected" }
@@ -187,21 +187,21 @@ ui-group-menu = { "Panel menu" }
 panel-or-tab-unavailable = { "The panel or tab could not be found." }
 
 # 保存面板失败：{e}
-ui-could-not-save-group = { "Could not save panel: " }{ $e }
+ui-could-not-save-group = { "Could not save panel settings and layout.\u000A\u000AError details:\u000A" }{ $e }
 
 # 目标面板不可用
-ui-target-panel-unavailable = { "Target panel unavailable" }
+ui-target-panel-unavailable = { "The destination panel could not be found." }
 
 # 选中项目已变化，请重新拖动
 ui-selection-changed-drag-again = { "Selection changed. Drag again." }
 
-preview-program-picker-failed = { "The preview app file dialog failed.\u000A\u000AError details:\u000A" }{ $error }
+preview-program-picker-failed = { "Could not finish selecting a preview program.\u000A\u000AFile selection error:\u000A" }{ $error }
 
 # 请选择 {}
 ui-select = { "Select " }{ $arg0 }
 
 # 无法检查 Peek 进程
-ui-could-not-inspect-peek-process = { "Could not inspect Peek process" }
+ui-could-not-inspect-peek-process = { "Could not determine whether PowerToys Peek is running." }
 
 # 无法启动 Peek：{e}
 ui-could-not-start-peek = { "Could not start Peek: " }{ $e }
@@ -224,7 +224,7 @@ ui-quicklook-started-but-its-preview-service-is-unavailable = { "QuickLook start
 # 预览已取消
 ui-preview-canceled = { "Preview canceled" }
 
-configuration-directory-path-unavailable = { "The configuration folder path could not be determined." }
+configuration-directory-path-unavailable = { "Could not determine where configuration files are stored." }
 
 # 自动
 ui-automatic = { "Automatic" }
@@ -238,7 +238,7 @@ ui-manual = { "Manual" }
 # ；{failed} 份旧备份清理失败
 ui-old-backups-not-removed = { "; old backups not removed: " }{ $failed }
 
-backup-runtime-state-missing = { "Application runtime state is missing; backup management tasks cannot run." }
+backup-runtime-state-missing = { "Backup management is temporarily unavailable.\u000A\u000AError details:\u000AThe application state needed to manage backups is unavailable." }
 
 # 备份任务正在进行，请稍候。
 ui-a-backup-task-is-running-please-wait = { "A backup task is running. Please wait." }
@@ -249,7 +249,7 @@ ui-backup-task-ended-unexpectedly-try-again = { "Backup task ended unexpectedly.
 # 配置暂无变化，无需重复备份
 ui-configuration-unchanged-no-new-backup-needed = { "Configuration unchanged; no new backup needed" }
 
-backup-task-failed = { "Backup management task failed: " }{ $error }
+backup-task-failed = { "Failed to complete the backup-related operation.\u000A\u000AError details:\u000A" }{ $error }
 
 # 读取备份记录…
 ui-loading-backup-history = { "Loading backup history…" }
@@ -303,9 +303,9 @@ ui-restored-you-can-undo-this-restore = { "Restored. You can undo this restore."
 ui-restore-failed-rolled-back = { "Restore failed; rolled back: " }{ $error }
 
 # 恢复失败：{error}；回退失败：{e}。恢复前备份：{}
-ui-restore-failed-rollback-failed-previous-backup = { "Restore failed: " }{ $error }{ "; rollback failed: " }{ $e }{ ". Previous backup: " }{ $arg0 }
+ui-restore-failed-rollback-failed-previous-backup = { "Failed to restore the backup. Returning to the previous configuration also failed. Keep the backup file listed below.\u000A\u000ARestore error:\u000A" }{ $error }{ "\u000A\u000ARollback error:\u000A" }{ $e }{ "\u000A\u000ABackup from before the restore attempt:\u000A" }{ $arg0 }
 
-configuration-operation-failed = { "Configuration operation failed: " }{ $e }
+configuration-operation-failed = { "Failed to complete this settings or backup operation.\u000A\u000AError details:\u000A" }{ $e }
 
 # 正在校验备份…
 ui-validating-backup = { "Validating backup…" }
@@ -328,7 +328,7 @@ ui-deleting = { "Deleting…" }
 # 备份已删除
 ui-backup-deleted = { "Backup deleted" }
 
-backup-export-path-reserved = { "Cannot export to the current database path or use workspace.db or config.toml as the filename. Choose another path or filename." }
+backup-export-path-reserved = { "Cannot save to this location or use this file name. Choose another location or name.\u000A\u000AExport restrictions:\u000AThe current database cannot be overwritten, and the file name cannot be workspace.db or config.toml." }
 
 # 正在导出…
 ui-exporting = { "Exporting…" }
@@ -337,19 +337,19 @@ ui-exporting = { "Exporting…" }
 ui-exported = { "Exported: " }{ $arg0 }
 
 # 无法读取桌面字体
-ui-could-not-read-desktop-font = { "Could not read desktop font" }
+ui-could-not-read-desktop-font = { "Could not open the rename field.\u000A\u000AError details:\u000ACould not read the Windows desktop font settings." }
 
 # 无法创建重命名字体
-ui-could-not-create-rename-font = { "Could not create rename font" }
+ui-could-not-create-rename-font = { "Could not open the rename field.\u000A\u000AError details:\u000ACould not create the font needed for the field." }
 
 # 无法创建图标名称编辑框
 ui-could-not-create-icon-name-editor = { "Could not create icon name editor" }
 
 # 无法连接名称编辑框
-ui-could-not-attach-name-editor = { "Could not attach name editor" }
+ui-could-not-attach-name-editor = { "Could not enable the rename field.\u000A\u000AError details:\u000ACould not set up the editing state for the field." }
 
 # 无法连接面板编辑状态
-ui-could-not-attach-group-editing-state = { "Could not attach panel editing state" }
+ui-could-not-attach-group-editing-state = { "Could not start renaming in this panel.\u000A\u000AError details:\u000ACould not associate the rename field with the panel window." }
 
 # 重命名失败
 ui-rename-failed = { "Rename failed" }
@@ -436,7 +436,7 @@ ui-export = { "Export…" }
 ui-delete = { "Delete…" }
 
 # 无法初始化设置窗口边框
-ui-could-not-initialize-settings-window-frame = { "Could not initialize settings window frame" }
+ui-could-not-initialize-settings-window-frame = { "Could not finish preparing the settings window.\u000A\u000AError details:\u000ACould not set up window frame handling." }
 
 # 无法打开 Explorer 图标菜单：{error}
 ui-could-not-open-explorer-icon-menu = { "Could not open Explorer icon menu: " }{ $error }
@@ -452,7 +452,7 @@ ui-only-group-panels-support-tabs = { "Only desktop panels support tabs" }
 # 请先解锁面板
 ui-unlock-the-panel-first = { "Unlock the panel first" }
 
-tab-order-overflow = { "A sort number could not be assigned to the new tab: the number range was exceeded." }
+tab-id-overflow = { "Could not add a new tab.\u000A\u000AError details:\u000AA new tab ID could not be assigned because the ID range has been exceeded." }
 
 # 文件夹面板不支持标签，请新建独立文件夹面板
 ui-folder-panels-do-not-support-tabs-create-a-separate-panel = { "Folder panels do not support tabs. Create a separate panel." }
@@ -461,24 +461,24 @@ ui-folder-panels-do-not-support-tabs-create-a-separate-panel = { "Folder panels 
 ui-select-an-unlocked-group-panel = { "Select an unlocked desktop panel" }
 
 # 面板已关闭或活动标签已改变
-ui-panel-closed-or-active-tab-changed = { "Panel closed or active tab changed" }
+ui-panel-closed-or-active-tab-changed = { "Cannot continue merging panels. A selected panel may have closed or switched to another tab." }
 
-panel-merge-dispatch-failed = { "The panel merge task could not be submitted. The merge was not performed." }
+panel-merge-dispatch-failed = { "Could not start merging panels." }
 
 # ＋ {remaining} 个标签
 ui-tabs-a81a = { "＋ " }{ $remaining }{ " tabs" }
 
 # 无法注册面板运行时通知
-ui-could-not-register-panel-notifications = { "Could not register panel notifications" }
+ui-could-not-register-panel-notifications = { "Could not finish preparing the application.\u000A\u000AError details:\u000ACould not receive background task completion notifications." }
 
 # 面板渲染失败：{error}
 ui-group-rendering-failed = { "Panel rendering failed: " }{ $error }
 
 # 菜单准备未完成
-ui-menu-is-not-ready = { "Menu is not ready" }
+ui-menu-is-not-ready = { "Cannot display this menu because its contents are not ready yet." }
 
 # 无法初始化无边框面板窗口
-ui-could-not-initialize-borderless-group-window = { "Could not initialize borderless panel window" }
+ui-could-not-initialize-borderless-group-window = { "Could not finish preparing the panel window.\u000A\u000AError details:\u000ACould not set up the borderless window." }
 
 # 桌面检查线程已退出，将重建检查线程
 ui-desktop-audit-thread-stopped-restarting = { "Desktop audit thread stopped; restarting" }
@@ -517,16 +517,16 @@ ui-retry-f5 = { "Retry · F5" }
 ui-start-everything = { "Start Everything" }
 
 # 数据溢出
-ui-data-overflow = { "Data overflow" }
+ui-data-overflow = { "Cannot read Everything search results: the data exceeds the supported range." }
 
 # Everything 返回的数据不完整
 ui-incomplete-data-from-everything = { "Incomplete data from Everything" }
 
 # Everything 返回的结果格式不受支持
-ui-unsupported-everything-result-format = { "Unsupported Everything result format" }
+ui-unsupported-everything-result-format = { "Cannot read Everything search results: the format or result count is invalid." }
 
 # Everything 返回的偏移无效
-ui-invalid-offset-from-everything = { "Invalid offset from Everything" }
+ui-invalid-offset-from-everything = { "Cannot read Everything search results: the file path data is invalid." }
 
 # Everything 返回的路径过长
 ui-path-from-everything-is-too-long = { "Path from Everything is too long" }
@@ -535,10 +535,10 @@ ui-path-from-everything-is-too-long = { "Path from Everything is too long" }
 ui-incomplete-path-from-everything = { "Incomplete path from Everything" }
 
 # Everything 返回的路径无效
-ui-invalid-path-from-everything = { "Invalid path from Everything" }
+ui-invalid-path-from-everything = { "Cannot read Everything search results: the file path format is invalid." }
 
 # Everything 返回的路径不是绝对路径
-ui-everything-returned-a-relative-path = { "Everything returned a relative path" }
+ui-everything-returned-a-relative-path = { "Cannot use this search result: Everything did not provide a full file path." }
 
 # 搜索内容过长或无效
 ui-search-query-is-too-long-or-invalid = { "Search query is too long or invalid" }
@@ -558,7 +558,7 @@ ui-everything-not-found-select-everything-exe-in-settings = { "Everything not fo
 # 无法启动 Everything：{e}
 ui-could-not-start-everything = { "Could not start Everything: " }{ $e }
 
-search-program-picker-failed = { "The Everything app file dialog failed.\u000A\u000AError details:\u000A" }{ $error }
+search-program-picker-failed = { "Could not finish selecting the Everything program.\u000A\u000AFile selection error:\u000A" }{ $error }
 
 # 请选择 Everything.exe
 ui-select-everything-exe = { "Select Everything.exe" }
@@ -567,16 +567,16 @@ ui-select-everything-exe = { "Select Everything.exe" }
 ui-use-ctrl-or-alt-with-a-letter-digit-space-or-function-key-avoid-exis = { "Use Ctrl or Alt with a letter, digit, Space or function key. Avoid existing shortcuts." }
 
 # 搜索已关闭，全局快捷键未注册
-ui-search-is-disabled-global-shortcut-is-not-registered = { "Search is disabled; global shortcut is not registered" }
+ui-search-is-disabled-global-shortcut-is-not-registered = { "Search is turned off; the shortcut is unavailable" }
 
 # 全局生效；Esc 取消录入
 ui-works-globally-esc-cancels-recording = { "Works globally; Esc cancels recording" }
 
 # {} 已被占用或无法注册，请更换快捷键
-ui-is-unavailable-choose-another-shortcut = { $arg0 }{ " is unavailable. Choose another shortcut." }
+ui-is-unavailable-choose-another-shortcut = { $arg0 }{ " is unavailable. Choose another shortcut" }
 
 # 搜索线程已停止，请重新打开面板。
-ui-search-thread-stopped-reopen-the-panel = { "Search thread stopped. Reopen the panel." }
+ui-search-thread-stopped-reopen-the-panel = { "Search has stopped. Reopen the search panel." }
 
 # 没有找到匹配的文件
 ui-no-matching-files-found = { "No matching files found" }
@@ -1034,13 +1034,13 @@ ui-view-details = { "View details" }
 ui-automatic-backups = { "Automatic backups" }
 
 # 按设定间隔保存配置和布局。
-ui-save-settings-and-layouts-at-the-chosen-interval = { "Save settings and layouts at the chosen interval." }
+ui-save-settings-and-layouts-at-the-chosen-interval = { "Back up automatically when the configuration changes, with at least the selected interval between attempts." }
 
 # 备份间隔
 ui-backup-interval = { "Backup interval" }
 
 # 自动备份的执行频率。
-ui-how-often-automatic-backups-run = { "How often automatic backups run." }
+ui-how-often-automatic-backups-run = { "Set the minimum interval between automatic backup attempts." }
 
 # {} 分钟
 ui-minutes = { "Minutes: " }{ $arg0 }
@@ -1151,7 +1151,7 @@ ui-report-an-issue = { "Report an issue" }
 
 ui-changelog-url = { "https://github.com/Yuch3nE/luciddesk/blob/main/CHANGELOG.en.md" }
 
-font-fallback = Default fallback font
+font-fallback = { "Fallback font" }
 font-preview = Desktop panels · File preview  Aa 0123
 
 show-panels-hotkey = Show all panels
@@ -1269,7 +1269,7 @@ monitor-history = Last 60 seconds
 monitor-used = Used
 
 monitor-settings = System monitor settings
-monitor-settings-description = Enable monitor panels and choose metrics and devices. Each panel keeps its own settings.
+monitor-settings-description = { "Choose the monitoring metrics and devices to display." }
 monitor-enable = Enable monitor panel
 monitor-enable-description = Turning this off preserves the layout and settings for the next time you enable it.
 

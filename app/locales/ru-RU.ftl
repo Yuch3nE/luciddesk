@@ -10,7 +10,7 @@ ui-missing-hook-dll-build-the-entire-workspace = { "Отсутствует Hook 
 ui-invalid-configuration-path = { "Неверный путь к настройкам" }
 
 # 无法注册托盘恢复消息
-ui-could-not-register-tray-recovery-message = { "Не удалось зарегистрировать восстановление значка в трее" }
+ui-could-not-register-tray-recovery-message = { "Не удалось завершить настройку значка в области уведомлений.\u000A\u000AСведения об ошибке:\u000AНе удалось настроить получение уведомлений о повторном создании панели задач Windows." }
 
 # LucidDesk · 桌面面板与文件整理
 ui-luciddesk-desktop-organization = { "LucidDesk · Организация рабочего стола" }
@@ -19,7 +19,7 @@ ui-luciddesk-desktop-organization = { "LucidDesk · Организация ра�
 ui-could-not-add-luciddesk-tray-icon = { "Не удалось добавить значок LucidDesk в трей" }
 
 # 无法初始化托盘交互
-ui-could-not-initialize-tray-interaction = { "Не удалось инициализировать взаимодействие с треем" }
+ui-could-not-initialize-tray-interaction = { "Не удалось включить значок LucidDesk в области уведомлений.\u000A\u000AСведения об ошибке:\u000AWindows не приняла настройки взаимодействия со значком." }
 
 # 显示面板
 ui-show-panels = { "Показать панели" }
@@ -37,10 +37,10 @@ ui-settings = { "Настройки" }
 ui-exit-luciddesk = { "Выйти из LucidDesk" }
 
 # 无法安排打开项目
-ui-could-not-schedule-opening-the-item = { "Не удалось запланировать открытие элемента" }
+ui-could-not-schedule-opening-the-item = { "Не удалось начать открытие выбранного элемента." }
 
 # 面板已关闭
-ui-panel-closed = { "Панель закрыта" }
+ui-panel-closed = { "Эта панель сейчас недоступна. Продолжить операцию невозможно." }
 
 # 此面板不是文件夹面板
 ui-this-is-not-a-folder-panel = { "Это не панель папки" }
@@ -49,15 +49,15 @@ ui-this-is-not-a-folder-panel = { "Это не панель папки" }
 ui-file-operation-failed = { "Ошибка операции с файлом: " }{ $error }
 
 # 无法安排文件操作
-ui-could-not-schedule-file-operation = { "Не удалось запланировать операцию с файлом" }
+ui-could-not-schedule-file-operation = { "Не удалось начать эту операцию с файлами." }
 
-rename-context-unavailable = { "Состояние приложения, необходимое для переименования, уже освобождено." }
+rename-context-unavailable = { "Не удалось продолжить переименование.\u000A\u000AСведения об ошибке:\u000AСостояние приложения, необходимое для этой операции, больше недоступно." }
 
 # Everything 搜索
 ui-everything-search = { "Поиск Everything" }
 
 # 面板不存在
-ui-group-not-found = { "Панель не найдена" }
+ui-group-not-found = { "Эта панель не найдена. Продолжить операцию невозможно." }
 
 # 无法读取文件夹，请检查路径或访问权限。\n{error}
 ui-cannot-read-folder-check-the-path-and-permissions-n = { "Не удалось прочитать папку. Проверьте путь и права.\u000A" }{ $error }
@@ -69,7 +69,7 @@ ui-folder-inaccessible = { "Папка недоступна" }
 ui-select-a-folder-to-display = { "Выберите папку для отображения" }
 
 # 无法打开文件夹选择器
-ui-could-not-open-folder-picker = { "Не удалось открыть выбор папки" }
+ui-could-not-open-folder-picker = { "Не удалось открыть окно выбора папки." }
 
 # 该字体未安装，或不支持所需的中英文字符
 ui-font-not-installed-or-missing-required-chinese-latin-glyphs = { "Шрифт не установлен или не содержит нужных китайских и латинских символов" }
@@ -80,7 +80,7 @@ ui-close-other-desktop-organizers-first = { "Сначала закройте д�
 # 请先退出旧的全桌面接管版本，恢复桌面图标显示
 
 # 读取清单期间桌面视图已替换，将重新定位
-ui-desktop-view-changed-while-reading-reconnecting = { "Вид рабочего стола изменился при чтении; переподключение" }
+ui-desktop-view-changed-while-reading-reconnecting = { "Рабочий стол изменился до завершения подключения." }
 
 # Explorer 视图过滤连接已断开
 ui-explorer-view-filter-disconnected = { "Фильтр представления Explorer отключён" }
@@ -187,21 +187,21 @@ ui-group-menu = { "Меню панели" }
 panel-or-tab-unavailable = { "Панель или вкладка не найдена." }
 
 # 保存面板失败：{e}
-ui-could-not-save-group = { "Не удалось сохранить панель: " }{ $e }
+ui-could-not-save-group = { "Не удалось сохранить настройки и расположение панели.\u000A\u000AСведения об ошибке:\u000A" }{ $e }
 
 # 目标面板不可用
-ui-target-panel-unavailable = { "Целевая панель недоступна" }
+ui-target-panel-unavailable = { "Целевая панель не найдена." }
 
 # 选中项目已变化，请重新拖动
 ui-selection-changed-drag-again = { "Выбор изменился. Перетащите снова." }
 
-preview-program-picker-failed = { "Ошибка диалога выбора приложения предпросмотра.\u000A\u000AСведения об ошибке:\u000A" }{ $error }
+preview-program-picker-failed = { "Не удалось завершить выбор программы для предпросмотра.\u000A\u000AОшибка окна выбора файла:\u000A" }{ $error }
 
 # 请选择 {}
 ui-select = { "Выберите " }{ $arg0 }
 
 # 无法检查 Peek 进程
-ui-could-not-inspect-peek-process = { "Не удалось проверить процесс Peek" }
+ui-could-not-inspect-peek-process = { "Не удалось определить, запущен ли PowerToys Peek." }
 
 # 无法启动 Peek：{e}
 ui-could-not-start-peek = { "Не удалось запустить Peek: " }{ $e }
@@ -224,7 +224,7 @@ ui-quicklook-started-but-its-preview-service-is-unavailable = { "QuickLook за�
 # 预览已取消
 ui-preview-canceled = { "Предпросмотр отменён" }
 
-configuration-directory-path-unavailable = { "Не удалось определить путь к папке конфигурации." }
+configuration-directory-path-unavailable = { "Не удалось определить расположение файлов настроек." }
 
 # 自动
 ui-automatic = { "Автоматически" }
@@ -238,7 +238,7 @@ ui-manual = { "Вручную" }
 # ；{failed} 份旧备份清理失败
 ui-old-backups-not-removed = { "; не удалено старых копий: " }{ $failed }
 
-backup-runtime-state-missing = { "Отсутствует состояние приложения; задачи управления резервными копиями недоступны." }
+backup-runtime-state-missing = { "Управление резервными копиями временно недоступно.\u000A\u000AСведения об ошибке:\u000AСостояние приложения, необходимое для работы с резервными копиями, недоступно." }
 
 # 备份任务正在进行，请稍候。
 ui-a-backup-task-is-running-please-wait = { "Выполняется копирование. Подождите." }
@@ -249,7 +249,7 @@ ui-backup-task-ended-unexpectedly-try-again = { "Копирование неож
 # 配置暂无变化，无需重复备份
 ui-configuration-unchanged-no-new-backup-needed = { "Настройки не изменились; новая копия не нужна" }
 
-backup-task-failed = { "Ошибка задачи управления резервными копиями: " }{ $error }
+backup-task-failed = { "Ошибка при выполнении операции с резервной копией.\u000A\u000AСведения об ошибке:\u000A" }{ $error }
 
 # 读取备份记录…
 ui-loading-backup-history = { "Загрузка истории копий…" }
@@ -303,9 +303,9 @@ ui-restored-you-can-undo-this-restore = { "Восстановлено. Дейс�
 ui-restore-failed-rolled-back = { "Ошибка восстановления, выполнен откат: " }{ $error }
 
 # 恢复失败：{error}；回退失败：{e}。恢复前备份：{}
-ui-restore-failed-rollback-failed-previous-backup = { "Ошибка восстановления: " }{ $error }{ "; ошибка отката: " }{ $e }{ ". Предыдущая копия: " }{ $arg0 }
+ui-restore-failed-rollback-failed-previous-backup = { "Ошибка восстановления. Вернуться к предыдущей конфигурации тоже не удалось. Сохраните указанный ниже файл резервной копии.\u000A\u000AОшибка восстановления:\u000A" }{ $error }{ "\u000A\u000AОшибка возврата к предыдущей конфигурации:\u000A" }{ $e }{ "\u000A\u000AРезервная копия до попытки восстановления:\u000A" }{ $arg0 }
 
-configuration-operation-failed = { "Ошибка операции с конфигурацией: " }{ $e }
+configuration-operation-failed = { "Ошибка при выполнении операции с настройками или резервной копией.\u000A\u000AСведения об ошибке:\u000A" }{ $e }
 
 # 正在校验备份…
 ui-validating-backup = { "Проверка копии…" }
@@ -328,7 +328,7 @@ ui-deleting = { "Удаление…" }
 # 备份已删除
 ui-backup-deleted = { "Копия удалена" }
 
-backup-export-path-reserved = { "Нельзя экспортировать в текущую базу данных или использовать имена workspace.db и config.toml. Выберите другой путь или имя." }
+backup-export-path-reserved = { "Нельзя сохранить файл в этом расположении или использовать это имя. Выберите другое расположение или имя.\u000A\u000AОграничения экспорта:\u000AНельзя перезаписывать текущую базу данных или использовать имена файлов workspace.db и config.toml." }
 
 # 正在导出…
 ui-exporting = { "Экспорт…" }
@@ -337,19 +337,19 @@ ui-exporting = { "Экспорт…" }
 ui-exported = { "Экспортировано: " }{ $arg0 }
 
 # 无法读取桌面字体
-ui-could-not-read-desktop-font = { "Не удалось прочитать шрифт рабочего стола" }
+ui-could-not-read-desktop-font = { "Не удалось открыть поле переименования.\u000A\u000AСведения об ошибке:\u000AНе удалось прочитать настройки шрифта рабочего стола Windows." }
 
 # 无法创建重命名字体
-ui-could-not-create-rename-font = { "Не удалось создать шрифт переименования" }
+ui-could-not-create-rename-font = { "Не удалось открыть поле переименования.\u000A\u000AСведения об ошибке:\u000AНе удалось создать шрифт для поля ввода." }
 
 # 无法创建图标名称编辑框
 ui-could-not-create-icon-name-editor = { "Не удалось создать редактор имени значка" }
 
 # 无法连接名称编辑框
-ui-could-not-attach-name-editor = { "Не удалось подключить редактор имени" }
+ui-could-not-attach-name-editor = { "Не удалось включить поле переименования.\u000A\u000AСведения об ошибке:\u000AНе удалось настроить состояние редактирования поля." }
 
 # 无法连接面板编辑状态
-ui-could-not-attach-group-editing-state = { "Не удалось подключить состояние редактирования панели" }
+ui-could-not-attach-group-editing-state = { "Не удалось начать переименование в этой панели.\u000A\u000AСведения об ошибке:\u000AНе удалось связать поле ввода с окном панели." }
 
 # 重命名失败
 ui-rename-failed = { "Не удалось переименовать" }
@@ -436,7 +436,7 @@ ui-export = { "Экспорт…" }
 ui-delete = { "Удалить…" }
 
 # 无法初始化设置窗口边框
-ui-could-not-initialize-settings-window-frame = { "Не удалось инициализировать рамку окна настроек" }
+ui-could-not-initialize-settings-window-frame = { "Не удалось завершить подготовку окна настроек.\u000A\u000AСведения об ошибке:\u000AНе удалось настроить обработку рамки окна." }
 
 # 无法打开 Explorer 图标菜单：{error}
 ui-could-not-open-explorer-icon-menu = { "Не удалось открыть меню значка Explorer: " }{ $error }
@@ -452,7 +452,7 @@ ui-only-group-panels-support-tabs = { "Вкладки поддерживаютс
 # 请先解锁面板
 ui-unlock-the-panel-first = { "Сначала открепите панель" }
 
-tab-order-overflow = { "Не удалось назначить номер порядка новой вкладке: превышен диапазон номеров." }
+tab-id-overflow = { "Не удалось добавить новую вкладку.\u000A\u000AСведения об ошибке:\u000AНе удалось назначить идентификатор новой вкладке: превышен допустимый диапазон номеров." }
 
 # 文件夹面板不支持标签，请新建独立文件夹面板
 ui-folder-panels-do-not-support-tabs-create-a-separate-panel = { "Панели папок не поддерживают вкладки. Создайте отдельную панель" }
@@ -461,24 +461,24 @@ ui-folder-panels-do-not-support-tabs-create-a-separate-panel = { "Панели �
 ui-select-an-unlocked-group-panel = { "Выберите незакреплённую панель рабочего стола" }
 
 # 面板已关闭或活动标签已改变
-ui-panel-closed-or-active-tab-changed = { "Панель закрыта или активная вкладка изменилась" }
+ui-panel-closed-or-active-tab-changed = { "Невозможно продолжить объединение панелей. Возможно, выбранная панель была закрыта или в ней переключили вкладку." }
 
-panel-merge-dispatch-failed = { "Не удалось запустить задачу объединения панелей. Объединение не выполнено." }
+panel-merge-dispatch-failed = { "Не удалось начать объединение панелей." }
 
 # ＋ {remaining} 个标签
 ui-tabs-a81a = { "＋ вкладок: " }{ $remaining }
 
 # 无法注册面板运行时通知
-ui-could-not-register-panel-notifications = { "Не удалось зарегистрировать уведомления панели" }
+ui-could-not-register-panel-notifications = { "Не удалось завершить подготовку приложения.\u000A\u000AСведения об ошибке:\u000AНе удалось настроить получение уведомлений о завершении фоновых задач." }
 
 # 面板渲染失败：{error}
 ui-group-rendering-failed = { "Ошибка отрисовки панели: " }{ $error }
 
 # 菜单准备未完成
-ui-menu-is-not-ready = { "Меню ещё не готово" }
+ui-menu-is-not-ready = { "Невозможно показать меню: его содержимое ещё не готово." }
 
 # 无法初始化无边框面板窗口
-ui-could-not-initialize-borderless-group-window = { "Не удалось инициализировать окно панели без рамки" }
+ui-could-not-initialize-borderless-group-window = { "Не удалось завершить подготовку окна панели.\u000A\u000AСведения об ошибке:\u000AНе удалось настроить окно без рамки." }
 
 # 桌面检查线程已退出，将重建检查线程
 ui-desktop-audit-thread-stopped-restarting = { "Поток проверки рабочего стола остановлен; перезапуск" }
@@ -517,16 +517,16 @@ ui-retry-f5 = { "Повторить · F5" }
 ui-start-everything = { "Запустить Everything" }
 
 # 数据溢出
-ui-data-overflow = { "Переполнение данных" }
+ui-data-overflow = { "Не удалось прочитать результаты поиска Everything: данные выходят за пределы допустимого диапазона." }
 
 # Everything 返回的数据不完整
 ui-incomplete-data-from-everything = { "Неполные данные от Everything" }
 
 # Everything 返回的结果格式不受支持
-ui-unsupported-everything-result-format = { "Неподдерживаемый формат результатов Everything" }
+ui-unsupported-everything-result-format = { "Не удалось прочитать результаты поиска Everything: неверный формат или количество результатов." }
 
 # Everything 返回的偏移无效
-ui-invalid-offset-from-everything = { "Неверное смещение от Everything" }
+ui-invalid-offset-from-everything = { "Не удалось прочитать результаты поиска Everything: неверные данные пути к файлу." }
 
 # Everything 返回的路径过长
 ui-path-from-everything-is-too-long = { "Слишком длинный путь от Everything" }
@@ -535,10 +535,10 @@ ui-path-from-everything-is-too-long = { "Слишком длинный путь 
 ui-incomplete-path-from-everything = { "Неполный путь от Everything" }
 
 # Everything 返回的路径无效
-ui-invalid-path-from-everything = { "Неверный путь от Everything" }
+ui-invalid-path-from-everything = { "Не удалось прочитать результаты поиска Everything: неверный формат пути к файлу." }
 
 # Everything 返回的路径不是绝对路径
-ui-everything-returned-a-relative-path = { "Everything вернул относительный путь" }
+ui-everything-returned-a-relative-path = { "Невозможно использовать этот результат поиска: Everything не предоставила полный путь к файлу." }
 
 # 搜索内容过长或无效
 ui-search-query-is-too-long-or-invalid = { "Запрос слишком длинный или неверный" }
@@ -558,7 +558,7 @@ ui-everything-not-found-select-everything-exe-in-settings = { "Everything не �
 # 无法启动 Everything：{e}
 ui-could-not-start-everything = { "Не удалось запустить Everything: " }{ $e }
 
-search-program-picker-failed = { "Ошибка диалога выбора Everything.\u000A\u000AСведения об ошибке:\u000A" }{ $error }
+search-program-picker-failed = { "Не удалось завершить выбор программы Everything.\u000A\u000AОшибка окна выбора файла:\u000A" }{ $error }
 
 # 请选择 Everything.exe
 ui-select-everything-exe = { "Выберите Everything.exe" }
@@ -567,16 +567,16 @@ ui-select-everything-exe = { "Выберите Everything.exe" }
 ui-use-ctrl-or-alt-with-a-letter-digit-space-or-function-key-avoid-exis = { "Используйте Ctrl или Alt с буквой, цифрой, пробелом или F-клавишей. Избегайте занятых сочетаний." }
 
 # 搜索已关闭，全局快捷键未注册
-ui-search-is-disabled-global-shortcut-is-not-registered = { "Поиск отключён; глобальные клавиши не зарегистрированы" }
+ui-search-is-disabled-global-shortcut-is-not-registered = { "Поиск отключён; сочетание клавиш недоступно" }
 
 # 全局生效；Esc 取消录入
 ui-works-globally-esc-cancels-recording = { "Действует глобально; Esc отменяет ввод" }
 
 # {} 已被占用或无法注册，请更换快捷键
-ui-is-unavailable-choose-another-shortcut = { $arg0 }{ " недоступно. Выберите другое сочетание" }
+ui-is-unavailable-choose-another-shortcut = { "Сочетание " }{ $arg0 }{ " недоступно. Выберите другое" }
 
 # 搜索线程已停止，请重新打开面板。
-ui-search-thread-stopped-reopen-the-panel = { "Поток поиска остановлен. Откройте панель заново." }
+ui-search-thread-stopped-reopen-the-panel = { "Поиск остановлен. Откройте панель поиска заново." }
 
 # 没有找到匹配的文件
 ui-no-matching-files-found = { "Подходящие файлы не найдены" }
@@ -1034,13 +1034,13 @@ ui-view-details = { "Подробнее" }
 ui-automatic-backups = { "Автоматические копии" }
 
 # 按设定间隔保存配置和布局。
-ui-save-settings-and-layouts-at-the-chosen-interval = { "Сохранять настройки и размещение с выбранным интервалом." }
+ui-save-settings-and-layouts-at-the-chosen-interval = { "Создавать резервные копии автоматически при изменении конфигурации, выдерживая не менее заданного интервала между попытками." }
 
 # 备份间隔
 ui-backup-interval = { "Интервал копирования" }
 
 # 自动备份的执行频率。
-ui-how-often-automatic-backups-run = { "Частота автоматического копирования." }
+ui-how-often-automatic-backups-run = { "Задайте минимальный интервал между попытками автоматического резервного копирования." }
 
 # {} 分钟
 ui-minutes = { "Минут: " }{ $arg0 }
@@ -1151,7 +1151,7 @@ ui-report-an-issue = { "Сообщить об ошибке" }
 
 ui-changelog-url = { "https://github.com/Yuch3nE/luciddesk/blob/main/CHANGELOG.en.md" }
 
-font-fallback = Резервный шрифт
+font-fallback = { "Запасной шрифт" }
 font-preview = Панели · Просмотр файлов  Ёё 0123
 
 show-panels-hotkey = Показать все панели
@@ -1269,7 +1269,7 @@ monitor-history = Последние 60 секунд
 monitor-used = Занято
 
 monitor-settings = Настройки системного монитора
-monitor-settings-description = Включайте панели и выбирайте показатели и устройства. У каждой панели свои настройки.
+monitor-settings-description = { "Выберите показатели и устройства для отображения." }
 monitor-enable = Включить панель монитора
 monitor-enable-description = При отключении расположение и настройки сохраняются.
 
