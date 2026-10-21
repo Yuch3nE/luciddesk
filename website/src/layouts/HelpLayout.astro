@@ -1,0 +1,47 @@
+---
+import { localeOf, translator, localizedPath } from '~/lib/i18n';
+const lang = localeOf(Astro.url.pathname);
+const t = translator(lang);
+
+import Layout from './PageLayout.astro';
+import Button from '~/components/ui/Button.astro';
+import { Card } from '~/components/ui/card';
+import HelpPageLinks from '~/components/HelpPageLinks';
+import { ChevronRight } from 'lucide-react';
+import { helpPagesEn } from '~/content/help.en';
+import { helpPages, type HelpPage } from '~/content/help';
+interface Props { page: HelpPage }
+const { page } = Astro.props;
+const navigation = lang === 'en' ? helpPagesEn : helpPages;
+
+---
+<Layout title={`${page.label} · LucidDesk`} description={page.description}>
+  <div class="help-layout mx-auto max-w-6xl px-5 py-8 sm:px-8 lg:py-12">
+    <nav aria-label={t("当前位置")} class="mb-8 flex items-center gap-2 text-xs text-muted"><a href={localizedPath("/", lang)} class="hover:text-primary">{t("首页")}</a><ChevronRight className="size-3" aria-hidden="true"/><span aria-current="page">{page.label}</span></nav>
+    <div class="grid items-start gap-8 lg:grid-cols-[232px_minmax(0,1fr)] lg:gap-12">
+      <aside class="min-w-0 lg:sticky lg:top-24">
+        <Card className="gap-0 rounded-2xl border-line bg-card/60 p-3 shadow-none backdrop-blur-sm lg:p-4">
+          <nav aria-label={t("帮助文档")}><HelpPageLinks pages={navigation.map(({slug,label}) => ({slug,label}))} current={page.slug}/></nav>
+          <nav aria-label={t("本页目录")} class="mt-4 border-t border-line pt-5">
+            <p class="mb-3 px-3 text-xs font-medium text-muted">{t("本页内容")}</p>
+            <ul class="grid grid-cols-2 gap-x-2 gap-y-1 lg:grid-cols-1">{page.sections.map((section, index) => <li><a class="flex gap-2 rounded-lg px-3 py-2 text-xs leading-5 text-muted transition-colors hover:bg-primary/5 hover:text-primary" href={`#${section.id}`}><span class="shrink-0 tabular-nums opacity-50" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span><span>{section.title}</span></a></li>)}</ul>
+          </nav>
+        </Card>
+      </aside>
+      <article class="help-article min-w-0 max-w-[44rem]">
+        <header class="mb-9 border-b border-line pb-8">
+          <h1 class="text-2xl font-bold leading-snug tracking-tight text-heading sm:text-3xl">{page.title}</h1>
+          <p class="mt-4 text-sm leading-7 text-muted sm:text-base">{page.description}</p>
+        </header>
+        {page.sections.map((section, index) => <section id={section.id} class="help-section border-b border-line py-8 first-of-type:pt-0 last-of-type:border-0">
+          <h2 class="mb-5 flex items-baseline gap-3 text-lg font-semibold leading-relaxed text-heading sm:text-xl"><span class="text-xs font-normal tabular-nums text-muted/60" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>{section.title}</h2>
+          <div class="help-copy" set:html={section.html}/>
+        </section>)}
+        <div class="mt-6 flex flex-wrap gap-3 border-t border-line pt-6">
+          <Button href={localizedPath("/#download", lang)} text={t("下载 LucidDesk")} icon="download" variant="primary"/>
+          <Button href={localizedPath("/", lang)} text={t("返回首页")}/>
+        </div>
+      </article>
+    </div>
+  </div>
+</Layout>

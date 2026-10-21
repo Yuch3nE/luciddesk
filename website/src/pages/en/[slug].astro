@@ -1,0 +1,9 @@
+---
+import HelpLayout from '~/layouts/HelpLayout.astro';
+import { helpPagesEn } from '~/content/help.en';
+export function getStaticPaths() {
+  return helpPagesEn.map(page => ({ params: { slug: page.slug }, props: { page } }));
+}
+const { page } = Astro.props;
+---
+<HelpLayout page={page}/>
