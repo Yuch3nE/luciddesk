@@ -1,0 +1,9 @@
+---
+import Changelog from '~/components/pages/Changelog.astro';
+import { releasesByLocale, PAGE_SIZE } from '~/content/changelog';
+export function getStaticPaths() {
+  return Array.from({length: Math.ceil(releasesByLocale.zh.length / PAGE_SIZE) - 1}, (_,i) => ({params: {page: String(i+2)}, props: {pageNumber: i+2}}));
+}
+const { pageNumber } = Astro.props;
+---
+<Changelog pageNumber={pageNumber}/>

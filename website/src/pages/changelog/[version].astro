@@ -1,0 +1,9 @@
+---
+import ReleaseNotes from '~/components/pages/ReleaseNotes.astro';
+import { releasesByLocale } from '~/content/changelog';
+export function getStaticPaths() {
+  return releasesByLocale.zh.map(release => ({params: {version: release.version}, props: {version: release.version}}));
+}
+const { version } = Astro.props;
+---
+<ReleaseNotes version={version}/>

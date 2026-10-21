@@ -1,0 +1,43 @@
+---
+import ChangeBadge from '~/components/ChangeBadge';
+import { changeType } from '~/lib/change-types';
+import Layout from '~/layouts/PageLayout.astro';
+import Button from '~/components/ui/Button.astro';
+import { Badge } from '~/components/ui/badge';
+import { Card } from '~/components/ui/card';
+import { localeOf, localizedPath } from '~/lib/i18n';
+import { releasesByLocale, releaseDate, inlineNote } from '~/content/changelog';
+interface Props { version: string }
+const { version } = Astro.props;
+const lang = localeOf(Astro.url.pathname);
+const en = lang === 'en';
+const path = (value: string) => localizedPath(value, lang);
+const releases = releasesByLocale[lang];
+const index = releases.findIndex(release => release.version === version);
+const release = releases[index];
+const title = en ? `What's new in v${version}` : `v${version} 更新内容`;
+---
+<Layout title={`${title} · LucidDesk`} description={en ? `All features, improvements, and fixes recorded for LucidDesk ${version}.` : `查看 LucidDesk ${version} 的全部功能改进与问题修复。`}>
+  <article class="mx-auto max-w-4xl px-5 py-10 sm:px-8 lg:py-16">
+    <nav class="mb-8 text-sm text-muted" aria-label={en ? 'Breadcrumb' : '当前位置'}><a class="underline underline-offset-4" href={path('/changelog/')}>{en ? 'Changelog' : '更新日志'}</a><span aria-hidden="true"> / </span><span aria-current="page">v{version}</span></nav>
+    <header class="mb-8">
+      <div class="mb-4 flex flex-wrap items-center gap-3 text-sm text-muted">
+        {index === 0 && <Badge className="bg-primary/10 text-primary dark:text-blue-300">{en ? 'Latest entry' : '最新记录'}</Badge>}
+        {release.date ? <time datetime={release.date}>{releaseDate(release.date,lang)}</time> : <span>{en ? 'Feature baseline · Not a standalone release' : '功能基线 · 未单独发布'}</span>}
+      </div>
+      <h1 class="text-3xl font-bold tracking-tight text-heading sm:text-4xl">{title}</h1>
+      {release.introduction.map(note => <p class="help-copy mt-5" set:html={inlineNote(note)}/>)}
+    </header>
+    <Card className="gap-0 rounded-2xl p-6 shadow-none sm:p-9">
+      {release.groups.map(group => <section class="border-b border-line py-7 first:pt-0 last:border-0 last:pb-0">
+        <h2 class="mb-4 text-lg font-semibold text-heading">{group.title}</h2>
+        <ul class="space-y-5">{group.items.map(item => <li class="changelog-entry flex items-start gap-3"><ChangeBadge type={changeType(group.title,item)} lang={lang}/><span class="help-copy min-w-0 flex-1 text-sm! sm:text-base!" set:html={inlineNote(item)}/></li>)}</ul>
+      </section>)}
+    </Card>
+    <p class="mt-7 text-sm leading-7 text-muted">{en ? 'Before updating, exit LucidDesk and back up your layout. Keep the data folder when updating a portable copy.' : '更新前请退出 LucidDesk 并备份布局；便携版请保留原有 data 文件夹。'} <a class="underline underline-offset-4" href={path('/installation/#updates')}>{en ? 'Read the update guide' : '查看更新步骤'}</a></p>
+    <nav class="mt-8 flex flex-wrap justify-between gap-3" aria-label={en ? 'Adjacent versions' : '相邻版本'}>
+      {releases[index-1] ? <Button href={path(`/changelog/${releases[index-1].version}/`)} text={`${en ? 'Newer' : '较新版本'} · v${releases[index-1].version}`}/> : <span/>}
+      {releases[index+1] && <Button href={path(`/changelog/${releases[index+1].version}/`)} text={`${en ? 'Older' : '较早版本'} · v${releases[index+1].version}`} icon="chevron-right"/>}
+    </nav>
+  </article>
+</Layout>
