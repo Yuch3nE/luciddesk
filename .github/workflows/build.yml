@@ -46,13 +46,13 @@ jobs:
       - name: Select latest installed x64 MSVC and Windows SDK
         shell: pwsh
         run: ./tools/use-windows-toolchain.ps1 -GitHubActions
-      - name: Install Rust
+      - name: Install pinned Rust and Windows target
         shell: pwsh
         run: |
           $toolchain = Get-Content rust-toolchain.toml -Raw
           $channel = [regex]::Match($toolchain, 'channel\s*=\s*"([^"]+)"').Groups[1].Value
           if (-not $channel) { throw 'Missing pinned Rust version.' }
-          rustup toolchain install $channel --profile minimal
+          rustup toolchain install $channel --profile minimal --component rustfmt --target x86_64-pc-windows-msvc
           if ($LASTEXITCODE -ne 0) { throw 'Pinned Rust toolchain installation failed.' }
           rustc -vV
           cargo -V

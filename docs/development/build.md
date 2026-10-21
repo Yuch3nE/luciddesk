@@ -7,7 +7,7 @@
 ## 环境
 
 - 主要使用 Windows 11 x64 交互桌面验证，Explorer 正常运行；Windows 10 已由用户完成实机验证，平台边界见[验证与兼容边界](validation.md)。
-- Rust MSVC 工具链；`rust-toolchain.toml` 固定本地与 CI 使用 Rust 1.99.0，使用 edition 2024。
+- Rust MSVC 工具链；`rust-toolchain.toml` 固定本地与 CI 使用 Rust 1.99.1，使用 edition 2024，并安装局部绑定生成器需要的 `rustfmt`。
 - Visual Studio C++ 构建工具与 Windows SDK，用于链接 Win32 库。
 
 首次获取依赖时省略 `--offline`。已有锁文件和依赖缓存后，可按以下方式离线构建。
@@ -276,6 +276,6 @@ CI 运行 `cargo test -p luciddesk-cli -p luciddesk-api --locked -- --test-threa
 
 ## Windows 工具链选择
 
-CI 使用滚动更新的 `windows-2025-vs2026` 镜像，MSVC 和 Windows SDK 跟随镜像安装的工具链；本地选择本机可用工具链。Rust 1.99.0、Inno Setup 7.1.0（x64 编译器）、WiX 5.0.2 仍固定版本。`tools/windows-toolchain.json` 仅规定最低 MSVC 14.51.36231 和 SDK 10.0.26100.0；`tools/use-windows-toolchain.ps1` 按数值版本选择最新可用的 x64 MSVC，由 vcvarsall 选择最新 SDK，并显式指定 Cargo 链接器和 C/C++ 工具。缺少工具或版本低于要求时停止，cl/link/lib/rc 的 SHA256 仅用于记录实际构建环境。`build.json` 记录实际 Rust、Cargo、MSVC、SDK、工具版本及 SHA256、CI runner 版本，供定位构建差异；不保证本地与 CI 或不同日期构建的二进制一致。
+CI 使用滚动更新的 `windows-2025-vs2026` 镜像，MSVC 和 Windows SDK 跟随镜像安装的工具链；本地选择本机可用工具链。Rust 1.99.1、Inno Setup 7.1.0（x64 编译器）、WiX 5.0.2 仍固定版本。`tools/windows-toolchain.json` 仅规定最低 MSVC 14.51.36231 和 SDK 10.0.26100.0；`tools/use-windows-toolchain.ps1` 按数值版本选择最新可用的 x64 MSVC，由 vcvarsall 选择最新 SDK，并显式指定 Cargo 链接器和 C/C++ 工具。缺少工具或版本低于要求时停止，cl/link/lib/rc 的 SHA256 仅用于记录实际构建环境。`build.json` 记录实际 Rust、Cargo、MSVC、SDK、工具版本及 SHA256、CI runner 版本，供定位构建差异；不保证本地与 CI 或不同日期构建的二进制一致。
 
 直接执行 Cargo 构建前，在同一 PowerShell 会话执行 `.\tools\use-windows-toolchain.ps1`；发布打包脚本自动执行该步骤。常规 Visual Studio、SDK 和 runner 镜像更新无需重写哈希配置；若新工具链出现兼容问题，依据日志及 `build.json` 中的实际版本排查。
