@@ -1,5 +1,7 @@
 // Progressive enhancement: content stays visible if JavaScript or animation APIs fail.
 (() => {
+  if (window.__luciddeskMotion) return;
+  window.__luciddeskMotion = true;
   const preference = matchMedia('(prefers-reduced-motion: reduce)');
   if (!('IntersectionObserver' in window) || !Element.prototype.animate) return;
   const running = new Map();
@@ -24,7 +26,14 @@
       reveal(entry.target);
     }
   }, { threshold: 0.08 });
-  document.querySelectorAll('[data-motion]').forEach(element => observer.observe(element));
+  const observe = () => document.querySelectorAll('[data-motion]').forEach(element => observer.observe(element));
+  document.addEventListener('astro:before-swap', () => {
+    observer.disconnect();
+    running.forEach(animation => animation.cancel());
+    running.clear();
+  });
+  document.addEventListener('astro:page-load', observe);
+  observe();
   preference.addEventListener('change', () => {
     if (preference.matches) running.forEach(animation => animation.cancel());
   });

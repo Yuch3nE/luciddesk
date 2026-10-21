@@ -1,5 +1,7 @@
 // Run before styles paint so a saved theme never flashes the opposite palette.
 (() => {
+  if (window.__luciddeskTheme) return;
+  window.__luciddeskTheme = true;
   const system = window.matchMedia('(prefers-color-scheme: dark)');
   const valid = ['system', 'light', 'dark'];
   let preference = 'system';
@@ -17,6 +19,13 @@
     document.dispatchEvent(new Event('luciddesk:theme-updated'));
   }
 
+  document.addEventListener('astro:before-swap', event => {
+    const root = event.newDocument.documentElement;
+    root.classList.toggle('dark', document.documentElement.classList.contains('dark'));
+    root.dataset.theme = document.documentElement.dataset.theme;
+    root.dataset.themePreference = preference;
+  });
+  document.addEventListener('astro:after-swap', apply);
   apply();
   system.addEventListener('change', apply);
   document.addEventListener('luciddesk:theme-change', (event) => {

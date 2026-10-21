@@ -1,15 +1,18 @@
 // Swap translated content in place. The document, URL, theme and reading position stay put.
 (() => {
+  if (window.__luciddeskLanguage) return;
+  window.__luciddeskLanguage = true;
+  let navigation = 0;
   const storageKey = 'luciddesk-language';
   const cache = new Map();
   let busy = false;
   const current = () => document.documentElement.lang === 'en' ? 'en' : 'zh';
-  const payloadUrl = lang => {
-    const path = location.pathname.endsWith('/') ? `${location.pathname}index` : location.pathname.replace(/\.html$/, '');
+  const payloadUrl = (lang, pathname) => {
+    const path = pathname.endsWith('/') ? `${pathname}index` : pathname.replace(/\.html$/, '');
     return `/_languages/${lang}${path}.json`;
   };
-  async function load(lang) {
-    const url = payloadUrl(lang);
+  async function load(lang, pathname = location.pathname) {
+    const url = payloadUrl(lang, pathname);
     if (cache.has(url)) return cache.get(url);
     const response = await fetch(url, {signal: AbortSignal.timeout(10000)});
     if (!response.ok) throw new Error('Language content unavailable');
@@ -36,7 +39,9 @@
     button?.setAttribute('aria-busy', 'true');
     button?.setAttribute('disabled', '');
     try {
+      const generation = navigation;
       const payload = await load(lang);
+      if (generation !== navigation) return;
       const y = window.scrollY;
       const section = [...document.querySelectorAll('main section[id], main [data-slot="accordion-item"][id]')].reverse().find(el => el.getBoundingClientRect().top <= 160);
       const anchor = section ? {id: section.id, offset: section.getBoundingClientRect().top} : null;
@@ -79,6 +84,30 @@
       document.querySelector('[data-language-switch]')?.removeAttribute('disabled');
     }
   }
+  // Prepare translated content before Astro swaps documents, avoiding a Chinese flash.
+  document.addEventListener('astro:before-preparation', event => {
+    navigation++;
+    const lang = current();
+    const loader = event.loader;
+    event.loader = async () => {
+      await loader();
+      if (event.signal.aborted || lang !== 'en' || !event.newDocument) return;
+      try {
+        const payload = await load(lang, event.to.pathname);
+        if (event.signal.aborted) return;
+        const parsed = new DOMParser().parseFromString(`<head>${payload.head}</head><body>${payload.body}</body>`, 'text/html');
+        event.newDocument.body.replaceChildren(...parsed.body.childNodes);
+        event.newDocument.documentElement.lang = 'en';
+        event.newDocument.title = parsed.title;
+        for (const selector of ['meta[name="description"]', 'meta[property="og:title"]', 'meta[property="og:description"]']) {
+          const content = parsed.querySelector(selector)?.getAttribute('content');
+          if (content) event.newDocument.querySelector(selector)?.setAttribute('content', content);
+        }
+      } catch {
+        // Let the ordinary document remain navigable if language data is unavailable.
+      }
+    };
+  });
   document.addEventListener('click', event => {
     const button = event.target.closest?.('[data-language-switch]');
     if (button) switchLanguage(button.dataset.languageTarget);

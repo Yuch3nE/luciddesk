@@ -54,6 +54,10 @@ shadcn/ui 源码来自官方 `new-york-v4` 注册表，许可见 `SHADCN-LICENSE
 
 首页下载按钮下方显示当前版本号，点击可打开站内更新日志。导航和页脚展示 `src/data/repository.json` 中的仓库名、正式发布版本和 Star 数。每次构建通过 GitHub 公共 API 刷新；网络失败时保留上次快照并输出日期提示。页面不是实时计数器，悬停入口可查看数据日期。
 
+## 站内导航
+
+`PageLayout.astro` 使用 Astro `ClientRouter` 处理站内链接与浏览器前进、后退，页面内容切换无需整页刷新。外部链接与下载入口保持正常跳转。`language.js` 在路由交换前装入所选语言，`theme.js` 保留当前配色，`motion.js` 在新页面加载后重新观察动画元素。没有 JavaScript 时仍使用普通链接导航。
+
 ## 中英文页面
 
 中英文共用根路径；语言按钮通过 `public/language.js` 就地替换内容，保留主题、阅读位置与展开状态，并以 `luciddesk-language` 记住选择。构建时将英文路由转换为语言数据文件，旧 `/en/` 地址重定向至对应的公共地址；首页共用 `src/components/pages/Home.astro`。`src/content/translations.json` 保存英文界面文案，`copy.zh.json` 保存优化后的中文文案，`help.en.ts` 保存英文帮助文档。新增文案需同步两种语言。
