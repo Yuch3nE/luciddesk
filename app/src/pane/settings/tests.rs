@@ -11,10 +11,6 @@ fn sidebar_interactive_validation() {
     host::show_at(&state, PanelId::new(1), 13).unwrap();
     let hwnd = state.borrow().settings.as_ref().unwrap().hwnd().cast();
     unsafe {
-        // Expose this standalone tool window to desktop automation discovery.
-        // Production settings keep their existing tool-window ownership.
-        let style = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
-        SetWindowLongW(hwnd, GWL_EXSTYLE, ((style & !WS_EX_TOOLWINDOW) | WS_EX_APPWINDOW) as i32);
         ShowWindow(hwnd, SW_SHOWNOACTIVATE);
         let scale = GetDpiForWindow(hwnd).max(96) as f32 / 96.0;
         SetWindowPos(hwnd, std::ptr::null_mut(), 0, 0,
