@@ -238,3 +238,7 @@ cargo test -p luciddesk --bin luciddesk --locked --offline normal_interactions_d
 插件配置由各插件自行保存到数据目录的 `plugins/<plugin-id>/`。系统监控使用 `plugins/system-monitor/config.toml`，不创建工作区面板记录。主 `config.toml` 只记录插件激活状态；工作区 `.db` 备份不含插件配置，需另行复制该目录。
 
 兼容分支的版本依据及已删除的实验格式见[兼容逻辑清理记录](compatibility-audit.md)。
+
+## 0.22.2 的配置变化
+
+移除 `search.shortcut`，新配置模板不再生成该字段，配置查询和更新接口也不再提供它。旧 TOML 保留该字段时加载会忽略其值，不注册搜索热键，不要求用户手动清理。`show_panels.shortcut` 与预览快捷键继续使用原有配置，不新增数据库表或迁移。

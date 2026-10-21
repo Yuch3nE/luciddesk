@@ -7,8 +7,7 @@
 | 入口 | 职责 |
 | --- | --- |
 | `app/src/pane/window/mod.rs` | `set_layer`、`raise_among_peers`、`raise_once` 和 `borderless_proc` |
-| `app/src/pane/search/mod.rs` | 搜索窗口、原生 EDIT 的定位、层级同步与输入处理 |
-| `app/src/pane/search/mod.rs` | 托盘搜索激活入口 |
+| `app/src/pane/search/mod.rs` | 搜索窗口、原生 EDIT 的定位、层级同步、输入处理及托盘激活 |
 | `app/src/pane/hybrid/mod.rs` | 托盘动作与面板显示操作 |
 
 普通分组和文件夹面板共用 `window::create`，使用 Shell owner；搜索面板使用独立窗口，并复用无边框处理和层级设置。搜索 EDIT 是由搜索窗口拥有的独立 popup，不是随父窗口自动排列的 child 控件。
@@ -46,6 +45,14 @@
 `set_layer` 在切换实际 topmost 状态前暂时移除桌面层标记，切回非置顶后再恢复标记与桌面相对位置。`raise_once` 也暂时绕过桌面层约束完成一次前置，随后恢复原标记，不修改持久化置顶偏好。
 
 菜单自身使用 topmost，以覆盖置顶面板；这不应传播成面板永久置顶。菜单循环可能泵送消息，重复打开、关闭与子菜单切换都必须保持 owner 约束。
+
+## 关闭面板与设置窗口
+
+根菜单执行命令时，如果菜单仍在前台，先将激活权交还 owner，再销毁菜单；用户已切到其他窗口时不强行激活。子菜单保留原有返回父菜单的逻辑。
+
+`create_view` 的关闭回调在淡出禁用窗口之前，检查关闭面板是否为前台窗口或前台窗口的根 owner。若设置窗口已显示且未最小化，先将其激活，再开始关闭。原生激活可能同步重入消息处理，因此取出 HWND 后必须释放 `PaneApp` 借用。后台关闭不改变其他应用的焦点，也不恢复已最小化的设置。
+
+设置窗口使用 `WS_EX_APPWINDOW | WS_EX_NOREDIRECTIONBITMAP`，在任务栏和 Alt+Tab 中可见；关闭设置仍只销毁设置窗口，不退出程序。回归测试 `closing_search_preserves_open_settings_window` 覆盖菜单关闭路径；`closing_search_returns_focus_to_settings` 需要交互桌面，使用 `--ignored --test-threads=1` 单独运行。
 
 ## 搜索输入框的跟随规则
 
