@@ -16,6 +16,7 @@
 | 要处理的任务 | 建议阅读顺序 |
 | --- | --- |
 | 构建、打包或发布 | [构建与验证](build.md) → [包验收与兼容边界](validation.md)；MSIX 另见[打包与运行](../msix.md) |
+| 双击隐藏、恢复闪烁或 hook 性能 | [Hook 验证](hook-validation.md) → [绘图与绑定](rendering.md) |
 | 图标收纳、释放或 Explorer 恢复 | [成员过滤](hybrid-desktop.md) → [选择与刷新时序](selection-latency.md) → [后台调度](event-driven-runtime.md) |
 | 菜单、重命名、选择或焦点异常 | [菜单与重命名](pane-item-rename.md) → [面板层级](pane-drag-order.md) → [选择时序](selection-latency.md) |
 | CLI、Agent 或 Skill | [CLI 接口设计](cli-agent.md) → [用户命令指南](../cli.md) → [Pane 模块边界](pane-structure.md) |

@@ -6,6 +6,16 @@ Current version: **0.22.1**. Features and fixes by release.
 
 Exit the app before upgrading a portable installation and preserve its `data` folder. See the [portable guide](docs/portable.md) (Chinese).
 
+## Unreleased
+
+These changes are not included in the 0.22.1 release packages.
+
+- Check for updates quietly and show the latest version and download action in About, without update dialogs.
+- Move Fonts into the basic settings group and Folder Panels into the panel appearance group.
+- Discard delayed desktop double-clicks so an old gesture does not unexpectedly hide the desktop after a busy period.
+- Fade panels in and out when hiding or restoring the desktop, with reversal during an unfinished transition. Switch immediately when system animations are disabled.
+- Coordinate desktop icon and panel restoration to reduce late icons and delayed backdrop changes.
+
 ## 0.22.1 · 2026-10-21
 
 Changes from the previous official release, **0.21.2**, to **0.22.1**. Existing settings, desktop layouts and backups remain compatible; no reconfiguration is required.

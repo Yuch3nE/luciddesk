@@ -26,6 +26,7 @@ LucidDesk 为 Windows 桌面提供桌面分组、文件夹面板和 Everything �
 | 配置 Everything 并搜索 | [Everything 搜索面板](usage.md#everything-搜索面板) |
 | 多选、复制、粘贴和改名 | [键盘操作](usage.md#键盘操作) |
 | 使用 Peek 或 QuickLook | [文件预览](usage.md#文件预览) |
+| 检查新版本 | [软件更新](usage.md#检查更新) |
 | 找回面板、刷新内容 | [托盘与显示面板](usage.md#托盘与显示面板) · [全局快捷键](usage.md#显示所有面板的全局快捷键) |
 | 调整材质、文字和圆角 | [外观设置](usage.md#外观设置) · [字体](usage.md#字体) |
 | 更换语言或菜单样式 | [界面语言](usage.md#界面语言) · [Windows 11 风格右键菜单](usage.md#windows-11-风格右键菜单) |

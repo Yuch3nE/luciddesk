@@ -26,7 +26,7 @@ LucidDesk is a Windows desktop organizer built with Rust. Group icons into panel
 
 </div>
 
-Version **0.22.1** is a maintenance update. Keep your existing settings and desktop layout when upgrading. See the [changelog](CHANGELOG.en.md).
+Version **0.22.1** is a maintenance update that preserves existing settings and desktop layouts. This guide describes the current source; unreleased improvements are listed separately in the [changelog](CHANGELOG.en.md).
 
 <a id="screenshots"></a>
 
@@ -92,7 +92,7 @@ See the [installer](docs/installer.md), [standard ZIP](docs/package.md) or [port
 
 Click the tray icon to show panels. Its menu also provides creation, search, refresh, configuration folder and exit actions.
 
-To temporarily clear the desktop, enable **Settings → General → Double-click to hide desktop** (off by default). Double-click an empty desktop area to hide all icons and panels, then double-click again or click the tray icon to restore them. Previously hidden icons and panels stay hidden, and your layout is preserved.
+To temporarily clear the desktop, enable **Settings → General → Double-click to hide desktop** (off by default). Double-click an empty desktop area to hide all icons and panels, then double-click again or click the tray icon to restore them. Panels fade in and out, with desktop icon restoration coordinated alongside them. Transitions are immediate when system animations are disabled. Previously hidden icons and panels stay hidden, and your layout is preserved.
 
 ### Enable search and preview
 
@@ -145,7 +145,7 @@ The Skill uses progressive disclosure: [SKILL.md](skills/luciddesk-control/SKILL
 
 ## 🔄 Upgrading and backups
 
-**Settings → About → Automatically check for updates** is enabled by default. LucidDesk checks stable releases at startup and every 24 hours, and notifies you of the latest version number. You can also **Check for updates** manually, then **Open update page** to download the appropriate package from GitHub Releases.
+**Settings → About → Automatically check for updates** is enabled by default. LucidDesk checks stable releases at startup and every 24 hours, and shows the result quietly in About, without an update dialog. When an update is available, About shows the latest version and a download button. You can also check manually; downloading and installing remain your choice.
 
 | Package | Upgrade |
 | --- | --- |
