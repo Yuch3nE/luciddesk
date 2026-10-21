@@ -34,14 +34,11 @@ const description = en ? 'New features, improvements, and fixes in LucidDesk. Se
 ---
 <Layout title={`${title}${pageNumber > 1 ? ` · ${pageNumber}` : ''} · LucidDesk`} description={description}>
   <div class="mx-auto max-w-4xl px-5 py-12 sm:px-8 lg:py-16">
-    <header class="mb-10 max-w-2xl">
+    <header class="mb-6 max-w-2xl">
 
       <h1 class="text-3xl font-bold tracking-tight text-heading sm:text-4xl">{title}</h1>
 
-      <div class="mt-6 flex flex-wrap items-center gap-3">
-        <Button variant="primary" text={en ? 'Download latest' : '下载最新版本'} href="https://github.com/Yuch3nE/luciddesk/releases/latest" icon="download"/>
-        <Button variant="link" class="dark:text-blue-300" text={en ? 'How to update' : '如何更新，保留布局'} href={path('/installation/#updates')}/>
-      </div>
+
     </header>
     <p class="mb-6 text-sm text-muted">{en ? `Page ${pageNumber} of ${totalPages}` : `第 ${pageNumber} / ${totalPages} 页`}</p>
 

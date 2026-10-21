@@ -177,3 +177,6 @@
 .help-article .help-copy > ol > li::before { content: counter(help-step); position: absolute; left: 0; top: .2rem; width: 1.5rem; height: 1.5rem; display: grid; place-items: center; border: 1px solid var(--aw-color-line); border-radius: .5rem; color: var(--aw-color-text-muted); font-size: .75rem; line-height: 1; }
 .help-article .help-copy > p:has(> strong:first-child) { border-left: 2px solid var(--aw-color-line); padding-left: 1rem; }
 @media (max-width: 639px) { .help-article .help-copy { font-size: .875rem; } }
+
+/* Toolbar controls stay on one baseline during hover and press. */
+.header-tools [data-slot="button"]:hover, .header-tools [data-slot="button"]:active { transform: none; }

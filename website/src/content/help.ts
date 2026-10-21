@@ -2,7 +2,7 @@ export interface HelpSection { id: string; title: string; html: string; }
 export interface HelpPage { slug: string; title: string; description: string; label: string; sections: HelpSection[]; }
 export const helpPages: HelpPage[] = [
   {
-    slug: 'installation', title: '安装好，就开始整理。', label: '安装与更新',
+    slug: 'installation', title: '安装好，就开始整理', label: '安装与更新',
     description: '选择适合自己的版本，了解安装、更新和迁移的正确步骤。',
     sections: [
       {id:'choose', title:'选择安装方式', html:`<p>日常使用推荐 EXE 安装版；希望程序和设置放在一起，可以选择便携版。官网提供 Windows 10 / 11 x64 下载，主要验证与维护平台为 Windows 11 x64。</p><ul><li><strong>安装版：</strong>运行以 <code>setup.exe</code> 结尾的安装包，按向导选择安装位置。带有开始菜单和卸载入口，更新时保留配置。为所有用户安装需要管理员权限。</li><li><strong>便携版：</strong>选择以 <code>portable.zip</code> 结尾的压缩包，完整解压到有写入权限的文件夹。默认将设置保存在程序旁的 <code>data</code> 文件夹。</li><li><strong>普通 ZIP：</strong>免安装，但设置默认保存在本机用户数据目录，与便携版不同。</li></ul><p>下载入口使用 GitHub 托管发布包；安装和使用说明都可以在本站阅读。</p>`},
@@ -13,7 +13,7 @@ export const helpPages: HelpPage[] = [
     ],
   },
   {
-    slug:'guide', title:'让桌面按你的习惯工作。', label:'使用指南',
+    slug:'guide', title:'让桌面按你的习惯工作', label:'使用指南',
     description:'从第一个面板开始，逐步了解文件收纳、搜索、预览和备份。内容对应应用 0.22.2。',
     sections:[
       {id:'first-panel', title:'创建你的第一个面板', html:`<ol><li>启动 LucidDesk，在任务栏通知区域找到应用图标；未显示时，先展开隐藏图标。</li><li>从托盘菜单选择“新建面板”。</li><li>将桌面图标拖进面板，按工作、学习或项目分别收纳。</li><li>拖动标题区域移动面板，拖动边缘调整大小；将图标拖回桌面可取消收纳。</li></ol><p><strong>收纳、移出和关闭桌面面板只改变引用关系，不会为整理而移动或删除原文件。</strong>但文件菜单中的删除、重命名和剪切等操作会影响真实文件。</p><p>尚未安装？先看<a href="/installation/">安装与更新指南</a>。</p>`},
@@ -27,7 +27,7 @@ export const helpPages: HelpPage[] = [
     ],
   },
   {
-    slug:'agent', title:'说出想法，让 Agent 协助整理。', label:'Agent 联动',
+    slug:'agent', title:'说出想法，让 Agent 协助整理', label:'Agent 联动',
     description:'连接你使用的外部 Agent，先查看桌面、预览改动，再应用整理方案。',
     sections:[
       {id:'overview', title:'可以帮你做什么', html:`<p>Agent 可以通过配套 CLI 了解当前工作区，帮助调整面板位置、大小、文件归属和排列。你可以描述“工作文件放左边，常用工具放右边”，再检查它给出的具体方案。</p><p>这项功能需要外部 Agent。LucidDesk 本身不包含 AI 聊天服务，也不会仅因为开启 CLI 就自动整理桌面。</p>`},
@@ -41,7 +41,7 @@ export const helpPages: HelpPage[] = [
 ];
 
 helpPages.push({
-  slug:'privacy', title:'你的桌面数据，如何被使用。', label:'隐私说明',
+  slug:'privacy', title:'你的桌面数据，如何被使用', label:'隐私说明',
   description:'根据应用隐私政策（2026 年 10 月 20 日）整理，说明本地数据、网络访问和删除方式。维护者：Yuchen95。',
   sections:[
     {id:'scope', title:'适用范围', html:`<p>本说明适用于 LucidDesk 官方安装版、普通 ZIP 和便携版。第三方修改版可能采用不同的数据处理方式。应用无需注册账号，目前没有内置广告、使用统计或自动上传崩溃报告的功能。</p><p>桌面整理、文件夹浏览和布局保存主要在本机完成。本站仅将应用政策改写为便于阅读的说明，不改变应用的数据处理方式。</p>`},
