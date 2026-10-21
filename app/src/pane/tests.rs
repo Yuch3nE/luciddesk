@@ -2203,3 +2203,101 @@ fn desktop_refresh_skips_unchanged_items_but_detects_label_position_and_image() 
     state.images.insert(current[0].identity.persistent_key(), Arc::new(assets::Pixels { width: 1, height: 1, data: vec![0; 4] }));
     assert!(desktop_items_for(&state, id, Some(&positioned)).is_some());
 }
+
+#[test]
+fn closing_search_preserves_open_settings_window() {
+    search_close_fixture(false);
+}
+
+#[test]
+#[ignore = "Requires desktop foreground access; temporarily activates isolated test windows"]
+fn closing_search_returns_focus_to_settings() {
+    search_close_fixture(true);
+}
+
+fn search_close_fixture(check_focus: bool) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::*;
+    use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
+
+    fn pump(milliseconds: u64) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(milliseconds);
+        while std::time::Instant::now() < deadline {
+            unsafe {
+                let mut msg = MSG::default();
+                while PeekMessageW(&raw mut msg, std::ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
+                    assert_ne!(msg.message, WM_QUIT, "closing search must not quit the app");
+                    TranslateMessage(&msg);
+                    DispatchMessageW(&msg);
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+    }
+    unsafe extern "system" fn choose_close(hwnd: windows_sys::Win32::Foundation::HWND, _: u32, timer: usize, _: u32) {
+        unsafe extern "system" fn choose(popup: windows_sys::Win32::Foundation::HWND, owner: isize) -> i32 {
+            unsafe {
+                let mut title = [0u16; 128];
+                let len = GetWindowTextW(popup, title.as_mut_ptr(), title.len() as i32);
+                if GetWindow(popup, GW_OWNER) == owner as _ && String::from_utf16_lossy(&title[..len as usize]) == crate::i18n::text("ui-group-menu") {
+                    // The empty search menu contains Settings followed by Close.
+                    let scale = windows_sys::Win32::UI::HiDpi::GetDpiForWindow(popup).max(96) as f32 / 96.0;
+                    let y = ((4.0 + menu::ROW_HEIGHT * 1.5) * scale) as isize;
+                    let point = (y << 16) | 20;
+                    PostMessageW(popup, WM_LBUTTONDOWN, 1, point);
+                    PostMessageW(popup, WM_LBUTTONUP, 0, point);
+                }
+            }
+            1
+        }
+        unsafe { KillTimer(hwnd, timer); EnumWindows(Some(choose), hwnd as isize); }
+    }
+    let _sta = crate::pane::test_support::apartment();
+    let state = Rc::new(RefCell::new(test_state()));
+    handle(&state, PanelId::new(0), Event::EnableSearch).unwrap();
+    let id = state.borrow().views[0].id;
+    let search = state.borrow().views[0].window.hwnd().cast();
+    settings::show(&state, id).unwrap();
+    let settings = state.borrow().settings.as_ref().unwrap().hwnd().cast();
+    pump(600); // Let the settings reveal finish before opening the menu.
+    unsafe {
+        if check_focus {
+            let current = GetCurrentThreadId();
+            let foreground = GetWindowThreadProcessId(GetForegroundWindow(), std::ptr::null_mut());
+            AttachThreadInput(current, foreground, 1);
+            let activated = SetForegroundWindow(settings);
+            AttachThreadInput(current, foreground, 0);
+            assert_ne!(activated, 0);
+            assert_eq!(GetForegroundWindow(), settings);
+        }
+        assert_ne!(SetTimer(search, 8989, 500, Some(choose_close)), 0);
+        PostMessageW(search, WM_CONTEXTMENU, search as usize, -1);
+    }
+    pump(1500);
+    assert_eq!(unsafe { IsWindow(search) }, 0);
+    assert_ne!(unsafe { IsWindow(settings) }, 0, "settings was destroyed with search");
+    assert_ne!(unsafe { IsWindowVisible(settings) }, 0);
+    assert_eq!(state.borrow().settings.as_ref().unwrap().hwnd().cast::<std::ffi::c_void>(), settings);
+    if check_focus {
+        assert_eq!(unsafe { GetForegroundWindow() }, settings, "settings must remain foreground after closing search");
+
+        // Closing a background search must not activate settings or unminimize it.
+        for minimized in [false, true] {
+            handle(&state, id, Event::EnableSearch).unwrap();
+            let search = state.borrow().views[0].window.hwnd().cast();
+            let other = windows_window::Window::new("Search close focus fixture")
+                .style(WS_OVERLAPPEDWINDOW)
+                .on_message(|_, msg, _, _| (msg == WM_DESTROY).then_some(0))
+                .create().unwrap();
+            unsafe {
+                if minimized { ShowWindow(settings, SW_MINIMIZE); }
+                SetForegroundWindow(other.hwnd().cast());
+                assert_eq!(GetForegroundWindow(), other.hwnd().cast());
+                PostMessageW(search, WM_CLOSE, 0, 0);
+            }
+            pump(500);
+            assert_eq!(unsafe { IsWindow(search) }, 0);
+            assert_eq!(unsafe { GetForegroundWindow() }, other.hwnd().cast());
+            assert_eq!(unsafe { IsIconic(settings) } != 0, minimized);
+        }
+    }
+}

@@ -451,12 +451,27 @@ fn create_view(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result<(), String> 
             return false;
         };
         if matches!(event, Event::ClosePane) {
-            let hwnd = state
-                .borrow()
-                .views
-                .iter()
-                .find(|v| v.id == event_target.get())
-                .map(|v| v.window.hwnd().cast());
+            let (hwnd, settings) = {
+                let state = state.borrow();
+                (
+                    state.views.iter().find(|v| v.id == event_target.get())
+                        .map(|v| v.window.hwnd().cast()),
+                    state.settings.as_ref().map(|w| w.hwnd().cast()),
+                )
+            };
+            if let (Some(hwnd), Some(settings)) = (hwnd, settings) {
+                unsafe {
+                    use windows_sys::Win32::UI::WindowsAndMessaging::*;
+                    // Hand off activation before disabling the fading pane.
+                    // Background closes must not steal focus or restore minimized settings.
+                    let foreground = GetForegroundWindow();
+                    if (foreground == hwnd || GetAncestor(foreground, GA_ROOTOWNER) == hwnd)
+                        && IsWindowVisible(settings) != 0 && IsIconic(settings) == 0
+                    {
+                        SetForegroundWindow(settings);
+                    }
+                }
+            }
             if hwnd.is_some_and(visibility::request_close) {
                 return false;
             }

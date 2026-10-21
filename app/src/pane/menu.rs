@@ -737,7 +737,11 @@ fn show_level(
         KillTimer(hwnd, 1);
         KillTimer(hwnd, 2);
         KillTimer(hwnd, 3);
-        if parent_row.is_some() && (resume_parent.get() || GetForegroundWindow() == hwnd) {
+        if (parent_row.is_some() && resume_parent.get())
+            || (GetForegroundWindow() == hwnd && (parent_row.is_some() || command.get() != 0))
+        {
+            // A selected root command belongs to the owner. Destroying the
+            // active flyout first can activate an unrelated application.
             SetForegroundWindow(owner);
             SetFocus(owner);
         }
