@@ -16,7 +16,7 @@ Desktop panels · Folder panels · Everything search · Spacebar preview · Agen
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square)](#compatibility)
 [![Architecture](https://img.shields.io/badge/arch-x64-475569?style=flat-square)](docs/portable.md)
 
-[⬇️ Download](https://github.com/Yuch3nE/luciddesk/releases) · [📸 Screenshots](#screenshots) · [🚀 Get started](#getting-started) · [📋 Changelog](CHANGELOG.en.md) · [🤝 Contribute](#contributing)
+[Website](https://luciddesk.bbkingdom365.com/) · [⬇️ Download](https://github.com/Yuch3nE/luciddesk/releases) · [User guide](https://luciddesk.bbkingdom365.com/guide/) · [📸 Screenshots](#screenshots) · [🚀 Get started](#getting-started) · [📋 Changelog](CHANGELOG.en.md) · [🤝 Contribute](#contributing)
 
 LucidDesk is a Windows desktop organizer built with Rust. Group icons into panels, browse your favorite folders, and find files with Everything. With the CLI and companion skill, agents can organize icons, adjust panel layouts, and manage folders and settings at your request—previewing changes before applying them to the desktop.
 
@@ -247,15 +247,18 @@ Author: **Yuchen95**.
 
 ## 📚 Documentation
 
+The [website](https://luciddesk.bbkingdom365.com/) includes bilingual [installation instructions](https://luciddesk.bbkingdom365.com/installation/), a [user guide](https://luciddesk.bbkingdom365.com/guide/), [agent integration](https://luciddesk.bbkingdom365.com/agent/) and the [changelog](https://luciddesk.bbkingdom365.com/changelog/). Use `EN / 中` to switch languages without reloading.
+
 | Guide | Contents |
 | --- | --- |
 | [User guide](docs/usage.md) | Panels, shortcuts, appearance and troubleshooting |
 | [Installer](docs/installer.md) · [Standard ZIP](docs/package.md) · [Portable](docs/portable.md) | Installation, upgrades and settings |
 | [Changelog](CHANGELOG.en.md) | App features and fixes by release |
+| [Website development](website/README.md) | Astro, Tailwind CSS, shadcn/ui, Lucide and Cloudflare deployment |
 | [Development](docs/development/README.md) | Architecture, builds, storage and validation |
 | [Contributing](CONTRIBUTING.en.md) · [Privacy](PRIVACY.en.md) | Contribution process and data handling |
 
-Guides are currently maintained in Chinese unless noted otherwise.
+Repository guides are maintained in Chinese unless noted otherwise; the website guides are available in both Chinese and English.
 
 <a id="friends"></a>
 

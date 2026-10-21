@@ -16,7 +16,7 @@
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square)](#系统与兼容性)
 [![架构](https://img.shields.io/badge/arch-x64-475569?style=flat-square)](docs/portable.md)
 
-[⬇️ 下载](https://github.com/Yuch3nE/luciddesk/releases) · [📸 截图](#界面截图) · [🚀 开始使用](#开始使用) · [📖 使用指南](docs/usage.md) · [📋 更新记录](CHANGELOG.md) · [🤝 参与开发](#参与开发)
+[官网](https://luciddesk.bbkingdom365.com/) · [⬇️ 下载](https://github.com/Yuch3nE/luciddesk/releases) · [📸 截图](#界面截图) · [🚀 开始使用](#开始使用) · [📖 使用指南](https://luciddesk.bbkingdom365.com/guide/) · [📋 更新记录](CHANGELOG.md) · [🤝 参与开发](#参与开发)
 
 LucidDesk 是使用 Rust 开发的 Windows 桌面整理工具。把零散图标收进面板，把常用目录放到桌面，再用 Everything 搜索快速找到文件。通过 CLI 与配套 Skill，还可以让 Agent 按你的要求整理图标、调整面板布局、管理文件夹和设置，先预览改动，再应用到桌面。
 
@@ -251,12 +251,15 @@ MSI 使用 `ensure-wix.ps1` 准备工具后，加 `-InstallerFormat Msi`；`Both
 
 ## 📚 文档
 
+[官网](https://luciddesk.bbkingdom365.com/)提供中英文[安装指南](https://luciddesk.bbkingdom365.com/installation/)、[使用指南](https://luciddesk.bbkingdom365.com/guide/)、[Agent 联动](https://luciddesk.bbkingdom365.com/agent/)与[更新日志](https://luciddesk.bbkingdom365.com/changelog/)。点击 `EN / 中` 原地切换语言。
+
 | 文档 | 内容 |
 | --- | --- |
 | [使用说明](docs/usage.md) | 面板操作、快捷键、外观与故障处理 |
 | [安装版](docs/installer.md) · [普通 ZIP](docs/package.md) · [便携版](docs/portable.md) | 安装、升级与配置保存 |
 | [更新记录](CHANGELOG.md) | 各版本的应用功能与修复 |
 | [CLI 使用说明](docs/cli.md) · [Agent 技能](skills/luciddesk-control/SKILL.md) | 命令、整理计划、预览与恢复 |
+| [官网开发](website/README.md) | Astro、Tailwind CSS、shadcn/ui、Lucide 与 Cloudflare 部署 |
 | [开发文档](docs/development/README.md) | 架构、构建、存储与验证 |
 | [贡献指南](CONTRIBUTING.md) · [隐私政策](PRIVACY.md) | 参与方式与数据处理说明 |
 

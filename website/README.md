@@ -1,8 +1,12 @@
 # LucidDesk 官网
 
+线上地址：[luciddesk.bbkingdom365.com](https://luciddesk.bbkingdom365.com/)。
+
 Astro 7 + Tailwind CSS 4 + shadcn/ui + Lucide 的静态官网。React 通过 Astro islands 承载交互组件，无需服务端运行时。
 
 ## 开发与发布
+
+以下命令均在 `website/` 目录执行：
 
 - `npm ci`：按锁文件安装依赖（Node.js >= 22.22.3）。
 - `npm run dev`：开发服务器，默认 http://127.0.0.1:8787。
@@ -11,11 +15,11 @@ Astro 7 + Tailwind CSS 4 + shadcn/ui + Lucide 的静态官网。React 通过 Ast
 - `npm run preview`：预览生产构建。
 - `npm run deploy`：检查、构建，再部署 Cloudflare Workers。
 
-首次发布需安装 Wrangler 并完成 `wrangler login`。Worker 为 `luciddesk-website`，域名为 `luciddesk.bbkingdom365.com`，部署目录为 `dist/`。安全响应头、robots 和 sitemap 从 `public/` 复制到构建产物。
+首次发布需安装 Wrangler 并完成 `wrangler login`。Worker 为 `luciddesk-website`，域名为 `luciddesk.bbkingdom365.com`，部署目录为 `dist/`。安全响应头与 robots 来自 `public/`；sitemap 由 `src/pages/sitemap.xml.ts` 生成。
 
 ## 页面结构
 
-- `src/pages/index.astro`：首页组合与功能、FAQ 数据。
+- `src/pages/index.astro`：首页路由；`src/components/pages/Home.astro` 组合首页与功能、FAQ 数据。
 - `src/layouts/PageLayout.astro`：SEO、主题脚本、页头与页尾。
 - `src/components/widgets/`：Hero、Features、FAQs，以及 LucidDesk 的 Agent、Downloads、Header、Footer。
 - `src/components/ui/`：shadcn/ui Button、Accordion、Select、Card、Badge 源码，以及 Astro 布局组件。
@@ -42,17 +46,21 @@ shadcn/ui 源码来自官方 `new-york-v4` 注册表，许可见 `SHADCN-LICENSE
 
 ## 站内帮助
 
+帮助页共用侧栏、章节目录和正文排版。`HelpPageLinks.tsx` 使用 shadcn Button 与 Lucide 图标显示文档导航；`HelpLayout.astro` 渲染章节，样式限定在帮助正文内，不影响更新日志。
+
 `src/content/help.ts` 保存面向用户的安装、使用、Agent 和隐私内容，由 `[slug].astro` 与 `HelpLayout.astro` 渲染。更新应用时核对 `docs/usage.md`、`docs/installer.md`、`docs/portable.md`、`docs/cli.md` 和 `PRIVACY.md`，同步版本与政策日期。文档入口指向本站；发布包下载、源码及问题反馈仍使用 GitHub。
 
 ## 仓库信息
 
-导航和页脚展示 `src/data/repository.json` 中的仓库名、正式发布版本和 Star 数。每次构建通过 GitHub 公共 API 刷新；网络失败时保留上次快照并输出日期提示。页面不是实时计数器，悬停入口可查看数据日期。
+首页下载按钮下方显示当前版本号，点击可打开站内更新日志。导航和页脚展示 `src/data/repository.json` 中的仓库名、正式发布版本和 Star 数。每次构建通过 GitHub 公共 API 刷新；网络失败时保留上次快照并输出日期提示。页面不是实时计数器，悬停入口可查看数据日期。
 
 ## 中英文页面
 
 中英文共用根路径；语言按钮通过 `public/language.js` 就地替换内容，保留主题、阅读位置与展开状态，并以 `luciddesk-language` 记住选择。构建时将英文路由转换为语言数据文件，旧 `/en/` 地址重定向至对应的公共地址；首页共用 `src/components/pages/Home.astro`。`src/content/translations.json` 保存英文界面文案，`copy.zh.json` 保存优化后的中文文案，`help.en.ts` 保存英文帮助文档。新增文案需同步两种语言。
 
-语言入口使用 shadcn Button 与 Lucide 图标，切换到对应页面并保留章节，不依赖浏览器自动翻译。两种语言都提供 canonical、hreflang 与 sitemap 条目；英文首页、SVG、FAQ、主题按钮、安装、使用指南、Agent 与隐私页均使用英文。
+语言入口为 `EN / 中` 按钮，不依赖浏览器自动翻译。两种语言共用 canonical 和 sitemap 地址，不生成独立语言的 hreflang。`src/pages/en/` 仅作为构建输入：`scripts/build-locales.mjs` 提取两种语言的内容至 `dist/_languages/`，移除英文 HTML 并生成旧链接重定向。
+
+验证语言切换时先执行 `npm run build`，再运行 `npm run preview`。开发服务器不生成上述语言数据文件；Cloudflare 的 `_headers` 和 `_redirects` 规则需在部署环境验证。
 
 ## 更新日志
 
