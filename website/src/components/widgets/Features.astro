@@ -1,0 +1,59 @@
+---
+import { Card } from "~/components/ui/card";
+import SiteIcon from '~/components/SiteIcon';
+import Button from '~/components/ui/Button.astro';
+import Headline from '~/components/ui/Headline.astro';
+import WidgetWrapper from '~/components/ui/WidgetWrapper.astro';
+import { getColumnsClass } from '~/lib/utils';
+import type { Features as Props } from '~/types';
+
+const {
+  title = await Astro.slots.render('title'),
+  subtitle = await Astro.slots.render('subtitle'),
+  tagline = await Astro.slots.render('tagline'),
+  items = [],
+  columns = 2,
+  defaultIcon,
+
+  id,
+  isDark = false,
+  classes = {},
+  bg = await Astro.slots.render('bg'),
+} = Astro.props;
+
+const columnsClass = columns === 3 ? 'md:grid-cols-3' : getColumnsClass(columns);
+---
+
+<WidgetWrapper id={id} isDark={isDark} containerClass={`max-w-6xl ${classes?.container ?? ''}`} bg={bg}>
+  <Headline title={title} subtitle={subtitle} tagline={tagline} classes={classes?.headline as Record<string, string>} />
+
+  {
+    items.length > 0 && (
+      <div class:list={['grid mx-auto gap-5', columnsClass]}>
+        {items.map(({ title: itemTitle, description, icon, callToAction }, index) => (
+          <Card data-motion data-motion-order={index} className="motion-card gap-0 rounded-2xl border-line bg-page p-6 shadow-none lg:p-8">
+            <div class="flex flex-col">
+              {(icon || defaultIcon) && (
+                <div class="flex mb-5">
+                  <SiteIcon
+                    name={icon || defaultIcon}
+                    className="h-11 w-11 shrink-0 rounded-xl bg-primary/10 p-2.5 text-primary dark:text-blue-300"
+                  />
+                </div>
+              )}
+              <div class="mt-0.5">
+                {itemTitle && <h3 class="text-lg font-semibold text-heading">{itemTitle}</h3>}
+                {description && <p class:list={[{ 'mt-3': itemTitle }, 'text-sm leading-7 text-muted']} set:html={description} />}
+                {callToAction && (
+                  <div class:list={[{ 'mt-3': itemTitle || description }]}>
+                    <Button variant="link" {...callToAction} />
+                  </div>
+                )}
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
+    )
+  }
+</WidgetWrapper>

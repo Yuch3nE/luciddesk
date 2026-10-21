@@ -1,0 +1,12 @@
+---
+import Headline from '~/components/ui/Headline.astro';
+import WidgetWrapper from '~/components/ui/WidgetWrapper.astro';
+import FAQAccordion from '~/components/FAQAccordion';
+import type { Faqs as Props } from '~/types';
+const {title, subtitle, tagline, items = [], id} = Astro.props;
+---
+<WidgetWrapper id={id}>
+  <Headline title={title} subtitle={subtitle} tagline={tagline}/>
+  <div data-motion><FAQAccordion items={items} client:load /></div>
+  <noscript><dl class="mx-auto max-w-3xl space-y-5">{items.map(item => <div><dt class="font-semibold">{item.title}</dt><dd class="mt-2 text-sm text-muted" set:html={item.description}/></div>)}</dl></noscript>
+</WidgetWrapper>
