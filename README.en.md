@@ -23,13 +23,20 @@ Desktop panels · Folder panels · Everything search · Spacebar preview · Agen
 
 [🌐 Website](https://luciddesk.bbkingdom365.com/) · [⬇️ Download](https://github.com/Yuch3nE/luciddesk/releases) · [✨ Explore](https://luciddesk.bbkingdom365.com/features/) · [📖 User guide](https://luciddesk.bbkingdom365.com/guide/) · [📋 Changelog](CHANGELOG.en.md)
 
-![LucidDesk feature illustration: panel tabs, folder browsing, Everything search and AI Agent integration](docs/images/overview.en.svg)
-
 </div>
 
-LucidDesk is a Windows desktop organizer built with Rust. Group icons into panels, keep frequently used folders on your desktop, and find files with Everything.
+LucidDesk is a free, open-source Windows desktop organizer built with Rust. Keep active projects, everyday tools and frequently used folders in a workspace that fits the way you work—without a registered account.
 
-The companion CLI and Skill let an agent help organize icons and panel layouts, with changes previewed before they are applied.
+- **Organize by project.** Group files and shortcuts into panels, and switch between tasks with tabs. Move, resize, collapse or snap panels to the edges; keep an automatic grid or arrange icons freely.
+- **Find and preview files.** Browse frequently used folders directly from the desktop, with contents that refresh as files change. Connect Everything for file search and press Space to preview with PowerToys Peek or QuickLook. These tools are installed separately.
+- **Make room to focus.** Enable double-click to hide desktop icons and panels, then restore them when needed. Match your wallpaper with light or dark appearance, custom fonts, colors and solid, Acrylic or Mica backgrounds; Mica requires Windows 11.
+- **Let an agent help.** Describe a layout such as “work files on the left, everyday tools on the right.” An external agent uses the companion CLI and Skill to inspect your workspace, plan changes, preview them, then apply and verify the result.
+
+Desktop panels keep references rather than moving your original files. Settings and layouts are stored locally and can be backed up and restored. File commands such as Delete and Rename still act on real files.
+
+![LucidDesk feature illustration: panel tabs, folder browsing, Everything search and AI Agent integration](docs/images/overview.en.svg)
+
+<sub>Feature illustration · See screenshots below for the actual interface</sub>
 
 **Current release: [v0.22.2](CHANGELOG.en.md)** · Better desktop restoration and quiet update checks.
 
@@ -73,7 +80,7 @@ Click a screenshot to view the original. These show dark Acrylic; the appearance
 | 🤖 **Agent integration & CLI** | Let agents use the companion skill and CLI to inspect the desktop, plan changes and apply them across panels, icons, layouts, folders, search and settings |
 | 💾 **Backup & restore** | Save and restore settings and layouts; automatic backups skip unchanged content |
 
-Panels can move, resize, collapse, auto-hide, snap to edges, lock, or stay on top. Customize fonts, rounded corners, colors and background materials. Folder and search panels remain independent of panel tabs.
+Panels also support locking, always-on-top and auto-hide. Folder and search panels remain independent and cannot be merged into desktop panel tabs.
 
 Use the desktop panel context menu to toggle Auto arrange icons and Align icons to grid. Disable auto arrange to keep empty cells, or disable grid alignment for free positioning; adding or removing items preserves the positions of other icons. Sorting runs once, and selecting the same field again reverses its direction. Settings → Panel layout → Icon arrangement controls defaults for new panels only. Agents can also use the CLI and companion Skill to change layout modes, position icons and preview changes.
 
