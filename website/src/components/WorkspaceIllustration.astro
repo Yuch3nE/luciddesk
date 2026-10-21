@@ -6,29 +6,37 @@ const t = translator(lang);
 import { Folder, FileText, Search, Sparkles, ChevronDown, Ellipsis, ArrowUpRight, ArrowRight, Circle } from 'lucide-react';
 const items = [[Folder,t('设计资料'),'#d9a43b'],[Folder,t('进行中的项目'),'#d9a43b'],[FileText,t('项目计划'),'#77a0dd'],[FileText,t('灵感清单'),'#77a0dd'],[FileText,t('产品演示'),'#77a0dd'],[Folder,t('已归档'),'#d9a43b']] as const;
 ---
-<svg class="block h-auto w-full" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 550" fill="none" role="img" aria-labelledby="title desc">
-  <title id="title">{t("LucidDesk 工作区功能示意")}</title>
-  <desc id="desc">{t("左侧桌面面板采用居中标题、文件夹和文档图标，右侧搜索快速查找内容，下方展示 Agent 先规划、再预览、后应用的整理流程。此图使用 Lucide 图标示意，并非软件截图。")}</desc>
+<svg class="block h-auto w-full" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 550" fill="none" role="img" aria-labelledby="workspace-illustration-title workspace-illustration-desc">
+  <title id="workspace-illustration-title">{t("LucidDesk 工作区功能示意")}</title>
+  <desc id="workspace-illustration-desc">{t("左侧桌面面板采用居中标题、文件夹和文档图标，右侧搜索快速查找内容，下方展示 Agent 先规划、再预览、后应用的整理流程。此图使用 Lucide 图标示意，并非软件截图。")}</desc>
 
   <rect x="1" y="1" width="998" height="548" rx="24" fill="var(--illustration-base)" stroke="var(--aw-color-line, #c3d0e4)"/>
-  <g font-family="Segoe UI,Microsoft YaHei,sans-serif" fill="var(--aw-color-text-default, #34435c)">
+  <g font-family="system-ui,Segoe UI,Microsoft YaHei,sans-serif" fill="var(--aw-color-text-default, #34435c)">
     <Circle x="25" y="25" width="8" height="8" color="#699e8d" fill="#699e8d" aria-hidden="true"/><text x="42" y="34" font-size="13">{t("我的工作区")}</text><text x="973" y="34" text-anchor="end" font-size="11" fill="var(--aw-color-text-muted)">{t("少一点凌乱，多一点从容。")}</text>
     <rect x="48" y="76" width="406" height="352" rx="16" fill="var(--illustration-glass)" fill-opacity=".66" stroke="var(--glass-border)"/>
     <text x="251" y="112" text-anchor="middle" font-size="15" font-weight="600">{t("工作项目")}</text><ChevronDown x="383" y="99" width="18" height="18" color="var(--aw-color-text-muted)" aria-hidden="true"/><Ellipsis x="412" y="99" width="18" height="18" color="var(--aw-color-text-muted)" aria-hidden="true"/>
-    <line x1="68" y1="134" x2="434" y2="134" stroke="var(--aw-color-line)"/>
+    <line x1="68" y1="134" x2="434" y2="134" stroke="var(--glass-border)"/>
+    <Folder x="72" y="100" width="18" height="18" color="var(--aw-color-text-muted)" strokeWidth={1.75} aria-hidden="true"/>
     {items.map(([Icon,label,color],index) => {
       const cx=124+(index%3)*128;
       const y=166+Math.floor(index/3)*120;
-      return <g><Icon x={cx-21} y={y} width="42" height="42" color={color} strokeWidth={1.75} aria-hidden="true"/><text x={cx} y={y+62} text-anchor="middle" font-size="12">{label}</text></g>;
+      return <g>
+        <rect x={cx-30} y={y-8} width="60" height="60" rx="14" fill="var(--illustration-base)" fill-opacity=".45" stroke="var(--glass-border)" stroke-opacity=".55"/>
+        <Icon x={cx-19} y={y+3} width="38" height="38" color={color} strokeWidth={1.65} aria-hidden="true"/>
+        <text x={cx} y={y+72} text-anchor="middle" font-size="12" font-weight="500">{label}</text>
+      </g>;
     })}
+    <line x1="68" y1="390" x2="434" y2="390" stroke="var(--glass-border)" stroke-opacity=".6"/>
+    <text x="72" y="412" font-size="11" fill="var(--aw-color-text-muted)">{lang === 'en' ? '6 items' : '6 个项目'}</text>
     <rect x="510" y="102" width="442" height="211" rx="16" fill="var(--illustration-glass)" fill-opacity=".66" stroke="var(--glass-border)"/>
     <rect x="528" y="120" width="406" height="42" rx="8" fill="var(--aw-color-surface, #f8faff)" stroke="var(--aw-color-line, #dce4ee)"/><Search x="538" y="131" width="20" height="20" color="var(--aw-color-text-muted)" aria-hidden="true"/>
     <text x="572" y="146" font-size="13">{t("项目")}</text><text x="920" y="146" text-anchor="end" fill="var(--aw-color-text-muted)" font-size="10">Everything</text>
-    <FileText x="539" y="180" width="26" height="30" color="#77a0dd" strokeWidth={1.75} aria-hidden="true"/><text x="583" y="193" font-size="12">{t("项目计划.docx")}</text><text x="583" y="211" font-size="10" fill="var(--aw-color-text-muted)">{t("文档 / 工作资料")}</text><ArrowUpRight x="912" y="186" width="17" height="17" color="var(--aw-color-text-muted)" aria-hidden="true"/>
-    <Folder x="535" y="243" width="34" height="28" color="#d9a43b" strokeWidth={1.75} aria-hidden="true"/><text x="583" y="252" font-size="12">{t("进行中的项目")}</text><text x="583" y="270" font-size="10" fill="var(--aw-color-text-muted)">{t("桌面 / 工作项目")}</text><ArrowUpRight x="912" y="245" width="17" height="17" color="var(--aw-color-text-muted)" aria-hidden="true"/>
+    <rect x="528" y="173" width="406" height="53" rx="8" fill="var(--illustration-tint)" fill-opacity=".26"/>
+    <FileText x="540" y="185" width="28" height="28" color="#77a0dd" strokeWidth={1.75} aria-hidden="true"/><text x="583" y="193" font-size="12">{t("项目计划.docx")}</text><text x="583" y="211" font-size="10" fill="var(--aw-color-text-muted)">{t("文档 / 工作资料")}</text><ArrowUpRight x="912" y="186" width="17" height="17" color="var(--aw-color-text-muted)" aria-hidden="true"/>
+    <line x1="583" y1="231" x2="920" y2="231" stroke="var(--glass-border)" stroke-opacity=".6"/><Folder x="540" y="244" width="28" height="28" color="#d9a43b" strokeWidth={1.75} aria-hidden="true"/><text x="583" y="252" font-size="12">{t("进行中的项目")}</text><text x="583" y="270" font-size="10" fill="var(--aw-color-text-muted)">{t("桌面 / 工作项目")}</text><ArrowUpRight x="912" y="245" width="17" height="17" color="var(--aw-color-text-muted)" aria-hidden="true"/>
     <rect x="550" y="344" width="402" height="128" rx="16" fill="var(--illustration-tint)" fill-opacity=".68" stroke="var(--glass-border)"/>
-    <Sparkles x="563" y="364" width="22" height="22" color="var(--aw-color-text-muted)" aria-hidden="true"/><text x="593" y="380" font-size="12" fill="var(--aw-color-text-default)">{t("Agent，帮我整理工作区。")}</text>
-    <g font-size="11" text-anchor="middle" fill="var(--aw-color-text-default)"><rect x="570" y="408" width="98" height="35" rx="7" fill="var(--illustration-glass)" fill-opacity=".55"/><text x="619" y="430">{t("生成计划")}</text><ArrowRight x="677" y="417" width="16" height="16" color="var(--aw-color-text-muted)" aria-hidden="true"/><rect x="702" y="408" width="98" height="35" rx="7" fill="var(--illustration-glass)" fill-opacity=".55"/><text x="751" y="430">{t("预览差异")}</text><ArrowRight x="809" y="417" width="16" height="16" color="var(--aw-color-text-muted)" aria-hidden="true"/><rect x="834" y="408" width="98" height="35" rx="7" fill="var(--illustration-glass)" fill-opacity=".55"/><text x="883" y="430">{t("应用整理")}</text></g>
+    <Sparkles x="570" y="365" width="20" height="20" color="#77a0dd" aria-hidden="true"/><text x="601" y="380" font-size="12" fill="var(--aw-color-text-default)">{t("Agent，帮我整理工作区。")}</text>
+    <g font-size="11" text-anchor="middle" fill="var(--aw-color-text-default)"><rect x="570" y="408" width="98" height="35" rx="8" fill="var(--illustration-glass)" fill-opacity=".55" stroke="var(--glass-border)"/><text x="619" y="430">{t("生成计划")}</text><ArrowRight x="677" y="417" width="16" height="16" color="var(--aw-color-text-muted)" aria-hidden="true"/><rect x="702" y="408" width="98" height="35" rx="8" fill="var(--illustration-glass)" fill-opacity=".55" stroke="var(--glass-border)"/><text x="751" y="430">{t("预览差异")}</text><ArrowRight x="809" y="417" width="16" height="16" color="var(--aw-color-text-muted)" aria-hidden="true"/><rect x="834" y="408" width="98" height="35" rx="8" fill="var(--illustration-glass)" fill-opacity=".55" stroke="var(--glass-border)"/><text x="883" y="430" font-weight="600">{t("应用整理")}</text></g>
     <text x="48" y="509" font-size="11" fill="var(--aw-color-text-muted)">{t("面板收纳 · 文件搜索 · Agent 联动")}</text><text x="952" y="509" text-anchor="end" font-size="10" fill="var(--aw-color-text-muted)">{t("功能示意，非实际界面")}</text>
   </g>
 </svg>

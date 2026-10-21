@@ -19,6 +19,8 @@ Astro 7 + Tailwind CSS 4 + shadcn/ui + Lucide 的静态官网。React 通过 Ast
 
 ## 页面结构
 
+`/features/` 是独立的中英文功能介绍页，涵盖面板、文件夹、搜索预览、专注外观、Agent 与备份。首页“探索功能”和导航“探索”指向此页，具体操作链接到指南章节。内容在 `ProductFeatures.astro` 中维护。
+
 - `src/pages/index.astro`：首页路由；`src/components/pages/Home.astro` 组合首页与功能、FAQ 数据。
 - `src/layouts/PageLayout.astro`：SEO、主题脚本、页头与页尾。
 - `src/components/widgets/`：Hero、Features、FAQs，以及 LucidDesk 的 Agent、Downloads、Header、Footer。
