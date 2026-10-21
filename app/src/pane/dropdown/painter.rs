@@ -110,7 +110,7 @@ impl Painter {
             for index in model.range() {
                 let top = PADDING + (index - model.first) as f32 * ROW_HEIGHT;
                 let row = RoundedRect {
-                    rect: Rect::from_xywh(PADDING, top, width - 2.0 * PADDING - 6.0, ROW_HEIGHT),
+                    rect: Rect::from_xywh(PADDING, top, width - 2.0 * PADDING, ROW_HEIGHT),
                     radius_x: 5.0,
                     radius_y: 5.0,
                 };
@@ -152,7 +152,7 @@ impl Painter {
             if let Some((y, thumb)) = model.scrollbar(height) {
                 target.fill_rounded_rect(
                     &RoundedRect {
-                        rect: Rect::from_xywh(width - 5.0, y, 2.0, thumb),
+                        rect: Rect::from_xywh(width - 3.0, y, 2.0, thumb),
                         radius_x: 1.0,
                         radius_y: 1.0,
                     },
