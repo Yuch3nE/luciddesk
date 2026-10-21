@@ -244,7 +244,7 @@ checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 
 [[package]]
 name = "luciddesk"
-version = "0.22.1"
+version = "0.22.2"
 dependencies = [
  "embed-resource",
  "fluent-bundle",
@@ -277,7 +277,7 @@ dependencies = [
 
 [[package]]
 name = "luciddesk-api"
-version = "0.22.1"
+version = "0.22.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -286,7 +286,7 @@ dependencies = [
 
 [[package]]
 name = "luciddesk-cli"
-version = "0.22.1"
+version = "0.22.2"
 dependencies = [
  "luciddesk-api",
  "serde_json",
@@ -294,14 +294,14 @@ dependencies = [
 
 [[package]]
 name = "luciddesk-core"
-version = "0.22.1"
+version = "0.22.2"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "luciddesk-diagnostics"
-version = "0.22.1"
+version = "0.22.2"
 dependencies = [
  "libc",
  "tempfile",
@@ -310,7 +310,7 @@ dependencies = [
 
 [[package]]
 name = "luciddesk-explorer"
-version = "0.22.1"
+version = "0.22.2"
 dependencies = [
  "luciddesk-menu",
  "windows",
@@ -320,7 +320,7 @@ dependencies = [
 
 [[package]]
 name = "luciddesk-graphics"
-version = "0.22.1"
+version = "0.22.2"
 dependencies = [
  "windows-core 0.100.0",
  "windows-link 0.100.0",
@@ -328,7 +328,7 @@ dependencies = [
 
 [[package]]
 name = "luciddesk-menu"
-version = "0.22.1"
+version = "0.22.2"
 dependencies = [
  "windows-sys",
 ]
@@ -352,7 +352,7 @@ dependencies = [
 
 [[package]]
 name = "luciddesk-plugin-api"
-version = "0.22.1"
+version = "0.22.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -360,7 +360,7 @@ dependencies = [
 
 [[package]]
 name = "luciddesk-plugin-host"
-version = "0.22.1"
+version = "0.22.2"
 dependencies = [
  "luciddesk-plugin-api",
  "serde_json",
@@ -371,7 +371,7 @@ dependencies = [
 
 [[package]]
 name = "luciddesk-shell"
-version = "0.22.1"
+version = "0.22.2"
 dependencies = [
  "luciddesk-core",
  "luciddesk-diagnostics",
@@ -387,7 +387,7 @@ dependencies = [
 
 [[package]]
 name = "luciddesk-storage"
-version = "0.22.1"
+version = "0.22.2"
 dependencies = [
  "luciddesk-core",
  "rusqlite",
@@ -397,7 +397,7 @@ dependencies = [
 
 [[package]]
 name = "luciddesk-window"
-version = "0.22.1"
+version = "0.22.2"
 dependencies = [
  "luciddesk-core",
  "windows-sys",
