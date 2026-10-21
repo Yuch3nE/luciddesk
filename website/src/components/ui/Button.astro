@@ -1,0 +1,7 @@
+---
+import ActionButton from '~/components/ActionButton';
+import type { CallToAction as Props } from '~/types';
+const {text = await Astro.slots.render('default'), class: className, href, target, variant, icon, type} = Astro.props;
+const buttonType = type === 'button' || type === 'submit' || type === 'reset' ? type : undefined;
+---
+<ActionButton text={text} className={className ?? undefined} href={href ? String(href) : undefined} target={target ?? undefined} variant={variant} icon={icon} type={buttonType}/>

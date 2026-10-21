@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://luciddesk.bbkingdom365.com/sitemap.xml

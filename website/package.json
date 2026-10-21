@@ -1,0 +1,34 @@
+{
+  "name": "luciddesk-website",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev --host 127.0.0.1 --port 8787",
+    "build": "node scripts/update-repository.mjs && astro build && node scripts/finalize-build.mjs && node scripts/build-locales.mjs",
+    "check": "astro check",
+    "preview": "astro preview --host 127.0.0.1 --port 8787",
+    "deploy": "npm run check && npm run build && wrangler deploy"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.12",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@astrojs/react": "^7.1.1",
+    "@radix-ui/react-accordion": "^1.3.1",
+    "@radix-ui/react-select": "^2.4.1",
+    "@radix-ui/react-slot": "^1.5.0",
+    "astro": "^7.4.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.61.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tailwind-merge": "^3.7.0",
+    "tw-animate-css": "^1.4.0"
+  }
+}

@@ -1,0 +1,39 @@
+---
+import { localeOf, translator } from '~/lib/i18n';
+const lang = localeOf(Astro.url.pathname);
+const t = translator(lang);
+
+import '../styles.css';
+import Header from '~/components/widgets/Header.astro';
+import Footer from '~/components/widgets/Footer.astro';
+interface Props { title?: string; description?: string; noindex?: boolean; }
+const { title = t('LucidDesk — 桌面有序，专注自在'), noindex = false, description = t('LucidDesk 是开源的 Windows 桌面整理工具。用面板收纳图标，浏览常用文件夹，连接 Everything 搜索，让 Agent 协助打理工作区。') } = Astro.props;
+const basePath = Astro.url.pathname.replace(/^\/en(?=\/|$)/, '') || '/';
+const canonical = new URL(basePath, Astro.site);
+---
+<!doctype html>
+<html lang={lang === "en" ? "en" : "zh-CN"}>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f8fafc" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    {noindex ? <meta name="robots" content="noindex, follow" /> : <link rel="canonical" href={canonical} />}
+    <link rel="icon" href="/assets/app-icon.png" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={new URL('/assets/app-icon.png', Astro.site)} />
+    <script is:inline src="/theme.js"></script>
+  </head>
+  <body class="bg-page text-default antialiased">
+    <a href="#main" class="rounded-xl border border-line px-6 py-3 font-semibold bg-page fixed -top-24 left-4 z-50 focus:top-4">{t("跳到主要内容")}</a>
+    <Header />
+    <main id="main"><slot /></main>
+    <Footer />
+    <script is:inline defer src="/motion.js"></script>
+    <script is:inline defer src="/language.js"></script>
+  </body>
+</html>
