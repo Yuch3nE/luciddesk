@@ -2,11 +2,13 @@
 
 [简体中文](CHANGELOG.md) · English
 
-Current version: **0.22.0**. Features and fixes by release.
+Current version: **0.22.1**. Features and fixes by release.
 
 Exit the app before upgrading a portable installation and preserve its `data` folder. See the [portable guide](docs/portable.md) (Chinese).
 
-## 0.22.0 · 2026-10-21
+## 0.22.1 · 2026-10-21
+
+Changes from the previous official release, **0.21.2**, to **0.22.1**. Existing settings, desktop layouts and backups remain compatible; no reconfiguration is required.
 
 ### New features
 
@@ -19,7 +21,6 @@ Exit the app before upgrading a portable installation and preserve its `data` fo
 - Group Settings navigation by purpose and make Language easier to find. Dropdowns support keyboard navigation, wheel scrolling and prefix search; cancelling keeps the original value.
 - Make the desktop connection status and buttons clearer in About. Add a build identifier to help identify your version when reporting a problem.
 - Improve prompts in all seven languages and Simplified Chinese interface text. Explain the outcome before showing error details, use consistent error dialogs, and reduce duplicate popups.
-- Improve metric presentation and the compact layout of the optional system monitor plugin, and reduce drawing overhead in Settings and monitor panels. Default installers and ZIPs still exclude plugins.
 
 ### Reliability and troubleshooting
 
@@ -28,6 +29,17 @@ Exit the app before upgrading a portable installation and preserve its `data` fo
 - Make hiding and restoring the desktop smoother, reducing panel flicker and lingering busy cursors. Restore the previous icon visibility when the app exits.
 - Include more complete error details and recent logs in **Copy diagnostics**. Logs use your computer's local date and time, and recent errors remain available after recovery.
 - Report early startup failures, stop treating cancelled file operations as errors, and make backup information clearer.
+
+### Optional system monitor plugin
+
+- Manage plugins and their options together in Settings, with easier metric ordering and dropdown selection.
+- Improve metrics, rates and trend charts in compact layouts, and reduce drawing overhead in Settings and monitor panels.
+- Fix duplicate GPU entries and incorrect utilization readings on some systems, and unexpected sampling or history-chart interruptions during extended use.
+- Prevent the monitor background controller from taking focus or appearing on the taskbar. Default installers and ZIPs still exclude plugins.
+
+### Maintenance
+
+- Update underlying components and build tools.
 
 ## 0.21.2 · 2026-10-19
 
