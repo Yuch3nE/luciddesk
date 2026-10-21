@@ -2325,6 +2325,51 @@ fn about_shows_the_embedded_build_commit_in_all_languages() {
 }
 
 #[test]
+fn available_update_highlights_version_and_download_in_all_languages() {
+    for locale in 0..7 {
+        crate::i18n::with_locale(locale, || {
+            for width in [800.0, 940.0] {
+                let mut body = layout::scene(width, 568.0, 5, false,
+                    (PanelTheme::Dark, Backdrop::Mica), Default::default());
+                let updates = crate::updates::Controller::with_available_version("99.1.2");
+                layout::about_updates(&mut body, width, true, false, &updates, true);
+                let (title, _, style) = body.text.iter().find(|(_, text, _)| text.contains("99.1.2")).unwrap();
+                assert_eq!(*style, Tokens::STATUS_GOOD);
+                let download = body.controls.iter().find(|c| matches!(c.action,
+                    Action::ProjectLink(url) if url == crate::updates::PAGE)).unwrap();
+                assert!(download.selected && download.enabled);
+                let check = body.controls.iter().find(|c| matches!(c.action, Action::Update)).unwrap();
+                assert!(!check.selected);
+                let card = body.cards.iter().find(|r| contains(r, title.left, title.top)).unwrap();
+                for bounds in [download.bounds, check.bounds] {
+                    assert!(bounds.left >= card.left && bounds.right <= card.right);
+                    assert!(bounds.top >= card.top && bounds.bottom <= card.bottom);
+                }
+                if locale == 0 && width == 940.0 {
+                    let _apartment = crate::pane::test_support::apartment();
+                    let painter = Painter::new().unwrap();
+                    let device = windows_canvas::GpuDevice::new_warp().unwrap();
+                    let mut scene = with_titlebar(body, width, false);
+                    scene.scroll_to(width, 700.0, &mut 0.0);
+                    for dark in [false, true] {
+                        let bitmap = super::super::canvas::Offscreen::new(&device, 940, 700).unwrap();
+                        painter.paint(&bitmap.target, &scene, width, 700.0, 1.0, dark,
+                            false, None, None, &Default::default()).unwrap();
+                        let pixels = bitmap.pixels().unwrap();
+                        assert!(pixels.chunks_exact(4).all(|pixel| pixel[3] == 255));
+                        if std::env::var_os("LUCIDDESK_TEST_EXPORT_SNAPSHOTS").is_some() {
+                            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                                .join(format!("../target/update-available-{}.bgra", if dark { "dark" } else { "light" }));
+                            std::fs::write(path, pixels).unwrap();
+                        }
+                    }
+                }
+            }
+        });
+    }
+}
+
+#[test]
 fn about_exposes_automatic_update_switch_and_manual_actions_in_all_languages() {
     for locale in 0..7 {
         crate::i18n::with_locale(locale, || {
@@ -2347,9 +2392,9 @@ fn about_exposes_automatic_update_switch_and_manual_actions_in_all_languages() {
                 }
                 assert!(body.controls.iter().any(|c| matches!(c.action, Action::Update) && c.enabled));
                 assert!(body.controls.iter().any(|c| matches!(c.action, Action::ProjectLink(url) if url == crate::updates::PAGE)));
-                let notice = crate::i18n::format("update-notification", &[("version", "99.1.2".into())]);
+                let notice = crate::i18n::format("update-available", &[("version", "99.1.2".into())]);
                 assert!(notice.contains("99.1.2"));
-                assert!(!notice.contains("update-notification"));
+                assert!(!notice.contains("update-available"));
             }
         });
     }

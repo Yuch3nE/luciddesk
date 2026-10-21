@@ -185,34 +185,13 @@ fn suspend(state: &Rc<RefCell<PaneApp>>) {
 }
 
 fn maintain_updates(state: &Rc<RefCell<PaneApp>>) {
-    let notice = {
-        let s = state.borrow();
-        let Some(runtime) = &s.runtime else { return; };
-        let mut updates = runtime.updates.borrow_mut();
-        let before = updates.status();
-        let notice = updates.maintain(crate::updates::automatic_enabled(&s.store), Instant::now());
-        if before != updates.status() && let Some(settings) = &s.settings {
-            unsafe { InvalidateRect(settings.hwnd().cast(), std::ptr::null(), 0); }
-        }
-        notice
-    };
-    if let Some(version) = notice {
-        let weak = Rc::downgrade(state);
-        // A native dialog pumps messages; never keep app/controller borrows here.
-        window::defer_action(move || {
-            let Some(state) = weak.upgrade() else { return; };
-            let owner = {
-                let s = state.borrow();
-                if !crate::updates::automatic_enabled(&s.store) { return; }
-                s.settings.as_ref().map_or(0, |window| window.hwnd() as isize)
-            };
-            luciddesk_window::show_message(
-                owner,
-                crate::i18n::text("update-title"),
-                &crate::i18n::format("update-notification", &[("version", version)]),
-                luciddesk_window::MessageKind::Information,
-            );
-        });
+    let s = state.borrow();
+    let Some(runtime) = &s.runtime else { return; };
+    let mut updates = runtime.updates.borrow_mut();
+    let before = updates.status();
+    updates.maintain(crate::updates::automatic_enabled(&s.store), Instant::now());
+    if before != updates.status() && let Some(settings) = &s.settings {
+        unsafe { InvalidateRect(settings.hwnd().cast(), std::ptr::null(), 0); }
     }
 }
 

@@ -1188,7 +1188,6 @@ update-current = Die Version ist aktuell.
 update-available = Version { $version } ist verfügbar
 update-failed = Suche fehlgeschlagen. Bitte erneut versuchen
 update-auto-check = Automatisch nach Updates suchen
-update-notification = Version { $version } ist verfügbar. Öffnen Sie Einstellungen → Info und dort die Update-Seite zum Herunterladen.
 
 # Login startup
 startup-general = Allgemein
@@ -1303,3 +1302,6 @@ settings-nav-maintenance = Wartung
 desktop-gesture-section = Desktop-Gesten
 desktop-gesture-title = Desktop per Doppelklick ausblenden
 desktop-gesture-description = Doppelklicken Sie auf eine freie Desktopfläche, um alle Symbole und Bereiche auszublenden. Erneut doppelklicken zum Wiederherstellen.
+
+update-installed-version = Installierte Version { $version }
+update-download = Update herunterladen

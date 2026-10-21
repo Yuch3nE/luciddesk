@@ -1188,7 +1188,6 @@ update-current = 最新バージョンです。
 update-available = バージョン { $version } が利用可能です
 update-failed = 確認に失敗しました。再試行してください
 update-auto-check = 更新を自動的に確認
-update-notification = 新しいバージョン { $version } があります。「設定 → このアプリについて」から更新ページを開いてダウンロードしてください。
 
 # Login startup
 startup-general = 全般
@@ -1303,3 +1302,6 @@ settings-nav-maintenance = メンテナンス
 desktop-gesture-section = デスクトップ操作
 desktop-gesture-title = ダブルクリックでデスクトップを非表示
 desktop-gesture-description = デスクトップの空白をダブルクリックするとすべてのアイコンとパネルを非表示にし、再度ダブルクリックすると元に戻します。
+
+update-installed-version = 現在のバージョン { $version }
+update-download = 更新をダウンロード

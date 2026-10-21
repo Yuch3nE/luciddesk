@@ -1188,7 +1188,6 @@ update-current = 已是最新版本。
 update-available = 发现新版本 { $version }
 update-failed = 检查失败，请重试
 update-auto-check = 自动检查更新
-update-notification = 发现新版本 { $version }。请前往“设置 → 关于”打开更新页面下载。
 
 # Login startup
 startup-general = 通用
@@ -1303,3 +1302,6 @@ settings-nav-maintenance = 维护
 desktop-gesture-section = 桌面操作
 desktop-gesture-title = 双击隐藏桌面
 desktop-gesture-description = 双击桌面空白处隐藏所有图标和面板，再次双击恢复。
+
+update-installed-version = 当前版本 { $version }
+update-download = 下载新版本

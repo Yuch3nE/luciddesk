@@ -1188,7 +1188,6 @@ update-current = 최신 버전입니다.
 update-available = 버전 { $version } 사용 가능
 update-failed = 확인 실패. 다시 시도하세요
 update-auto-check = 자동으로 업데이트 확인
-update-notification = 새 버전 { $version }이 있습니다. 설정 → 정보에서 업데이트 페이지를 열어 다운로드하세요.
 
 # Login startup
 startup-general = 일반
@@ -1303,3 +1302,6 @@ settings-nav-maintenance = 유지 관리
 desktop-gesture-section = 바탕 화면 동작
 desktop-gesture-title = 두 번 클릭하여 바탕 화면 숨기기
 desktop-gesture-description = 바탕 화면의 빈 공간을 두 번 클릭하면 모든 아이콘과 패널을 숨기고, 다시 두 번 클릭하면 복원합니다.
+
+update-installed-version = 현재 버전 { $version }
+update-download = 업데이트 다운로드

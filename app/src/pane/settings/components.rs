@@ -299,10 +299,21 @@ impl<'a> SettingsForm<'a> {
         description: &str,
         actions: Vec<(&str, Action)>,
         toggle: (&str, Action, bool),
+        highlight: bool,
     ) {
         let first_card = self.scene.cards.len();
         let top = self.y;
+        let first_text = self.scene.text.len();
+        let first_control = self.scene.controls.len();
         self.actions(title, description, actions);
+        if highlight {
+            if let Some((_, _, style)) = self.scene.text.get_mut(first_text) {
+                *style = Tokens::STATUS_GOOD;
+            }
+            if let Some(control) = self.scene.controls.get_mut(first_control) {
+                control.selected = true;
+            }
+        }
         let footer_top = self.y - Tokens::GAP;
         let label_width = self.width - 2.0 * Tokens::INSET - 46.0 - 16.0;
         let label_height = text_height(toggle.0, 14.0, label_width).max(24.0);

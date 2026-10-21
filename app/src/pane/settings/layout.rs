@@ -748,17 +748,21 @@ pub(super) fn about_updates(
 ) {
     let mut form = SettingsForm::continuation(s, width, 76.0);
     form.brand();
+    let available = updates.available_version().is_some();
+    let status = updates.status();
+    let current = crate::i18n::format("update-installed-version",
+        &[("version", env!("CARGO_PKG_VERSION").into())]);
+    let download = (
+        crate::i18n::text(if available { "update-download" } else { "update-open-page" }),
+        Action::ProjectLink(crate::updates::PAGE),
+    );
+    let check = (crate::i18n::text("update-check"), Action::Update);
     form.actions_with_toggle(
-        crate::i18n::text("update-title"),
-        &updates.status(),
-        vec![
-            (crate::i18n::text("update-check"), Action::Update),
-            (
-                crate::i18n::text("update-open-page"),
-                Action::ProjectLink(crate::updates::PAGE),
-            ),
-        ],
+        if available { &status } else { crate::i18n::text("update-title") },
+        if available { &current } else { &status },
+        if available { vec![download, check] } else { vec![check, download] },
         (crate::i18n::text("update-auto-check"), Action::AutoCheckUpdates(!auto_check), auto_check),
+        available,
     );
     form.info(
         crate::i18n::text("ui-operating-system"),

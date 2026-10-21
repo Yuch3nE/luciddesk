@@ -1188,7 +1188,6 @@ update-current = Установлена последняя версия.
 update-available = Доступна версия { $version }
 update-failed = Ошибка проверки. Повторите попытку
 update-auto-check = Автоматически проверять обновления
-update-notification = Доступна версия { $version }. Откройте Настройки → О программе и перейдите на страницу обновлений для загрузки.
 
 # Login startup
 startup-general = Общие
@@ -1303,3 +1302,6 @@ settings-nav-maintenance = Обслуживание
 desktop-gesture-section = Действия на рабочем столе
 desktop-gesture-title = Скрывать рабочий стол двойным щелчком
 desktop-gesture-description = Дважды щёлкните пустое место рабочего стола, чтобы скрыть все значки и панели. Повторите, чтобы восстановить.
+
+update-installed-version = Установленная версия { $version }
+update-download = Скачать обновление

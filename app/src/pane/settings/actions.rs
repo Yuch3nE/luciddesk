@@ -312,7 +312,7 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
                 state.borrow().wake.notify();
                 if context.updates.borrow().busy() && unsafe { SetTimer(hwnd, UPDATE_TIMER, 200, None) } == 0
                 {
-                    *context.updates.borrow_mut() = crate::updates::Controller::default();
+                    context.updates.borrow_mut().cancel();
                     window::error_for(hwnd, crate::i18n::text("update-failed"));
                 }
                 invalidate = true;

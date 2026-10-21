@@ -64,26 +64,13 @@ pub struct Controller {
     error: Option<String>,
     last_attempt: Option<std::time::Instant>,
     automatic: bool,
-    notified: Option<String>,
 }
 impl Controller {
     /// Poll from the runtime, independently of the settings window's lifetime.
-    /// Only a new version from an automatic check produces a notification.
-    pub fn maintain(&mut self, enabled: bool, now: std::time::Instant) -> Option<String> {
+    /// Results only update the status shown in Settings -> About.
+    pub fn maintain(&mut self, enabled: bool, now: std::time::Instant) {
         self.set_automatic_enabled(enabled);
-        let completed_automatic = self.automatic && self.busy();
         self.poll();
-        let notice = if enabled && completed_automatic && !self.busy() {
-            self.available
-                .as_ref()
-                .filter(|version| self.notified.as_ref() != Some(version))
-                .cloned()
-        } else {
-            None
-        };
-        if let Some(version) = &notice {
-            self.notified = Some(version.clone());
-        }
         if self.automatic_due(enabled, now) {
             if let Err(error) = self.check() {
                 self.error = Some(error);
@@ -91,7 +78,6 @@ impl Controller {
             self.last_attempt = Some(now);
             self.automatic = self.busy();
         }
-        notice
     }
 
     fn automatic_due(&self, enabled: bool, now: std::time::Instant) -> bool {
@@ -109,8 +95,20 @@ impl Controller {
         }
     }
 
+    pub fn cancel(&mut self) {
+        self.work = None;
+        self.automatic = false;
+    }
+
     pub fn busy(&self) -> bool {
         self.work.is_some()
+    }
+    pub fn available_version(&self) -> Option<&str> {
+        if self.busy() || self.error.is_some() { None } else { self.available.as_deref() }
+    }
+    #[cfg(test)]
+    pub(crate) fn with_available_version(version: &str) -> Self {
+        Self { available: Some(version.into()), checked: true, ..Self::default() }
     }
     pub fn status(&self) -> String {
         if self.busy() {
@@ -189,7 +187,7 @@ mod tests {
         let now = std::time::Instant::now();
         let mut controller = Controller::default();
         assert!(!controller.automatic_due(false, now));
-        assert!(controller.maintain(false, now).is_none());
+        controller.maintain(false, now);
         assert!(!controller.busy());
         assert!(controller.automatic_due(true, now));
         controller.last_attempt = Some(now);
@@ -212,7 +210,7 @@ mod tests {
         controller.set_automatic_enabled(false);
         assert!(cancel.load(Ordering::Relaxed));
         assert!(!controller.busy());
-        assert!(controller.maintain(false, now + CHECK_INTERVAL).is_none());
+        controller.maintain(false, now + CHECK_INTERVAL);
     }
 
     fn completed(
@@ -232,28 +230,28 @@ mod tests {
     }
 
     #[test]
-    fn automatic_results_notify_once_per_version_and_failures_stay_silent() {
+    fn automatic_and_manual_results_update_status_without_notifications() {
         let now = std::time::Instant::now();
         let mut controller = Controller::default();
-        completed(&mut controller, Ok(Some("1.0.0".into())), true, now);
-        assert_eq!(controller.maintain(true, now).as_deref(), Some("1.0.0"));
-        assert!(controller.maintain(true, now).is_none());
-        completed(&mut controller, Ok(Some("1.0.0".into())), true, now);
-        assert!(controller.maintain(true, now).is_none());
+        for automatic in [true, false] {
+            for version in ["1.0.0", "1.1.0"] {
+                completed(&mut controller, Ok(Some(version.into())), automatic, now);
+                controller.maintain(true, now);
+                assert!(!controller.busy());
+                assert!(controller.checked);
+                assert_eq!(controller.available.as_deref(), Some(version));
+                assert_eq!(controller.status(), i18n::format("update-available", &[("version", version.into())]));
+            }
+        }
+        controller.available = None;
         completed(&mut controller, Err("offline".into()), true, now);
-        assert!(controller.maintain(true, now).is_none());
-        assert!(!controller.busy());
+        controller.maintain(true, now);
+        assert_eq!(controller.error.as_deref(), Some("offline"));
         assert!(!controller.automatic_due(true, now));
-        completed(&mut controller, Ok(Some("1.1.0".into())), false, now);
-        assert!(controller.maintain(true, now).is_none());
-        assert_eq!(controller.available.as_deref(), Some("1.1.0"));
-        completed(&mut controller, Ok(Some("1.1.0".into())), true, now);
-        assert_eq!(controller.maintain(true, now).as_deref(), Some("1.1.0"));
-        completed(&mut controller, Ok(Some("1.2.0".into())), true, now);
-        assert!(controller.maintain(false, now).is_none());
+        controller.error = None;
         completed(&mut controller, Ok(None), true, now);
-        assert!(controller.maintain(true, now).is_none());
-        assert!(controller.available.is_none());
+        controller.maintain(true, now);
+        assert_eq!(controller.status(), i18n::text("update-current"));
     }
 
     fn release(tag: &str) -> Vec<u8> {

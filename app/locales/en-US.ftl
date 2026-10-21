@@ -1188,7 +1188,6 @@ update-current = You are up to date.
 update-available = Version { $version } is available
 update-failed = Check failed. Please retry
 update-auto-check = Automatically check for updates
-update-notification = Version { $version } is available. Open Settings → About to visit the update page and download it.
 
 # Login startup
 startup-general = General
@@ -1303,3 +1302,6 @@ settings-nav-maintenance = Maintenance
 desktop-gesture-section = Desktop gestures
 desktop-gesture-title = Double-click to hide desktop
 desktop-gesture-description = Double-click an empty desktop area to hide all icons and panels; double-click again to restore.
+
+update-installed-version = Installed version { $version }
+update-download = Download update
