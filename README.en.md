@@ -16,9 +16,7 @@ Desktop panels · Folder panels · Everything search · Spacebar preview · Agen
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square)](#compatibility)
 [![Architecture](https://img.shields.io/badge/arch-x64-475569?style=flat-square)](docs/portable.md)
 
-[Website](https://luciddesk.bbkingdom365.com/) · [⬇️ Download](https://github.com/Yuch3nE/luciddesk/releases) · [User guide](https://luciddesk.bbkingdom365.com/guide/) · [📸 Screenshots](#screenshots) · [🚀 Get started](#getting-started) · [📋 Changelog](CHANGELOG.en.md) · [🤝 Contribute](#contributing)
-
-LucidDesk is a Windows desktop organizer built with Rust. Group icons into panels, browse your favorite folders, and find files with Everything. With the CLI and companion skill, agents can organize icons, adjust panel layouts, and manage folders and settings at your request—previewing changes before applying them to the desktop.
+[🌐 Website](https://luciddesk.bbkingdom365.com/) · [⬇️ Download](https://github.com/Yuch3nE/luciddesk/releases) · [✨ Explore](https://luciddesk.bbkingdom365.com/features/) · [📖 User guide](https://luciddesk.bbkingdom365.com/guide/) · [📋 Changelog](CHANGELOG.en.md)
 
 ![LucidDesk feature illustration: panel tabs, folder browsing, Everything search and AI Agent integration](docs/images/overview.en.svg)
 
@@ -26,7 +24,19 @@ LucidDesk is a Windows desktop organizer built with Rust. Group icons into panel
 
 </div>
 
-Version **0.22.2** improves desktop hiding and restoration, checks for updates quietly, and keeps Settings accessible from the taskbar. The search global shortcut has been removed; desktop search and its tray entry remain available. Existing settings and layouts remain compatible. See the [changelog](CHANGELOG.en.md) for details.
+LucidDesk is a Windows desktop organizer built with Rust. Group icons into panels, browse your favorite folders, and find files with Everything. With the CLI and companion skill, agents can organize icons, adjust panel layouts, and manage folders and settings at your request—previewing changes before applying them to the desktop.
+
+> [!TIP]
+> **Current release · v0.22.2**
+>
+> Improved desktop hiding and restoration, quiet update checks, and a taskbar entry for Settings. Existing settings and layouts remain compatible.
+> The search global shortcut has been removed; desktop search and the tray entry remain available. [See all changes →](CHANGELOG.en.md)
+
+### 🧭 On this page
+
+[📸 Screenshots](#screenshots) · [✨ Features](#features) · [🚀 Get started](#getting-started) · [🔄 Upgrading](#upgrading-and-backups)
+
+[🌐 Languages](#languages) · [🖥️ Compatibility](#compatibility) · [💬 FAQ](#troubleshooting) · [🛠️ Build](#build-from-source) · [🤝 Contribute](#contributing) · [📚 Docs](#documentation)
 
 <a id="screenshots"></a>
 
@@ -48,27 +58,34 @@ Click a screenshot to view the original. These show dark Acrylic; the appearance
 
 | Feature | What you can do |
 | --- | --- |
-| Desktop panels | Group files, folders and shortcuts; use compact arrangement, manual grids with empty cells or free positioning, and sort by name, type, modified date or size |
-| Double-click to hide desktop | Hide all icons and panels by double-clicking an empty desktop area; double-click again to restore. Enable it in General settings |
-| Panel tabs | Switch between panels, reorder tabs, merge them or detach them into separate windows |
-| Folder panels | Browse directories, sort by name, type, date or size, and follow file changes automatically |
-| File search | Find local files through Everything and open files or their locations |
-| File preview | Press Space to preview selected files with PowerToys Peek or QuickLook |
-| Fonts & languages | Search fonts suited to the current language and switch between seven interface languages without restarting |
-| Agent integration & CLI | Let agents use the companion skill and CLI to inspect the desktop, plan changes and apply them across panels, icons, layouts, folders, search and settings |
-| Backup & restore | Save and restore settings and layouts; automatic backups skip unchanged content |
+| 🗂️ **Desktop panels** | Group files, folders and shortcuts; use compact arrangement, manual grids with empty cells or free positioning, and sort by name, type, modified date or size |
+| 🫥 **Double-click to hide desktop** | Hide all icons and panels by double-clicking an empty desktop area; double-click again to restore. Enable it in General settings |
+| 🏷️ **Panel tabs** | Switch between panels, reorder tabs, merge them or detach them into separate windows |
+| 📁 **Folder panels** | Browse directories, sort by name, type, date or size, and follow file changes automatically |
+| 🔎 **File search** | Find local files through Everything and open files or their locations |
+| 👀 **File preview** | Press Space to preview selected files with PowerToys Peek or QuickLook |
+| 🌐 **Fonts & languages** | Search fonts suited to the current language and switch between seven interface languages without restarting |
+| 🤖 **Agent integration & CLI** | Let agents use the companion skill and CLI to inspect the desktop, plan changes and apply them across panels, icons, layouts, folders, search and settings |
+| 💾 **Backup & restore** | Save and restore settings and layouts; automatic backups skip unchanged content |
 
 Panels can move, resize, collapse, auto-hide, snap to edges, lock, or stay on top. Customize fonts, rounded corners, colors and background materials. Folder and search panels remain independent of panel tabs.
 
 Use the desktop panel context menu to toggle Auto arrange icons and Align icons to grid. Disable auto arrange to keep empty cells, or disable grid alignment for free positioning; adding or removing items preserves the positions of other icons. Sorting runs once, and selecting the same field again reverses its direction. Settings → Panel layout → Icon arrangement controls defaults for new panels only. Agents can also use the CLI and companion Skill to change layout modes, position icons and preview changes.
 
-**Desktop panels do not move your files.** Dragging icons into a panel changes how they are organized on the desktop. Drag them back to remove them from the panel; closing a panel does not delete the original files. File menu commands such as delete, rename and cut, along with dropping or pasting into folder panels, operate on real files.
+> [!NOTE]
+> **Desktop panels do not move your files.** Dragging icons into a panel changes how they are organized on the desktop. Drag them back to remove them from the panel; closing a panel does not delete the original files. File menu commands such as delete, rename and cut, along with dropping or pasting into folder panels, operate on real files.
+
+Default installers and ZIPs exclude plugins, and the plugin list remains hidden in Settings while under development. See the [plugin guide](docs/development/plugins.md) (Chinese) for optional builds and plugin-owned configuration.
+
+Managed shortcuts recreated at the same path within five minutes recover their group and position in the current desktop session. Retention is memory-only and does not survive restart. Keep your existing settings and layouts when upgrading: keep the installation format and scope, or preserve `data` for portable builds. Back up before upgrading.
+
+Unmanaged icons remain on the Windows desktop. For connection problems, open **Settings → About** to check the status, reconnect or copy diagnostics. See the [changelog](CHANGELOG.en.md) for recent improvements.
 
 <a id="getting-started"></a>
 
 ## 🚀 Getting started
 
-### Choose a package
+### 📦 Choose a package
 
 Download from [GitHub Releases](https://github.com/Yuch3nE/luciddesk/releases). The installer is recommended for everyday use. All three packages have the same features.
 
@@ -80,7 +97,7 @@ Download from [GitHub Releases](https://github.com/Yuch3nE/luciddesk/releases). 
 
 See the [installer](docs/installer.md), [standard ZIP](docs/package.md) or [portable](docs/portable.md) guide (Chinese). If no release is available, [build from source](#build-from-source).
 
-### Launch and organize
+### 🚀 Launch and organize
 
 **Installer:** choose `windows-x64-setup.exe` for a wizard with current-user or all-users installation. MSI can also be built from source; see the [installer guide](docs/installer.md).
 
@@ -94,7 +111,7 @@ Click the tray icon to show panels. Its menu also provides creation, search, ref
 
 To temporarily clear the desktop, enable **Settings → General → Double-click to hide desktop** (off by default). Double-click an empty desktop area to hide all icons and panels, then double-click again or click the tray icon to restore them. Panels fade in and out, with desktop icon restoration coordinated alongside them. Transitions are immediate when system animations are disabled. Previously hidden icons and panels stay hidden, and your layout is preserved.
 
-### Enable search and preview
+### 🔎 Enable search and preview
 
 Search and preview are **disabled by default** and require separately installed software.
 
@@ -107,7 +124,7 @@ These tools are not bundled with LucidDesk. See the [user guide](docs/usage.md) 
 
 An optional **Show all panels** global shortcut is available in **Settings → Panel layout**. It is off by default, with `Ctrl + Shift + D` as the preset. It performs the same action as **Show panels** in the tray and preserves each panel’s always-on-top setting.
 
-### CLI and agents
+### 🤖 CLI and agents
 
 `luciddesk-cli.exe` gives scripts and agents a structured interface for desktop management. Start the matching version of the app to inspect the workspace, plan changes and have the app apply them to the UI.
 
@@ -133,6 +150,9 @@ Start with read-only queries from the application directory:
 
 **Agent workflow: query → create a plan → preview differences → apply → verify.** The CLI provides JSON output, schema discovery and request receipts. Previews do not persist changes; query again after a state conflict, and use receipts to check execution after a timeout. Add `--dry-run` to shortcut mutations to preview only; without it, the CLI previews and immediately applies the change.
 
+<details>
+<summary>🧩 Advanced CLI and Skill details</summary>
+
 The Skill includes common workflows for grouping icons, fitting and snapping panes, browsing folders, searching and changing settings. Agents read the relevant reference for the task, review previews and verify results.
 
 For desktop organization, group and sort icons first, fit panels to the requested column count, then snap and verify them in the requested positions. CLI fitting and manual resizing share size calculations; CLI and drag snapping share edge positioning with a fixed 5-physical-pixel gap.
@@ -140,6 +160,8 @@ For desktop organization, group and sort icons first, fit panels to the requeste
 The CLI primarily serves Agents: `help RESOURCE COMMAND --json` describes arguments and behavior, while `next_step` supplies follow-up actions and argument arrays. Query the original receipt for pending or uncertain submissions to avoid duplicate changes. The GUI and CLI share a release version; the control protocol is versioned separately.
 
 The Skill uses progressive disclosure: [SKILL.md](skills/luciddesk-control/SKILL.md) covers the common workflow, with layout, folder, search, settings and recovery references read as needed. Give the installation prompt from Settings to your Agent to copy the packaged `skills/luciddesk-control/` directory in full. CLI export remains available for compatibility and discovery; plain `skill show` prints only the entrypoint. Supported operations vary by panel type. See the [CLI guide](docs/cli.md) (Chinese) and [changelog](CHANGELOG.en.md).
+
+</details>
 
 <a id="upgrading-and-backups"></a>
 
@@ -169,12 +191,6 @@ Language changes update open windows in place while preserving panels, item sele
 
 Translations are embedded in the executable. Saved panel names and file names are unchanged. Native Windows Shell menus follow the system language. Translation contributions and corrections are welcome.
 
-Default installers and ZIPs exclude plugins, and the plugin list remains hidden in Settings while under development. See the [plugin guide](docs/development/plugins.md) (Chinese) for optional builds and plugin-owned configuration.
-
-Managed shortcuts recreated at the same path within five minutes recover their group and position in the current desktop session. Retention is memory-only and does not survive restart. Keep your existing settings and layouts when upgrading: keep the installation format and scope, or preserve `data` for portable builds. Back up before upgrading.
-
-Unmanaged icons remain on the Windows desktop. For connection problems, open **Settings → About** to check the status, reconnect or copy diagnostics. See the [changelog](CHANGELOG.en.md) for recent improvements.
-
 <a id="compatibility"></a>
 
 ## 🖥️ Compatibility
@@ -191,15 +207,40 @@ When Windows disables background effects, LucidDesk uses a theme-aware solid fal
 
 ## 💬 Troubleshooting
 
-**Panels are hidden:** click the tray icon or choose **Show panels**. Normal panels can still be covered when you switch to another app; panels set to stay on top remain above other windows.
+<details>
+<summary>Panels are hidden</summary>
 
-**Desktop panels cannot connect:** check the connection status in **Settings → About** and try reconnecting. LucidDesk keeps the panel configuration and retries automatically. Folder and search panels can still work independently.
+click the tray icon or choose **Show panels**. Normal panels can still be covered when you switch to another app; panels set to stay on top remain above other windows.
 
-**A disconnection warning after restarting Explorer:** exiting Explorer interrupts the desktop connection. LucidDesk retries automatically when Explorer returns. The dialog records the state at disconnection and does not update after recovery. Dismiss it and check **Settings → About** or run `luciddesk-cli status --json` for the current state. `desktop_connected=true` means the connection is established; `desktop_sync_status=applied` means group synchronization is complete. If failures persist, retain the error details from the diagnostic log.
+</details>
 
-**Icons and panels disappeared:** if **Double-click to hide desktop** is enabled, double-click an empty desktop area again or click the tray icon to restore them. You can turn this feature off in **Settings → General**.
+<details>
+<summary>Desktop panels cannot connect</summary>
 
-**Reporting a problem:** include steps to reproduce it, what you expected, what happened, and the text from **Settings → About → Copy diagnostics**. It includes recent errors and logs using your computer's local time. Check for personal paths before sharing. For display issues, include a screenshot, display scaling and the selected background material.
+check the connection status in **Settings → About** and try reconnecting. LucidDesk keeps the panel configuration and retries automatically. Folder and search panels can still work independently.
+
+</details>
+
+<details>
+<summary>A disconnection warning after restarting Explorer</summary>
+
+exiting Explorer interrupts the desktop connection. LucidDesk retries automatically when Explorer returns. The dialog records the state at disconnection and does not update after recovery. Dismiss it and check **Settings → About** or run `luciddesk-cli status --json` for the current state. `desktop_connected=true` means the connection is established; `desktop_sync_status=applied` means group synchronization is complete. If failures persist, retain the error details from the diagnostic log.
+
+</details>
+
+<details>
+<summary>Icons and panels disappeared</summary>
+
+if **Double-click to hide desktop** is enabled, double-click an empty desktop area again or click the tray icon to restore them. You can turn this feature off in **Settings → General**.
+
+</details>
+
+<details>
+<summary>Reporting a problem</summary>
+
+include steps to reproduce it, what you expected, what happened, and the text from **Settings → About → Copy diagnostics**. It includes recent errors and logs using your computer's local time. Check for personal paths before sharing. For display issues, include a screenshot, display scaling and the selected background material.
+
+</details>
 
 <a id="build-from-source"></a>
 
