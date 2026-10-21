@@ -8,7 +8,7 @@
 use windows_canvas::{ColorF, Ellipse, Rect, RoundedRect, Vector2};
 
 use super::native_graphics::canvas_result;
-use super::search::{everything_settings, hotkey as search_hotkey};
+use super::search::everything_settings;
 use super::*;
 use luciddesk_core::{Backdrop, PanelTheme};
 use windows_canvas::ID2D1DeviceContext;
@@ -95,12 +95,10 @@ enum Action {
     PeekBrowse,
     PeekDetect,
     PeekShortcut,
-    SearchShortcut,
     ShowPanelsEnable,
     DesktopDoubleClick(bool),
     ShowPanelsShortcut,
     ShowPanelsReset,
-    SearchReset,
     PeekReset,
     EverythingBrowse,
     EverythingDetect,

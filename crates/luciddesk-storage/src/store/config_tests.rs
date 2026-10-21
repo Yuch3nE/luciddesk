@@ -344,7 +344,6 @@ fn show_panels_hotkey_defaults_disabled_and_persists_independently() {
     assert_eq!(reopened.preference("show_panels_hotkey").unwrap().as_deref(), Some("74:5"));
     assert_eq!(reopened.preference("show_panels_enabled").unwrap().as_deref(), Some("1"));
     assert_eq!(reopened.preference("search_enabled").unwrap().as_deref(), Some("0"));
-    assert_eq!(reopened.preference("search_hotkey").unwrap().as_deref(), Some("32:3"));
     assert!(store.save_preference("show_panels_enabled", "yes").is_err());
     assert!(store.save_preference("show_panels_hotkey", "32:4").is_err());
     drop(reopened);
@@ -526,4 +525,17 @@ quicklook_path = 'D:/工具/QuickLook.exe'
     assert_eq!(store.preference("everything").unwrap().as_deref(), Some("E:/Everything.exe"));
     assert_eq!(store.preference("peek").unwrap().unwrap(), preview);
     assert!(store.save_preference("peek", "1\n32\n0\nD:/Peek.exe").is_err());
+}
+
+#[test]
+fn obsolete_search_shortcut_is_ignored_when_loading_config() {
+    let (dir, store) = open();
+    drop(store);
+    let path = dir.path().join("config.toml");
+    let original = std::fs::read_to_string(&path).unwrap();
+    assert!(!original.contains("Ctrl+Shift+Space"));
+    std::fs::write(&path, original.replace("[search]", "[search]\nshortcut = \"obsolete\"" )).unwrap();
+    let reopened = WorkspaceStore::open(&dir.path().join("workspace.db")).unwrap();
+    assert_eq!(reopened.preference("search_enabled").unwrap().as_deref(), Some("0"));
+    assert!(reopened.preference("search_hotkey").unwrap().is_none());
 }

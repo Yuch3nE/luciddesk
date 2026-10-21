@@ -8,7 +8,7 @@
 | --- | --- |
 | `app/src/pane/window/mod.rs` | `set_layer`、`raise_among_peers`、`raise_once` 和 `borderless_proc` |
 | `app/src/pane/search/mod.rs` | 搜索窗口、原生 EDIT 的定位、层级同步与输入处理 |
-| `app/src/pane/search/hotkey.rs` | 全局搜索快捷键激活入口 |
+| `app/src/pane/search/mod.rs` | 托盘搜索激活入口 |
 | `app/src/pane/hybrid/mod.rs` | 托盘动作与面板显示操作 |
 
 普通分组和文件夹面板共用 `window::create`，使用 Shell owner；搜索面板使用独立窗口，并复用无边框处理和层级设置。搜索 EDIT 是由搜索窗口拥有的独立 popup，不是随父窗口自动排列的 child 控件。
@@ -19,7 +19,7 @@
 | --- | --- | --- |
 | 点击或拖动未置顶面板 | 在桌面面板之间抬升，不主动越过上方普通应用 | 置顶偏好、窗口尺寸和位置 |
 | 点击搜索输入框 | 抬升所属搜索面板，并同步 EDIT | 输入焦点逻辑与所属面板的置顶状态 |
-| 全局搜索快捷键 | 沿用桌面层级，不承担跨应用前置功能 | 置顶偏好 |
+| 托盘搜索入口 | 沿用桌面层级，不承担跨应用前置功能 | 置顶偏好 |
 | 托盘“显示面板” | `raise_once` 一次性前置 | 原有 topmost 状态；普通面板后续仍可被应用覆盖 |
 | 用户切换置顶 | `set_layer` 切换 topmost，并更新相关输入窗口 | 其他面板的独立偏好 |
 | 打开或关闭菜单 | 菜单可在置顶面板上方显示，不借此重新抬升下面的面板 | 面板之间原有的操作顺序 |
@@ -66,15 +66,15 @@ cargo test -p luciddesk --bin luciddesk desktop_panes_raise_among_peers_without_
 搜索测试会激活真实窗口，默认跳过，需单独执行：
 
 ```powershell
-cargo test -p luciddesk --bin luciddesk editor_click_raises_search_among_panes_but_hotkey_stays_on_desktop --locked --offline -- --ignored --test-threads=1
+cargo test -p luciddesk --bin luciddesk editor_click_raises_search_among_panes_but_tray_activation_stays_on_desktop --locked --offline -- --ignored --test-threads=1
 ```
 
-第一项覆盖共享 owner、重复点击、点击与拖动、菜单及两级子菜单、普通应用约束和置顶切换；第二项覆盖实际搜索窗口与 EDIT 的点击、快捷键和 topmost 同步。命令过滤后应确认目标测试确实执行，不能把零测试视为通过。
+第一项覆盖共享 owner、重复点击、点击与拖动、菜单及两级子菜单、普通应用约束和置顶切换；第二项覆盖实际搜索窗口与 EDIT 的点击、托盘激活和 topmost 同步。命令过滤后应确认目标测试确实执行，不能把零测试视为通过。
 
 手动验收按以下场景进行：
 
 1. 两个未置顶面板重叠，反复点击和拖动被遮挡的面板，确认只改变面板间顺序。
-2. 用普通应用覆盖面板，检查搜索快捷键与托盘显示操作各自符合预期。
+2. 用普通应用覆盖面板，检查托盘搜索与显示面板操作各自符合预期。
 3. 在普通和置顶面板上反复打开菜单及两级子菜单，取消或执行后确认下面的面板没有被意外抬升。
 4. 保持搜索输入框聚焦，让其他面板覆盖它后再次点击；切换置顶、移动窗口及跨屏 DPI，确认 EDIT 跟随所属面板。
 5. 关闭面板并操作剩余窗口，确认关闭中的 HWND 不再参与层级计算。

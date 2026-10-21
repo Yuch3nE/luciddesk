@@ -57,7 +57,7 @@ app/
         ├── display_layout.rs  # 显示器布局
         ├── recovery.rs        # 备份、导入和恢复
         ├── folder/            # mod.rs 文件夹入口；导航、视图偏好、图像及测试
-        ├── search/            # 搜索窗口、Everything 与快捷键
+        ├── search/            # 搜索窗口与 Everything
         ├── drag_drop/         # OLE 拖放、预览与临时描述
         ├── settings/          # mod.rs 入口；host、painter、布局、插件分组、通用插件页面、Agent 设置及测试
         ├── window/            # mod.rs 窗口入口；输入、菜单、调度及测试
@@ -89,12 +89,12 @@ rg -n 'mod |pub.*use ' app/src/pane/mod.rs
 | 桌面收纳与清单一致性 | `pane/hybrid/mod.rs`、`hybrid/inventory.rs`、`hybrid/audit.rs` | [成员过滤](hybrid-desktop.md) |
 | 图标加载、刷新与回收 | `hybrid/icons.rs`、`hybrid/icon_changes.rs`、`hybrid/image_retention.rs` | [图标内存管理](memory-optimization.md) |
 | 文件夹导航与视图偏好 | `folder/mod.rs`、`folder/entry_mode.rs`、`folder/preferences.rs` | [使用说明](../usage.md) |
-| 搜索与全局快捷键 | `search/mod.rs`、`search/everything.rs`、`search/everything_settings.rs`、`search/hotkey.rs` | [后台调度](event-driven-runtime.md) |
+| 搜索与面板快捷键 | `search/mod.rs`、`search/everything.rs`、`search/everything_settings.rs`、`show_hotkey.rs` | [后台调度](event-driven-runtime.md) |
 | 设置布局与多语言 | `settings/layout.rs`、`i18n.rs`、`app/locales/` | [本地化指南](localization.md) |
 | 绘制、材质和图形资源 | `render/mod.rs`、`native_graphics.rs`、`acrylic/` | [绘图与绑定](rendering.md) |
 | MSIX 桌面 DLL 路径 | `app/src/desktop_component.rs`、`tools/package-msix.ps1` | [MSIX 打包](../msix.md) |
 
-表中未写完整前缀的面板模块均位于 `app/src/pane/`；`i18n.rs` 位于 `app/src/`。搜索配置和快捷键保留在 `search/`，拖放描述保留在 `drag_drop/`；多个功能共享的窗口、模型和绘图能力留在共同父模块。
+表中未写完整前缀的面板模块均位于 `app/src/pane/`；`i18n.rs` 位于 `app/src/`。搜索配置保留在 `search/`，显示面板快捷键位于 `show_hotkey.rs`，拖放描述保留在 `drag_drop/`；多个功能共享的窗口、模型和绘图能力留在共同父模块。
 
 ## 库与生成文件
 

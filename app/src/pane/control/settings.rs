@@ -1,7 +1,7 @@
 //! Apply loaded settings without rebuilding ordinary/folder windows or resetting interactions.
 mod metadata;
 use super::*;
-use crate::pane::search::{everything_settings, hotkey as search_hotkey};
+use crate::pane::search::everything_settings;
 use luciddesk_storage::SettingValue;
 use std::collections::BTreeMap;
 
@@ -56,7 +56,6 @@ pub(super) fn runtime(state: &PaneApp) -> serde_json::Value {
         "diagnostics_level":format!("{:?}", luciddesk_diagnostics::level()).to_ascii_lowercase(),
         "search_visible":state.views.iter().any(|v| state.workspace.panel(v.id).is_some_and(Panel::is_search)),
         "preview_enabled":peek::settings().enabled,
-        "search_shortcut_status":search_hotkey::status(),
         "show_panels_shortcut_status":show_hotkey::status(),
         "grid_scale":state.workspace.pane_options().grid_scale,
         "corner_radius":state.workspace.pane_options().corner_radius,
@@ -85,7 +84,6 @@ pub(super) fn present(state: &Rc<RefCell<PaneApp>>) -> Result<(), String> {
         load_log_level(&s.store)?;
         peek::load(&s.store)?;
         everything_settings::load(&s.store)?;
-        search_hotkey::load(&s.store)?;
         let language_changed = crate::i18n::initialize(&s.store)?;
         fonts::load(&s.store)?;
         interface_flags::TITLE_EMOJI.load(&s.store)?;

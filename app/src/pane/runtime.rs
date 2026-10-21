@@ -1,5 +1,5 @@
 //! Desktop integration can recover without taking independent panes down.
-use super::search::{everything_settings, hotkey as search_hotkey};
+use super::search::everything_settings;
 use super::*;
 use std::{
     path::PathBuf,
@@ -268,7 +268,7 @@ fn reconnect_delay(failures: u8) -> Duration {
     Duration::from_millis((250u64 << failures.saturating_sub(1).min(6)).min(10_000))
 }
 
-fn next_work(s: &PaneApp, hotkey: &search_hotkey::Registration, reveal: &search_hotkey::Registration) -> Option<u32> {
+fn next_work(s: &PaneApp, reveal: &show_hotkey::Registration) -> Option<u32> {
     let now = Instant::now();
     let runtime = s.runtime.as_ref();
     // Slow safety check for missed window lifecycle notifications or a failed
@@ -284,7 +284,6 @@ fn next_work(s: &PaneApp, hotkey: &search_hotkey::Registration, reveal: &search_
         .chain(reconnect)
         .chain(runtime.and_then(|r| r.layouts.deadline()))
         .chain(recovery::deadline(s))
-        .chain(hotkey.retry_deadline())
         .chain(reveal.retry_deadline())
         .min()
         .map(|due| due.saturating_duration_since(now).as_millis().clamp(25, u32::MAX as u128) as u32)
@@ -310,7 +309,6 @@ pub(super) fn reload(state: &Rc<RefCell<PaneApp>>) -> Result<(), String> {
     interface_flags::HEADER_DIVIDER.load(&s.store)?;
     interface_flags::COMPACT_MENU.load(&s.store)?;
     interface_flags::TITLE_EMOJI.load(&s.store)?;
-        search_hotkey::load(&s.store)?;
         everything_settings::load(&s.store)?;
         s.session.take();
         s.drops.clear();
@@ -363,11 +361,7 @@ pub(super) fn supervisor(state: &Rc<RefCell<PaneApp>>) -> Result<windows_window:
     let received = wake.clone();
     let changed = wake.clone();
     state.borrow_mut().store.set_change_callback(move || changed.notify());
-    let mut hotkey = search_hotkey::Registration::default();
-    let mut reveal_hotkey = search_hotkey::Registration::with_id(show_hotkey::ID);
-    let mut search_state = None;
-    let mut search_enabled = false;
-    let mut search_checked = Instant::now();
+    let mut reveal_hotkey = show_hotkey::Registration::with_id(show_hotkey::ID);
     let show_message = unsafe { RegisterWindowMessageW(windows_sys::w!("LucidDesk.ShowExisting")) };
     let taskbar_created = unsafe { RegisterWindowMessageW(windows_sys::w!("TaskbarCreated")) };
     let mut language_dirty = false;
@@ -384,27 +378,17 @@ pub(super) fn supervisor(state: &Rc<RefCell<PaneApp>>) -> Result<windows_window:
             if msg == REFRESH_HOTKEYS {
                 let Some(state) = weak.upgrade() else { return Some(0); };
                 let s = state.borrow();
-                let present = s.views.iter().any(|v| s.workspace.panel(v.id).is_some_and(Panel::is_search));
-                let enabled = present && everything_settings::enabled(&s.store).unwrap_or(false);
-                hotkey.update(raw as isize, enabled.then(search_hotkey::settings));
                 reveal_hotkey.update(raw as isize, show_hotkey::enabled(&s.store).then(|| show_hotkey::settings(&s.store)));
                 show_hotkey::update_status(reveal_hotkey.message());
-                return Some(isize::from(hotkey.ready() && reveal_hotkey.ready()));
+                return Some(isize::from(reveal_hotkey.ready()));
             }
             if msg == WM_DESTROY {
                 received.unbind();
-                hotkey.update(raw as isize, None);
                 reveal_hotkey.update(raw as isize, None);
                 return Some(0);
             }
             if msg == WM_HOTKEY && wp == show_hotkey::ID as usize {
                 if let Some(state) = weak.upgrade() { show_hotkey::activate(&state); }
-                return Some(0);
-            }
-            if msg == WM_HOTKEY && wp == search_hotkey::ID as usize {
-                if let Some(state) = weak.upgrade() {
-                    search_hotkey::activate(&state);
-                }
                 return Some(0);
             }
             if msg == show_message {
@@ -508,30 +492,21 @@ pub(super) fn supervisor(state: &Rc<RefCell<PaneApp>>) -> Result<windows_window:
                     }
                     let previous = {
                         let s = state.borrow();
-                        (status(&s), backup_status(&s), search_hotkey::status(), show_hotkey::status())
+                        (status(&s), backup_status(&s), show_hotkey::status())
                     };
                     let managed = state.borrow().runtime.is_some();
                     if managed && let Err(error) = maintain(&state, false) {
                         luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Error, "pane.runtime", &format!("Runtime recovery: {error}"));
                     }
                     let s = state.borrow();
-                    let search_present = s.views.iter()
-                        .any(|v| s.workspace.panel(v.id).is_some_and(Panel::is_search));
-                    let signature = (search_present, s.store.change_count());
-                    if search_state != Some(signature) || search_checked.elapsed() >= Duration::from_secs(30) {
-                        search_enabled = search_present && everything_settings::enabled(&s.store).unwrap_or(false);
-                        search_state = Some(signature);
-                        search_checked = Instant::now();
-                    }
-                    hotkey.update(raw as isize, search_enabled.then(search_hotkey::settings));
                     reveal_hotkey.update(raw as isize, show_hotkey::enabled(&s.store).then(|| show_hotkey::settings(&s.store)));
                     show_hotkey::update_status(reveal_hotkey.message());
                     unsafe {
-                        if let Some(delay) = next_work(&s, &hotkey, &reveal_hotkey) {
+                        if let Some(delay) = next_work(&s, &reveal_hotkey) {
                             SetTimer(raw.cast(), 2, delay, None);
                         }
                     }
-                    if previous != (status(&s), backup_status(&s), search_hotkey::status(), show_hotkey::status())
+                    if previous != (status(&s), backup_status(&s), show_hotkey::status())
                         && let Some(settings) = &s.settings
                     {
                         unsafe {

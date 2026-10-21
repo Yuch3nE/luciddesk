@@ -1,6 +1,6 @@
 #[test]
 #[ignore = "Activates real windows; run alone in an interactive desktop session"]
-fn editor_click_raises_search_among_panes_but_hotkey_stays_on_desktop() {
+fn editor_click_raises_search_among_panes_but_tray_activation_stays_on_desktop() {
     use super::*;
     let _sta = crate::pane::test_support::apartment();
     let state = Rc::new(RefCell::new(super::super::tests::test_state()));
@@ -26,8 +26,8 @@ fn editor_click_raises_search_among_panes_but_hotkey_stays_on_desktop() {
         ShowWindow(app_hwnd, SW_SHOWNOACTIVATE);
         SetWindowPos(app_hwnd, HWND_TOP, 0, 0, 0, 0,
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
-        super::hotkey::activate(&state);
-        assert!(above(app_hwnd, hwnd), "global hotkey must retain the desktop layer");
+        super::activate(&state);
+        assert!(above(app_hwnd, hwnd), "tray activation must retain the desktop layer");
         ShowWindow(peer_hwnd, SW_SHOWNOACTIVATE);
         SetWindowSubclass(peer_hwnd, Some(super::super::window::borderless_proc), 1, 0);
         super::super::window::set_layer(peer_hwnd, false);

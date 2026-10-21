@@ -6,7 +6,6 @@ mod tooltip;
 use drawing::Drawing;
 mod everything;
 pub(super) mod everything_settings;
-pub(super) mod hotkey;
 
 use super::{Event, GroupModel};
 use luciddesk_core::{RectDip, ShellIdentity};
@@ -1512,5 +1511,25 @@ fn show_location(item: &ShellIdentity) -> Result<(), String> {
         let result = SHOpenFolderAndSelectItems(pidl, None, 0).map_err(|e| e.to_string());
         CoTaskMemFree(Some(pidl.cast()));
         result
+    }
+}
+
+pub(in crate::pane) fn activate(state: &Rc<RefCell<super::PaneApp>>) {
+    let target = {
+        let s = state.borrow();
+        if !everything_settings::enabled(&s.store).unwrap_or(false) {
+            return;
+        }
+        s.views
+            .iter()
+            .find(|v| s.workspace.panel(v.id).is_some_and(luciddesk_core::Panel::is_search))
+            .map(|v| v.window.hwnd() as isize)
+    };
+    if let Some(hwnd) = target {
+        unsafe {
+            ShowWindow(hwnd as _, SW_SHOWNORMAL);
+            SetForegroundWindow(hwnd as _);
+            PostMessageW(hwnd as _, FOCUS_INPUT, 0, 0);
+        }
     }
 }

@@ -53,7 +53,7 @@ Explorer 继续负责未收纳图标的绘制、排列、命中和原生交互�
 | `app/src/pane/hybrid/` | 清单审计、身份合并、图标加载、改名事务与缓存回收 |
 | `app/src/pane/mod.rs`、`model.rs`、`events/mod.rs` | 工作区与视图状态、操作分派和保存 |
 | `app/src/pane/runtime.rs`、`display_layout.rs`、`recovery.rs` | 重连、窗口恢复、显示布局、备份与恢复 |
-| `app/src/pane/folder/`、`folder/mod.rs`、`search/` | 文件夹来源、目录监听、Everything 查询及搜索快捷键 |
+| `app/src/pane/folder/`、`folder/mod.rs`、`search/` | 文件夹来源、目录监听、Everything 查询 |
 | `app/src/pane/window/mod.rs`、`render/mod.rs`、`settings/mod.rs`、`settings/` | 窗口、绘图、设置布局与输入 |
 | `app/src/pane/drag_drop/`、`tray.rs`、`i18n.rs` | 分别负责拖放、托盘和本地化 |
 | `luciddesk-core` | Shell 身份、坐标、面板与工作区模型 |

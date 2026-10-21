@@ -566,8 +566,6 @@ ui-select-everything-exe = { "Everything.exe を選択してください" }
 # 请使用 Ctrl 或 Alt 搭配字母、数字、空格或功能键，避开现有文件操作和系统快捷键。
 ui-use-ctrl-or-alt-with-a-letter-digit-space-or-function-key-avoid-exis = { "Ctrl または Alt と英数字、スペース、F キーを使い、既存のショートカットを避けてください。" }
 
-# 搜索已关闭，全局快捷键未注册
-ui-search-is-disabled-global-shortcut-is-not-registered = { "検索はオフになっています。ショートカットは利用できません" }
 
 # 全局生效；Esc 取消录入
 ui-works-globally-esc-cancels-recording = { "全体で有効。Esc で入力をキャンセル" }
@@ -958,8 +956,6 @@ ui-start = { "起動" }
 # 全局快捷键
 ui-global-shortcut = { "グローバルショートカット" }
 
-# 在任意应用中唤起搜索面板。
-ui-focus-the-desktop-search-panel-from-any-app = { "どのアプリからでもデスクトップ検索にフォーカスします。" }
 
 # 把 Windows 桌面整理成顺手的工作区。
 

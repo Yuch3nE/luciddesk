@@ -1195,9 +1195,9 @@ fn settings_cards_align_and_long_paths_do_not_overlap_actions() {
         form.shortcut(
             "全局快捷键",
             "说明",
-            "Ctrl + Shift + Space",
-            Action::SearchShortcut,
-            Action::SearchReset,
+            "Ctrl + Shift + D",
+            Action::ShowPanelsShortcut,
+            Action::ShowPanelsReset,
         );
         let right = Tokens::content_x()
             + (width - Tokens::content_x() - Tokens::MARGIN).min(Tokens::MAX_WIDTH);
@@ -1244,7 +1244,7 @@ fn settings_cards_align_and_long_paths_do_not_overlap_actions() {
         let shortcut = s
             .controls
             .iter()
-            .find(|c| matches!(c.action, Action::SearchShortcut))
+            .find(|c| matches!(c.action, Action::ShowPanelsShortcut))
             .unwrap();
         assert_eq!(shortcut.bounds.right - shortcut.bounds.left, 232.0);
     }

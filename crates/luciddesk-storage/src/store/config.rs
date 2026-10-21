@@ -19,7 +19,6 @@ pub(super) const KEYS: &[&str] = &[
     "material_strength_mica",
     "search_enabled",
     "everything",
-    "search_hotkey",
     "show_panels_enabled",
     "show_panels_hotkey",
     "desktop_double_click_hide",
@@ -72,7 +71,6 @@ shortcut = "Ctrl+Shift+D"
 
 [search]
 enabled = false
-shortcut = "Ctrl+Shift+Space"
 everything_path = ""
 
 [preview]
@@ -315,8 +313,6 @@ pub(super) fn decode(doc: &DocumentMut) -> Result<BTreeMap<String, String>, Stor
         "everything".into(),
         s(&["search", "everything_path"])?,
     );
-    let (key, bits) = shortcut(&s(&["search", "shortcut"])?, true)?;
-    map.insert("search_hotkey".into(), format!("{key}:{bits}"));
     map.insert("desktop_double_click_hide".into(), if b(&["desktop", "double_click_hide"])? { "1" } else { "0" }.into());
     map.insert("show_panels_enabled".into(), if b(&["show_panels", "enabled"])? { "1" } else { "0" }.into());
     let (key, bits) = shortcut(&s(&["show_panels", "shortcut"])?, true)?;
@@ -447,14 +443,13 @@ fn update(doc: &mut DocumentMut, key: &str, raw: &str) -> Result<(), StoreError>
             set(doc, &["search", "enabled"], value(raw == "1"));
         }
         "everything" => set(doc, &["search", "everything_path"], value(raw)),
-        "search_hotkey" | "show_panels_hotkey" => {
-            let section = if key == "show_panels_hotkey" { "show_panels" } else { "search" };
+        "show_panels_hotkey" => {
             let (key, bits) = raw
                 .split_once(':')
                 .ok_or_else(|| error("invalid shortcut"))?;
             set(
                 doc,
-                &[section, "shortcut"],
+                &["show_panels", "shortcut"],
                 value(shortcut_label(key, bits)?),
             );
         }

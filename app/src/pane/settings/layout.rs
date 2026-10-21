@@ -707,19 +707,6 @@ fn scene_with_mica(
                 (crate::i18n::text("ui-start"), Action::EverythingLaunch),
             ],
         );
-        form.section(crate::i18n::text("ui-keyboard-shortcut"));
-        let status = search_hotkey::status();
-        form.shortcut(
-            crate::i18n::text("ui-global-shortcut"),
-            if status.is_empty() {
-                crate::i18n::text("ui-focus-the-desktop-search-panel-from-any-app")
-            } else {
-                &status
-            },
-            &search_hotkey::label(search_hotkey::settings()),
-            Action::SearchShortcut,
-            Action::SearchReset,
-        );
     }
 
     s
@@ -1054,7 +1041,7 @@ pub(super) fn show_panels_shortcut(
     s: &mut Scene,
     width: f32,
     enabled: bool,
-    shortcut: search_hotkey::Shortcut,
+    shortcut: show_hotkey::Shortcut,
 ) {
     // Append below the existing panel-layout controls, retaining normal page scrolling.
     let bottom = s
@@ -1084,7 +1071,7 @@ pub(super) fn show_panels_shortcut(
         } else {
             &status
         },
-        &search_hotkey::label(shortcut),
+        &show_hotkey::label(shortcut),
         Action::ShowPanelsShortcut,
         Action::ShowPanelsReset,
     );

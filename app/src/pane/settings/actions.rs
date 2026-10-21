@@ -28,7 +28,6 @@ pub(super) struct Context<'a> {
     pub skill_prompt_copied: &'a mut bool,
     pub updates: &'a RefCell<crate::updates::Controller>,
     pub recording_show_panels: &'a mut bool,
-    pub recording_search: &'a mut bool,
     pub recording_peek: &'a mut bool,
     pub painter: &'a mut Painter,
     pub font_choices: &'a mut Vec<String>,
@@ -57,7 +56,7 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
             invalidate = true;
         }
         Action::PluginPage(id) => {
-            *context.recording_peek = false; *context.recording_search = false; *context.recording_show_panels = false;
+            *context.recording_peek = false; *context.recording_show_panels = false;
             *context.style_input = None;
             *context.selected_plugin = Some(id.clone());
             *context.page = 15;
@@ -382,7 +381,6 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
         }
         Action::ShowPanelsShortcut => {
             *context.recording_show_panels = true;
-            *context.recording_search = false;
             *context.recording_peek = false;
         }
         Action::ShowPanelsReset => {
@@ -392,21 +390,8 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
             }
             *context.recording_show_panels = false;
         }
-        Action::SearchShortcut => {
-            *context.recording_search = true;
-            *context.recording_peek = false;
-            *context.recording_show_panels = false;
-        }
-        Action::SearchReset => {
-            let saved = search_hotkey::save(&state.borrow().store, Default::default());
-            if let Err(error) = saved {
-                window::error_for(hwnd, &error);
-            }
-            *context.recording_search = false;
-        }
         Action::PeekShortcut => {
             *context.recording_peek = true;
-            *context.recording_search = false;
             *context.recording_show_panels = false;
         }
         Action::PreviewProvider(_)
@@ -484,7 +469,6 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
                 }
             }
             *context.recording_peek = false;
-            *context.recording_search = false;
             *context.recording_show_panels = false;
             *context.diagnostics_copied = false;
             *context.page = *value;

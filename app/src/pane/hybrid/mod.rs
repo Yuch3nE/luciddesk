@@ -8,7 +8,7 @@ mod shortcut_retention;
 mod inventory;
 mod rename_transaction;
 use super::assets::RECYCLE_BIN_PARSING_NAME;
-use super::search::{everything_settings, hotkey as search_hotkey};
+use super::search::everything_settings;
 use super::*;
 use audit::DesktopAudit;
 pub(super) use icons::refresh_icons;
@@ -131,7 +131,6 @@ pub fn run(path: &Path, title: Option<String>) -> Result<(), String> {
     interface_flags::HEADER_DIVIDER.load(&store)?;
     interface_flags::COMPACT_MENU.load(&store)?;
     interface_flags::TITLE_EMOJI.load(&store)?;
-    search_hotkey::load(&store)?;
     everything_settings::load(&store)?;
     let mut workspace = store.load_workspace().map_err(|e| e.to_string())?;
     // Migrate older workspaces that allowed multiple search panes.
@@ -245,7 +244,7 @@ pub fn run(path: &Path, title: Option<String>) -> Result<(), String> {
                 return;
             };
             match action {
-                crate::tray::Action::Search => search::hotkey::activate(&state),
+                crate::tray::Action::Search => search::activate(&state),
                 crate::tray::Action::OpenConfig => {
                     recovery::request(&state, &Event::OpenConfigDirectory)
                 }

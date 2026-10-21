@@ -69,9 +69,8 @@ enabled = false
 shortcut = "Ctrl+Shift+D"
 
 [search]
-# 启用 Everything 搜索面板及其全局快捷键；Everything 需另行安装并运行。
+# 启用 Everything 搜索面板；Everything 需另行安装并运行。
 enabled = false
-shortcut = "Ctrl+Shift+Space"
 # 空字符串使用自动检测。指定路径时填写 Everything.exe，不附加命令行参数。
 # Windows 路径建议使用 TOML 单引号字符串，例如 'C:\Apps\Everything\Everything.exe'。
 everything_path = ""

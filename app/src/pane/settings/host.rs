@@ -81,7 +81,6 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
     let mut reveal_navigation = true;
     let (dropdown_sender, dropdown_receiver) = std::sync::mpsc::channel::<Control>();
     let mut recording_peek = false;
-    let mut recording_search = false;
     let mut recording_show_panels = false;
     let mut search_visible = false;
     let mut selected = id;
@@ -290,7 +289,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
             if msg == SELECT_PLUGIN {
                 selected_plugin = PLUGIN_SELECTION.with(|pending| pending.borrow_mut().take());
                 page = 15; scene_key = None; scroll_offset = 0.0; focus = None; reveal_navigation = true;
-                recording_peek = false; recording_search = false; recording_show_panels = false; style_input = None;
+                recording_peek = false; recording_show_panels = false; style_input = None;
                 unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
                 return Some(0);
             }
@@ -502,7 +501,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 options,
                 peek::settings(),
                 everything_settings::settings(),
-                (recording_peek, recording_search, search_hotkey::settings(), search_hotkey::status(),
+                (recording_peek,
                     recording_show_panels, show_panels_enabled,
                     show_panels_shortcut, show_hotkey::status()),
                 unsafe { IsZoomed(hwnd) } != 0,
@@ -556,9 +555,9 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 cached_scene = Some(full);
                 scene_key = Some(key);
             }
-            if recording_peek || recording_search || recording_show_panels {
+            if recording_peek || recording_show_panels {
                 for control in &mut cached_scene.as_mut().unwrap().controls {
-                    if (recording_peek && matches!(control.action, Action::PeekShortcut)) || (recording_search && matches!(control.action, Action::SearchShortcut)) || (recording_show_panels && matches!(control.action, Action::ShowPanelsShortcut)) { control.label = crate::i18n::text("ui-press-a-shortcut").into(); }
+                    if (recording_peek && matches!(control.action, Action::PeekShortcut)) || (recording_show_panels && matches!(control.action, Action::ShowPanelsShortcut)) { control.label = crate::i18n::text("ui-press-a-shortcut").into(); }
                 }
             }
             if let Some((percentage, text)) = &style_input {
@@ -794,16 +793,15 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     pressed = None;
                 }
                 WM_KEYDOWN | WM_SYSKEYDOWN => {
-                    if recording_search || recording_show_panels {
+                    if recording_show_panels {
                         if lp & (1 << 30) != 0 { return Some(0); }
                         let key = wp as u16;
                         if matches!(key, VK_CONTROL | VK_SHIFT | VK_MENU | VK_LWIN | VK_RWIN) { return Some(0); }
                         if key != VK_ESCAPE {
-                            let value = search_hotkey::Shortcut { key, modifiers: peek::modifier_bits(&keyboard::Modifiers::current()) };
-                            let result = if recording_show_panels { show_hotkey::save(&state.borrow().store, value) } else { search_hotkey::save(&state.borrow().store, value) };
+                            let value = show_hotkey::Shortcut { key, modifiers: peek::modifier_bits(&keyboard::Modifiers::current()) };
+                            let result = show_hotkey::save(&state.borrow().store, value);
                             if let Err(error) = result { window::error_for(hwnd, &error); return Some(0); }
                         }
-                        recording_search = false;
                         recording_show_panels = false;
                         unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
                         return Some(0);
@@ -1015,7 +1013,6 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     skill_prompt_copied: &mut skill_prompt_copied,
                     updates: &updates,
                     recording_show_panels: &mut recording_show_panels,
-                    recording_search: &mut recording_search,
                     recording_peek: &mut recording_peek,
                     painter: &mut painter,
                     font_choices: &mut font_choices,
