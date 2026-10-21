@@ -12,7 +12,7 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Build CI](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml/badge.svg)](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml)
-[![版本](https://img.shields.io/badge/version-0.22.1-087EA4?style=flat-square)](CHANGELOG.md)
+[![版本](https://img.shields.io/badge/version-0.22.2-087EA4?style=flat-square)](CHANGELOG.md)
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square)](#系统与兼容性)
 [![架构](https://img.shields.io/badge/arch-x64-475569?style=flat-square)](docs/portable.md)
 
@@ -26,7 +26,7 @@ LucidDesk 是使用 Rust 开发的 Windows 桌面整理工具。把零散图标�
 
 </div>
 
-当前版本 **0.22.1** 为维护更新，已有设置与桌面布局可直接沿用。本文对应当前源码；尚未发布的改进单列在[更新记录](CHANGELOG.md)中。
+当前版本 **0.22.2** 改善桌面隐藏与恢复，改用静默更新提示，并让设置窗口保留任务栏入口。搜索全局快捷键已移除，桌面搜索和托盘入口继续保留。已有设置与桌面布局可直接沿用，完整变化见[更新记录](CHANGELOG.md)。
 
 <a id="界面截图"></a>
 

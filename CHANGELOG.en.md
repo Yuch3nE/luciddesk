@@ -2,29 +2,33 @@
 
 [简体中文](CHANGELOG.md) · English
 
-Current version: **0.22.1**. Features and fixes by release.
+Current version: **0.22.2**. Features and fixes by release.
 
 Exit the app before upgrading a portable installation and preserve its `data` folder. See the [portable guide](docs/portable.md) (Chinese).
 
-## Unreleased
+## 0.22.2 · 2026-10-22
 
-These changes are not included in the 0.22.1 release packages.
-
-- Check for updates quietly and show the latest version and download action in About, without update dialogs.
-- Move Fonts into the basic settings group and Folder Panels into the panel appearance group.
-- Discard delayed desktop double-clicks so an old gesture does not unexpectedly hide the desktop after a busy period.
-- Fade panels in and out when hiding or restoring the desktop, with reversal during an unfinished transition. Switch immediately when system animations are disabled.
-- Coordinate desktop icon and panel restoration to reduce late icons and delayed backdrop changes.
-
-## 0.22.1 · 2026-10-21
-
-Changes from the previous official release, **0.21.2**, to **0.22.1**. Existing settings, desktop layouts and backups remain compatible; no reconfiguration is required.
+Changes from the previous official release, **0.21.2**, to **0.22.2**. Existing settings, desktop layouts and backups remain compatible; no reconfiguration is required.
 
 ### New features
 
 - Add **Settings → General → Double-click to hide desktop**, off by default. Once enabled, double-click an empty desktop area to hide all icons and panels. Double-click again or click the tray icon to restore them without changing your layout.
-- Add **Automatically check for updates** to About, enabled by default. Check at startup and every 24 hours, and show the latest version number when an update is available. You can turn it off, check manually, or open the update page to download.
+- Add **Automatically check for updates** to About, enabled by default. Check quietly at startup and every 24 hours, without update dialogs. About shows the latest version and download action. You can turn automatic checks off or check manually.
 - Show color emoji when renaming panels and tabs, including selected text, following the **Title color emoji** setting.
+
+### Desktop transitions
+
+- Discard delayed desktop double-clicks so an old gesture does not unexpectedly hide the desktop after a busy period.
+- Fade panels in and out when hiding or restoring the desktop, with reversal during an unfinished transition. Switch immediately when system animations are disabled.
+- Coordinate desktop icon and panel restoration to reduce late icons and delayed backdrop changes.
+
+### Settings and search
+
+- Move Fonts into the basic settings group and Folder Panels into the panel appearance group.
+- Keep Settings in the taskbar and Alt+Tab so it is easier to find and restore.
+- Fix closing the search panel from its context menu sending focus to another app and obscuring Settings. Background closes do not steal focus or restore minimized Settings.
+- Remove the search global shortcut and its settings. Continue using the desktop search panel or the tray Search command; the separate Show Panels shortcut remains available. Old search shortcut settings are ignored.
+- Give selected and hovered dropdown items equal left and right margins, with the scrollbar in the outer margin.
 
 ### Everyday use
 

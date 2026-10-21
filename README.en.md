@@ -12,7 +12,7 @@ Desktop panels · Folder panels · Everything search · Spacebar preview · Agen
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Build CI](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml/badge.svg)](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml)
-[![Version](https://img.shields.io/badge/version-0.22.1-087EA4?style=flat-square)](CHANGELOG.en.md)
+[![Version](https://img.shields.io/badge/version-0.22.2-087EA4?style=flat-square)](CHANGELOG.en.md)
 [![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square)](#compatibility)
 [![Architecture](https://img.shields.io/badge/arch-x64-475569?style=flat-square)](docs/portable.md)
 
@@ -26,7 +26,7 @@ LucidDesk is a Windows desktop organizer built with Rust. Group icons into panel
 
 </div>
 
-Version **0.22.1** is a maintenance update that preserves existing settings and desktop layouts. This guide describes the current source; unreleased improvements are listed separately in the [changelog](CHANGELOG.en.md).
+Version **0.22.2** improves desktop hiding and restoration, checks for updates quietly, and keeps Settings accessible from the taskbar. The search global shortcut has been removed; desktop search and its tray entry remain available. Existing settings and layouts remain compatible. See the [changelog](CHANGELOG.en.md) for details.
 
 <a id="screenshots"></a>
 
