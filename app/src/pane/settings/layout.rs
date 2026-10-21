@@ -191,9 +191,9 @@ pub(super) fn pages() -> Vec<(usize, &'static str, &'static str)> {
     let mut pages = vec![
         (13, crate::i18n::text("startup-general"), "\u{e713}"),
         (12, crate::i18n::text("language-title"), "\u{f2b7}"),
+        (11, crate::i18n::text("ui-fonts"), "\u{e8d2}"),
         (0, crate::i18n::text("ui-theme-materials"), "\u{e790}"),
         (1, crate::i18n::text("ui-panel-layout"), "\u{f0e2}"),
-        (11, crate::i18n::text("ui-fonts"), "\u{e8d2}"),
         (8, crate::i18n::text("ui-folder-panels"), "\u{e8b7}"),
         (4, crate::i18n::text("ui-everything-search"), "\u{e721}"),
         (3, crate::i18n::text("ui-file-preview"), "\u{e890}"),
@@ -223,7 +223,7 @@ pub(super) fn navigation() -> Vec<Navigation> {
             section: match id {
                 13 => Some(crate::i18n::text("settings-nav-basics")),
                 0 => Some(crate::i18n::text("settings-nav-appearance")),
-                8 => Some(crate::i18n::text("settings-nav-files")),
+                4 => Some(crate::i18n::text("settings-nav-files")),
                 6 => Some(crate::i18n::text("settings-nav-maintenance")),
                 15 => Some(crate::i18n::text("plugins-title")),
                 _ => None,

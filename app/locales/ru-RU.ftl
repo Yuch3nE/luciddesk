@@ -1295,9 +1295,9 @@ error-copy-hint = Нажмите Ctrl+C, чтобы скопировать со�
 error-open-item = { "Не удалось открыть выбранный объект.\u000A\u000AОбъект:\u000A" }{ $path }{ "\u000A\u000AСведения об ошибке:\u000A" }{ $error }
 
 settings-nav-basics = Основные настройки
-settings-nav-appearance = Оформление и расположение
-settings-nav-files = Файлы и инструменты
-settings-nav-maintenance = Обслуживание
+settings-nav-appearance = Панели и оформление
+settings-nav-files = Поиск и просмотр
+settings-nav-maintenance = Обслуживание и помощь
 
 desktop-gesture-section = Действия на рабочем столе
 desktop-gesture-title = Скрывать рабочий стол двойным щелчком

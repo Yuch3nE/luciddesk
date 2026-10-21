@@ -2266,12 +2266,12 @@ fn grouped_navigation_keeps_routes_selection_and_scrolling_in_all_languages() {
             let builtin: Vec<_> = entries.iter().filter_map(|entry| match entry.action {
                 Action::Page(id) if id != 15 => Some(id), _ => None,
             }).collect();
-            assert_eq!(builtin, [13, 12, 0, 1, 11, 8, 4, 3, 6, 5]);
+            assert_eq!(builtin, [13, 12, 11, 0, 1, 8, 4, 3, 6, 5]);
             let headings: Vec<_> = entries.iter().filter_map(|entry| {
                 entry.section.and_then(|_| match entry.action { Action::Page(id) => Some(id), _ => None })
             }).collect();
-            assert!(headings.starts_with(&[13, 0, 8, 6]));
-            assert_ne!(entries[1].icon, entries[4].icon);
+            assert!(headings.starts_with(&[13, 0, 4, 6]));
+            assert_ne!(entries[1].icon, entries[2].icon);
             for (page, selected_page) in [(13, 13), (12, 12), (7, 0), (9, 6), (10, 6), (5, 5)] {
                 for (height, mut offset) in [
                     (260.0, 0.0), (600.0, 0.0), (900.0, 0.0),

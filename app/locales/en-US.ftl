@@ -1295,9 +1295,9 @@ error-copy-hint = Press Ctrl+C to copy this entire message.
 error-open-item = { "Unable to open the selected item.\u000A\u000AItem:\u000A" }{ $path }{ "\u000A\u000AError details:\u000A" }{ $error }
 
 settings-nav-basics = Basics
-settings-nav-appearance = Appearance and layout
-settings-nav-files = Files and tools
-settings-nav-maintenance = Maintenance
+settings-nav-appearance = Panels & appearance
+settings-nav-files = Search & preview
+settings-nav-maintenance = Maintenance & support
 
 desktop-gesture-section = Desktop gestures
 desktop-gesture-title = Double-click to hide desktop

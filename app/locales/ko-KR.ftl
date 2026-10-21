@@ -1295,9 +1295,9 @@ error-copy-hint = Ctrl+C를 눌러 이 메시지 전체를 복사할 수 있습�
 error-open-item = { "선택한 항목을 열 수 없습니다.\u000A\u000A항목:\u000A" }{ $path }{ "\u000A\u000A오류 세부 정보:\u000A" }{ $error }
 
 settings-nav-basics = 기본 설정
-settings-nav-appearance = 모양 및 레이아웃
-settings-nav-files = 파일 및 도구
-settings-nav-maintenance = 유지 관리
+settings-nav-appearance = 패널 및 모양
+settings-nav-files = 검색 및 미리 보기
+settings-nav-maintenance = 유지 관리 및 지원
 
 desktop-gesture-section = 바탕 화면 동작
 desktop-gesture-title = 두 번 클릭하여 바탕 화면 숨기기
