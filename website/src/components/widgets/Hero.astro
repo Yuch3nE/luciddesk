@@ -31,17 +31,17 @@ const { ...imageProps } = typeof image === 'object' && image ? image : { src: ''
   <div class="relative max-w-6xl mx-auto px-5 sm:px-8">
 
     <div class="pt-12 pb-4 md:pt-16 md:pb-6">
-      <div data-motion class="text-center pb-9 md:pb-12 max-w-4xl mx-auto">
+      <div data-motion="sequence" class="text-center pb-9 md:pb-12 max-w-4xl mx-auto">
         {
           badge && (
-            <span class="inline-block mb-4 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary dark:bg-primary/25 dark:text-blue-200">
+            <span data-motion-stage class="inline-block mb-4 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary dark:bg-primary/25 dark:text-blue-200">
               {badge}
             </span>
           )
         }
         {
           tagline && (
-            <p
+            <p data-motion-stage
               class="mb-5 text-xs text-primary dark:text-blue-300 font-semibold tracking-widest"
               set:html={tagline}
             />
@@ -49,7 +49,7 @@ const { ...imageProps } = typeof image === 'object' && image ? image : { src: ''
         }
         {
           title && (
-            <h1
+            <h1 data-motion-stage
               class="text-4xl sm:text-5xl md:text-6xl font-bold leading-[1.25] tracking-tight text-balance mb-5 font-heading text-heading"
               set:html={title}
             />
@@ -58,7 +58,7 @@ const { ...imageProps } = typeof image === 'object' && image ? image : { src: ''
         <div class="max-w-2xl mx-auto">
           {
             subtitle && (
-              <p
+              <p data-motion-stage
                 class="text-base md:text-lg text-muted mb-8"
                 set:html={subtitle}
               />
@@ -66,7 +66,7 @@ const { ...imageProps } = typeof image === 'object' && image ? image : { src: ''
           }
           {
             actions && (
-              <div class="max-w-xs sm:max-w-lg m-auto flex flex-nowrap flex-col sm:flex-row sm:justify-center gap-4">
+              <div data-motion-stage class="max-w-xs sm:max-w-lg m-auto flex flex-nowrap flex-col sm:flex-row sm:justify-center gap-4">
                 {Array.isArray(actions) ? (
                   actions.map((action) => (
                     <div class="flex w-full sm:w-auto">
@@ -80,14 +80,14 @@ const { ...imageProps } = typeof image === 'object' && image ? image : { src: ''
             )
           }
         </div>
-        {content && <Fragment set:html={content} />}
+        {content && <div data-motion-stage><Fragment set:html={content} /></div>}
       </div>
       <div
         class=""
       >
         {
           image && (
-            <div data-motion class="relative m-auto max-w-5xl">
+            <div data-motion="illustration" class="relative m-auto max-w-5xl">
               {typeof image === 'string' ? (
                 <Fragment set:html={image} />
               ) : (

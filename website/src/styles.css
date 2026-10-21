@@ -180,3 +180,13 @@
 
 /* Toolbar controls stay on one baseline during hover and press. */
 .header-tools [data-slot="button"]:hover, .header-tools [data-slot="button"]:active { transform: none; }
+
+/* Small interaction cues; no perpetual motion while reading. */
+@media (prefers-reduced-motion: no-preference) {
+  .agent-step > span { transition: background-color 180ms ease, transform 180ms ease; }
+  .motion-card svg { transition: transform 220ms ease; }
+  @media (hover: hover) and (pointer: fine) {
+    .agent-step:hover > span { transform: scale(1.08); background-color: color-mix(in srgb, var(--aw-color-primary) 20%, transparent); }
+    .motion-card:hover svg { transform: translateY(-2px); }
+  }
+}

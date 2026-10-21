@@ -22,11 +22,11 @@ const steps = [
         <Button href={localizedPath("/agent/", lang)} text={t("了解 Agent 联动")} icon="chevron-right" class="mt-8"/>
         <p class="mt-4 text-xs text-muted">{t("需使用外部 Agent，并启用应用中的 CLI 控制。")}</p>
       </div>
-      <Card data-motion className="min-w-0 gap-0 rounded-2xl border-line bg-page p-6 shadow-none sm:p-8">
+      <Card data-motion="sequence" className="min-w-0 gap-0 rounded-2xl border-line bg-page p-6 shadow-none sm:p-8">
 
-        <blockquote class="border-l-2 border-primary pl-4 text-lg font-medium leading-relaxed text-heading">{t("“把工作文件放在左边，")}<br/>{t("常用工具放在右边。”")}</blockquote>
+        <blockquote data-motion-stage class="border-l-2 border-primary pl-4 text-lg font-medium leading-relaxed text-heading">{t("“把工作文件放在左边，")}<br/>{t("常用工具放在右边。”")}</blockquote>
         <ol class="mt-7 space-y-5">
-          {steps.map((title, index) => <li class="flex items-start gap-4">
+          {steps.map((title, index) => <li data-motion-stage class="agent-step flex items-start gap-4">
             <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary dark:text-blue-300" aria-hidden="true">0{index+1}</span>
             <h3 class="pt-1.5 text-sm font-medium text-heading">{title}</h3>
           </li>)}
