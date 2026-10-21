@@ -1,0 +1,24 @@
+---
+import Section from '~/components/ui/Section.astro';
+import SectionHeading from '~/components/ui/SectionHeading.astro';
+import { Card } from '~/components/ui/card';
+import SiteIcon from '~/components/SiteIcon';
+interface Props {
+  id: string;
+  title: string;
+  subtitle: string;
+  tagline: string;
+  items: { title: string; description: string; icon: string }[];
+}
+const { id, title, subtitle, tagline, items } = Astro.props;
+---
+<Section id={id}>
+  <SectionHeading title={title} subtitle={subtitle} tagline={tagline}/>
+  <div class="grid gap-5 md:grid-cols-3">
+    {items.map((item, index) => <Card data-motion data-motion-order={index} className="motion-card gap-0 rounded-2xl border-line bg-page p-6 shadow-none lg:p-8">
+      <SiteIcon name={item.icon} className="mb-5 size-11 rounded-xl bg-primary/10 p-2.5 text-primary dark:text-blue-300"/>
+      <h3 class="mt-0.5 text-lg font-semibold text-heading">{item.title}</h3>
+      <p class="mt-3 text-sm leading-7 text-muted">{item.description}</p>
+    </Card>)}
+  </div>
+</Section>

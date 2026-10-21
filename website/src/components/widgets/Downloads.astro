@@ -6,15 +6,15 @@ const t = translator(lang);
 import { Card } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
 import Button from '~/components/ui/Button.astro';
-import Headline from '~/components/ui/Headline.astro';
-import WidgetWrapper from '~/components/ui/WidgetWrapper.astro';
+import SectionHeading from '~/components/ui/SectionHeading.astro';
+import Section from '~/components/ui/Section.astro';
 const editions = [
   {title:t('安装版'), recommended:true, description:t('跟随安装向导完成设置，带有开始菜单和卸载入口。适合固定使用的电脑。')},
   {title:t('便携版'), recommended:false, description:t('解压即可运行，配置保存在程序目录的 data 文件夹。适合希望配置随程序携带的场景。')},
 ];
 ---
-<WidgetWrapper id="download">
-  <Headline tagline={t("开始使用")} title={t("选一种方式，让桌面归位。")}/>
+<Section id="download">
+  <SectionHeading tagline={t("开始使用")} title={t("选一种方式，让桌面归位。")}/>
   <div class="grid gap-5 md:grid-cols-2">
     {editions.map(({title,recommended,description}, index) => <Card data-motion data-motion-order={index} className="motion-card min-w-0 gap-0 rounded-2xl border-line bg-page p-6 shadow-none sm:p-8">
       <div class="flex min-h-8 flex-wrap items-center justify-between gap-3">
@@ -30,4 +30,4 @@ const editions = [
     <p>{t("Windows 10 / 11 x64 · 下载后按文件名选择对应发布包。")}</p>
     <div class="flex flex-wrap gap-4"><a class="underline underline-offset-4" href={localizedPath("/changelog/", lang)}>{lang === "en" ? "What’s new" : "查看更新内容"}</a><a class="shrink-0 underline underline-offset-4" href={localizedPath("/installation/#updates", lang)}>{t("安装与更新指南")}</a></div>
   </div>
-</WidgetWrapper>
+</Section>

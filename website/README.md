@@ -23,8 +23,8 @@ Astro 7 + Tailwind CSS 4 + shadcn/ui + Lucide 的静态官网。React 通过 Ast
 
 - `src/pages/index.astro`：首页路由；`src/components/pages/Home.astro` 组合首页与功能、FAQ 数据。
 - `src/layouts/PageLayout.astro`：SEO、主题脚本、页头与页尾。
-- `src/components/widgets/`：Hero、Features、FAQs，以及 LucidDesk 的 Agent、Downloads、Header、Footer。
-- `src/components/ui/`：shadcn/ui Button、Accordion、Select、Card、Badge 源码，以及 Astro 布局组件。
+- `src/components/widgets/`：HomeHero、FeatureOverview、FAQs，以及 LucidDesk 的 Agent、Downloads、Header、Footer。
+- `src/components/ui/`：shadcn/ui Button、Accordion、Card、Badge 源码，以及项目自有的 Section、SectionHeading 布局组件。
 - `src/components/FAQAccordion.tsx`：FAQ 交互岛屿；`ThemeToggle.tsx` 使用 shadcn Button 图标按钮，默认跟随系统，点击直接切换明暗并保存偏好。按钮、卡片、标签和 Lucide 图标在构建时渲染。
 - `components.json`：shadcn/ui 后续添加组件的配置。
 - `scripts/finalize-build.mjs`：为 Astro 岛屿引导脚本生成 CSP 精确哈希；允许 Radix 测量高度所需的样式属性。
@@ -37,14 +37,6 @@ Astro 7 + Tailwind CSS 4 + shadcn/ui + Lucide 的静态官网。React 通过 Ast
 ## 组件来源
 
 shadcn/ui 源码来自官方 `new-york-v4` 注册表，许可见 `SHADCN-LICENSE.md`。组件使用本项目配色；图标统一为 `lucide-react`。
-
-## AstroWind 布局来源
-
-来源：https://github.com/arthelokyo/astrowind
-
-基于提交 `14e1a691f80548dcc36370847b1a02c0d0b12821` 的 Hero、Features、Headline、WidgetWrapper 及网格工具函数。保留 MIT 许可于 `ASTROWIND-LICENSE.md`。
-
-适配：Hero 图片适配本项目的 SVG 插槽；移除未使用的模板类型和素材；使用本项目 SEO 和系统字体，不增加远程字体构建请求。部署仍是 Cloudflare Workers Static Assets，无需 SSR 适配器。
 
 ## 站内帮助
 

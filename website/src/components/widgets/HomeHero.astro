@@ -1,0 +1,20 @@
+---
+import Button from '~/components/ui/Button.astro';
+interface Props {
+  tagline: string;
+  actions: { text: string; href: string; variant?: 'primary' | 'secondary'; icon?: string }[];
+}
+const { tagline, actions } = Astro.props;
+---
+<section class="mx-auto max-w-6xl px-5 pt-12 pb-4 sm:px-8 md:pt-16 md:pb-6">
+  <div data-motion="sequence" class="mx-auto max-w-4xl pb-9 text-center md:pb-12">
+    <p data-motion-stage class="mb-5 text-xs font-semibold tracking-widest text-primary dark:text-blue-300">{tagline}</p>
+    <h1 data-motion-stage class="mb-5 text-balance font-heading text-4xl font-bold leading-[1.25] tracking-tight text-heading sm:text-5xl md:text-6xl"><slot name="title"/></h1>
+    <p data-motion-stage class="mx-auto mb-8 max-w-2xl text-base text-muted md:text-lg"><slot name="subtitle"/></p>
+    <div data-motion-stage class="mx-auto flex max-w-xs flex-col justify-center gap-4 sm:max-w-lg sm:flex-row">
+      {actions.map(action => <Button {...action} class="w-full sm:w-auto"/>)}
+    </div>
+    <div data-motion-stage><slot name="content"/></div>
+  </div>
+  <div data-motion="illustration" class="mx-auto max-w-5xl"><slot name="image"/></div>
+</section>

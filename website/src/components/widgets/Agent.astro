@@ -5,8 +5,8 @@ const t = translator(lang);
 
 import { Card } from "~/components/ui/card";
 import Button from '~/components/ui/Button.astro';
-import Headline from '~/components/ui/Headline.astro';
-import WidgetWrapper from '~/components/ui/WidgetWrapper.astro';
+import SectionHeading from '~/components/ui/SectionHeading.astro';
+import Section from '~/components/ui/Section.astro';
 const steps = [
   t('读取工作区'),
   t('生成计划并预览'),
@@ -14,10 +14,10 @@ const steps = [
 ];
 ---
 <div class="agent-section">
-  <WidgetWrapper id="agent">
+  <Section id="agent">
     <div class="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
       <div>
-        <Headline tagline="AGENT" title={t("你决定怎么摆，<br/>Agent 帮你动手。")} classes={{ container: 'text-left mb-6 md:mb-6' }}/>
+        <SectionHeading tagline="AGENT" title={t("你决定怎么摆，<br/>Agent 帮你动手。")} align="left"/>
         <p class="max-w-lg text-base text-muted">{t("把整理需求交给 Agent：按项目分组、调整面板大小、安排工作区。通过配套 Skill 与 CLI，先了解现状、预览改动，再应用到桌面。")}</p>
         <Button href={localizedPath("/agent/", lang)} text={t("了解 Agent 联动")} icon="chevron-right" class="mt-8"/>
         <p class="mt-4 text-xs text-muted">{t("需使用外部 Agent，并启用应用中的 CLI 控制。")}</p>
@@ -35,5 +35,5 @@ const steps = [
 
       </Card>
     </div>
-  </WidgetWrapper>
+  </Section>
 </div>

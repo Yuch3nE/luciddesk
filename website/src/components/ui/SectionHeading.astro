@@ -1,0 +1,9 @@
+---
+interface Props { title: string; subtitle?: string; tagline?: string; align?: 'center' | 'left'; }
+const { title, subtitle, tagline, align = 'center' } = Astro.props;
+---
+<header data-motion class:list={[align === 'left' ? 'mb-6 text-left' : 'mx-auto mb-8 max-w-2xl text-center md:mb-9']}>
+  {tagline && <p class="mb-3 text-xs font-semibold tracking-widest text-primary dark:text-blue-300">{tagline}</p>}
+  <h2 class="text-balance font-heading text-3xl font-bold leading-snug tracking-tight text-heading md:text-4xl" set:html={title}/>
+  {subtitle && <p class="mt-4 text-pretty text-base text-muted md:text-lg">{subtitle}</p>}
+</header>
