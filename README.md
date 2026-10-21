@@ -10,39 +10,44 @@
 
 桌面面板 · 文件夹面板 · Everything 搜索 · 空格预览 · Agent 联动
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
-[![Build CI](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml/badge.svg)](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml)
-[![版本](https://img.shields.io/badge/version-0.22.2-087EA4?style=flat-square)](CHANGELOG.md)
-[![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square)](#系统与兼容性)
-[![架构](https://img.shields.io/badge/arch-x64-475569?style=flat-square)](docs/portable.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-2EA44F?style=flat-square&labelColor=374151)](LICENSE)
+[![CI status](https://img.shields.io/github/actions/workflow/status/Yuch3nE/luciddesk/build.yml?style=flat-square&label=CI&labelColor=374151)](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml)
+[![Version: 0.22.2](https://img.shields.io/badge/Version-0.22.2-8250DF?style=flat-square&labelColor=374151)](CHANGELOG.md)
+[![Windows: 10 / 11](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D4?style=flat-square&labelColor=374151)](#系统与兼容性)
+[![Arch: x64](https://img.shields.io/badge/Arch-x64-64748B?style=flat-square&labelColor=374151)](docs/portable.md)
+
+[![Rust: 1.99.1](https://img.shields.io/badge/Rust-1.99.1-D95D25?style=flat-square&labelColor=374151)](rust-toolchain.toml)
+[![UI: Win32](https://img.shields.io/badge/UI-Win32-008C95?style=flat-square&labelColor=374151)](docs/development/architecture.md)
+[![Graphics: Direct2D](https://img.shields.io/badge/Graphics-Direct2D-C03692?style=flat-square&labelColor=374151)](crates/luciddesk-graphics)
+[![Storage: SQLite](https://img.shields.io/badge/Storage-SQLite-005C83?style=flat-square&labelColor=374151)](crates/luciddesk-storage)
 
 [🌐 官网](https://luciddesk.bbkingdom365.com/) · [⬇️ 下载](https://github.com/Yuch3nE/luciddesk/releases) · [✨ 探索功能](https://luciddesk.bbkingdom365.com/features/) · [📖 使用指南](https://luciddesk.bbkingdom365.com/guide/) · [📋 更新记录](CHANGELOG.md)
 
 ![LucidDesk 功能示意：面板标签、文件夹浏览、Everything 搜索与 AI Agent 联动](docs/images/overview.svg)
 
-<sub>功能示意图 · 实际界面见下方截图</sub>
-
 </div>
 
-LucidDesk 是使用 Rust 开发的 Windows 桌面整理工具。把零散图标收进面板，把常用目录放到桌面，再用 Everything 搜索快速找到文件。通过 CLI 与配套 Skill，还可以让 Agent 按你的要求整理图标、调整面板布局、管理文件夹和设置，先预览改动，再应用到桌面。
+LucidDesk 是使用 Rust 开发的 Windows 桌面整理工具。把零散图标收进面板，把常用目录放到桌面，再用 Everything 快速找到文件。
 
-> [!TIP]
-> **当前版本 · v0.22.2**
->
-> 改善桌面隐藏与恢复，改用静默更新提示，并让设置窗口保留任务栏入口。已有设置与布局可直接沿用。
-> 搜索全局快捷键已移除，桌面搜索和托盘入口继续保留。[查看完整变化 →](CHANGELOG.md)
+通过配套 CLI 与 Skill，也可以让 Agent 协助整理图标和调整面板布局，先预览改动，再应用到桌面。
 
-### 🧭 阅读导航
+**当前版本：[v0.22.2](CHANGELOG.md)** · 改善桌面隐藏与恢复，采用静默更新提示。
 
-[📸 界面截图](#界面截图) · [✨ 功能](#功能) · [🚀 开始使用](#开始使用) · [🔄 升级与备份](#升级与备份)
+<details>
+<summary>阅读目录</summary>
 
-[🌐 界面语言](#界面语言) · [🖥️ 兼容性](#系统与兼容性) · [💬 常见问题](#常见问题) · [🛠️ 源码构建](#源码构建) · [🤝 参与开发](#参与开发) · [📚 文档](#文档)
+- **了解软件：** [界面截图](#界面截图) · [功能](#功能)
+- **开始使用：** [安装与使用](#开始使用) · [升级与备份](#升级与备份)
+- **查找帮助：** [界面语言](#界面语言) · [系统兼容性](#系统与兼容性) · [常见问题](#常见问题)
+- **参与开发：** [源码构建](#源码构建) · [贡献方式](#参与开发) · [文档](#文档)
+
+</details>
 
 <a id="界面截图"></a>
 
 ## 📸 界面截图
 
-| 🗂️ **桌面面板** | 主题与材质 |
+| 桌面面板 | 主题与材质 |
 | :---: | :---: |
 | <a href="screenshot/zh/pane.png"><img src="screenshot/zh/pane.png" height="220" alt="中文桌面面板" /></a> | <a href="screenshot/zh/setting.png"><img src="screenshot/zh/setting.png" height="220" alt="中文主题与材质设置" /></a> |
 | 拖入图标，按需折叠与整理 | 调整深浅主题与背景材质 |
@@ -58,7 +63,7 @@ LucidDesk 是使用 Rust 开发的 Windows 桌面整理工具。把零散图标�
 
 | 功能 | 你可以做什么 |
 | --- | --- |
-| 桌面面板 | 将文件、文件夹和快捷方式拖入面板；支持紧凑排列、保留空位的手动网格和自由坐标，按名称、类型、修改时间或大小排序 |
+| 🗂️ **桌面面板** | 将文件、文件夹和快捷方式拖入面板；支持紧凑排列、保留空位的手动网格和自由坐标，按名称、类型、修改时间或大小排序 |
 | 🫥 **双击隐藏桌面** | 双击桌面空白处隐藏所有图标和面板，再次双击恢复；在通用设置中启用 |
 | 🏷️ **面板标签** | 把多个桌面面板放进一个窗口，按需切换、排序、合并或分离 |
 | 📁 **文件夹面板** | 在桌面浏览常用目录，按名称、类型、时间或大小排序，文件变化后自动刷新 |

@@ -10,33 +10,38 @@
 
 Desktop panels · Folder panels · Everything search · Spacebar preview · Agent integration
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
-[![Build CI](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml/badge.svg)](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml)
-[![Version](https://img.shields.io/badge/version-0.22.2-087EA4?style=flat-square)](CHANGELOG.en.md)
-[![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square)](#compatibility)
-[![Architecture](https://img.shields.io/badge/arch-x64-475569?style=flat-square)](docs/portable.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-2EA44F?style=flat-square&labelColor=374151)](LICENSE)
+[![CI status](https://img.shields.io/github/actions/workflow/status/Yuch3nE/luciddesk/build.yml?style=flat-square&label=CI&labelColor=374151)](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml)
+[![Version: 0.22.2](https://img.shields.io/badge/Version-0.22.2-8250DF?style=flat-square&labelColor=374151)](CHANGELOG.en.md)
+[![Windows: 10 / 11](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D4?style=flat-square&labelColor=374151)](#compatibility)
+[![Arch: x64](https://img.shields.io/badge/Arch-x64-64748B?style=flat-square&labelColor=374151)](docs/portable.md)
+
+[![Rust: 1.99.1](https://img.shields.io/badge/Rust-1.99.1-D95D25?style=flat-square&labelColor=374151)](rust-toolchain.toml)
+[![UI: Win32](https://img.shields.io/badge/UI-Win32-008C95?style=flat-square&labelColor=374151)](docs/development/architecture.md)
+[![Graphics: Direct2D](https://img.shields.io/badge/Graphics-Direct2D-C03692?style=flat-square&labelColor=374151)](crates/luciddesk-graphics)
+[![Storage: SQLite](https://img.shields.io/badge/Storage-SQLite-005C83?style=flat-square&labelColor=374151)](crates/luciddesk-storage)
 
 [🌐 Website](https://luciddesk.bbkingdom365.com/) · [⬇️ Download](https://github.com/Yuch3nE/luciddesk/releases) · [✨ Explore](https://luciddesk.bbkingdom365.com/features/) · [📖 User guide](https://luciddesk.bbkingdom365.com/guide/) · [📋 Changelog](CHANGELOG.en.md)
 
 ![LucidDesk feature illustration: panel tabs, folder browsing, Everything search and AI Agent integration](docs/images/overview.en.svg)
 
-<sub>Feature illustration · See actual screenshots below.</sub>
-
 </div>
 
-LucidDesk is a Windows desktop organizer built with Rust. Group icons into panels, browse your favorite folders, and find files with Everything. With the CLI and companion skill, agents can organize icons, adjust panel layouts, and manage folders and settings at your request—previewing changes before applying them to the desktop.
+LucidDesk is a Windows desktop organizer built with Rust. Group icons into panels, keep frequently used folders on your desktop, and find files with Everything.
 
-> [!TIP]
-> **Current release · v0.22.2**
->
-> Improved desktop hiding and restoration, quiet update checks, and a taskbar entry for Settings. Existing settings and layouts remain compatible.
-> The search global shortcut has been removed; desktop search and the tray entry remain available. [See all changes →](CHANGELOG.en.md)
+The companion CLI and Skill let an agent help organize icons and panel layouts, with changes previewed before they are applied.
 
-### 🧭 On this page
+**Current release: [v0.22.2](CHANGELOG.en.md)** · Better desktop restoration and quiet update checks.
 
-[📸 Screenshots](#screenshots) · [✨ Features](#features) · [🚀 Get started](#getting-started) · [🔄 Upgrading](#upgrading-and-backups)
+<details>
+<summary>On this page</summary>
 
-[🌐 Languages](#languages) · [🖥️ Compatibility](#compatibility) · [💬 FAQ](#troubleshooting) · [🛠️ Build](#build-from-source) · [🤝 Contribute](#contributing) · [📚 Docs](#documentation)
+- **Discover:** [Screenshots](#screenshots) · [Features](#features)
+- **Use:** [Get started](#getting-started) · [Upgrading and backups](#upgrading-and-backups)
+- **Help:** [Languages](#languages) · [Compatibility](#compatibility) · [FAQ](#troubleshooting)
+- **Develop:** [Build from source](#build-from-source) · [Contributing](#contributing) · [Documentation](#documentation)
+
+</details>
 
 <a id="screenshots"></a>
 
