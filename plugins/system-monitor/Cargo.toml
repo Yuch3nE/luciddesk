@@ -13,7 +13,7 @@ test-diagnostics = []
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-toml = "1.1.6"
+toml = "1.1.8"
 tempfile = "3"
 luciddesk-plugin-api = { path = "../../crates/luciddesk-plugin-api" }
 sysinfo = { version = "0.39.6", default-features = false, features = ["system", "network", "disk"] }
