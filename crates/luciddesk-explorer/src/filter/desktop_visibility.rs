@@ -436,7 +436,27 @@ mod tests {
                 true,
                 LIMITS,
             );
-            assert!(!clicks.message(WM_LBUTTONUP, 810, p, true, LIMITS));
+            let released = if scenario == 3 { 810 } else { 110 };
+            assert!(!clicks.message(WM_LBUTTONUP, released, p, true, LIMITS));
+        }
+    }
+
+    #[test]
+    fn idle_and_unpaired_releases_do_not_toggle() {
+        let point = POINT { x: 10, y: 20 };
+        let mut clicks = Clicks::default();
+        for (message, time) in [
+            (WM_LBUTTONUP, 1),
+            (WM_LBUTTONDOWN, 10),
+            (WM_LBUTTONUP, 20),
+            (WM_MOUSEMOVE, 60_000),
+            (WM_LBUTTONUP, 60_010),
+            (WM_LBUTTONDBLCLK, 60_020),
+            (WM_LBUTTONUP, 60_030),
+            (WM_LBUTTONDOWN, 120_000),
+            (WM_LBUTTONUP, 120_010),
+        ] {
+            assert!(!clicks.message(message, time, point, true, LIMITS));
         }
     }
 

@@ -4,6 +4,7 @@ use std::cell::Cell;
 use std::time::{Duration, Instant};
 use windows_sys::Win32::{
     Foundation::HWND,
+    System::SystemInformation::GetTickCount,
     UI::WindowsAndMessaging::{
         GetPropW, IsIconic, IsWindowVisible, RemovePropW, SW_HIDE, SW_SHOWMINNOACTIVE,
         SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_SHOWWINDOW, SetPropW, ShowWindow, WINDOWPOS,
@@ -13,9 +14,11 @@ use windows_sys::Win32::{
 
 pub(super) const HIDDEN_WINDOW: windows_sys::core::PCWSTR = windows_sys::w!("LucidDesk.DesktopHidden.v1");
 pub(super) const PREFERENCE: &str = "desktop_double_click_hide";
+// This is a direct gesture, not a command to replay after a busy desktop recovers.
+const REQUEST_LIFETIME_MS: u32 = 1_000;
 thread_local! {
     static HIDDEN: Cell<bool> = const { Cell::new(false) };
-    static REQUESTED: Cell<bool> = const { Cell::new(false) };
+    static REQUESTED: Cell<Option<u32>> = const { Cell::new(None) };
     static CONFIGURED: Cell<Option<(usize, bool)>> = const { Cell::new(None) };
     static BUSY: Cell<bool> = const { Cell::new(false) };
     static RESTORE_PENDING: Cell<bool> = const { Cell::new(false) };
@@ -28,10 +31,11 @@ pub(super) fn restoring(hwnd: HWND) -> bool {
     !hidden() && unsafe { !GetPropW(hwnd, HIDDEN_WINDOW).is_null() }
 }
 pub(super) fn connection_changed() {
+    cancel_request("connection changed");
     CONFIGURED.with(|configured| configured.set(None));
 }
 pub(super) fn pending() -> bool {
-    REQUESTED.with(Cell::get) || RESTORE_PENDING.with(Cell::get)
+    REQUESTED.with(Cell::get).is_some() || RESTORE_PENDING.with(Cell::get)
 }
 pub(super) fn next_work() -> Option<Duration> {
     pending().then(|| {
@@ -55,9 +59,43 @@ fn windows(state: &Rc<RefCell<PaneApp>>) -> Vec<HWND> {
         .collect()
 }
 
-pub(super) fn request(state: &Rc<RefCell<PaneApp>>) {
-    REQUESTED.with(|requested| requested.set(!requested.get()));
-    state.borrow().wake.notify();
+pub(super) fn request(time: u32) {
+    request_at(time, unsafe { GetTickCount() });
+}
+
+fn request_at(time: u32, now: u32) {
+    expire_request(now);
+    let delay = now.wrapping_sub(time);
+    if delay > REQUEST_LIFETIME_MS {
+        luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Info,
+            "desktop.visibility", &format!("discard double-click: expired on receipt; delay_ms={delay}"));
+        return;
+    }
+    let queued = REQUESTED.with(|pending| {
+        let next = pending.get().is_none().then_some(time);
+        pending.set(next);
+        next.is_some()
+    });
+    luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Info,
+        "desktop.visibility", &format!("double-click received; delay_ms={delay}; queued={queued}"));
+}
+
+fn cancel_request(reason: &str) {
+    if REQUESTED.with(|pending| pending.take()).is_some() {
+        luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Info,
+            "desktop.visibility", &format!("discard double-click: {reason}"));
+    }
+}
+
+fn expire_request(now: u32) {
+    if let Some(time) = REQUESTED.with(Cell::get) {
+        let delay = now.wrapping_sub(time);
+        if delay > REQUEST_LIFETIME_MS {
+            REQUESTED.with(|pending| pending.set(None));
+            luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Info,
+                "desktop.visibility", &format!("discard double-click: expired while pending; delay_ms={delay}"));
+        }
+    }
 }
 
 /// Gate every pane's native show path, including newly created/rebuilt windows.
@@ -125,7 +163,7 @@ pub(super) fn child_visibility(hidden: bool, windows: &[HWND]) {
 /// Restore even if the desktop connection failed. Native session cleanup retains
 /// responsibility for restoring icons when its last Shell request cannot finish.
 pub(super) fn restore(state: &Rc<RefCell<PaneApp>>) -> Result<bool, String> {
-    REQUESTED.with(|pending| pending.set(false));
+    cancel_request("explicit restore or feature unavailable");
     restore_pending(state)
 }
 
@@ -185,6 +223,7 @@ pub(super) fn maintain(state: &Rc<RefCell<PaneApp>>) -> Result<(), String> {
         return Ok(());
     }
     let _busy = Busy;
+    expire_request(unsafe { GetTickCount() });
     if RETRY
         .with(Cell::get)
         .is_some_and(|due| due > Instant::now())
@@ -214,9 +253,17 @@ pub(super) fn maintain(state: &Rc<RefCell<PaneApp>>) -> Result<(), String> {
         hook.desktop_gesture(enabled)?;
         CONFIGURED.with(|configured| configured.set(Some(signature)));
     }
-    if !enabled || !REQUESTED.with(|pending| pending.replace(false)) {
+    if !enabled {
         return Ok(());
     }
+    let now = unsafe { GetTickCount() };
+    expire_request(now);
+    let Some(time) = REQUESTED.with(|pending| pending.take()) else {
+        return Ok(());
+    };
+    luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Info,
+        "desktop.visibility", &format!("execute double-click; action={}; delay_ms={}",
+        if hidden() { "restore" } else { "hide" }, now.wrapping_sub(time)));
     if hidden() {
         restore(state)?;
     } else {
@@ -245,15 +292,63 @@ mod tests {
     use super::*;
     use windows_sys::Win32::UI::WindowsAndMessaging::{WM_DESTROY, WS_POPUP};
     #[test]
+    fn stale_receipt_does_not_cancel_a_fresh_request_and_fresh_pairs_cancel() {
+        REQUESTED.with(|pending| pending.set(None));
+        request_at(100, 110);
+        request_at(100u32.wrapping_sub(REQUEST_LIFETIME_MS + 1), 110);
+        assert_eq!(REQUESTED.with(Cell::get), Some(100));
+        request_at(120, 130);
+        assert_eq!(REQUESTED.with(Cell::get), None);
+        request_at(140, 150);
+        connection_changed();
+        assert!(!pending());
+        let report = luciddesk_diagnostics::recent_report();
+        assert!(report.contains("double-click received; delay_ms=10"));
+        assert!(report.contains("expired on receipt"));
+        assert!(report.contains("connection changed"));
+    }
+
+    #[test]
+    fn expired_request_cannot_cancel_a_new_click_and_tick_wrap_is_supported() {
+        REQUESTED.with(|pending| pending.set(None));
+        request_at(100, 100);
+        request_at(1_101, 1_101);
+        assert_eq!(REQUESTED.with(Cell::get), Some(1_101));
+        expire_request(2_102);
+        assert!(!pending());
+        request_at(u32::MAX - 100, 20);
+        assert_eq!(REQUESTED.with(Cell::get), Some(u32::MAX - 100));
+        expire_request(899);
+        assert!(pending(), "the one-second boundary remains valid");
+        expire_request(900);
+        assert!(!pending());
+    }
+
+    #[test]
+    fn restore_retry_discards_expired_toggle_before_waiting() {
+        let state = Rc::new(RefCell::new(super::super::tests::test_state()));
+        let now = unsafe { GetTickCount() };
+        request_at(now.wrapping_sub(REQUEST_LIFETIME_MS + 1), now.wrapping_sub(1));
+        RESTORE_PENDING.with(|pending| pending.set(true));
+        RETRY.with(|retry| retry.set(Some(Instant::now() + Duration::from_secs(60))));
+        maintain(&state).unwrap();
+        assert!(REQUESTED.with(Cell::get).is_none());
+        assert!(!hidden());
+        assert!(RESTORE_PENDING.with(Cell::get), "restoration itself must still retry");
+        restore_pending(&state).unwrap();
+        assert!(!pending());
+    }
+
+    #[test]
     fn automatic_restore_preserves_new_click_but_explicit_restore_cancels_it() {
         let state = Rc::new(RefCell::new(super::super::tests::test_state()));
         RESTORE_PENDING.with(|value| value.set(true));
-        request(&state);
+        request(unsafe { GetTickCount() });
         restore_pending(&state).unwrap();
-        assert!(REQUESTED.with(Cell::get), "retry must retain the new click");
+        assert!(REQUESTED.with(Cell::get).is_some(), "retry must retain the new click");
         assert!(!RESTORE_PENDING.with(Cell::get));
         restore(&state).unwrap();
-        assert!(!REQUESTED.with(Cell::get), "explicit show/disable cancels queued toggles");
+        assert!(REQUESTED.with(Cell::get).is_none(), "explicit show/disable cancels queued toggles");
     }
     #[test]
     fn restore_preserves_initial_hidden_panels_and_gates_new_windows() {

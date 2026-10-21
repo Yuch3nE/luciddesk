@@ -321,7 +321,6 @@ pub(super) fn connect(state: &Rc<RefCell<PaneApp>>, _path: &Path) -> Result<(), 
     let icons_dirty = Rc::new(RefCell::new(icon_changes::Pending::default()));
     let icon_notify = Rc::clone(&icons_dirty);
     let input_receiver = Rc::downgrade(state);
-    let toggle_receiver = Rc::downgrade(state);
     let pending_desktop_input = Rc::new(Cell::new(None));
     let pending_input = Rc::clone(&pending_desktop_input);
     let work_ready = state.borrow().wake.clone();
@@ -368,10 +367,8 @@ pub(super) fn connect(state: &Rc<RefCell<PaneApp>>, _path: &Path) -> Result<(), 
                 Some(0)
             } else if message == luciddesk_explorer::notifications::DESKTOP_TOGGLE_MESSAGE {
                 if wparam as isize == view {
-                    let receiver = toggle_receiver.clone();
-                    window::defer_action(move || {
-                        if let Some(state) = receiver.upgrade() { desktop_toggle::request(&state); }
-                    });
+                    desktop_toggle::request(lparam as u32);
+                    work_ready.notify();
                 }
                 Some(0)
             } else if message == DESKTOP_INPUT_MESSAGE {

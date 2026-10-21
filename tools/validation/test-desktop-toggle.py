@@ -215,6 +215,16 @@ def main():
             shown = pane("Desktop toggle shown fixture")
             prior_hidden = pane("Desktop toggle prior hidden fixture")
             user.ShowWindow(prior_hidden, 0)
+            controller = next(hwnd for hwnd, title, _ in startup.owned_windows(process.pid)
+                if title == "LucidDesk Hybrid Controller")
+            old_time = (kernel.GetTickCount() - 5_000) & 0xFFFFFFFF
+            assert user.PostMessageW(controller, 0x8000 + 0x4a3, view, old_time)
+            log = data / "logs" / "diagnostic.log"
+            wait(lambda: log.exists() and "expired on receipt" in log.read_text(encoding="utf-8"),
+                "Stale desktop gesture was not discarded and logged")
+            assert not runtime()["desktop_hidden"], "Stale gesture hid the desktop"
+            assert user.IsWindowVisible(shown), "Stale gesture hid a pane"
+            print("PASS: stale gesture discarded without hiding desktop", flush=True)
             consumed_before = user.GetPropW(view, "LucidDesk.Desktop.DoubleClick.Consumed") or 0
             double_click(view if user.IsWindowVisible(view) else parent, point)
             wait(lambda: runtime()["desktop_hidden"], "Blank double click did not hide")
