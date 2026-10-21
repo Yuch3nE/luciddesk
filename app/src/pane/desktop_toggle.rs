@@ -7,7 +7,7 @@ use windows_sys::Win32::{
     System::SystemInformation::GetTickCount,
     UI::WindowsAndMessaging::{
         GetPropW, IsIconic, IsWindowVisible, RemovePropW, SW_HIDE, SW_SHOWMINNOACTIVE,
-        SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_SHOWWINDOW, SetPropW, ShowWindow, WINDOWPOS,
+        SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_SHOWWINDOW, SetPropW, ShowWindow, SendMessageW, WINDOWPOS,
         WM_WINDOWPOSCHANGING,
     },
 };
@@ -26,9 +26,6 @@ thread_local! {
 }
 pub(super) fn hidden() -> bool {
     HIDDEN.with(Cell::get)
-}
-pub(super) fn restoring(hwnd: HWND) -> bool {
-    !hidden() && unsafe { !GetPropW(hwnd, HIDDEN_WINDOW).is_null() }
 }
 pub(super) fn connection_changed() {
     cancel_request("connection changed");
@@ -123,7 +120,8 @@ fn hide_windows(windows: &[HWND]) {
                 let state = if IsIconic(hwnd) != 0 { 2usize } else { 1 };
                 if SetPropW(hwnd, HIDDEN_WINDOW, state as _) != 0 {
                     super::rename::cancel(hwnd);
-                    ShowWindow(hwnd, SW_HIDE);
+                    if state == 2 { ShowWindow(hwnd, SW_HIDE); }
+                    else { SendMessageW(hwnd, super::visibility::DESKTOP_HIDE, 0, 0); }
                 }
             }
         }
@@ -134,6 +132,10 @@ fn restore_windows(windows: &[HWND]) {
         unsafe {
             let previous = GetPropW(hwnd, HIDDEN_WINDOW) as usize;
             if previous != 0 {
+                if previous == 1 && IsWindowVisible(hwnd) != 0 {
+                    // Reverse an unfinished fade-out without hiding the HWND.
+                    SendMessageW(hwnd, super::visibility::DESKTOP_SHOW, 0, 0);
+                }
                 ShowWindow(
                     hwnd,
                     if previous == 2 {
@@ -142,8 +144,7 @@ fn restore_windows(windows: &[HWND]) {
                         SW_SHOWNOACTIVATE
                     },
                 );
-                // Keep the marker through WM_WINDOWPOSCHANGING so the pane
-                // restores its existing surface without replaying its entrance.
+                // The marker preserves which windows belonged to this toggle.
                 RemovePropW(hwnd, HIDDEN_WINDOW);
             }
         }
@@ -353,10 +354,12 @@ mod tests {
     #[test]
     fn restore_preserves_initial_hidden_panels_and_gates_new_windows() {
         let make = || {
+            let mut transition = super::super::visibility::Transition::default();
             windows_window::Window::new("Desktop visibility fixture")
                 .size(80, 60)
                 .style(WS_POPUP)
-                .on_message(|hwnd, msg, _, lp| {
+                .on_message(move |hwnd, msg, wp, lp| {
+                    if transition.message(hwnd.cast(), msg, wp, lp, None, |_| {}) { return Some(0); }
                     unsafe {
                         gate(hwnd.cast(), msg, lp);
                     }

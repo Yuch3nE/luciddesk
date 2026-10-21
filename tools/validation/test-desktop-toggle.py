@@ -229,7 +229,8 @@ def main():
             double_click(view if user.IsWindowVisible(view) else parent, point)
             wait(lambda: runtime()["desktop_hidden"], "Blank double click did not hide")
             assert not user.IsWindowVisible(view), "Native icons remain visible"
-            assert not user.IsWindowVisible(shown) and not user.IsWindowVisible(prior_hidden)
+            wait(lambda: not user.IsWindowVisible(shown), "Pane fade-out did not finish")
+            assert not user.IsWindowVisible(prior_hidden)
             if monitor:
                 wait(lambda: not user.IsWindowVisible(monitor), "Monitor child escaped hidden mode")
             created_hidden = pane("Desktop toggle created hidden fixture")

@@ -4,6 +4,8 @@ use std::time::Instant;
 use windows_sys::Win32::{Foundation::HWND, UI::WindowsAndMessaging::*};
 
 const CLOSE: u32 = WM_APP + 198;
+pub(super) const DESKTOP_HIDE: u32 = WM_APP + 203;
+pub(super) const DESKTOP_SHOW: u32 = WM_APP + 204;
 pub(super) const RESTORE: u32 = WM_APP + 196;
 pub(super) const CLOSED: u32 = WM_APP + 197;
 const TIMER: usize = 0x4c5056;
@@ -38,6 +40,7 @@ fn finish_close(hwnd: HWND) {
 pub(super) struct Transition {
     pending: bool,
     closing: bool,
+    hiding: bool,
     from: f32,
     opacity: Option<f32>,
     track: Option<(Instant, Fade)>,
@@ -54,6 +57,7 @@ impl Transition {
         if msg == RESTORE {
             unsafe { RemovePropW(hwnd, CLOSE_STATE); }
             self.closing = false;
+            self.hiding = false;
             self.complete(hwnd, surface, &mut companion);
             return true;
         }
@@ -65,18 +69,17 @@ impl Transition {
         // Activation/z-order changes may repeat SHOWWINDOW for an already
         // visible HWND. Only a real hidden-to-visible transition starts a fade.
         let showing = flags & SWP_SHOWWINDOW != 0 && unsafe { IsWindowVisible(hwnd) } == 0;
-        if showing && !self.closing && super::desktop_toggle::restoring(hwnd) {
-            self.complete(hwnd, surface, &mut companion);
-            return false;
-        }
+        if matches!(msg, DESKTOP_HIDE | DESKTOP_SHOW) && self.closing { return true; }
+        if msg == DESKTOP_HIDE && !super::desktop_toggle::hidden() { return true; }
         // Only request_close may initiate a close. Ignore unsolicited or stale
         // notifications rather than turning a broadcast into a persisted delete.
         if msg == CLOSE && (unsafe { GetPropW(hwnd, CLOSE_STATE) } as usize != 1 || self.closing) {
             return true;
         }
-        if msg == CLOSE || (showing && !self.closing) {
+        if msg == CLOSE || msg == DESKTOP_HIDE || msg == DESKTOP_SHOW || (showing && !self.closing) {
             self.closing = msg == CLOSE;
-            self.from = if self.closing { self.opacity() } else { 0.0 };
+            self.hiding = msg == DESKTOP_HIDE;
+            self.from = if self.closing || self.hiding || msg == DESKTOP_SHOW { self.opacity() } else { 0.0 };
             self.track = None;
             self.pending = super::scrollbar::animations_enabled() && surface.is_some();
             if self.pending {
@@ -86,7 +89,7 @@ impl Transition {
                     && unsafe { SetTimer(hwnd, TIMER, USER_TIMER_MINIMUM, None) } != 0;
             }
             if !self.pending { self.complete(hwnd, surface, &mut companion); }
-            return msg == CLOSE;
+            return matches!(msg, CLOSE | DESKTOP_HIDE | DESKTOP_SHOW);
         }
         if msg != WM_TIMER || wp != TIMER { return false; }
         if self.pending {
@@ -95,7 +98,7 @@ impl Transition {
         }
         let progress = self.track.as_ref().map_or(1.0, |(start, fade)|
             fade.sample(start.elapsed()).unwrap_or(1.0));
-        let opacity = if self.closing { self.from * (1.0 - progress) } else { progress };
+        let opacity = if self.closing || self.hiding { self.from * (1.0 - progress) } else { self.from + (1.0 - self.from) * progress };
         self.opacity = Some(opacity);
         companion(opacity);
         let applied = surface.is_some_and(|surface| surface.opacity(opacity).is_ok());
@@ -107,10 +110,14 @@ impl Transition {
         self.pending = false;
         self.track = None;
         unsafe { KillTimer(hwnd, TIMER); }
-        let opacity = if self.closing { 0.0 } else { 1.0 };
+        let opacity = if self.closing || self.hiding { 0.0 } else { 1.0 };
         self.opacity = Some(opacity);
         companion(opacity);
         if let Some(surface) = surface { let _ = surface.opacity(opacity); }
+        if self.hiding {
+            self.hiding = false;
+            unsafe { ShowWindow(hwnd, SW_HIDE); }
+        }
         if self.closing {
             // Keep the window recoverable if persistence rejects the close.
             self.closing = false;
@@ -125,7 +132,7 @@ mod tests {
 
     #[test]
     fn language_notification_and_unsolicited_close_preserve_visibility() {
-        assert!(![CLOSE, CLOSED, RESTORE].contains(&crate::i18n::CHANGED));
+        assert!(![CLOSE, CLOSED, RESTORE, DESKTOP_HIDE, DESKTOP_SHOW].contains(&crate::i18n::CHANGED));
         let window = windows_window::Window::new("Language visibility regression")
             .size(1, 1).style(WS_POPUP)
             .on_message(|_, msg, _, _| (msg == WM_DESTROY).then_some(0))
@@ -165,14 +172,14 @@ mod tests {
         transition.message(hwnd, WM_WINDOWPOSCHANGING, 0,
             (&raw mut position) as isize, Some(&surface), |_| {});
         assert_eq!(transition.opacity(), if super::super::scrollbar::animations_enabled() { 0.0 } else { 1.0 });
-        // Desktop restoration reuses the surface rather than resetting it to
-        // transparent and waiting for the next animation timer.
+        // Desktop restoration uses the same entrance transition.
         unsafe { SetPropW(hwnd, super::super::desktop_toggle::HIDDEN_WINDOW, 1usize as _); }
         transition.message(hwnd, WM_WINDOWPOSCHANGING, 0,
             (&raw mut position) as isize, Some(&surface), |_| {});
-        assert_eq!(transition.opacity(), 1.0);
-        assert_eq!(surface.current_opacity(), 1.0);
-        assert!(!transition.pending);
+        let initial = if super::super::scrollbar::animations_enabled() { 0.0 } else { 1.0 };
+        assert_eq!(transition.opacity(), initial);
+        assert_eq!(surface.current_opacity(), initial);
+        assert_eq!(transition.pending, initial == 0.0);
         assert!(transition.track.is_none());
         unsafe { RemovePropW(hwnd, super::super::desktop_toggle::HIDDEN_WINDOW); }
     }

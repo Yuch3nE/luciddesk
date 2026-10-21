@@ -159,6 +159,35 @@ fn all_pane_types_fade_and_close_after_the_transition() {
         for &hwnd in &windows { assert_eq!(unsafe { SendMessageW(hwnd, WM_APP + 199, 0, 0) }, 0); }
     }
     pump(300);
+    // A desktop toggle fades all pane types without deleting their saved panels.
+    let saved = state.borrow().store.load_workspace().unwrap().panels().len();
+    desktop_toggle::child_visibility(true, &windows);
+    pump(60);
+    if scrollbar::animations_enabled() {
+        for &hwnd in &windows {
+            assert_ne!(unsafe { IsWindowVisible(hwnd) }, 0);
+            assert!((1..1000).contains(&unsafe { SendMessageW(hwnd, WM_APP + 199, 0, 0) }));
+        }
+    }
+    // Reverse before fade-out finishes: the old timer must never hide us later.
+    desktop_toggle::child_visibility(false, &windows);
+    pump(300);
+    for &hwnd in &windows {
+        assert_ne!(unsafe { IsWindowVisible(hwnd) }, 0);
+        assert_eq!(unsafe { SendMessageW(hwnd, WM_APP + 199, 0, 0) }, 1000);
+    }
+    desktop_toggle::child_visibility(true, &windows);
+    pump(300);
+    for &hwnd in &windows { assert_eq!(unsafe { IsWindowVisible(hwnd) }, 0); }
+    desktop_toggle::child_visibility(false, &windows);
+    pump(60);
+    if scrollbar::animations_enabled() {
+        for &hwnd in &windows {
+            assert!((1..1000).contains(&unsafe { SendMessageW(hwnd, WM_APP + 199, 0, 0) }));
+        }
+    }
+    pump(300);
+    assert_eq!(state.borrow().store.load_workspace().unwrap().panels().len(), saved);
     for hwnd in windows {
         assert_eq!(unsafe { SendMessageW(hwnd, WM_APP + 199, 0, 0) }, 1000);
         unsafe { PostMessageW(hwnd, WM_CLOSE, 0, 0); }

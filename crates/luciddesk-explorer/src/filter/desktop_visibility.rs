@@ -2,7 +2,7 @@
 use windows::core::Result;
 use windows_sys::Win32::{
     Foundation::{HWND, POINT},
-    Graphics::Gdi::{ClientToScreen, ScreenToClient},
+    Graphics::Gdi::{ClientToScreen, ScreenToClient, RedrawWindow, RDW_INVALIDATE, RDW_UPDATENOW, RDW_ALLCHILDREN},
     System::SystemServices::{MK_CONTROL, MK_SHIFT},
     UI::{
         Controls::{LVHITTESTINFO, LVM_GETEDITCONTROL, LVM_HITTEST},
@@ -15,7 +15,7 @@ use windows_sys::Win32::{
             GetWindowLongW, GWL_STYLE, WS_VISIBLE,
             SM_CXDOUBLECLK, SM_CXDRAG, SM_CYDOUBLECLK, SM_CYDRAG, SendMessageW, WM_LBUTTONDBLCLK,
             WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MOUSEMOVE, WM_RBUTTONDOWN,
-            WM_KEYDOWN, WM_SYSKEYDOWN, WM_MOUSEWHEEL, WM_MOUSEHWHEEL, WM_XBUTTONDOWN,
+            WM_KEYDOWN, WM_SYSKEYDOWN, WM_MOUSEWHEEL, WM_MOUSEHWHEEL, WM_XBUTTONDOWN, WM_SETREDRAW,
         },
     },
 };
@@ -66,7 +66,14 @@ impl DesktopVisibility {
                 // A destroyed Explorer view needs no restoration. Never touch
                 // a replacement desktop window owned by a new connection.
                 if IsWindow(view) != 0 {
+                    // Batch the ListView reveal so its old backing surface does not
+                    // remain visible while panels are already fading in.
+                    SendMessageW(view, WM_SETREDRAW, 0, 0);
                     ShowWindow(view, SW_SHOWNOACTIVATE);
+                    SendMessageW(view, WM_SETREDRAW, 1, 0);
+                    // Finish the icon view paint before acknowledging restoration.
+                    RedrawWindow(view, std::ptr::null(), std::ptr::null_mut(),
+                        RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
                     if !own_visible(view) {
                         return Err(windows::Win32::Foundation::E_FAIL.into());
                     }
