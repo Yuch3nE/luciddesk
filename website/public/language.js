@@ -70,8 +70,11 @@
         if (content) document.querySelector(selector)?.setAttribute('content', content);
       }
       document.documentElement.lang = lang === 'en' ? 'en' : 'zh-CN';
+      // Replacing translated markup is not a new navigation. Do not replay
+      // first-paint CSS animation on content the visitor has already seen.
+      document.body.setAttribute('data-motion-suppressed', '');
       document.body.replaceChildren(...parsed.body.childNodes);
-      document.dispatchEvent(new Event('astro:after-swap'));
+      document.dispatchEvent(new Event('luciddesk:language-swapped'));
       document.dispatchEvent(new Event('luciddesk:theme-updated'));
       try { localStorage.setItem(storageKey, lang); } catch { /* This page can still switch. */ }
       restorePosition();

@@ -49,6 +49,10 @@
     document.querySelectorAll('[data-motion]').forEach(element => {
       if (seen.has(element)) return;
       seen.add(element);
+      // Never hide content that was already visible before this script or a
+      // language payload arrived. Only animate later scroll entrances.
+      const bounds = element.getBoundingClientRect();
+      if (bounds.bottom > 0 && bounds.top < window.innerHeight) return;
       observer.observe(element);
     });
   };
@@ -59,6 +63,12 @@
   });
   document.addEventListener('astro:after-swap', () => {
     observer.disconnect();
+    seen = new WeakSet();
+    observe();
+  });
+  document.addEventListener('luciddesk:language-swapped', () => {
+    observer.disconnect();
+    cancel();
     seen = new WeakSet();
     observe();
   });

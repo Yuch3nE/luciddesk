@@ -50,7 +50,7 @@ shadcn/ui 源码来自官方 `new-york-v4` 注册表，许可见 `SHADCN-LICENSE
 
 ## 站内导航
 
-`PageLayout.astro` 使用 Astro `ClientRouter` 处理站内链接与浏览器前进、后退，页面内容切换无需整页刷新。外部链接与下载入口保持正常跳转。`language.js` 在路由交换前装入所选语言，`theme.js` 保留当前配色，`motion.js` 在新页面加载后重新观察动画元素。没有 JavaScript 时仍使用普通链接导航。
+`PageLayout.astro` 使用 Astro `ClientRouter` 处理站内链接与浏览器前进、后退，页面内容切换无需整页刷新。外部链接与下载入口保持正常跳转。`language.js` 在路由交换前装入所选语言，`theme.js` 保留当前配色，首屏入场动画由 CSS 在首次绘制时启动；`motion.js` 仅观察尚未进入视口的滚动动画元素，避免延迟脚本把已显示的内容重新隐藏。语言替换使用独立事件并禁用首屏重播，不冒充 Astro 导航事件。没有 JavaScript 时仍使用普通链接导航。
 
 ## 中英文页面
 

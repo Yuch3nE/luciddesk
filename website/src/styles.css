@@ -190,3 +190,27 @@
     .motion-card:hover svg { transform: translateY(-2px); }
   }
 }
+
+/* Start hero motion with the first styled paint, not a deferred JS callback. */
+@keyframes hero-enter {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes hero-illustration-enter {
+  from { opacity: 0; transform: translateY(12px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  body:not([data-motion-suppressed]) [data-motion-initial="sequence"] > [data-motion-stage] {
+    animation: hero-enter 480ms cubic-bezier(.22, 1, .36, 1) backwards;
+  }
+  body:not([data-motion-suppressed]) [data-motion-initial="sequence"] > :nth-child(2) { animation-delay: 65ms; }
+  body:not([data-motion-suppressed]) [data-motion-initial="sequence"] > :nth-child(3) { animation-delay: 130ms; }
+  body:not([data-motion-suppressed]) [data-motion-initial="sequence"] > :nth-child(4) { animation-delay: 195ms; }
+  body:not([data-motion-suppressed]) [data-motion-initial="sequence"] > :nth-child(n+5) { animation-delay: 260ms; }
+  body:not([data-motion-suppressed]) [data-motion-initial="illustration"] {
+    animation: hero-illustration-enter 700ms cubic-bezier(.22, 1, .36, 1) backwards;
+  }
+  [data-motion-initial]:focus-within,
+  [data-motion-initial] > [data-motion-stage]:focus-within { animation: none !important; }
+}
