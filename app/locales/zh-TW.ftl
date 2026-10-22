@@ -1301,3 +1301,21 @@ desktop-gesture-description = 按兩下桌面空白處隱藏所有圖示與面�
 
 update-installed-version = 目前版本 { $version }
 update-download = 下載新版本
+
+
+ui-snap-gap = 吸附間距
+ui-snap-gap-description = 吸附後面板之間及與螢幕邊緣的間距，單位為像素，0 表示無間隙
+
+
+ui-rendering-mode = 算繪模式
+ui-system-rendering = 系統算繪
+ui-custom-rendering = 自訂算繪
+ui-rendering-mode-description = 系統算繪使用系統圓角與陰影；自訂算繪可調整圓角，無陰影
+
+ui-corner-style = 圓角樣式
+ui-corners-standard = 一般圓角
+ui-corners-small = 小圓角
+ui-system-corner-style-description = 選擇系統圓角樣式，陰影隨視窗輪廓變化
+ui-corners-square = 直角
+
+ui-homepage = 官網首頁

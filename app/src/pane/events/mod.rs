@@ -94,12 +94,17 @@ pub(super) fn handle(
                 ("pane_title_emoji_color", "true"),
                 ("pane_compact_menu", "true"),
                 ("pane_header_divider", "true"),
+                ("pane_system_corners", "round"),
+                ("pane_snap_gap", "5"),
                 ("desktop_panel_layout", "compact"),
             ])
             .map_err(|e| e.to_string())?;
         interface_flags::TITLE_EMOJI.load(&s.store)?;
         interface_flags::COMPACT_MENU.load(&s.store)?;
         interface_flags::HEADER_DIVIDER.load(&s.store)?;
+        interface_flags::PANEL_SHADOW.load(&s.store)?;
+        interface_flags::load_system_corners(&s.store)?;
+        snap::load_gap(&s.store)?;
         for view in &s.views {
             unsafe {
                 InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0);
@@ -124,6 +129,26 @@ pub(super) fn handle(
     if matches!(event, Event::ToggleHeaderDivider) {
         let s = state.borrow();
         interface_flags::HEADER_DIVIDER.save(&s.store, !interface_flags::HEADER_DIVIDER.get())?;
+        for view in &s.views {
+            unsafe {
+                InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0);
+            }
+        }
+        return Ok(false);
+    }
+    if let Event::SetSystemRendering(enabled) = event {
+        let s = state.borrow();
+        interface_flags::PANEL_SHADOW.save(&s.store, enabled)?;
+        for view in &s.views {
+            unsafe {
+                InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0);
+            }
+        }
+        return Ok(false);
+    }
+    if let Event::SetSystemCorners(corners) = event {
+        let s = state.borrow();
+        interface_flags::save_system_corners(&s.store, corners)?;
         for view in &s.views {
             unsafe {
                 InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0);

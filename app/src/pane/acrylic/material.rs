@@ -23,7 +23,7 @@ impl Acrylic {
             return self.solid(color, opacity);
         }
         let brush = self.material_or_fallback(material, dark)?;
-        self.backdrop.SetBrush(&brush)?;
+        self.replace_background(&brush)?;
         let clear_tint: CompositionColorBrush = self.tint.Brush()?.cast()?;
         clear_tint.SetColor(TRANSPARENT)?;
         self.visible(true)
@@ -31,15 +31,13 @@ impl Acrylic {
 
     fn solid(&self, color: u32, opacity: f32) -> Result<()> {
         self.clear_effects();
-        self.set_color(
-            &self.backdrop,
-            Color {
-                A: (opacity.clamp(0.0, 1.0) * 255.0).round() as u8,
-                R: (color >> 16) as u8,
-                G: (color >> 8) as u8,
-                B: color as u8,
-            },
-        )?;
+        let brush = self.runtime.compositor.CreateColorBrushWithColor(Color {
+            A: (opacity.clamp(0.0, 1.0) * 255.0).round() as u8,
+            R: (color >> 16) as u8,
+            G: (color >> 8) as u8,
+            B: color as u8,
+        })?;
+        self.replace_background(&brush.cast()?)?;
         self.set_color(&self.tint, TRANSPARENT)?;
         self.visible(true)
     }
@@ -82,7 +80,7 @@ impl Acrylic {
                 self.clear_effects();
                 self.runtime
                     .compositor
-                    .CreateColorBrushWithColor(effects::mica_palette(dark, false).0)?
+                    .CreateColorBrushWithColor(effects::fallback_color(material, dark))?
                     .cast()
             }
         }
@@ -114,7 +112,7 @@ impl Acrylic {
         if let Some((old_wallpaper, brush)) = cached.as_ref()
             && *old_wallpaper == wallpaper
         {
-            effects::update_colors(brush, luminosity, tint)?;
+            effects::update_colors(brush, luminosity, tint, self.animate_material())?;
             return Ok(brush.clone());
         }
         let mut factory = self.runtime.material_factory.borrow_mut();

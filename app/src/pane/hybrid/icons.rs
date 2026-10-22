@@ -94,12 +94,12 @@ pub(super) fn tick(s: &mut PaneApp, invalidated: bool) -> bool {
                 let attempts = h
                     .icon_failures
                     .get(key)
-                    .map_or(1, |(attempts, _)| attempts + 1);
+                    .map_or(1, |(attempts, _)| attempts.saturating_add(1));
                 h.icon_failures.insert(
                     key.clone(),
                     (
                         attempts,
-                        Instant::now() + Duration::from_secs(1 << attempts.min(6)),
+                        Instant::now() + icon_retry_delay(attempts),
                     ),
                 );
             }
@@ -166,9 +166,17 @@ fn retry_refresh(h: &mut super::Session, pending: icon_changes::Pending) {
     h.icon_due = Some(Instant::now() + delay);
 }
 
+const INITIAL_MAX_ATTEMPTS: u32 = 5;
+
+// Retry transient Shell failures promptly without spinning on broken providers.
+// Initial loading stops after five attempts; refresh work keeps a 32-second cap.
+fn icon_retry_delay(failures: u32) -> Duration {
+    Duration::from_millis(250 << failures.saturating_sub(1).min(7))
+}
+
 fn refresh_retry_delay(failures: &mut u32) -> Duration {
-    *failures = failures.saturating_add(1).min(5);
-    Duration::from_secs(1 << *failures)
+    *failures = failures.saturating_add(1).min(8);
+    icon_retry_delay(*failures)
 }
 
 fn apply_refreshed_images(
@@ -198,7 +206,7 @@ pub(super) fn retry_deadline(
     failures
         .iter()
         .filter(|(key, (attempts, _))| {
-            *attempts < 5 && !images.contains_key(*key) && !requested.contains(*key)
+            *attempts < INITIAL_MAX_ATTEMPTS && !images.contains_key(*key) && !requested.contains(*key)
         })
         .map(|(_, (_, due))| (*due).max(last_scan + Duration::from_millis(250)))
         .min()
@@ -337,7 +345,7 @@ fn collect_icon_requests(
             (!images.contains_key(&key)
                 && failures
                     .get(&key)
-                    .is_none_or(|(attempts, next)| *attempts < 5 && now >= *next)
+                    .is_none_or(|(attempts, next)| *attempts < INITIAL_MAX_ATTEMPTS && now >= *next)
                 && requested.insert(key))
             .then(|| identity.clone())
         })

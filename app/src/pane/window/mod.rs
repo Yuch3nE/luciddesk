@@ -747,7 +747,7 @@ where
                     let r = client(hwnd);
                     if r.right > 0 && r.bottom > 0 {
                         let s = scale(hwnd);
-                        let radius = model.borrow().options.corner_radius;
+                        let radius = super::interface_flags::pane_corner_radius(model.borrow().options.corner_radius);
                         drag_clipped.update(hwnd, r.right, r.bottom, radius, s);
                         paint_recovery.paint(hwnd, &mut surface, "pane.window", |surface| {
                             if surface.is_none() {
@@ -757,6 +757,7 @@ where
                             }
                             let surface = surface.as_mut().unwrap();
                             surface.pane_corner_radius = model.borrow().options.corner_radius;
+                            surface.pane_border = model.borrow().options.border;
                             surface
                                 .theme(windows::Win32::Foundation::HWND(hwnd), model.borrow().dark);
                             {

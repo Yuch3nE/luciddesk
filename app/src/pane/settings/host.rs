@@ -506,7 +506,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     show_panels_shortcut, show_hotkey::status()),
                 unsafe { IsZoomed(hwnd) } != 0,
                 search_visible,
-                (desktop_connected, interface_flags::HEADER_DIVIDER.get(), interface_flags::COMPACT_MENU.get(), updates.borrow().status(), startup.status(), startup.busy(),
+                (desktop_connected, (interface_flags::PANEL_SHADOW.get(), interface_flags::system_corners(), snap::gap()), interface_flags::HEADER_DIVIDER.get(), interface_flags::COMPACT_MENU.get(), updates.borrow().status(), startup.status(), startup.busy(),
                     (selected_plugin.clone(), navigation_offset.to_bits(), plugin_pages.iter().map(|p| (p.id.clone(), p.name.clone())).collect::<Vec<_>>())),
             );
             if scroll_page != page {
@@ -579,6 +579,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
             let interaction_before = (hover, focus, keyboard_focus, pressed);
             let mut activate = None;
             let mut radius_change = None;
+            let mut snap_gap_change = None;
             let mut grid_change = None;
             let mut opacity_change = None;
             let mut strength_change = None;
@@ -775,6 +776,9 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                             let fraction = controls::slider_fraction(control.bounds, x);
                             grid_change = Some(grid_slider_value(fraction));
                         }
+                        if matches!(control.action, Action::SnapGap(_)) {
+                            snap_gap_change = Some((controls::slider_fraction(control.bounds, x) * snap::MAX_GAP as f32).round() as u32);
+                        }
                         if matches!(control.action, Action::Radius(_)) {
                             radius_change = Some(radius_from_pointer(control.bounds, x));
                         }
@@ -864,6 +868,13 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                                 VK_LEFT => Some((value - 1.0).max(range.0)),
                                 VK_RIGHT => Some((value + 1.0).min(range.1)),
                                 VK_HOME => Some(range.0), VK_END => Some(range.1), _ => None,
+                            };
+                        }
+                        if let Action::SnapGap(value) = control.action {
+                            snap_gap_change = match wp as u16 {
+                                VK_LEFT => Some(value.saturating_sub(1)),
+                                VK_RIGHT => Some((value + 1).min(snap::MAX_GAP)),
+                                VK_HOME => Some(0), VK_END => Some(snap::MAX_GAP), _ => None,
                             };
                         }
                         if let Action::Radius(value) = control.action {
@@ -970,7 +981,12 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     if let Err(error) = saved { window::error_for(hwnd, &error); }
                 }
             }
-            if let Some(radius) = radius_change.filter(|_| available) {
+            if let Some(value) = snap_gap_change.filter(|value| available && *value != snap::gap()) {
+                if let Err(error) = snap::save_gap(&state.borrow().store, value) {
+                    window::error_for(hwnd, &error);
+                }
+            }
+            if let Some(radius) = radius_change.filter(|_| available && !interface_flags::PANEL_SHADOW.get()) {
                 if msg == WM_KEYDOWN {
                     if let Err(error) = handle(&state, selected, Event::SetCornerRadius(radius)) {
                         window::error_for(hwnd, &error);
@@ -1027,6 +1043,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     || activate.is_some()
                     || dropdown_selection.is_some()
                     || grid_change.is_some()
+                    || snap_gap_change.is_some()
                     || radius_change.is_some_and(|radius| radius != options.corner_radius)
                     || matches!(msg, WM_SIZE | WM_ACTIVATE | WM_ACTIVATEAPP | WM_TIMER))
             {

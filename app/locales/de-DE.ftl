@@ -1301,3 +1301,21 @@ desktop-gesture-description = Doppelklicken Sie auf eine freie Desktopfläche, u
 
 update-installed-version = Installierte Version { $version }
 update-download = Update herunterladen
+
+
+ui-snap-gap = Einrastabstand
+ui-snap-gap-description = Abstand zwischen eingerasteten Panels und Bildschirmrändern in Pixeln; 0 bedeutet keine Lücke
+
+
+ui-rendering-mode = Darstellungsmodus
+ui-system-rendering = Systemdarstellung
+ui-custom-rendering = Eigene Darstellung
+ui-rendering-mode-description = Systemdarstellung nutzt Systemrundungen und Schatten; eigene Darstellung bietet einstellbare Rundungen ohne Schatten.
+
+ui-corner-style = Eckenstil
+ui-corners-standard = Normale Rundung
+ui-corners-small = Kleine Rundung
+ui-system-corner-style-description = Systemrundung auswählen; der Schatten folgt der Fensterkontur.
+ui-corners-square = Eckig
+
+ui-homepage = Homepage

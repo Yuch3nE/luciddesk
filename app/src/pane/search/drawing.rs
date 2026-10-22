@@ -122,7 +122,8 @@ impl Drawing {
             .theme(windows::Win32::Foundation::HWND(hwnd), model.dark);
         self.surface
             .material(windows::Win32::Foundation::HWND(hwnd), model.backdrop);
-        self.surface.pane_corner_radius = model.options.corner_radius;
+        self.surface.pane_border = model.options.border;
+        self.surface.pane_corner_radius = crate::pane::interface_flags::pane_corner_radius(model.options.corner_radius);
         let Some(target) = self
             .surface
             .try_begin_frame(r.right.max(1) as u32, r.bottom.max(1) as u32)
@@ -157,14 +158,14 @@ impl Drawing {
                 ]))?;
             let shape = RoundedRect {
                 rect: Rect::from_xywh(0.5, 0.5, w - 1.0, h - 1.0),
-                radius_x: model.options.corner_radius,
-                radius_y: model.options.corner_radius,
+                radius_x: crate::pane::interface_flags::pane_corner_radius(model.options.corner_radius),
+                radius_y: crate::pane::interface_flags::pane_corner_radius(model.options.corner_radius),
             };
             target.fill_rounded_rect(&shape, background);
-            if model.options.border {
+            if model.options.border && !crate::pane::interface_flags::PANEL_SHADOW.get() {
                 let stroke = 1.0 / s;
                 let inset = stroke * 0.5;
-                let radius = (model.options.corner_radius - inset).max(0.0);
+                let radius = (crate::pane::interface_flags::pane_corner_radius(model.options.corner_radius) - inset).max(0.0);
                 target.draw_rounded_rect(
                     &RoundedRect {
                         rect: Rect::from_xywh(inset, inset, w - stroke, h - stroke),

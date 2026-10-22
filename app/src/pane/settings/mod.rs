@@ -81,6 +81,7 @@ enum Action {
     Language(&'static str),
     Change(Event),
     Radius(f32),
+    SnapGap(u32),
     GridSize(f32),
     Opacity(u8),
     Strength(u8),

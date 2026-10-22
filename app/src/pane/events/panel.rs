@@ -13,6 +13,8 @@ pub(super) fn apply(
         | Event::FinishPaneMove(_)
         | Event::RenameTab(_)
         | Event::MoveTabId(..)
+        | Event::SetSystemRendering(_)
+        | Event::SetSystemCorners(_)
         | Event::ToggleHeaderDivider
         | Event::ToggleCompactMenu
         | Event::SetTitleEmojiColor(_)
@@ -160,8 +162,8 @@ pub(super) fn apply(
                             &proposal,
                             edge,
                             &peers,
-                            snap::GAP_PX,
-                            (14.0 * scale).round() as i32,
+                            snap::gap_px(),
+                            snap::threshold(scale),
                         );
                     }
                     return Ok(false);
@@ -181,8 +183,8 @@ pub(super) fn apply(
                         &mut *rect,
                         &peers,
                         work.as_ref(),
-                        snap::GAP_PX, // Physical pixels at every DPI.
-                        (14.0 * scale).round() as i32,
+                        snap::gap_px(), // Physical pixels at every DPI.
+                        snap::threshold(scale),
                     );
                 }
             }

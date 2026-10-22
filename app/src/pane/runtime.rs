@@ -307,6 +307,9 @@ pub(super) fn reload(state: &Rc<RefCell<PaneApp>>) -> Result<(), String> {
         peek::load(&s.store)?;
     fonts::load(&s.store)?;
     interface_flags::HEADER_DIVIDER.load(&s.store)?;
+    interface_flags::PANEL_SHADOW.load(&s.store)?;
+    interface_flags::load_system_corners(&s.store)?;
+    snap::load_gap(&s.store)?;
     interface_flags::COMPACT_MENU.load(&s.store)?;
     interface_flags::TITLE_EMOJI.load(&s.store)?;
         everything_settings::load(&s.store)?;

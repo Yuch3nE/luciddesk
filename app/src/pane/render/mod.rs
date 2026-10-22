@@ -581,16 +581,16 @@ impl Renderer {
                 target.clear(ColorF::new(0.0, 0.0, 0.0, 0.0));
                 let rounded = RoundedRect {
                     rect: Rect::from_xywh(0.5, 0.5, w - 1.0, h - 1.0),
-                    radius_x: model.options.corner_radius,
-                    radius_y: model.options.corner_radius,
+                    radius_x: crate::pane::interface_flags::pane_corner_radius(model.options.corner_radius),
+                    radius_y: crate::pane::interface_flags::pane_corner_radius(model.options.corner_radius),
                 };
                 {
                     target.fill_rounded_rect(&rounded, background);
-                    if model.options.border {
+                    if model.options.border && !crate::pane::interface_flags::PANEL_SHADOW.get() {
                         // One physical pixel, fully inside the client bounds at every DPI.
                         let stroke = 1.0 / scale;
                         let inset = stroke * 0.5;
-                        let radius = (model.options.corner_radius - inset).max(0.0);
+                        let radius = (crate::pane::interface_flags::pane_corner_radius(model.options.corner_radius) - inset).max(0.0);
                         target.draw_rounded_rect(
                             &RoundedRect {
                                 rect: Rect::from_xywh(inset, inset, w - stroke, h - stroke),
@@ -733,8 +733,8 @@ impl Renderer {
                     target.fill_rounded_rect(
                         &RoundedRect {
                             rect,
-                            radius_x: model.options.corner_radius,
-                            radius_y: model.options.corner_radius,
+                            radius_x: crate::pane::interface_flags::pane_corner_radius(model.options.corner_radius),
+                            radius_y: crate::pane::interface_flags::pane_corner_radius(model.options.corner_radius),
                         },
                         &fill,
                     );
@@ -743,8 +743,8 @@ impl Renderer {
                         target.draw_rounded_rect(
                             &RoundedRect {
                                 rect,
-                                radius_x: model.options.corner_radius,
-                                radius_y: model.options.corner_radius,
+                                radius_x: crate::pane::interface_flags::pane_corner_radius(model.options.corner_radius),
+                                radius_y: crate::pane::interface_flags::pane_corner_radius(model.options.corner_radius),
                             },
                             &edge,
                             1.0,

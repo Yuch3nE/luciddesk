@@ -14,6 +14,8 @@ pub(super) struct Runtime {
     // Release effects before their compositor and dispatcher queue.
     pub(super) material_factory:
         RefCell<Option<windows::UI::Composition::CompositionEffectFactory>>,
+    pub(super) transition_factory:
+        RefCell<Option<windows::UI::Composition::CompositionEffectFactory>>,
     pub(super) compositor: Compositor,
     _queue: DispatcherQueueController,
 }
@@ -45,6 +47,7 @@ impl Runtime {
                 compositor: Compositor::new()?,
                 _queue: queue,
                 material_factory: RefCell::new(None),
+                transition_factory: RefCell::new(None),
             });
             *slot = Some(Rc::clone(&runtime));
             Ok(runtime)

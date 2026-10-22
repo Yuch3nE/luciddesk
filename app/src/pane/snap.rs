@@ -1,4 +1,26 @@
-pub const GAP_PX: i32 = 5;
+pub const DEFAULT_GAP: u32 = 5;
+pub const MAX_GAP: u32 = 64;
+static GAP: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(DEFAULT_GAP);
+
+pub fn gap() -> u32 { GAP.load(std::sync::atomic::Ordering::Relaxed) }
+pub fn read_gap(store: &luciddesk_storage::WorkspaceStore) -> Result<u32, String> {
+    Ok(store.preference("pane_snap_gap").map_err(|e| e.to_string())?
+        .and_then(|value| value.parse::<u32>().ok()).filter(|value| *value <= MAX_GAP)
+        .unwrap_or(DEFAULT_GAP))
+}
+pub fn load_gap(store: &luciddesk_storage::WorkspaceStore) -> Result<(), String> {
+    GAP.store(read_gap(store)?, std::sync::atomic::Ordering::Relaxed);
+    Ok(())
+}
+pub fn save_gap(store: &luciddesk_storage::WorkspaceStore, value: u32) -> Result<(), String> {
+    if value > MAX_GAP { return Err(format!("snap gap must be between 0 and {MAX_GAP}")); }
+    store.save_preference("pane_snap_gap", &value.to_string()).map_err(|e| e.to_string())?;
+    GAP.store(value, std::sync::atomic::Ordering::Relaxed);
+    Ok(())
+}
+pub fn gap_px() -> i32 { gap() as i32 }
+pub fn threshold(scale: f32) -> i32 { (14.0 * scale).round() as i32 }
+
 use windows_sys::Win32::Foundation::RECT;
 
 /// Integer-pixel origins shared by proximity snapping and explicit CLI placement.
@@ -403,5 +425,54 @@ mod tests {
         };
         snap(&mut rect, &[peer], Some(&work), 12, 14);
         assert_eq!((rect.left, rect.top), (20, 112));
+    }
+}
+
+#[cfg(test)]
+mod distance_tests {
+    use super::*;
+    #[test]
+    fn gap_persists_without_changing_capture_threshold() {
+        let _sta = crate::pane::test_support::apartment();
+        struct Restore(u32);
+        impl Drop for Restore {
+            fn drop(&mut self) { GAP.store(self.0, std::sync::atomic::Ordering::Relaxed); }
+        }
+        let _restore = Restore(gap());
+        let store = luciddesk_storage::WorkspaceStore::open_in_memory().unwrap();
+        load_gap(&store).unwrap();
+        assert_eq!(gap(), DEFAULT_GAP);
+        for value in [0, 4, 14, MAX_GAP] {
+            save_gap(&store, value).unwrap();
+            GAP.store(99, std::sync::atomic::Ordering::Relaxed);
+            load_gap(&store).unwrap();
+            assert_eq!(gap(), value);
+            for scale in [1.0, 1.25, 1.5, 2.0] {
+                let limit = threshold(scale);
+                assert_eq!(limit, (14.0 * scale).round() as i32);
+                let work = RECT { left: -1000, top: 0, right: 1000, bottom: 1000 };
+                for delta in [limit, limit + 1] {
+                    let mut rect = RECT { left: 200, right: 400, top: gap_px() + delta, bottom: gap_px() + delta + 100 };
+                    snap(&mut rect, &[], Some(&work), gap_px(), limit);
+                    assert_eq!(rect.top, if delta <= limit { gap_px() } else { gap_px() + delta });
+                    let peer = RECT { left: 0, top: 0, right: 100, bottom: 100 };
+                    let mut adjacent = RECT { left: peer.right + gap_px() + delta, top: 0,
+                        right: peer.right + gap_px() + delta + 100, bottom: 100 };
+                    snap(&mut adjacent, &[peer], None, gap_px(), limit);
+                    assert_eq!(adjacent.left - peer.right, gap_px() + if delta <= limit { 0 } else { delta });
+                    let proposal = RECT { left: 100 + gap_px(), top: delta, right: 200 + gap_px(), bottom: 100 };
+                    let mut resized = proposal;
+                    resize(&mut resized, &proposal, windows_sys::Win32::UI::WindowsAndMessaging::WMSZ_TOP, &[peer], gap_px(), limit);
+                    assert_eq!(resized.top, if delta <= limit { 0 } else { delta });
+                }
+            }
+        }
+        assert!(save_gap(&store, MAX_GAP + 1).is_err());
+        assert_eq!(read_gap(&store).unwrap(), MAX_GAP);
+        for invalid in ["bad", "-1", "65"] {
+            store.save_preference("pane_snap_gap", invalid).unwrap();
+            load_gap(&store).unwrap();
+            assert_eq!(gap(), DEFAULT_GAP);
+        }
     }
 }

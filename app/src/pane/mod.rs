@@ -178,6 +178,8 @@ enum Event {
     FinishPaneMove(bool),
     PreviewPaneMove,
     ToggleHeaderDivider,
+    SetSystemRendering(bool),
+    SetSystemCorners(interface_flags::SystemCorners),
     ToggleCompactMenu,
     SetTitleEmojiColor(bool),
     PaneItemFocus,

@@ -45,9 +45,9 @@ pub(super) fn expand(
         ((r.width / source_scale * scale).round(), (r.height / source_scale * scale).round())
     };
     let horizontal = snap::AxisTargets::new(anchor.x.round() as i32,
-        (anchor.x + anchor.width).round() as i32, width as i32, snap::GAP_PX);
+        (anchor.x + anchor.width).round() as i32, width as i32, snap::gap_px());
     let vertical = snap::AxisTargets::new(anchor.y.round() as i32,
-        (anchor.y + anchor.height).round() as i32, height as i32, snap::GAP_PX);
+        (anchor.y + anchor.height).round() as i32, height as i32, snap::gap_px());
     let aligned = |targets: &snap::AxisTargets| match align {
         SnapAlign::Start => targets.start,
         SnapAlign::Center => targets.center,

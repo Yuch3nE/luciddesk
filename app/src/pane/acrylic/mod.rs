@@ -1,6 +1,7 @@
 //! Host backdrop composition has no window-activation policy. Windows still controls
 //! backdrop transparency through accessibility settings and power policy.
 mod effects;
+mod transition;
 mod host;
 mod runtime;
 mod material;
@@ -52,6 +53,12 @@ pub struct Acrylic {
     root: ContainerVisual,
     backdrop: windows::UI::Composition::SpriteVisual,
     tint: windows::UI::Composition::SpriteVisual,
+    transition: RefCell<Option<transition::Pending>>,
+    transition_generation: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    target_brush: RefCell<Option<windows::UI::Composition::CompositionBrush>>,
+    #[cfg(test)]
+    animations_override: std::cell::Cell<Option<bool>>,
+    material_initialized: std::cell::Cell<bool>,
     rounded_clip: Option<(CompositionRoundedRectangleGeometry, (u32, u32, f32))>,
     content: Option<windows::UI::Composition::SpriteVisual>,
 }
@@ -126,6 +133,12 @@ impl Acrylic {
             root,
             backdrop,
             tint,
+            transition: RefCell::new(None),
+            transition_generation: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            target_brush: RefCell::new(None),
+            #[cfg(test)]
+            animations_override: std::cell::Cell::new(Some(false)),
+            material_initialized: std::cell::Cell::new(false),
             rounded_clip: None,
             content: None,
         })
@@ -191,6 +204,8 @@ impl Acrylic {
         self.backdrop.SetIsVisible(visible)?;
         self.tint.SetIsVisible(visible)?;
         if !visible {
+            self.clear_transition()?;
+            self.material_initialized.set(false);
             self.host_backdrop.borrow_mut().take();
         }
         Ok(())

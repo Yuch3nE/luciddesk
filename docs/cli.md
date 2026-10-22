@@ -226,6 +226,9 @@ $retryArgs = [string[]]$result.data.recovery.retry_args
 | `interface.title_emoji_color` | 布尔，标题彩色表情 |
 | `interface.compact_menu` | 布尔，紧凑菜单 |
 | `interface.header_divider` | 布尔，标题分隔线 |
+| `interface.panel_shadow` | 布尔，系统渲染（圆角与阴影），默认关闭 |
+| `interface.system_corners` | `square` / `round` / `small`，系统圆角样式，默认 `round` |
+| `interface.snap_gap` | 整数，吸附后的间距 0–64 个物理像素，默认 5，0 表示无间隙 |
 | `folder_defaults.list_view` | 布尔，新文件夹面板的列表视图 |
 | `folder_defaults.show_modified`、`folder_defaults.show_type`、`folder_defaults.show_size` | 独立布尔字段，名称列始终显示 |
 | `folder_defaults.entry_mode` | `inline` 或 `explorer` |
@@ -320,7 +323,7 @@ Agent 可以先使用 `--dry-run --json` 查看差异，再按既有用户授权
 luciddesk-cli pane snap --id 7 --target 4 --side bottom --align start --dry-run --json
 ```
 
-将 7 号面板放到 4 号面板下方并左对齐。side 支持 left/right/top/bottom；align 默认 start，也支持 center/end。左右吸附时对齐上/中/下，上下吸附时对齐左/中/右。间距固定沿用 GUI 吸附距离（当前 5 个物理像素），不接受单次 gap 参数。间距配置与吸附动作分离。
+将 7 号面板放到 4 号面板下方并左对齐。side 支持 left/right/top/bottom；align 默认 start，也支持 center/end。左右吸附时对齐上/中/下，上下吸附时对齐左/中/右。间距沿用 GUI 的吸附间距设置（`interface.snap_gap`，默认 5 个物理像素），不接受单次 gap 参数。间距配置与吸附动作分离。
 
 默认按当前可见窗口换算并保持源面板 DIP 尺寸，可加 --icon-columns N 在同一次事务内适配普通面板内容。目标面板不移动，可处于锁定状态；源面板须解锁，双方须实际展开（自动收起时也需先显示内容）。支持普通及文件夹面板，动态高度的搜索面板不能作为源或目标。同一标签窗口不可互相吸附，源标签组整体移动。超出目标显示器工作区或覆盖第三个面板会拒绝，不自动换边或截断。优先读取可见窗口的物理边界；批量计划中的后续吸附读取之前操作生成的位置。定位与手动拖动共用物理像素目标计算；预览后窗口边界或收起状态改变会返回 CONFLICT，需重新预览。吸附为一次位置调整，不创建联动移动关系。
 

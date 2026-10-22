@@ -413,6 +413,14 @@ fn scene_with_mica(
             ),
         );
         form.section(crate::i18n::text("ui-appearance"));
+        form.dropdown(
+            crate::i18n::text("ui-rendering-mode"),
+            crate::i18n::text("ui-rendering-mode-description"),
+            vec![
+                (crate::i18n::text("ui-custom-rendering"), Action::Change(Event::SetSystemRendering(false)), !interface_flags::PANEL_SHADOW.get()),
+                (crate::i18n::text("ui-system-rendering"), Action::Change(Event::SetSystemRendering(true)), interface_flags::PANEL_SHADOW.get()),
+            ],
+        );
         form.choices(
             crate::i18n::text("ui-app-theme"),
             crate::i18n::text("ui-choose-light-dark-or-system-default"),
@@ -516,16 +524,25 @@ fn scene_with_mica(
             ),
         );
         form.section(crate::i18n::text("ui-panel-shape"));
-        form.slider(
-            crate::i18n::text("ui-corner-radius"),
-            crate::i18n::text("ui-adjust-corner-rounding-for-panels-and-tabs"),
-            Slider::linear(
-                options.corner_radius,
-                luciddesk_core::PaneOptions::MAX_CORNER_RADIUS,
-            ),
-            &format!("{:.1}", options.corner_radius),
-            Action::Radius(options.corner_radius),
-        );
+        if interface_flags::PANEL_SHADOW.get() {
+            form.dropdown(
+                crate::i18n::text("ui-corner-style"),
+                crate::i18n::text("ui-system-corner-style-description"),
+                vec![
+                    (crate::i18n::text("ui-corners-square"), Action::Change(Event::SetSystemCorners(interface_flags::SystemCorners::Square)), interface_flags::system_corners() == interface_flags::SystemCorners::Square),
+                    (crate::i18n::text("ui-corners-standard"), Action::Change(Event::SetSystemCorners(interface_flags::SystemCorners::Round)), interface_flags::system_corners() == interface_flags::SystemCorners::Round),
+                    (crate::i18n::text("ui-corners-small"), Action::Change(Event::SetSystemCorners(interface_flags::SystemCorners::Small)), interface_flags::system_corners() == interface_flags::SystemCorners::Small),
+                ],
+            );
+        } else {
+            form.slider(
+                crate::i18n::text("ui-corner-radius"),
+                crate::i18n::text("ui-adjust-corner-rounding-for-panels-and-tabs"),
+                Slider::linear(options.corner_radius, luciddesk_core::PaneOptions::MAX_CORNER_RADIUS),
+                &format!("{:.1}", options.corner_radius),
+                Action::Radius(options.corner_radius),
+            );
+        }
         for (title, description, value, event) in [
             (
                 crate::i18n::text("ui-show-border"),
@@ -548,6 +565,13 @@ fn scene_with_mica(
         ] {
             form.toggle(title, description, value, Action::Change(event));
         }
+        form.slider(
+            crate::i18n::text("ui-snap-gap"),
+            crate::i18n::text("ui-snap-gap-description"),
+            Slider::linear(snap::gap() as f32, snap::MAX_GAP as f32),
+            &snap::gap().to_string(),
+            Action::SnapGap(snap::gap()),
+        );
         if show_mica {
             form.toggle(
                 crate::i18n::text("compact-menu-title"),
@@ -764,6 +788,7 @@ pub(super) fn about_updates(
         crate::i18n::text("ui-project-resources"),
         "",
         vec![
+            (crate::i18n::text("ui-homepage"), Action::ProjectLink("https://luciddesk.bbkingdom365.com/")),
             (crate::i18n::text("ui-project-website"), Action::ProjectLink("https://github.com/Yuch3nE/luciddesk")),
             (crate::i18n::text("ui-release-history"), Action::ProjectLink(crate::i18n::text("ui-changelog-url"))),
             (crate::i18n::text("ui-report-an-issue"), Action::ProjectLink("https://github.com/Yuch3nE/luciddesk/issues")),

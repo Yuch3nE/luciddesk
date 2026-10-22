@@ -42,7 +42,7 @@ pub(super) fn expand(
         }
         sizes.push(cells);
     }
-    let gap = snap::GAP_PX as f32;
+    let gap = snap::gap_px() as f32;
     let mut right = m.work_area.width as f32 - gap;
     let mut rectangles = Vec::new();
     // Input columns are left-to-right, panes within each are top-to-bottom.

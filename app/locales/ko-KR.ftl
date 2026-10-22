@@ -1301,3 +1301,21 @@ desktop-gesture-description = 바탕 화면의 빈 공간을 두 번 클릭하�
 
 update-installed-version = 현재 버전 { $version }
 update-download = 업데이트 다운로드
+
+
+ui-snap-gap = 스냅 간격
+ui-snap-gap-description = 스냅 후 패널 사이와 화면 가장자리 간의 간격(픽셀). 0은 간격 없음
+
+
+ui-rendering-mode = 렌더링 모드
+ui-system-rendering = 시스템 렌더링
+ui-custom-rendering = 사용자 지정 렌더링
+ui-rendering-mode-description = 시스템 모드는 기본 모서리와 그림자를 사용합니다. 사용자 지정 모드는 그림자 없이 모서리를 조정합니다.
+
+ui-corner-style = 모서리 스타일
+ui-corners-standard = 기본 둥근 모서리
+ui-corners-small = 작은 둥근 모서리
+ui-system-corner-style-description = 시스템 모서리 스타일을 선택합니다. 그림자는 창 윤곽을 따릅니다.
+ui-corners-square = 직각 모서리
+
+ui-homepage = 공식 홈페이지

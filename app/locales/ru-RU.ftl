@@ -1301,3 +1301,21 @@ desktop-gesture-description = Дважды щёлкните пустое мес�
 
 update-installed-version = Установленная версия { $version }
 update-download = Скачать обновление
+
+
+ui-snap-gap = Зазор при привязке
+ui-snap-gap-description = Зазор между закреплёнными панелями и краями экрана в пикселях; 0 — без зазора
+
+
+ui-rendering-mode = Режим отрисовки
+ui-system-rendering = Системная отрисовка
+ui-custom-rendering = Своя отрисовка
+ui-rendering-mode-description = Системный режим использует системные углы и тени; свой режим позволяет менять радиус без теней.
+
+ui-corner-style = Стиль углов
+ui-corners-standard = Обычные углы
+ui-corners-small = Малые углы
+ui-system-corner-style-description = Выберите системное скругление; тень следует контуру окна.
+ui-corners-square = Прямые углы
+
+ui-homepage = Главная страница

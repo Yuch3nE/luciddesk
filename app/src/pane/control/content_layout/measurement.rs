@@ -56,7 +56,7 @@ pub(in crate::pane::control) fn live_query(state: &PaneApp, id: PanelId) -> serd
     };
     let rows = n.div_ceil(columns);
     let height = content_height(&state.workspace, id, columns, &snapshots(state), None).ok();
-    json!({"supported":true,"ready":ready,"view":if panel.list_view(){"list"}else{"icons"},"item_count":n,"icon_columns":if panel.list_view(){serde_json::Value::Null}else{json!(columns)},"content_rows":rows,"current_path":source.map(|s|&s.path),"required_height_dip":if ready{json!(height)}else{serde_json::Value::Null},"gap_px":snap::GAP_PX})
+    json!({"supported":true,"ready":ready,"view":if panel.list_view(){"list"}else{"icons"},"item_count":n,"icon_columns":if panel.list_view(){serde_json::Value::Null}else{json!(columns)},"content_rows":rows,"current_path":source.map(|s|&s.path),"required_height_dip":if ready{json!(height)}else{serde_json::Value::Null},"gap_px":snap::gap_px()})
 }
 
 pub(super) fn members(w: &Workspace, id: PanelId) -> Vec<PanelId> {
@@ -194,7 +194,7 @@ pub(in crate::pane::control) fn query(w: &Workspace, id: PanelId) -> serde_json:
     let minimum = minimum(w, id, p.rect().width, &HashMap::new());
     json!({"supported":true,"item_count":n,"window_item_count":window_count,"icon_columns":columns,"fixed_icon_positions":p.fixed_grid(),"align_icons_to_grid":!p.free_layout(),"content_rows":if p.fixed_grid() && !p.free_layout() && !p.list_view(){fixed_grid::extent(w,id).1}else{n.div_ceil(columns)},
         "cell_dip":{"width":g.cell_width,"height":g.cell_height},"icon_size_dip":g.icon_size,
-        "minimum_size_dip":{"width":minimum.0,"height":minimum.1},"gap_px":snap::GAP_PX,
+        "minimum_size_dip":{"width":minimum.0,"height":minimum.1},"gap_px":snap::gap_px(),
         "required_height_dip":members(w,id).into_iter().filter_map(|member|content_height(w,member,columns,&HashMap::new(),None).ok()).fold(0.0,f32::max)})
 }
 pub(super) fn pixel_size(

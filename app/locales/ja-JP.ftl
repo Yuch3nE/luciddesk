@@ -1301,3 +1301,21 @@ desktop-gesture-description = デスクトップの空白をダブルクリッ�
 
 update-installed-version = 現在のバージョン { $version }
 update-download = 更新をダウンロード
+
+
+ui-snap-gap = スナップ間隔
+ui-snap-gap-description = スナップ後のパネル間や画面端との間隔（ピクセル）。0 で隙間なし
+
+
+ui-rendering-mode = 描画モード
+ui-system-rendering = システム描画
+ui-custom-rendering = カスタム描画
+ui-rendering-mode-description = システム描画は標準の角丸と影を使用。カスタム描画は角丸を調整でき、影は表示しません。
+
+ui-corner-style = 角丸のスタイル
+ui-corners-standard = 標準の角丸
+ui-corners-small = 小さい角丸
+ui-system-corner-style-description = システムの角丸を選択します。影はウィンドウの輪郭に沿って表示されます。
+ui-corners-square = 角丸なし
+
+ui-homepage = 公式サイト

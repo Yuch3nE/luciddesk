@@ -477,6 +477,7 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
         }
         Action::GridSize(_)
         | Action::Radius(_)
+        | Action::SnapGap(_)
         | Action::Opacity(_)
         | Action::Strength(_)
         | Action::Channel(_, _) => {}

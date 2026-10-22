@@ -53,6 +53,9 @@ pub(super) fn runtime(state: &PaneApp) -> serde_json::Value {
         "desktop_hidden":desktop_toggle::hidden(),
         "compact_menu":interface_flags::COMPACT_MENU.get(),
         "header_divider":interface_flags::HEADER_DIVIDER.get(),
+        "panel_shadow":interface_flags::PANEL_SHADOW.get(),
+        "system_corners":interface_flags::system_corners().name(),
+        "snap_gap":snap::gap(),
         "diagnostics_level":format!("{:?}", luciddesk_diagnostics::level()).to_ascii_lowercase(),
         "search_visible":state.views.iter().any(|v| state.workspace.panel(v.id).is_some_and(Panel::is_search)),
         "preview_enabled":peek::settings().enabled,
@@ -89,6 +92,9 @@ pub(super) fn present(state: &Rc<RefCell<PaneApp>>) -> Result<(), String> {
         interface_flags::TITLE_EMOJI.load(&s.store)?;
         interface_flags::COMPACT_MENU.load(&s.store)?;
         interface_flags::HEADER_DIVIDER.load(&s.store)?;
+        interface_flags::PANEL_SHADOW.load(&s.store)?;
+        interface_flags::load_system_corners(&s.store)?;
+        snap::load_gap(&s.store)?;
         for view in &s.views {
             if let Some(panel) = s.workspace.panel(view.id) {
                 let mut model = view.model.borrow_mut();

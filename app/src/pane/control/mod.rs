@@ -134,7 +134,7 @@ impl Snapshot {
                 json!({"application_version":env!("CARGO_PKG_VERSION"), "data_dir":directory, "desktop_connected":state.session.as_ref().is_some_and(hybrid::is_alive), "desktop_sync_status":hybrid::membership_status(state), "workspace_save_pending":hybrid::workspace_save_pending(state), "desktop_diagnostic":luciddesk_explorer::filter::desktop_filter_diagnostics(), "read_only":false})
             }
             "capabilities" => {
-                json!({"commands":luciddesk_api::COMMANDS,"protocol_version":1,"max_frame_bytes":luciddesk_api::MAX_FRAME,"writes":true,"plans":true,"concurrency_tokens":true,"plan_operations":luciddesk_api::OPERATIONS,"pane_geometry":true,"pane_sort_columns":["name","modified","type","size"],"pane_arrangement":true,"item_position":true,"content_layout":{"kinds":["desktop","folder"],"arrange_anchor":"top_right","gap_px":snap::GAP_PX,"icon_columns_min":1,"icon_columns_max":64},"item_ids":"opaque-instance-scoped","schema_version":1})
+                json!({"commands":luciddesk_api::COMMANDS,"protocol_version":1,"max_frame_bytes":luciddesk_api::MAX_FRAME,"writes":true,"plans":true,"concurrency_tokens":true,"plan_operations":luciddesk_api::OPERATIONS,"pane_geometry":true,"pane_sort_columns":["name","modified","type","size"],"pane_arrangement":true,"item_position":true,"content_layout":{"kinds":["desktop","folder"],"arrange_anchor":"top_right","gap_px":snap::gap_px(),"icon_columns_min":1,"icon_columns_max":64},"item_ids":"opaque-instance-scoped","schema_version":1})
             }
             command => {
                 let pane_values: Vec<_> = state.workspace.panels().iter().map(|panel| {

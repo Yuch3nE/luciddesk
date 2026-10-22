@@ -829,3 +829,41 @@ fn gpu_frames_preserve_colors_alpha_and_cached_images_across_resize() {
         windows_sys::Win32::UI::WindowsAndMessaging::DestroyWindow(window.hwnd().cast());
     }
 }
+
+#[test]
+fn system_shadow_content_has_no_custom_corner_holes_or_duplicate_border() {
+    use crate::pane::interface_flags::PANEL_SHADOW;
+    let _sta = crate::pane::test_support::apartment();
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            PANEL_SHADOW.save(&luciddesk_storage::WorkspaceStore::open_in_memory().unwrap(), self.0).unwrap();
+        }
+    }
+    let _restore = Restore(PANEL_SHADOW.get());
+    let store = luciddesk_storage::WorkspaceStore::open_in_memory().unwrap();
+    let mut renderer = Renderer::new().unwrap();
+    let mut model = sample_model();
+    model.items.clear();
+    model.title.clear();
+    model.options.corner_radius = 24.0;
+    model.native_material = false;
+    for scale in [1.0f32, 1.25, 1.5, 2.0] {
+        let width = (320.0 * scale) as u32;
+        let height = (200.0 * scale) as u32;
+        PANEL_SHADOW.save(&store, false).unwrap();
+        let rounded = renderer.pixels(width, height, scale, &model).unwrap();
+        PANEL_SHADOW.save(&store, true).unwrap();
+        model.options.border = true;
+        let system = renderer.pixels(width, height, scale, &model).unwrap();
+        let near_corner = ((width as f32 * (2.0 * scale).ceil() + (2.0 * scale).ceil()) as usize) * 4 + 3;
+        assert!(system[near_corner] > rounded[near_corner], "DWM must receive filled pixels beneath its own corner mask");
+        model.options.border = false;
+        assert_eq!(system, renderer.pixels(width, height, scale, &model).unwrap(), "DWM alone draws the border in shadow mode");
+    }
+    assert_eq!(model.options.corner_radius, 24.0);
+    // These checks exercise the actual text/icon pixels with system rendering on.
+    light_and_dark_text_contrast_without_changing_icon_pixels();
+    background_alpha_does_not_dim_icons_at_multiple_scales();
+    grid_scale_changes_icon_and_text_size_together();
+}

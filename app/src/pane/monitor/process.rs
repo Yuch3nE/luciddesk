@@ -19,7 +19,9 @@ struct Config {
     preferences: Preferences,
     language: String,
     font: String,
-    flags: [bool; 3],
+    flags: [bool; 4],
+    system_corners: interface_flags::SystemCorners,
+    snap_gap: u32,
 }
 #[derive(Serialize, Deserialize)]
 enum Update {
@@ -83,7 +85,10 @@ impl Config {
             options: s.workspace.pane_options(),
             language: crate::i18n::language().into(),
             font: fonts::family(),
+            snap_gap: snap::gap(),
+            system_corners: interface_flags::system_corners(),
             flags: [
+                interface_flags::PANEL_SHADOW.get(),
                 interface_flags::HEADER_DIVIDER.get(),
                 interface_flags::COMPACT_MENU.get(),
                 interface_flags::TITLE_EMOJI.get(),
@@ -468,6 +473,7 @@ fn apply_settings(state: &Rc<RefCell<PaneApp>>, config: &Config) -> Result<(), S
         crate::i18n::initialize(&s.store)?;
         fonts::load(&s.store)?;
         for (flag, value) in [
+            &interface_flags::PANEL_SHADOW,
             &interface_flags::HEADER_DIVIDER,
             &interface_flags::COMPACT_MENU,
             &interface_flags::TITLE_EMOJI,
@@ -477,6 +483,8 @@ fn apply_settings(state: &Rc<RefCell<PaneApp>>, config: &Config) -> Result<(), S
         {
             flag.save(&s.store, value)?;
         }
+        snap::save_gap(&s.store, config.snap_gap)?;
+        interface_flags::save_system_corners(&s.store, config.system_corners)?;
         s.workspace.set_pane_options(config.options);
         if let Some(panel) = s.workspace.panel_mut(id) {
             *panel = config.panel.clone();

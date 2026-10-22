@@ -73,11 +73,12 @@ pub(super) fn pixels(material: Backdrop, dark: bool) -> Vec<u8> {
                 // Wallpaper capture and blur remain illustrative; blend recipes are shared.
                 let toned = set_luminance(source, luminance(lum));
                 let result = mix(source, toned, luminosity.A as f32 / 255.0);
-                mix(
+                let result = mix(
                     result,
                     set_luminance(neutral, luminance(result)),
                     tint.A as f32 / 255.0,
-                )
+                );
+                result
             };
             // Match the mini-pane's rounded outline instead of leaving square
             // wallpaper/material corners under a rounded vector stroke.

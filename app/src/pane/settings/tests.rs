@@ -695,6 +695,10 @@ fn panel_options_text_fits_default_and_minimum_window() {
             width,
             false,
         );
+        assert_eq!(s.controls.iter().filter(|control|
+            matches!(&control.action, Action::Dropdown(choices) if choices.iter().any(|(_, action, _)| matches!(action, Action::Change(Event::SetSystemRendering(_)))))).count(), 0);
+        assert_eq!(s.controls.iter().filter(|control|
+            matches!(control.action, Action::SnapGap(_))).count(), 1);
         for (bounds, text, _) in &s.text {
             assert!(bounds.right <= width, "Clipped text: {text}");
         }
@@ -2440,5 +2444,53 @@ fn desktop_connection_card_aligns_both_states_without_technical_details() {
             let state = super::super::tests::test_state();
             assert_ne!(runtime::status(&state), crate::i18n::text("ui-desktop-groups-connected"));
         });
+    }
+}
+
+#[test]
+fn rendering_mode_shows_matching_corner_controls_without_losing_saved_radius() {
+    let _sta = crate::pane::test_support::apartment();
+    let store = WorkspaceStore::open_in_memory().unwrap();
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            interface_flags::PANEL_SHADOW.save(&WorkspaceStore::open_in_memory().unwrap(), self.0).unwrap();
+        }
+    }
+    let _restore = Restore(interface_flags::PANEL_SHADOW.get());
+    for enabled in [true, false] {
+        interface_flags::PANEL_SHADOW.save(&store, enabled).unwrap();
+        let options = luciddesk_core::PaneOptions { corner_radius: 24.0, ..Default::default() };
+        let page = scene(800.0, 560.0, 1, false, (PanelTheme::Dark, Backdrop::Mica), options);
+        let appearance = scene(800.0, 600.0, 0, false, (PanelTheme::Dark, Backdrop::Mica), options);
+        let first = appearance.controls.iter().find(|control| control.bounds.left >= Tokens::content_x()).unwrap();
+        assert!(matches!(&first.action, Action::Dropdown(choices) if choices.iter().any(|(_, action, _)| matches!(action, Action::Change(Event::SetSystemRendering(_))))));
+        let mode = appearance.controls.iter().find_map(|control| match &control.action {
+            Action::Dropdown(choices) if choices.iter().any(|(_, action, _)| matches!(action, Action::Change(Event::SetSystemRendering(_)))) => Some(choices),
+            _ => None,
+        }).unwrap();
+        assert_eq!(mode.len(), 2);
+        assert_eq!(mode.iter().filter(|(_, _, selected)| *selected).count(), 1);
+        for (_, action, selected) in mode.iter() {
+            let Action::Change(Event::SetSystemRendering(system)) = action else { panic!("expected explicit mode"); };
+            assert_eq!(*selected, *system == enabled);
+        }
+        let radius = page.controls.iter().find(|control| matches!(control.action, Action::Radius(_)));
+        let styles = page.controls.iter().find_map(|control| match &control.action {
+            Action::Dropdown(choices) if choices.iter().any(|(_, action, _)| matches!(action, Action::Change(Event::SetSystemCorners(_)))) => Some(choices),
+            _ => None,
+        });
+        if enabled {
+            assert!(radius.is_none());
+            let styles = styles.unwrap();
+            assert_eq!(styles.len(), 3);
+            assert_eq!(styles.iter().filter(|(_, _, selected)| *selected).count(), 1);
+        } else {
+            assert!(styles.is_none());
+            let radius = radius.unwrap();
+            assert!(radius.enabled);
+            assert!(matches!(radius.action, Action::Radius(24.0)));
+        }
+        assert_eq!(interface_flags::pane_corner_radius(24.0), if enabled { 0.0 } else { 24.0 });
     }
 }

@@ -1301,3 +1301,21 @@ desktop-gesture-description = Double-click an empty desktop area to hide all ico
 
 update-installed-version = Installed version { $version }
 update-download = Download update
+
+
+ui-snap-gap = Snap gap
+ui-snap-gap-description = Space between snapped panels and screen edges in pixels; 0 leaves no gap
+
+
+ui-rendering-mode = Rendering mode
+ui-system-rendering = System rendering
+ui-custom-rendering = Custom rendering
+ui-rendering-mode-description = System rendering uses system corners and shadows; custom rendering offers adjustable corners without shadows.
+
+ui-corner-style = Corner style
+ui-corners-standard = Standard corners
+ui-corners-small = Small corners
+ui-system-corner-style-description = Choose a system corner style; shadows follow the window outline.
+ui-corners-square = Square corners
+
+ui-homepage = Homepage

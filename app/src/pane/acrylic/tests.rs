@@ -20,7 +20,7 @@ fn diagnostic_bypass_never_enables_host_or_wallpaper_backdrops() {
             for material in [Backdrop::Acrylic, Backdrop::Mica, Backdrop::MicaAlt] {
                 for strength in [0, 50, 100] {
                     acrylic.material(material.with_strength(strength), dark).unwrap();
-                    acrylic.assert_solid_color(if dark { 0x202020 } else { 0xf3f3f3 }, 1.0);
+                    acrylic.assert_solid_color(if material == Backdrop::Acrylic { if dark { 0x2c2c2c } else { 0xf9f9f9 } } else if dark { 0x202020 } else { 0xf3f3f3 }, 1.0);
                     assert!(acrylic.host_backdrop.borrow().is_none());
                     assert!(acrylic.material_brush.borrow().is_none());
                     acrylic.assert_content_visible();
@@ -113,7 +113,9 @@ impl Acrylic {
         let tint: windows::UI::Composition::CompositionColorBrush =
             self.tint.Brush().unwrap().cast().unwrap();
         assert_eq!(tint.Color().unwrap().A, 0);
-        assert_eq!(self.content.as_ref().unwrap().Opacity().unwrap(), 1.0);
+        if let Some(content) = &self.content {
+            assert_eq!(content.Opacity().unwrap(), 1.0);
+        }
     }
 
     #[cfg(test)]
@@ -179,4 +181,58 @@ impl Acrylic {
         assert_eq!(geometry.Size().unwrap(), Vector2 { X: width as f32, Y: height as f32 });
         assert_eq!(geometry.CornerRadius().unwrap(), Vector2 { X: radius, Y: radius });
     }
+}
+
+#[test]
+fn material_background_transitions_preserve_content() {
+    use windows::UI::Composition::CompositionEffectBrush;
+    use windows::core::HSTRING;
+    let _sta = crate::pane::test_support::apartment();
+    let window = windows_window::Window::new("Material transition regression")
+        .size(160, 100).style(windows_sys::Win32::UI::WindowsAndMessaging::WS_POPUP)
+        .ex_style(windows_sys::Win32::UI::WindowsAndMessaging::WS_EX_NOREDIRECTIONBITMAP)
+        .create().unwrap();
+    let device = super::super::native_graphics::gpu_device().unwrap();
+    let swap = device.create_swap_chain(160, 100).unwrap();
+    let native_swap = super::super::native_graphics::native_interface(swap.raw_swap_chain()).unwrap();
+    let acrylic = Acrylic::new_with_content(HWND(window.hwnd().cast()), 1.0, &native_swap).unwrap();
+    acrylic.animations_override.set(Some(true));
+    acrylic.material(Backdrop::Acrylic, true).unwrap();
+    assert!(acrylic.transition.borrow().is_none(), "first frame must not fade from an empty background");
+    let original = acrylic.backdrop.Brush().unwrap();
+    acrylic.material(Backdrop::Acrylic.with_strength(75), false).unwrap();
+    assert_eq!(original, acrylic.backdrop.Brush().unwrap(), "strength and theme reuse the graph");
+    for material in [Backdrop::Mica, Backdrop::Acrylic, Backdrop::MicaAlt,
+        Backdrop::Solid { color: 0x123456, opacity: 0.4 }, Backdrop::Acrylic] {
+        let before = acrylic.target_brush.borrow().as_ref().unwrap().clone();
+        acrylic.material(material, true).unwrap();
+        assert!(acrylic.transition.borrow().is_some());
+        let fade: CompositionEffectBrush = acrylic.backdrop.Brush().unwrap().cast().unwrap();
+        assert_eq!(fade.GetSourceParameter(&HSTRING::from("From")).unwrap(), before);
+        let target = acrylic.target_brush.borrow().as_ref().unwrap().clone();
+        assert_eq!(fade.GetSourceParameter(&HSTRING::from("To")).unwrap(), target);
+        assert_eq!(acrylic.content.as_ref().unwrap().Opacity().unwrap(), 1.0);
+        assert_eq!(acrylic.root.Opacity().unwrap(), 1.0);
+    }
+    // Completing an animation releases the outgoing source rather than retaining
+    // an ever-growing chain of sampled backdrops.
+    let target = acrylic.target_brush.borrow().as_ref().unwrap().clone();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    while acrylic.backdrop.Brush().unwrap() != target && std::time::Instant::now() < deadline {
+        windows_window::pump();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert_eq!(acrylic.backdrop.Brush().unwrap(), target);
+    acrylic.animations_override.set(Some(false));
+    acrylic.material(Backdrop::Mica, false).unwrap();
+    assert!(acrylic.transition.borrow().is_none());
+    acrylic.assert_material_colors(Backdrop::Mica, false);
+    acrylic.animations_override.set(Some(true));
+    acrylic.material(Backdrop::Acrylic, true).unwrap();
+    acrylic.set_effects_enabled_for_test(false);
+    acrylic.material(Backdrop::Acrylic, true).unwrap();
+    assert!(acrylic.transition.borrow().is_none());
+    acrylic.assert_solid_color(0x2c2c2c, 1.0);
+    acrylic.visible(false).unwrap();
+    assert!(!acrylic.material_initialized.get());
 }

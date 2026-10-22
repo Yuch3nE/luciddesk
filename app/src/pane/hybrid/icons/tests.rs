@@ -43,10 +43,10 @@ fn refresh_worker_disconnect_recovers_notifications_and_backoff_is_capped() {
     assert!(result.images.is_empty());
     assert!(!result.retry.is_empty());
     let mut failures = 0;
-    for seconds in [2, 4, 8, 16, 32, 32, 32] {
+    for millis in [250, 500, 1000, 2000, 4000, 8000, 16000, 32000, 32000] {
         assert_eq!(
             refresh_retry_delay(&mut failures),
-            Duration::from_secs(seconds)
+            Duration::from_millis(millis)
         );
     }
 }
@@ -270,4 +270,32 @@ fn retry_timer_ignores_cached_and_exhausted_items_and_respects_scan_throttle() {
     failures.insert("missing".into(), (1, now + Duration::from_secs(2)));
     assert_eq!(retry_deadline(false, now, &images, &requested, &failures),
         Some(now + Duration::from_secs(2)));
+}
+
+#[test]
+fn initial_retry_budget_is_short_and_exhaustion_stops_scheduling() {
+    let s = crate::pane::tests::test_state();
+    let key = s.workspace.desktop_items()[0].identity().persistent_key();
+    let now = Instant::now();
+    let mut elapsed = Duration::ZERO;
+    let images = HashMap::new();
+    let requested = HashSet::new();
+    for attempts in 1..INITIAL_MAX_ATTEMPTS {
+        let due = now + icon_retry_delay(attempts);
+        elapsed += icon_retry_delay(attempts);
+        let failures = HashMap::from([(key.clone(), (attempts, due))]);
+        assert_eq!(retry_deadline(false, now, &images, &requested, &failures), Some(due));
+        assert_eq!(retry_deadline(true, now, &images, &requested, &failures), None);
+        let mut pending = HashSet::new();
+        assert!(!collect_icon_requests(&s.workspace, &images, &mut pending, &failures)
+            .iter().any(|identity| identity.persistent_key() == key));
+    }
+    assert_eq!(elapsed, Duration::from_millis(3750));
+    let exhausted = HashMap::from([(key.clone(), (INITIAL_MAX_ATTEMPTS, now))]);
+    assert_eq!(retry_deadline(false, now, &images, &requested, &exhausted), None);
+    assert!(!collect_icon_requests(&s.workspace, &images, &mut HashSet::new(), &exhausted)
+        .iter().any(|identity| identity.persistent_key() == key));
+    assert_eq!(icon_retry_delay(u32::MAX), Duration::from_secs(32));
+    let mut failures = u32::MAX;
+    assert_eq!(refresh_retry_delay(&mut failures), Duration::from_secs(32));
 }

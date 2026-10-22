@@ -129,6 +129,9 @@ pub fn run(path: &Path, title: Option<String>) -> Result<(), String> {
     super::peek::load(&store)?;
     fonts::load(&store)?;
     interface_flags::HEADER_DIVIDER.load(&store)?;
+    interface_flags::PANEL_SHADOW.load(&store)?;
+    interface_flags::load_system_corners(&store)?;
+    snap::load_gap(&store)?;
     interface_flags::COMPACT_MENU.load(&store)?;
     interface_flags::TITLE_EMOJI.load(&store)?;
     everything_settings::load(&store)?;

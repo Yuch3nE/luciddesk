@@ -17,6 +17,8 @@ pub struct Surface {
     hwnd: HWND,
     present: IDXGISwapChain1,
     rounded_backdrop: Option<HWND>,
+    pane_shadow: Option<(bool, bool, super::interface_flags::SystemCorners)>,
+    pub pane_border: bool,
     pub pane_corner_radius: f32,
     dark: bool,
     opacity: std::cell::Cell<f32>,
@@ -118,7 +120,41 @@ impl Surface {
             }
         }
         surface.rounded_backdrop = Some(hwnd);
+        surface.pane_shadow = Some((false, true, super::interface_flags::SystemCorners::Round));
+        surface.update_pane_shadow()?;
         Ok(surface)
+    }
+
+    fn update_pane_shadow(&mut self) -> Result<()> {
+        self.set_pane_shadow(super::interface_flags::PANEL_SHADOW.get())
+    }
+
+    fn set_pane_shadow(&mut self, enabled: bool) -> Result<()> {
+        let corners = super::interface_flags::system_corners();
+        if self.pane_shadow.is_some_and(|old| old != (enabled, self.pane_border, corners)) {
+            let policy = if enabled {
+                windows::Win32::Graphics::Dwm::DWMNCRP_ENABLED.0
+            } else {
+                DWMNCRP_DISABLED
+            };
+            unsafe { set_attribute(self.hwnd, DWMWA_NCRENDERING_POLICY, &policy)?; }
+            // Let DWM own both the HWND outline and shadow. Keeping a second,
+            // independently rounded backdrop exposes the non-client black base.
+            let corner = if !enabled { DWMWCP_DONOTROUND } else {
+                match corners {
+                    super::interface_flags::SystemCorners::Square => DWMWCP_DONOTROUND,
+                    super::interface_flags::SystemCorners::Round => DWMWCP_ROUND,
+                    super::interface_flags::SystemCorners::Small => windows::Win32::Graphics::Dwm::DWMWCP_ROUNDSMALL.0,
+                }
+            };
+            if let Err(error) = unsafe { set_attribute(self.hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &corner) } {
+                if error.code() != windows::Win32::Foundation::E_INVALIDARG { return Err(error); }
+            }
+            let border = if enabled && self.pane_border { 0xffff_ffffu32 } else { 0xffff_fffeu32 };
+            let _ = unsafe { set_attribute(self.hwnd, DWMWA_BORDER_COLOR, &border) };
+            self.pane_shadow = Some((enabled, self.pane_border, corners));
+        }
+        Ok(())
     }
 
     pub fn new_with_opacity(hwnd: HWND, initial_opacity: f32) -> Result<Self> {
@@ -190,6 +226,8 @@ impl Surface {
                 hwnd,
                 present: native_swap,
                 rounded_backdrop: None,
+                pane_shadow: None,
+                pane_border: true,
                 pane_corner_radius: luciddesk_core::PaneOptions::DEFAULT.corner_radius,
                 dark: true,
                 opacity: std::cell::Cell::new(initial_opacity),
@@ -267,7 +305,7 @@ impl Surface {
             acrylic.round_corners(
                 width,
                 height,
-                if self.pane_corner_radius == 0.0 {
+                if self.pane_shadow.is_some_and(|(enabled, _, _)| enabled) || self.pane_corner_radius == 0.0 {
                     0.0
                 } else {
                     (self.pane_corner_radius + 0.5) * scale
@@ -314,6 +352,7 @@ impl Surface {
         width: u32,
         height: u32,
     ) -> Result<Option<ID2D1DeviceContext>> {
+        self.update_pane_shadow()?;
         if let Some(at) = self.retry_at.get() {
             let remaining = at.saturating_duration_since(std::time::Instant::now());
             if !remaining.is_zero() {
@@ -441,7 +480,7 @@ pub(super) mod animation_tests {
                 surface.acrylic.as_ref().unwrap().set_effects_enabled_for_test(false);
                 surface.material(hwnd, material);
                 let acrylic = surface.acrylic.as_ref().unwrap();
-                acrylic.assert_solid_color(if dark { 0x202020 } else { 0xf3f3f3 }, 1.0);
+                acrylic.assert_solid_color(if material == Backdrop::Acrylic { if dark { 0x2c2c2c } else { 0xf9f9f9 } } else if dark { 0x202020 } else { 0xf3f3f3 }, 1.0);
                 acrylic.assert_content_visible();
                 acrylic.set_effects_enabled_for_test(true);
                 surface.material(hwnd, material);
@@ -449,6 +488,87 @@ pub(super) mod animation_tests {
                 assert_eq!(surface.material, Some(material), "policy must not change the requested material");
             }
         }
+    }
+
+    #[test]
+    fn pane_shadow_switches_system_corners_and_restores_custom_clipping() {
+        use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_NCRENDERING_ENABLED};
+        use windows_sys::Win32::UI::WindowsAndMessaging::*;
+        let _sta = crate::pane::test_support::apartment();
+        let window = windows_window::Window::new("Pane shadow regression")
+            .size(240, 160).style(WS_POPUP | WS_THICKFRAME | WS_SYSMENU)
+            .ex_style(WS_EX_NOREDIRECTIONBITMAP).create().unwrap();
+        let hwnd = HWND(window.hwnd().cast());
+        let mut surface = Surface::new_pane(hwnd).unwrap();
+        surface.material(hwnd, Backdrop::Acrylic);
+        surface.pane_corner_radius = 24.0;
+        let store = luciddesk_storage::WorkspaceStore::open_in_memory().unwrap();
+        use super::super::interface_flags::{self, SystemCorners};
+        struct Restore(SystemCorners);
+        impl Drop for Restore {
+            fn drop(&mut self) { interface_flags::save_system_corners(&luciddesk_storage::WorkspaceStore::open_in_memory().unwrap(), self.0).unwrap(); }
+        }
+        let _restore = Restore(interface_flags::system_corners());
+        for (enabled, corners) in [(true, SystemCorners::Round), (true, SystemCorners::Small), (true, SystemCorners::Square), (false, SystemCorners::Small), (true, SystemCorners::Small), (false, SystemCorners::Round)] {
+            interface_flags::save_system_corners(&store, corners).unwrap();
+            surface.set_pane_shadow(enabled).unwrap();
+            surface.resize(240, 160).unwrap();
+            let scale = unsafe { windows_sys::Win32::UI::HiDpi::GetDpiForWindow(hwnd.0) } as f32 / 96.0;
+            surface.acrylic.as_ref().unwrap().assert_rounded_clip(240, 160,
+                if enabled { 0.0 } else { 24.5 * scale });
+            let mut actual = 0i32;
+            unsafe {
+                DwmGetWindowAttribute(hwnd, DWMWA_NCRENDERING_ENABLED,
+                    (&raw mut actual).cast(), size_of::<i32>() as u32).unwrap();
+            }
+            assert_eq!(actual != 0, enabled);
+            let mut corner = 0i32;
+            let result = unsafe {
+                DwmGetWindowAttribute(hwnd,
+                    windows::Win32::Graphics::Dwm::DWMWA_WINDOW_CORNER_PREFERENCE,
+                    (&raw mut corner).cast(), size_of::<i32>() as u32)
+            };
+            if result.is_ok() { assert_eq!(corner, if !enabled || corners == SystemCorners::Square { DWMWCP_DONOTROUND } else if corners == SystemCorners::Small { windows::Win32::Graphics::Dwm::DWMWCP_ROUNDSMALL.0 } else { DWMWCP_ROUND }); }
+            else { assert_eq!(result.unwrap_err().code(), windows::Win32::Foundation::E_INVALIDARG); }
+        }
+        // Border and material changes must remain live while DWM owns the outline.
+        for enabled in [true, false, true] {
+            for border in [false, true, false] {
+                surface.pane_border = border;
+                surface.set_pane_shadow(enabled).unwrap();
+                let mut actual = 0u32;
+                let result = unsafe {
+                    DwmGetWindowAttribute(hwnd, windows::Win32::Graphics::Dwm::DWMWA_BORDER_COLOR,
+                        (&raw mut actual).cast(), size_of::<u32>() as u32)
+                };
+                if result.is_ok() {
+                    assert_eq!(actual, if enabled && border { 0xffff_ffff } else { 0xffff_fffe });
+                } else {
+                    assert_eq!(result.unwrap_err().code(), windows::Win32::Foundation::E_INVALIDARG);
+                }
+            }
+            for dark in [true, false] {
+                surface.theme(hwnd, dark);
+                for material in [Backdrop::Acrylic, Backdrop::Mica, Backdrop::MicaAlt] {
+                    for strength in [0, 50, 100] {
+                        let material = material.with_strength(strength);
+                        surface.material(hwnd, material);
+                        assert!(surface.native);
+                        surface.acrylic.as_ref().unwrap().assert_material_colors(material, dark);
+                    }
+                }
+                for opacity in [0.0, 0.5, 1.0] {
+                    surface.material(hwnd, Backdrop::Solid { color: 0x123456, opacity });
+                    surface.acrylic.as_ref().unwrap().assert_solid_color(0x123456, opacity);
+                }
+            }
+        }
+        let flyout_window = windows_window::Window::new("Flyout shadow regression")
+            .size(160, 100).style(WS_POPUP).ex_style(WS_EX_NOREDIRECTIONBITMAP)
+            .create().unwrap();
+        let mut flyout = Surface::new_flyout(HWND(flyout_window.hwnd().cast()), 1.0).unwrap();
+        flyout.set_pane_shadow(false).unwrap();
+        assert!(flyout.pane_shadow.is_none());
     }
 
     #[test]

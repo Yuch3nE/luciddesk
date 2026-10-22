@@ -1,16 +1,19 @@
 //! Typed workspace preferences. Conversion is pure; saving is one metadata transaction.
 use super::*;
 use SettingValue::{Boolean, Number, Text};
-const FLAGS: [(&str, &str); 3] = [
-    ("interface.title_emoji_color", "pane_title_emoji_color"),
-    ("interface.compact_menu", "pane_compact_menu"),
-    ("interface.header_divider", "pane_header_divider"),
+const FLAGS: [(&str, &str, bool); 4] = [
+    ("interface.title_emoji_color", "pane_title_emoji_color", true),
+    ("interface.compact_menu", "pane_compact_menu", true),
+    ("interface.header_divider", "pane_header_divider", true),
+    ("interface.panel_shadow", "pane_shadow", false),
 ];
 pub(super) fn contains(key: &str) -> bool {
-    FLAGS.iter().any(|(name, _)| *name == key)
+    FLAGS.iter().any(|(name, _, _)| *name == key)
         || matches!(
             key,
-            "font.family"
+            "interface.system_corners"
+                | "interface.snap_gap"
+                | "font.family"
                 | "folder_defaults.list_view"
                 | "folder_defaults.show_modified"
                 | "folder_defaults.show_type"
@@ -23,10 +26,12 @@ pub(super) fn contains(key: &str) -> bool {
 }
 pub(super) fn read(store: &WorkspaceStore) -> Result<BTreeMap<String, SettingValue>, String> {
     let mut values = BTreeMap::new();
-    for (name, key) in FLAGS {
+    values.insert("interface.system_corners".into(), Text(interface_flags::read_system_corners(store)?.name().into()));
+    values.insert("interface.snap_gap".into(), Number(snap::read_gap(store)? as f64));
+    for (name, key, default) in FLAGS {
         values.insert(
             name.into(),
-            Boolean(store.preference(key).map_err(|e| e.to_string())?.as_deref() != Some("false")),
+            Boolean(store.preference(key).map_err(|e| e.to_string())?.as_deref().map_or(default, |value| value != "false")),
         );
     }
     values.insert(
@@ -79,6 +84,7 @@ pub(super) fn patch(
             return Err(format!("invalid setting type: {key}"));
         }
         let valid = match (key.as_str(), value) {
+            ("interface.system_corners", Text(name)) => interface_flags::SystemCorners::parse(name).is_some(),
             ("font.family", Text(name)) => {
                 name.is_empty() || name == crate::i18n::default_font() || fonts::available(name)
             }
@@ -86,6 +92,7 @@ pub(super) fn patch(
                 matches!(mode.as_str(), "inline" | "explorer")
             }
             ("backup.interval_minutes", Number(n)) => [5.0, 15.0, 30.0, 60.0].contains(n),
+            ("interface.snap_gap", Number(n)) => n.is_finite() && n.fract() == 0.0 && (0.0..=snap::MAX_GAP as f64).contains(n),
             ("backup.keep", Number(n)) => [10.0, 20.0, 50.0].contains(n),
             (_, Boolean(_)) => true,
             _ => false,
@@ -108,7 +115,9 @@ fn encode(values: &BTreeMap<String, SettingValue>) -> BTreeMap<String, String> {
         _ => unreachable!(),
     };
     let mut result = BTreeMap::new();
-    for (name, key) in FLAGS {
+    result.insert("pane_system_corners".into(), text("interface.system_corners"));
+    result.insert("pane_snap_gap".into(), number("interface.snap_gap").to_string());
+    for (name, key, _) in FLAGS {
         result.insert(key.into(), flag(name).to_string());
     }
     result.insert("ui_font_family".into(), text("font.family"));
@@ -165,9 +174,15 @@ mod tests {
             observed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         });
         let before = read(&store).unwrap();
+        assert_eq!(before["interface.panel_shadow"], Boolean(false));
+        assert_eq!(before["interface.system_corners"], Text("round".into()));
+        assert_eq!(before["interface.snap_gap"], Number(5.0));
         let count = store.change_count();
         let updates = BTreeMap::from([
             ("interface.header_divider".into(), Boolean(false)),
+            ("interface.panel_shadow".into(), Boolean(true)),
+            ("interface.snap_gap".into(), Number(32.0)),
+            ("interface.system_corners".into(), Text("square".into())),
             ("folder_defaults.show_type".into(), Boolean(false)),
             ("folder_defaults.entry_mode".into(), Text("explorer".into())),
             ("backup.interval_minutes".into(), Number(30.0)),
@@ -177,10 +192,15 @@ mod tests {
         assert_eq!(store.change_count(), count);
         super::super::save(&store, &updates).unwrap();
         assert_eq!(read(&store).unwrap(), after);
-        assert_eq!(store.change_count(), count + 4);
+        assert_eq!(store.change_count(), count + 7);
         super::super::save(&store, &updates).unwrap();
-        assert_eq!(store.change_count(), count + 4);
+        assert_eq!(store.change_count(), count + 7);
         for (key, value) in [
+            ("interface.panel_shadow", Text("true".into())),
+            ("interface.system_corners", Text("invalid".into())),
+            ("interface.snap_gap", Number(-1.0)),
+            ("interface.snap_gap", Number(65.0)),
+            ("interface.snap_gap", Number(1.5)),
             ("backup.keep", Number(11.0)),
             ("backup.enabled", Text("true".into())),
             ("language", Text("en-US".into())),
@@ -190,7 +210,7 @@ mod tests {
             invalid.insert(key.into(), value);
             assert!(super::super::save(&store, &invalid).is_err());
             assert_eq!(read(&store).unwrap(), after);
-            assert_eq!(store.change_count(), count + 4);
+            assert_eq!(store.change_count(), count + 7);
         }
         assert_eq!(notifications.load(std::sync::atomic::Ordering::Relaxed), 1);
         let defaults = folder::Defaults::load(&store).unwrap();

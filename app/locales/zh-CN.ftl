@@ -1301,3 +1301,21 @@ desktop-gesture-description = 双击桌面空白处隐藏所有图标和面板�
 
 update-installed-version = 当前版本 { $version }
 update-download = 下载新版本
+
+
+ui-snap-gap = 吸附间距
+ui-snap-gap-description = 吸附后面板之间及与屏幕边缘的间距，单位为像素，0 表示无间隙
+
+
+ui-rendering-mode = 渲染模式
+ui-system-rendering = 系统渲染
+ui-custom-rendering = 自定义渲染
+ui-rendering-mode-description = 系统渲染使用系统圆角与阴影；自定义渲染可调整圆角，无阴影
+
+ui-corner-style = 圆角样式
+ui-corners-standard = 常规圆角
+ui-corners-small = 小圆角
+ui-system-corner-style-description = 选择系统圆角样式，阴影随窗口轮廓变化
+ui-corners-square = 直角
+
+ui-homepage = 官网首页

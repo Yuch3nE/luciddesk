@@ -68,6 +68,7 @@ windows = { workspace = true, features = [
     "Win32_System_WinRT_Graphics_Direct2D",
 ] }
 windows-core = "0.62.2"
+windows-collections = "0.3.2"
 windows-sys = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",

@@ -29,13 +29,14 @@ use windows::{
 };
 
 #[implement(IGraphicsEffect, IGraphicsEffectSource, IGraphicsEffectD2D1Interop)]
-struct Blend {
+struct Effect {
     name: RefCell<HSTRING>,
-    mode: u32,
-    sources: [IGraphicsEffectSource; 2],
+    id: GUID,
+    properties: Vec<IPropertyValue>,
+    sources: Vec<IGraphicsEffectSource>,
 }
-impl IGraphicsEffectSource_Impl for Blend_Impl {}
-impl IGraphicsEffect_Impl for Blend_Impl {
+impl IGraphicsEffectSource_Impl for Effect_Impl {}
+impl IGraphicsEffect_Impl for Effect_Impl {
     fn Name(&self) -> Result<HSTRING> {
         Ok(self.name.borrow().clone())
     }
@@ -44,27 +45,40 @@ impl IGraphicsEffect_Impl for Blend_Impl {
         Ok(())
     }
 }
-impl IGraphicsEffectD2D1Interop_Impl for Blend_Impl {
+impl IGraphicsEffectD2D1Interop_Impl for Effect_Impl {
     fn GetEffectId(&self) -> Result<GUID> {
-        Ok(CLSID_D2D1Blend)
+        Ok(self.id)
     }
     fn GetNamedPropertyMapping(
         &self,
-        _: &PCWSTR,
-        _: *mut u32,
-        _: *mut GRAPHICS_EFFECT_PROPERTY_MAPPING,
+        name: &PCWSTR,
+        index: *mut u32,
+        mapping: *mut GRAPHICS_EFFECT_PROPERTY_MAPPING,
     ) -> Result<()> {
-        Err(E_NOTIMPL.into())
+        if self.id == windows::Win32::Graphics::Direct2D::CLSID_D2D1CrossFade
+            && !index.is_null()
+            && !mapping.is_null()
+            && unsafe { name.to_string()? } == "Weight"
+        {
+            unsafe {
+                *index = 0;
+                *mapping = windows::Win32::System::WinRT::Graphics::Direct2D::GRAPHICS_EFFECT_PROPERTY_MAPPING_DIRECT;
+            }
+            Ok(())
+        } else {
+            Err(E_NOTIMPL.into())
+        }
     }
     fn GetPropertyCount(&self) -> Result<u32> {
-        Ok(1)
+        Ok(self.properties.len() as u32)
     }
     fn GetProperty(&self, index: u32) -> Result<IPropertyValue> {
-        if index != 0 {
-            return Err(E_INVALIDARG.into());
-        }
-        PropertyValue::CreateUInt32(self.mode)?.cast()
+        self.properties
+            .get(index as usize)
+            .cloned()
+            .ok_or_else(|| E_INVALIDARG.into())
     }
+
     fn GetSource(&self, index: u32) -> Result<IGraphicsEffectSource> {
         self.sources
             .get(index as usize)
@@ -72,20 +86,21 @@ impl IGraphicsEffectD2D1Interop_Impl for Blend_Impl {
             .ok_or_else(|| E_INVALIDARG.into())
     }
     fn GetSourceCount(&self) -> Result<u32> {
-        Ok(2)
+        Ok(self.sources.len() as u32)
     }
 }
 fn blend(
     mode: u32,
     background: IGraphicsEffectSource,
     foreground: IGraphicsEffectSource,
-) -> IGraphicsEffect {
-    Blend {
+) -> Result<IGraphicsEffect> {
+    Ok(Effect {
         name: RefCell::default(),
-        mode,
-        sources: [background, foreground],
+        id: CLSID_D2D1Blend,
+        properties: vec![PropertyValue::CreateUInt32(mode)?.cast()?],
+        sources: vec![background, foreground],
     }
-    .into()
+    .into())
 }
 pub(super) fn factory(compositor: &Compositor) -> Result<CompositionEffectFactory> {
     let source = |name: &str| -> Result<IGraphicsEffectSource> {
@@ -97,14 +112,31 @@ pub(super) fn factory(compositor: &Compositor) -> Result<CompositionEffectFactor
         D2D1_BLEND_MODE_COLOR.0 as u32,
         source("Backdrop")?,
         source("Luminosity")?,
-    );
+    )?;
     let tint = blend(
         D2D1_BLEND_MODE_LUMINOSITY.0 as u32,
         luminosity.cast()?,
         source("Tint")?,
-    );
+    )?;
     compositor.CreateEffectFactory(&tint)
 }
+
+pub(super) fn transition_factory(compositor: &Compositor) -> Result<CompositionEffectFactory> {
+    let graph: IGraphicsEffect = Effect {
+        name: RefCell::new(HSTRING::from("Fade")),
+        id: windows::Win32::Graphics::Direct2D::CLSID_D2D1CrossFade,
+        properties: vec![PropertyValue::CreateSingle(1.0)?.cast()?],
+        sources: vec![
+            CompositionEffectSourceParameter::Create(&HSTRING::from("From"))?.cast()?,
+            CompositionEffectSourceParameter::Create(&HSTRING::from("To"))?.cast()?,
+        ],
+    }
+    .into();
+    let properties: windows_collections::IIterable<HSTRING> =
+        vec![HSTRING::from("Fade.Weight")].into();
+    compositor.CreateEffectFactoryWithProperties(&graph, &properties)
+}
+
 pub(super) fn mica_palette(dark: bool, alt: bool) -> (Color, Color) {
     // Verified against MicaController Base/BaseAlt on Windows App Runtime
     // 1.6.618 (CBS 6000.900.156.100); see docs/development/mica-materials.md.
@@ -136,32 +168,40 @@ pub(super) fn mica_palette(dark: bool, alt: bool) -> (Color, Color) {
     )
 }
 // Neutral theme colors keep the public API limited to material strength.
-// AcrylicBrush.cpp: GetTintOpacityModifier / GetLuminosityColor, specialized
-// to neutral colors (HSV saturation = 0). This is the window-acrylic path:
+// WinUI 2.8 AcrylicBrush_19h1_themeresources.xaml and
+// dev/dll/XamlControlsResources.cpp (explicit luminosity 0.96 / 0.85).
 // HostBackdrop already supplies blur, so this graph adds no Gaussian blur.
 pub(super) fn acrylic_palette(dark: bool) -> (Color, Color) {
-    let channel: u8 = if dark { 32 } else { 243 };
-    let strength: f32 = 120.0 / 255.0; // Preserve the previous default strength.
-    let value = f32::from(channel) / 255.0;
-    let modifier = if value > 0.5 {
-        0.9 - (0.9 - 0.45) * ((value - 0.5) / 0.5)
-    } else {
-        0.9 - (0.9 - 0.85) * ((0.5 - value) / 0.5)
-    };
-    let luminosity_channel = (value.clamp(0.125, 0.965) * 255.0).round() as u8;
+    // WinUI AcrylicBackgroundFillColorDefaultBrush, explicit luminosity opacity.
+    // Unlike the implicit recipe, explicit luminosity does not modify tint alpha.
+    let channel = if dark { 44 } else { 252 };
     let luminosity = Color {
-        A: ((strength * 0.88 + 0.15).min(1.0) * 255.0).round() as u8,
-        R: luminosity_channel,
-        G: luminosity_channel,
-        B: luminosity_channel,
-    };
-    let tint = Color {
-        A: (strength * modifier * 255.0).round() as u8,
+        A: if dark { 245 } else { 217 },
         R: channel,
         G: channel,
         B: channel,
     };
+    let tint = Color {
+        A: if dark { 38 } else { 0 },
+        ..luminosity
+    };
     (luminosity, tint)
+}
+
+pub(super) fn fallback_color(material: luciddesk_core::Backdrop, dark: bool) -> Color {
+    let channel = if material.base() == luciddesk_core::Backdrop::Acrylic {
+        if dark { 44 } else { 249 }
+    } else if dark {
+        32
+    } else {
+        243
+    };
+    Color {
+        A: 255,
+        R: channel,
+        G: channel,
+        B: channel,
+    }
 }
 
 // 50 preserves the recommended recipe. Below it, reveal more backdrop;
@@ -193,12 +233,25 @@ pub(super) fn update_colors(
     brush: &CompositionBrush,
     luminosity: Color,
     tint: Color,
+    animate: bool,
 ) -> Result<()> {
     let effect: windows::UI::Composition::CompositionEffectBrush = brush.cast()?;
     for (name, color) in [("Luminosity", luminosity), ("Tint", tint)] {
         let source: windows::UI::Composition::CompositionColorBrush =
             effect.GetSourceParameter(&HSTRING::from(name))?.cast()?;
-        source.SetColor(color)?;
+        let before = source.Color()?;
+        if before != color {
+            source.SetColor(color)?;
+            if animate {
+                let animation = source.Compositor()?.CreateColorKeyFrameAnimation()?;
+                animation.InsertKeyFrame(0.0, before)?;
+                animation.InsertKeyFrame(1.0, color)?;
+                animation.SetDuration(super::transition::DURATION)?;
+                source.StartAnimation(&HSTRING::from("Color"), &animation)?;
+            } else {
+                source.StopAnimation(&HSTRING::from("Color"))?;
+            }
+        }
     }
     Ok(())
 }
@@ -252,12 +305,12 @@ mod tests {
         }
         let (dark_luminosity, dark_tint) = acrylic_palette(true);
         let (light_luminosity, light_tint) = acrylic_palette(false);
-        assert_eq!(dark_luminosity.A, 144);
-        assert_eq!(light_luminosity.A, 144);
-        assert_eq!(dark_tint.A, 104);
-        assert_eq!(light_tint.A, 59);
-        assert_eq!(dark_tint.R, 32);
-        assert_eq!(light_tint.R, 243);
+        assert_eq!(dark_luminosity.A, 245);
+        assert_eq!(light_luminosity.A, 217);
+        assert_eq!(dark_tint.A, 38);
+        assert_eq!(light_tint.A, 0);
+        assert_eq!(dark_tint.R, 44);
+        assert_eq!(light_tint.R, 252);
         assert!(dark_luminosity.A < mica_palette(true, false).0.A);
         for (luminosity, tint) in [
             mica_palette(true, false),
@@ -291,7 +344,8 @@ mod tests {
             D2D1_BLEND_MODE_COLOR.0 as u32,
             background.clone(),
             foreground.clone(),
-        );
+        )
+        .unwrap();
         let interop: IGraphicsEffectD2D1Interop = graph.cast().unwrap();
         unsafe {
             assert_eq!(interop.GetEffectId().unwrap(), CLSID_D2D1Blend);

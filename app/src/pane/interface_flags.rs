@@ -1,18 +1,58 @@
-//! Three process-wide display preferences, persisted before their cached value changes.
+//! Process-wide display preferences, persisted before their cached value changes.
 use luciddesk_storage::WorkspaceStore;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-pub(super) static TITLE_EMOJI: Flag = Flag::new("pane_title_emoji_color");
-pub(super) static COMPACT_MENU: Flag = Flag::new("pane_compact_menu");
-pub(super) static HEADER_DIVIDER: Flag = Flag::new("pane_header_divider");
+pub(super) static TITLE_EMOJI: Flag = Flag::new("pane_title_emoji_color", true);
+pub(super) static COMPACT_MENU: Flag = Flag::new("pane_compact_menu", true);
+pub(super) static HEADER_DIVIDER: Flag = Flag::new("pane_header_divider", true);
 
-pub(super) struct Flag { key: &'static str, value: AtomicBool }
+pub(super) static PANEL_SHADOW: Flag = Flag::new("pane_shadow", false);
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(super) enum SystemCorners { Square, Round, Small }
+impl SystemCorners {
+    pub fn name(self) -> &'static str {
+        match self { Self::Square => "square", Self::Round => "round", Self::Small => "small" }
+    }
+    pub fn parse(value: &str) -> Option<Self> {
+        match value { "square" => Some(Self::Square), "round" => Some(Self::Round), "small" => Some(Self::Small), _ => None }
+    }
+}
+static SYSTEM_CORNERS: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(1);
+pub(super) fn system_corners() -> SystemCorners {
+    match SYSTEM_CORNERS.load(Ordering::Relaxed) { 0 => SystemCorners::Square, 2 => SystemCorners::Small, _ => SystemCorners::Round }
+}
+pub(super) fn read_system_corners(store: &WorkspaceStore) -> Result<SystemCorners, String> {
+    if let Some(value) = store.preference("pane_system_corners").map_err(|e| e.to_string())? {
+        return Ok(SystemCorners::parse(&value).unwrap_or(SystemCorners::Round));
+    }
+    // Preserve the previous two-choice preference in existing development profiles.
+    Ok(if store.preference("pane_small_corners").map_err(|e| e.to_string())?.as_deref() == Some("true") {
+        SystemCorners::Small
+    } else { SystemCorners::Round })
+}
+pub(super) fn load_system_corners(store: &WorkspaceStore) -> Result<(), String> {
+    SYSTEM_CORNERS.store(read_system_corners(store)? as u8, Ordering::Relaxed);
+    Ok(())
+}
+pub(super) fn save_system_corners(store: &WorkspaceStore, value: SystemCorners) -> Result<(), String> {
+    store.save_preference("pane_system_corners", value.name()).map_err(|e| e.to_string())?;
+    SYSTEM_CORNERS.store(value as u8, Ordering::Relaxed);
+    Ok(())
+}
+
+// In shadow mode DWM clips the whole HWND; fill rectangular content underneath
+// so a saved custom radius cannot leave holes inside the system's rounded edge.
+pub(super) fn pane_corner_radius(custom: f32) -> f32 {
+    if PANEL_SHADOW.get() { 0.0 } else { custom }
+}
+
+pub(super) struct Flag { key: &'static str, default: bool, value: AtomicBool }
 impl Flag {
-    const fn new(key: &'static str) -> Self { Self { key, value: AtomicBool::new(true) } }
+    const fn new(key: &'static str, default: bool) -> Self { Self { key, default, value: AtomicBool::new(default) } }
     pub fn get(&self) -> bool { self.value.load(Ordering::Relaxed) }
     pub fn load(&self, store: &WorkspaceStore) -> Result<(), String> {
         let value = store.preference(self.key).map_err(|e| e.to_string())?;
-        self.value.store(value.as_deref() != Some("false"), Ordering::Relaxed);
+        self.value.store(value.as_deref().map_or(self.default, |value| value != "false"), Ordering::Relaxed);
         Ok(())
     }
     pub fn save(&self, store: &WorkspaceStore, value: bool) -> Result<(), String> {
@@ -31,25 +71,53 @@ mod event_tests {
     #[test]
     fn settings_events_persist_flags_and_reset_the_same_cached_values() {
         let _sta = crate::pane::test_support::apartment();
-        struct Restore([bool; 3]);
+        struct Restore([bool; 4], SystemCorners);
         impl Drop for Restore {
             fn drop(&mut self) {
-                for (flag, value) in [&TITLE_EMOJI, &COMPACT_MENU, &HEADER_DIVIDER].into_iter().zip(self.0) {
+                for (flag, value) in [&TITLE_EMOJI, &COMPACT_MENU, &HEADER_DIVIDER, &PANEL_SHADOW].into_iter().zip(self.0) {
                     flag.value.store(value, Ordering::Relaxed);
                 }
+                SYSTEM_CORNERS.store(self.1 as u8, Ordering::Relaxed);
             }
         }
-        let _restore = Restore([TITLE_EMOJI.get(), COMPACT_MENU.get(), HEADER_DIVIDER.get()]);
+        let _restore = Restore([TITLE_EMOJI.get(), COMPACT_MENU.get(), HEADER_DIVIDER.get(), PANEL_SHADOW.get()], system_corners());
         let state = Rc::new(RefCell::new(test_state()));
         let id = PanelId::new(1);
+        load_system_corners(&state.borrow().store).unwrap();
+        assert_eq!(system_corners(), SystemCorners::Round);
+        for corners in [SystemCorners::Square, SystemCorners::Small, SystemCorners::Round] {
+            events::handle(&state, id, Event::SetSystemCorners(corners)).unwrap();
+            SYSTEM_CORNERS.store(99, Ordering::Relaxed);
+            load_system_corners(&state.borrow().store).unwrap();
+            assert_eq!(system_corners(), corners);
+        }
+        events::handle(&state, id, Event::SetSystemCorners(SystemCorners::Small)).unwrap();
+
+        PANEL_SHADOW.load(&state.borrow().store).unwrap();
+        assert!(!PANEL_SHADOW.get());
+        for enabled in [true, false, true] {
+            assert!(!events::handle(&state, id, Event::SetSystemRendering(enabled)).unwrap());
+            assert_eq!(PANEL_SHADOW.get(), enabled);
+            PANEL_SHADOW.value.store(!enabled, Ordering::Relaxed);
+            PANEL_SHADOW.load(&state.borrow().store).unwrap();
+            assert_eq!(PANEL_SHADOW.get(), enabled);
+        }
+
+        crate::pane::snap::save_gap(&state.borrow().store, 32).unwrap();
         events::handle(&state, id, Event::ResetPaneOptions).unwrap();
+        assert_eq!(crate::pane::snap::gap(), crate::pane::snap::DEFAULT_GAP);
         for (event, flag) in [(Event::SetTitleEmojiColor(false), &TITLE_EMOJI),
             (Event::ToggleCompactMenu, &COMPACT_MENU), (Event::ToggleHeaderDivider, &HEADER_DIVIDER)] {
             assert!(!events::handle(&state, id, event).unwrap());
             assert!(!flag.get());
             assert_eq!(state.borrow().store.preference(flag.key).unwrap().as_deref(), Some("false"));
         }
+        crate::pane::snap::save_gap(&state.borrow().store, 32).unwrap();
         events::handle(&state, id, Event::ResetPaneOptions).unwrap();
+        assert_eq!(crate::pane::snap::gap(), crate::pane::snap::DEFAULT_GAP);
+        assert!(PANEL_SHADOW.get());
+        assert_eq!(system_corners(), SystemCorners::Round);
+        assert_eq!(state.borrow().store.preference("pane_shadow").unwrap().as_deref(), Some("true"));
         for flag in [&TITLE_EMOJI, &COMPACT_MENU, &HEADER_DIVIDER] {
             assert!(flag.get());
             assert_eq!(state.borrow().store.preference(flag.key).unwrap().as_deref(), Some("true"));

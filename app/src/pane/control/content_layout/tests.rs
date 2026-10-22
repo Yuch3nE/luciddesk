@@ -195,7 +195,7 @@ fn relative_snap_has_fixed_gap_in_all_directions_and_alignments() {
                     r.width,
                 ),
             };
-            assert_eq!(gap, snap::GAP_PX as f32);
+            assert_eq!(gap, snap::gap_px() as f32);
             let expected = match align {
                 SnapAlign::Start => 0.0,
                 SnapAlign::Center => ((available - extent) / 2.0).round(),
@@ -313,11 +313,11 @@ fn arrange_matches_grid_and_native_snap_gap_without_writes() {
         .collect();
     assert_eq!(
         rects[1].y - rects[0].y - rects[0].height,
-        snap::GAP_PX as f32
+        snap::gap_px() as f32
     );
     assert_eq!(
         m.work_area.x as f32 + m.work_area.width as f32 - rects[0].x - rects[0].width,
-        snap::GAP_PX as f32
+        snap::gap_px() as f32
     );
     assert_eq!(s.store.change_count(), before);
 }
@@ -526,7 +526,7 @@ fn explicit_snap_matches_manual_edges_using_pending_native_bounds() {
                 assert_eq!((px.width, px.height), (moving.width, moving.height), "use pending/native size, not stale workspace size");
                 let mut manual = RECT { left: px.x as i32 + 3, top: px.y as i32 + 3, right: (px.x+px.width) as i32 + 3, bottom: (px.y+px.height) as i32 + 3 };
                 let peer = RECT { left: anchor.x as i32, top: anchor.y as i32, right: (anchor.x+anchor.width) as i32, bottom: (anchor.y+anchor.height) as i32 };
-                snap::snap(&mut manual, &[peer], None, snap::GAP_PX, (14.0*dpi as f32/96.0).round() as i32);
+                snap::snap(&mut manual, &[peer], None, snap::gap_px(), (14.0*dpi as f32/96.0).round() as i32);
                 assert_eq!((manual.left, manual.top, manual.right, manual.bottom), (px.x as i32, px.y as i32, (px.x+px.width) as i32, (px.y+px.height) as i32));
             }
         }
@@ -553,7 +553,7 @@ fn snap_converts_measured_size_between_monitor_dpis_once() {
     let Operation::Geometry { x,y,width,height,.. } = ops[0] else { panic!() };
     let (_,px) = geometry::convert(&target, RectDip {x,y,width,height}).unwrap();
     assert_eq!((px.width,px.height), (500.0,302.0));
-    assert_eq!(px.x, -2400.0 + 603.0 + snap::GAP_PX as f32);
+    assert_eq!(px.x, -2400.0 + 603.0 + snap::gap_px() as f32);
     assert_eq!(px.y, 652.0);
 }
 
