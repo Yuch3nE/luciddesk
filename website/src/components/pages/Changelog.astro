@@ -1,8 +1,8 @@
 ---
 import ChangelogAccordion, { ChangelogBody, type ChangelogEntry } from '~/components/ChangelogAccordion';
-import { changeType, type ChangeType } from '~/lib/change-types';
+import { changeType } from '~/lib/change-types';
 import Layout from '~/layouts/PageLayout.astro';
-import Button from '~/components/ui/Button.astro';
+import { BookOpen, ArrowRight } from 'lucide-react';
 import { localeOf, localizedPath } from '~/lib/i18n';
 import { releasesByLocale, PAGE_SIZE, releaseDate, releaseId, inlineNote } from '~/content/changelog';
 interface Props { pageNumber?: number }
@@ -15,11 +15,6 @@ const totalPages = Math.ceil(releases.length / PAGE_SIZE);
 const visible = releases.slice((pageNumber - 1) * PAGE_SIZE, pageNumber * PAGE_SIZE);
 const pagePath = (n: number) => path(n === 1 ? '/changelog/' : `/changelog/page/${n}/`);
 const title = en ? 'Changelog' : '更新日志';
-const typesFor = (release: typeof releases[number]) => {
-  const counts = new Map<ChangeType, number>();
-  release.groups.forEach(group => group.items.forEach(item => { const type = changeType(group.title, item); counts.set(type, (counts.get(type) ?? 0) + 1); }));
-  return [...counts];
-};
 const entries: ChangelogEntry[] = visible.map(release => ({
   version: release.version,
   id: releaseId(release.version),
@@ -27,27 +22,29 @@ const entries: ChangelogEntry[] = visible.map(release => ({
   dateLabel: release.date ? releaseDate(release.date, lang) : en ? 'Feature baseline · Not a standalone release' : '功能基线 · 未单独发布',
   latest: release === releases[0],
   introduction: release.introduction.map(inlineNote),
-  counts: typesFor(release),
   groups: release.groups.map(group => ({title: group.title, items: group.items.map(item => ({html:inlineNote(item), type:changeType(group.title,item)}))})),
 }));
-const description = en ? 'New features, improvements, and fixes in LucidDesk. See what changed in every version.' : '了解 LucidDesk 每个版本的新功能、体验改进与问题修复。';
+const description = en ? 'New features, thoughtful improvements, and fixes — see what’s changed in LucidDesk.' : '每一次更新，让桌面更顺手。了解新功能、体验改进与问题修复。';
 ---
 <Layout title={`${title}${pageNumber > 1 ? ` · ${pageNumber}` : ''} · LucidDesk`} description={description}>
-  <div class="mx-auto max-w-4xl px-5 py-12 sm:px-8 lg:py-16">
-    <header class="mb-6 max-w-2xl">
-
-      <h1 class="text-3xl font-bold tracking-tight text-heading sm:text-4xl">{title}</h1>
-
-
+  <div class="release-page mx-auto max-w-6xl px-5 py-10 sm:px-8 lg:py-14">
+    <header class="release-page-header release-index-header">
+      <div>
+        <h1 class="text-3xl font-bold tracking-tight text-heading sm:text-4xl">{title}</h1>
+        <p class="mt-4 max-w-2xl text-muted">{description}</p>
+      </div>
+      <a class="release-guide-link" href={path('/installation/#updates')}>
+        <BookOpen size={16} aria-hidden="true"/>
+        <span>{en ? 'Update guide' : '更新指南'}</span>
+        <ArrowRight size={16} aria-hidden="true"/>
+      </a>
     </header>
-    <p class="mb-6 text-sm text-muted">{en ? `Page ${pageNumber} of ${totalPages}` : `第 ${pageNumber} / ${totalPages} 页`}</p>
-
     <ChangelogAccordion entries={entries} lang={lang} client:load/>
-    <noscript>{entries.map(entry => <section class="mb-6 rounded-2xl border border-line p-6"><h2 class="mb-5 text-xl font-semibold">v{entry.version}</h2><ChangelogBody entry={entry} lang={lang}/></section>)}</noscript>
-
-    <nav aria-label={en ? 'Changelog pages' : '更新日志分页'} class="mt-8 flex flex-wrap items-center justify-between gap-4">
-      {pageNumber > 1 ? <Button text={en ? 'Newer updates' : '较新的更新'} href={pagePath(pageNumber - 1)}/> : <span/>}
-      {pageNumber < totalPages && <Button text={en ? 'Older updates' : '更早的更新'} href={pagePath(pageNumber + 1)} icon="chevron-right"/>}
+    <noscript>{entries.map(entry => <section class="release-card p-6"><h2 class="mb-5 text-2xl font-semibold">v{entry.version}</h2><ChangelogBody entry={entry} lang={lang}/></section>)}</noscript>
+    <nav aria-label={en ? 'Changelog pages' : '更新日志分页'} class="release-pagination">
+      {pageNumber > 1 ? <a class="release-page-link" href={pagePath(pageNumber - 1)} aria-label={en ? 'Newer updates' : '较新的更新'}>←</a> : <span class="release-page-link opacity-30" aria-hidden="true">←</span>}
+      <div class="flex flex-wrap justify-center gap-1">{Array.from({length: totalPages}, (_, i) => i + 1).map(n => <a class="release-page-link" href={pagePath(n)} aria-current={n === pageNumber ? 'page' : undefined} aria-label={en ? `Page ${n}` : `第 ${n} 页`}>{n}</a>)}</div>
+      {pageNumber < totalPages ? <a class="release-page-link" href={pagePath(pageNumber + 1)} aria-label={en ? 'Older updates' : '更早的更新'}>→</a> : <span class="release-page-link opacity-30" aria-hidden="true">→</span>}
     </nav>
   </div>
 </Layout>

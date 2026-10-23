@@ -1,7 +1,8 @@
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion';
-import { Badge } from './ui/badge';
 import ChangeBadge from './ChangeBadge';
 import type { ChangeType } from '~/lib/change-types';
+import { Badge } from './ui/badge';
+import { ArrowUpRight } from 'lucide-react';
 import type { Locale } from '~/lib/i18n';
 
 export interface ChangelogEntry {
@@ -11,37 +12,47 @@ export interface ChangelogEntry {
   dateLabel: string;
   latest: boolean;
   introduction: string[];
-  counts: [ChangeType, number][];
   groups: {title: string; items: {html: string; type: ChangeType}[]}[];
 }
 
-export function ChangelogBody({entry, lang}: {entry: ChangelogEntry; lang: Locale}) {
-  return <div>
-    {entry.introduction.map((html, i) => <p key={i} className="help-copy mb-5 text-sm!" dangerouslySetInnerHTML={{__html: html}}/>)}
-    {entry.groups.map((group, i) => <section key={i} className="border-t border-line py-6 last:pb-0">
-      <h4 className="mb-4 text-base font-semibold text-heading">{group.title}</h4>
-      <ul className="space-y-4">{group.items.map((item, j) => <li key={j} className="changelog-entry flex items-start gap-3">
-        <ChangeBadge type={item.type} lang={lang}/>
-        <span className="help-copy min-w-0 flex-1 text-sm! leading-7!" dangerouslySetInnerHTML={{__html:item.html}}/>
-      </li>)}</ul>
+export function ChangelogBody({entry, lang, headingLevel = 3}: {entry: ChangelogEntry; lang: Locale; headingLevel?: 2 | 3}) {
+  const Heading = headingLevel === 2 ? 'h2' : 'h3';
+  return <div className="release-body">
+    {entry.introduction.length > 0 && <div className="release-intro">{entry.introduction.map((html, i) => <p key={i} dangerouslySetInnerHTML={{__html: html}}/>)}</div>}
+    {entry.groups.map((group, i) => <section key={i} id={`${entry.id}-section-${i}`} className="release-section">
+      <Heading className="release-section-title">{group.title}</Heading>
+      <ul className="release-items">{group.items.map((item, j) => <li key={j}><ChangeBadge type={item.type} lang={lang}/><span dangerouslySetInnerHTML={{__html:item.html}}/></li>)}</ul>
     </section>)}
   </div>;
 }
 
 export default function ChangelogAccordion({entries, lang}: {entries: ChangelogEntry[]; lang: Locale}) {
-  return <Accordion type="multiple" defaultValue={entries.filter(entry => entry.latest).map(entry => entry.version)} className="space-y-4">
-    {entries.map(entry => <AccordionItem key={entry.version} value={entry.version} id={entry.id} className="rounded-2xl border border-line bg-card/60 px-5 backdrop-blur-sm last:border-b sm:px-8">
-      <AccordionTrigger className="items-center py-6 hover:no-underline" aria-label={`${lang === 'en' ? 'Version' : '版本'} ${entry.version}`}>
-        <span className="flex min-w-0 flex-1 flex-col gap-3">
-          <span className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <span className="text-xl font-semibold text-heading">v{entry.version}</span>
-            {entry.latest && <Badge className="bg-primary/10 text-primary dark:text-blue-300">{lang === 'en' ? 'Latest' : '最新版本'}</Badge>}
-            {entry.date ? <time dateTime={entry.date} className="text-xs font-normal text-muted sm:ml-auto">{entry.dateLabel}</time> : <span className="text-xs font-normal text-muted">{entry.dateLabel}</span>}
+  const countsFor = (entry: ChangelogEntry) => {
+    const counts = new Map<ChangeType, number>();
+    entry.groups.forEach(group => group.items.forEach(item => counts.set(item.type, (counts.get(item.type) ?? 0) + 1)));
+    return [...counts];
+  };
+  const en = lang === 'en';
+  return <Accordion type="multiple" defaultValue={entries.slice(0, 1).map(entry => entry.version)} className="release-list">
+    {entries.map(entry => <AccordionItem key={entry.version} value={entry.version} id={entry.id} className="release-card">
+      <AccordionTrigger className="release-trigger" aria-label={`${en ? 'Version' : '版本'} ${entry.version}`}>
+        <span className="min-w-0 flex-1">
+          <span className="release-version-row flex flex-wrap items-center gap-x-3 gap-y-2">
+            <span className="release-version-number text-2xl font-semibold tracking-tight text-heading">v{entry.version}</span>
+            {entry.latest && <Badge className="border-primary/15 bg-primary/10 text-primary dark:text-blue-300">{en ? 'Latest' : '最新版本'}</Badge>}
           </span>
-          <span className="flex flex-wrap gap-2">{entry.counts.map(([type, count]) => <ChangeBadge key={type} type={type} count={count} lang={lang}/>)}</span>
+          <span className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm font-normal text-muted">
+            {entry.date ? <time dateTime={entry.date}>{entry.dateLabel}</time> : <span>{entry.dateLabel}</span>}
+            <span aria-hidden="true">·</span>
+            <span>{entry.groups.reduce((sum, group) => sum + group.items.length, 0)} {en ? 'updates' : '项更新'}</span>
+          </span>
+          <span className="mt-3 flex flex-wrap gap-2">{countsFor(entry).map(([type, count]) => <ChangeBadge key={type} type={type} count={count} lang={lang}/>)}</span>
         </span>
       </AccordionTrigger>
-      <AccordionContent className="pb-7"><ChangelogBody entry={entry} lang={lang}/></AccordionContent>
+      <AccordionContent className="release-content">
+        <ChangelogBody entry={entry} lang={lang}/>
+        <a href={`/changelog/${entry.version}/`} className="release-permalink">{en ? 'View version details' : '查看版本详情'}<ArrowUpRight size={16} aria-hidden="true"/></a>
+      </AccordionContent>
     </AccordionItem>)}
   </Accordion>;
 }

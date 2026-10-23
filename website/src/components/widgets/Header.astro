@@ -1,20 +1,32 @@
 ---
 import { localeOf, translator, localizedPath } from '~/lib/i18n';
+import LanguageLink from '~/components/LanguageLink';
+import ThemeToggle from '~/components/ThemeToggle';
+import RepositoryLink from '~/components/RepositoryLink';
 const lang = localeOf(Astro.url.pathname);
 const t = translator(lang);
-
-import LanguageLink from '~/components/LanguageLink';
-import ThemeToggle from "~/components/ThemeToggle";
-import RepositoryLink from "~/components/RepositoryLink";
+const pathname = Astro.url.pathname.replace(/^\/en(?=\/|$)/, '') || '/';
+const links = [
+  {href: '/#features', label: lang === 'en' ? 'Features' : '功能', active: pathname.startsWith('/features')},
+  {href: '/#agent', label: t('Agent 联动'), active: pathname.startsWith('/agent')},
+  {href: '/#download', label: t('下载'), active: pathname.startsWith('/installation')},
+  {href: '/guide/', label: t('使用指南'), active: pathname.startsWith('/guide')},
+  {href: '/changelog/', label: lang === 'en' ? 'Changelog' : '更新日志', active: pathname.startsWith('/changelog')},
+];
 ---
 <header class="site-header sticky top-0 z-30 border-b">
-  <div class="flex items-center justify-between mx-auto max-w-6xl flex-wrap gap-y-2 px-5 py-3 sm:px-8">
-    <div class="flex items-center w-auto flex-1"><a href={localizedPath("/", lang)} class="flex items-center gap-2.5 text-xl font-bold tracking-tight" aria-label={t("LucidDesk 首页")}><img src="/assets/app-icon.png" width="34" height="34" alt="">LucidDesk</a></div>
-    <nav class="flex items-center order-3 w-full justify-center border-t border-line pt-1 md:order-none md:w-auto md:border-0 md:pt-0" aria-label={t("主导航")}><ul class="flex flex-wrap justify-center gap-x-4 gap-y-2 py-3 text-xs sm:text-sm"><li><a href={localizedPath("/#features", lang)}>{lang === "en" ? "Features" : "功能"}</a></li><li><a href={localizedPath("/#agent", lang)}>{t("Agent 联动")}</a></li><li><a href={localizedPath("/#download", lang)}>{t("下载")}</a></li><li><a href={localizedPath("/guide/", lang)}>{t("使用指南")}</a></li><li><a href={localizedPath("/changelog/", lang)}>{lang === "en" ? "Changelog" : "更新日志"}</a></li></ul></nav>
-    <div class="header-tools flex w-auto items-center justify-end gap-3 md:flex-1 md:pl-4">
-      <RepositoryLink lang={lang} className="hidden xl:inline-flex" />
-      <span class="hidden h-4 w-px bg-border/70 xl:block" aria-hidden="true"></span>
-      <div class="flex items-center gap-1.5"><LanguageLink lang={lang}/><ThemeToggle lang={lang} client:load /></div>
+  <div class="site-header-inner">
+    <a href={localizedPath('/', lang)} class="site-brand" aria-label={t('LucidDesk 首页')}>
+      <img src="/assets/app-icon.png" width="32" height="32" alt=""/>LucidDesk
+    </a>
+    <nav class="site-nav" aria-label={t('主导航')}>
+      <ul>{links.map(link => <li><a href={localizedPath(link.href, lang)} aria-current={link.active ? 'page' : undefined}>{link.label}</a></li>)}</ul>
+    </nav>
+    <div class="header-tools">
+      <RepositoryLink lang={lang} compact className="header-repository"/>
+      <span class="header-tool-divider" aria-hidden="true"></span>
+      <LanguageLink lang={lang}/>
+      <ThemeToggle lang={lang} client:load/>
     </div>
   </div>
 </header>
