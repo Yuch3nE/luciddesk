@@ -15,6 +15,7 @@ const anchors: Record<string, string> = {
   '文件预览': 'preview', 'File preview': 'preview',
   '外观设置': 'organize', 'Theme, materials and appearance': 'organize',
   '设置导航': 'settings', 'Settings and scope': 'settings',
+  'Agent 与命令行': 'agent', 'Agents and the command line': 'agent',
   '数据与备份': 'backup', 'Backup and restore': 'backup',
   '常见问题': 'troubleshooting', 'Troubleshooting': 'troubleshooting',
   '字体': 'fonts', 'Fonts and language': 'fonts',

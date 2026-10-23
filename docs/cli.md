@@ -1,6 +1,59 @@
 # CLI 使用
 
-`luciddesk-cli.exe` 查询并整理正在运行的 LucidDesk。先启动同一版本主程序；不自动启动应用，不创建或直接打开数据库。
+[English quick start](#english-quick-start)
+
+使用安装目录中的 `luciddesk-cli.exe` 控制正在运行的 LucidDesk。无需安装 Rust，也无需编译。主程序、CLI 和 Skill 应来自同一套发布包；命令不会替你启动主程序。
+
+本文以 0.22.2 及后续开发版本为准。**面板独立图标设置、CLI 备份/导出/恢复尚未发布**；先用 `capabilities --json` 确认当前程序支持，版本号相同也不代表开发构建功能相同。
+
+## 先确认连接
+
+在程序安装目录打开 PowerShell：
+
+```powershell
+.\luciddesk-cli.exe status --json
+.\luciddesk-cli.exe capabilities --json
+.\luciddesk-cli.exe pane list --json
+```
+
+无法连接时，先启动主程序，并确认“设置 → 通用 → Agent 与 CLI”中的控制开关已开启。安装器不会把 CLI 加入 PATH；在其他目录运行时使用完整路径。
+
+## 预览一次修改
+
+下面以重命名面板为例，把 `1` 换成 `pane list` 返回的面板 ID：
+
+```powershell
+$preview = .\luciddesk-cli.exe pane update --id 1 --title "工作" --dry-run --json | ConvertFrom-Json
+$preview.data.diff
+```
+
+检查改动符合预期，且 `ok` 为 `true`、`next_step.action` 为 `review_then_apply` 后，提交这份预览：
+
+```powershell
+$applyArgs = [string[]]$preview.data.next_step.args
+$result = .\luciddesk-cli.exe @applyArgs | ConvertFrom-Json
+$result
+```
+
+若结果仍为 `pending`，用 `request get --id` 查询 `$result.request_id`。超时或连接中断也先查询原回执，不要重跑修改命令。**不带 `--dry-run` 的修改命令会直接预览并提交。**
+
+| 想做什么 | 命令入口 |
+| --- | --- |
+| 查看面板、文件归属 | `pane list`、`pane get`、`item list` |
+| 修改显示、排序与布局 | `pane update`、`pane sort`、`pane fit`、`pane snap` |
+| 合并或切换标签 | `tab merge`、`tab select` |
+| 浏览文件夹、搜索 | `folder get`、`folder navigate`、`search query` |
+| 修改设置、登录自启 | `settings get/update`、`startup get/set` |
+| 创建、导出或恢复备份（未发布） | `backup list/create/export/restore` |
+| 查看某条命令的参数 | `help 资源 命令`，例如 `help backup export` |
+
+## English quick start
+
+Use the `luciddesk-cli.exe` shipped with your running LucidDesk installation. No Rust installation or build is needed. Open PowerShell in the application directory, then run `.\luciddesk-cli.exe status --json`, `capabilities --json` and `help`. If connection fails, check that the app is running and command-line control is enabled in General settings. The installer does not add the CLI to PATH.
+
+Use `--dry-run --json` on a mutation, review its diff, then execute the returned `data.next_step.args` array to apply that exact preview. Without `--dry-run`, mutation shortcuts preview and submit immediately. Keep the returned request ID and use `request get --id ID --json` to check pending or uncertain results before retrying.
+
+Per-pane icon controls and `backup list/create/export/restore` are **unreleased**; check capabilities before use. Backup exports require a new absolute destination path. Restore replaces settings and layout, validates and freezes the selected backup at preview, and saves a pre-restore copy. It does not restore your original files. Keep `rollback_path` if recovery fails; do not repeatedly submit a restore. See the [online Agent guide](https://luciddesk.bbkingdom365.com/agent/) for general setup; the detailed command reference below is in Chinese.
 
 ## 帮助与命令发现
 
@@ -35,20 +88,7 @@ CLI 与主程序继续使用同一发布版本，帮助标题显示 CLI 版本�
 
 帮助只接受命令主题和可选的 `--json`，不要同时传入 `--input` 或修改参数。无参数、`--help` 和 `-h` 均显示总览。参数错误保留 `INVALID_REQUEST` 和原退出码，并提示帮助入口；普通文本模式下，连接失败、状态冲突和超时另附下一步操作建议。
 
-## 构建与运行
-
-```powershell
-cargo build -p luciddesk -p luciddesk-cli -p luciddesk-explorer --locked --offline
-.\target\debug\luciddesk.exe
-.\target\debug\luciddesk-cli.exe status --json
-.\target\debug\luciddesk-cli.exe capabilities --json
-.\target\debug\luciddesk-cli.exe workspace get --json
-.\target\debug\luciddesk-cli.exe pane list --json
-.\target\debug\luciddesk-cli.exe pane get --id 1 --json
-.\target\debug\luciddesk-cli.exe item list --pane 1 --json
-.\target\debug\luciddesk-cli.exe item list --unassigned --json
-.\target\debug\luciddesk-cli.exe schema --json
-```
+## 输出与后续操作
 
 普通输出为格式化 JSON 数据，`--json` 输出单行 JSON 响应信封，适合脚本；错误码同时反映在退出码中。`schema` 是离线本地命令，直接输出协议信封 JSON Schema。`--help`、`--version` 也不需要主程序。
 
@@ -80,9 +120,21 @@ CLI 主要面向 Agent。调用时应始终显式传 `--json`，按 JSON 字段�
 
 当前支持计划式写入，`capabilities` 返回 `writes:true`、`plans:true`、`concurrency_tokens:true`。单项写入快捷命令已开放；发行包附带配套 Skill，`skill show --json` 可离线读取。
 
-本地管道限制当前用户，核验对端用户与会话，并拒绝远程连接。独立 CLI 不链接桌面存储模块。查询队列只读访问 UI 状态，不调用保存、桌面刷新或备份维护；应用自己的既有后台任务仍可能独立运行。
+CLI 只连接本机当前用户会话中的应用。查询不会修改工作区；应用自己的自动备份等后台任务仍可能运行。
 
-当前通过 Cargo 构建运行，安装包与便携包的 CLI 分发属于后续交付。
+需要从源码构建时，参阅[开发构建指南](https://github.com/Yuch3nE/luciddesk/blob/main/docs/development/build.md)。
+
+## 面板显示
+
+以下选项属于当前开发版本（尚未发布）。先查询 `capabilities --json`，确认 `pane_display` 支持对应字段。
+
+```powershell
+luciddesk-cli pane update --id 1 --list-view false --icon-only true --icon-size medium --dry-run --json
+```
+
+`--list-view true` 切换为列表；`false` 切换为图标。`--icon-only` 控制是否隐藏文件名，`--icon-size` 接受 `small`、`medium`、`large`。这些设置只影响指定普通面板或文件夹面板，包括未激活的标签。列表视图保留图标偏好，切回图标时生效；省略的字段保持不变。锁定面板必须先解锁，或显式传入 `--locked false`。
+
+`--dry-run` 仅预览；确认后按返回的 `next_step.args` 提交。新建面板默认值仍由 `settings update` 中的 `panel_defaults.icon_only` / `panel_defaults.icon_size` 修改，不影响已有面板。需要适配大小时，可在同一计划中先更新显示方式，再执行 `pane.fit` 或 `folder.fit`。
 
 ## 整理计划：查询 → 预览 → 应用
 
@@ -371,3 +423,17 @@ luciddesk-cli item position --pane 1 --item-id ITEM_A --x 180.5 --y 90 --dry-run
 上述命令各自仅预览；先提交排列模式变更，再定位，或组合为同一计划。`item.position` 必须指定 `pane_id`、`item_id`，以及与当前模式一致的一组坐标：网格用 `column/row`（0..10000 的整数），自由排列用 `x/y`（内容区相对 DIP，0..1000000）。必须先关闭自动排列；图标须已属于该面板，跨面板先 `item.assign`。网格占用格返回错误，不隐式交换或挤动其他图标；自由排列允许重叠。网格交换可在同一计划中经一个空格中转。
 
 读取 `capabilities.pane_sort_columns`、`pane_arrangement`、`item_position` 确认运行中应用支持扩展；协议版本保持 1，旧请求语义不变。预览、冲突保护、幂等回执及无变化不写库沿用统一计划逻辑。
+
+
+## 配置备份、导出与恢复（未发布）
+
+- `backup list --json`：列出备份目录、记录和忙碌状态。
+- `backup create --dry-run --json`：预览创建手动备份，保存到应用备份目录。
+- `backup export --path C:\Backups\export.db --dry-run --json`：导出当前设置与布局；可用 `--source` 指定已有备份。
+- `backup restore --path C:\Backups\saved.db --dry-run --json`：校验并预览恢复所选备份。
+
+这些操作各自使用单独计划。查看预览后提交返回的 `next_step.args`，保留请求 ID，通过 `request get` 等待原结果 `operation_status` 结束。成功创建/导出返回 `path`，恢复返回 `rollback_path`。备份不包含用户文件或插件独立设置。
+
+导出路径必须是绝对路径，父目录必须存在，拒绝覆盖已有文件。恢复预览把备份固定到私有临时副本，校验完整性与兼容性，支持最大 64 MiB 的独立备份文件；不会在提交时重新读取可能已变化的源文件。过期或被淘汰的预览会释放副本。
+
+恢复前先保存当前配置；准备期间发生新修改或存在待保存布局时停止恢复。存储失败不额外用旧快照覆盖当前数据；恢复后加载失败才尝试回滚。`commit_status:rolled_back` 表示恢复失败但已回退，`unknown` 或 `rollback_error` 需要人工检查并保留回退文件，不能自动重新恢复。超时不等于取消，应先查原回执。若备份中关闭了 CLI，恢复后需在界面核验，不能绕过访问限制。

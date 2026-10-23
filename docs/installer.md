@@ -1,6 +1,17 @@
-# 安装版
+# 安装与更新
+
+下载请到 [GitHub Releases](https://github.com/Yuch3nE/luciddesk/releases)，选择对应版本的附件。安装后从[使用手册](https://luciddesk.bbkingdom365.com/guide/)开始。
 
 默认发布 EXE 安装包，另支持从源码构建 MSI。日常使用推荐 EXE，可在向导中选择当前用户或所有用户；MSI 适合使用 Windows Installer 部署的场景。
+
+## 更新前先做什么
+
+1. 在“设置 → 备份与恢复”导出一份配置备份。
+2. 从托盘退出 LucidDesk，关闭设置窗口不等于退出。
+3. 使用与原来相同的安装格式和范围更新；不要只替换单个 EXE 或 DLL。
+4. 启动后检查版本、面板和文件夹路径。原始文件需要另行备份。
+
+程序只检查更新并打开下载页面，不会自动安装新版。标有“未发布”的文档功能不一定包含在下载的正式版中。
 
 ## EXE 安装包
 
@@ -48,9 +59,12 @@ msiexec.exe /i "LucidDesk-<版本>-windows-x64.msi" INSTALLFOLDER="D:\Apps\Lucid
 
 ## CLI 与 Agent Skill
 
-包内包含同版本的 `luciddesk-cli.exe`、`cli.md`、`protocol.schema.json` 和 `skills/luciddesk-control/SKILL.md`。主程序运行后，在程序目录执行 `./luciddesk-cli.exe status --json` 验证连接。`./luciddesk-cli.exe skill show` 离线显示配套 Skill，Agent 可使用 `skill show --json` 获取结构化结果。
+主程序旁附带 `luciddesk-cli.exe` 和完整的 `skills/luciddesk-control` 文件夹。使用同一版本的主程序、CLI 和 Skill；更新时一起替换，不要混用。
 
-需要让 Agent 自动发现 Skill 时，将完整 `skills/luciddesk-control` 文件夹复制到该 Agent 配置的技能目录；若已有同名技能，先比较内容，保留本地定制。安装程序不会修改 Agent 的配置、技能目录或系统 PATH。程序移动或升级后，使用新目录中的 CLI 与 Skill。操作命令和恢复规则见 `cli.md`。
+不使用 Agent 或脚本时，无需配置 CLI。需要连接 Agent 时，在“设置 → 通用 → Agent 与 CLI”复制 Skill 安装提示词，交给你使用的 Agent；复制不会自动安装或授权整理。安装器不会修改 Agent 的目录或系统 PATH。
+
+在程序目录打开 PowerShell，运行 `.\luciddesk-cli.exe status --json` 可检查连接，`help` 可查看命令。详细用法见随包 `cli.md` 或[在线 Agent 指南](https://luciddesk.bbkingdom365.com/agent/)。CLI 备份、导出与恢复属于未发布功能，使用前检查 `capabilities --json`。
+
 
 ## EXE 安装内容
 

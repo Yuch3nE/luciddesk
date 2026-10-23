@@ -8,6 +8,15 @@ Exit the app before upgrading a portable installation and preserve its `data` fo
 
 ## Unreleased
 
+
+### CLI
+
+- Add CLI backup listing, creation, no-clobber export and restore with frozen previews, pre-restore snapshots, concurrency protection and rollback.
+
+- Invalidate stale CLI previews after same-count folder content changes, and stop extra sort-preview retries after the deadline.
+
+- Add per-pane icon/list view, icon-only mode, and small/medium/large icon controls for desktop and folder panes, with capability discovery, offline help, and Agent guidance.
+
 ### Settings and appearance
 
 - Desktop panels support individual icon-only mode and icon size. Hover to read hidden filenames; settings change defaults for newly created panels only.

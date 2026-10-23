@@ -90,6 +90,8 @@ Windows 10 的用户反馈不代表每个版本都完成验收；ARM64、远程�
 
 ## CLI 与 Agent Skill
 
-包内包含同版本的 `luciddesk-cli.exe`、`cli.md`、`protocol.schema.json` 和 `skills/luciddesk-control/SKILL.md`。主程序运行后，在程序目录执行 `./luciddesk-cli.exe status --json` 验证连接。`./luciddesk-cli.exe skill show` 离线显示配套 Skill，Agent 可使用 `skill show --json` 获取结构化结果。
+主程序旁附带 `luciddesk-cli.exe` 和完整的 `skills/luciddesk-control` 文件夹。使用同一版本的主程序、CLI 和 Skill；更新时一起替换，不要混用。
 
-需要让 Agent 自动发现 Skill 时，将完整 `skills/luciddesk-control` 文件夹复制到该 Agent 配置的技能目录；若已有同名技能，先比较内容，保留本地定制。安装程序不会修改 Agent 的配置、技能目录或系统 PATH。程序移动或升级后，使用新目录中的 CLI 与 Skill。操作命令和恢复规则见 `cli.md`。
+不使用 Agent 或脚本时，无需配置 CLI。需要连接 Agent 时，在“设置 → 通用 → Agent 与 CLI”复制 Skill 安装提示词，交给你使用的 Agent；复制不会自动安装或授权整理。安装器不会修改 Agent 的目录或系统 PATH。
+
+在程序目录打开 PowerShell，运行 `.\luciddesk-cli.exe status --json` 可检查连接，`help` 可查看命令。详细用法见随包 `cli.md` 或[在线 Agent 指南](https://luciddesk.bbkingdom365.com/agent/)。CLI 备份、导出与恢复属于未发布功能，使用前检查 `capabilities --json`。

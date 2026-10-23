@@ -127,13 +127,21 @@ Manage backups lets you restore, export or delete saved snapshots. Before moving
 
 Use Open configuration folder from the tray to find the active location. Backups are in its `backups` folder. Installed versions normally use `%LOCALAPPDATA%\LucidDesk`; portable versions use `data` beside the app.
 
-Advanced options in Backup & restore lets you export configuration or open its folder. Defaults keep ten automatic snapshots and five pre-restore snapshots. Manual backups are not automatically removed.
+Advanced options in Backup & restore lets you export configuration or open its folder. Automatic backups keep ten snapshots by default; this is configurable. Restoring through the UI keeps five pre-restore snapshots by default. Manage manual backups and exported copies yourself.
 
 </details>
 
 ### Update LucidDesk
 
 Back up first, then exit the old app and install the update. For portable updates, preserve `data` and `portable`. Check for updates in About; LucidDesk does not automatically install or restart.
+
+## Agents and the command line
+
+To connect an agent, copy the Skill installation prompt from Settings → General → Agent & CLI and give it to your chosen agent. Copying the prompt does not install anything or change your desktop. Have the agent read the current layout and preview the changes you want before applying them.
+
+**Backup commands · Unreleased:** the CLI can create, export and restore backups. Exports do not overwrite existing files. Restoring replaces current configuration and first saves a pre-restore backup. See the [CLI guide](cli.md#english-quick-start). You can continue using the Backup & restore settings page without an agent or command line.
+
+Your external agent may receive queried file names, paths and layout information. Choose its service according to your privacy needs. Disabling command-line control blocks subsequent connections but does not undo submitted operations.
 
 ## Keyboard and file operations
 

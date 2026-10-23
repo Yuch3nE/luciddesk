@@ -39,7 +39,7 @@ The companion CLI and Skill let an external agent help organize icons and panel 
 
 **Current release: [v0.22.2](CHANGELOG.en.md)** · Better desktop restoration and quiet update checks.
 
-See [Unreleased changes](CHANGELOG.en.md#unreleased) for per-panel icon settings, settings layout and light palette improvements, and backup/restore safeguards in current source builds. These are not yet included in the release above.
+See [Unreleased changes](CHANGELOG.en.md#unreleased) for per-panel icon settings, settings layout and light palette improvements, backup/restore safeguards, and CLI backup, export and restore commands in current source builds. These are not yet included in the release above.
 
 <details>
 <summary>On this page</summary>
@@ -88,7 +88,7 @@ Use the desktop panel context menu to toggle Auto arrange icons and Align icons 
 > [!NOTE]
 > **Desktop panels do not move your files.** Dragging icons into a panel changes how they are organized on the desktop. Drag them back to remove them from the panel; closing a panel does not delete the original files. File menu commands such as delete, rename and cut, along with dropping or pasting into folder panels, operate on real files.
 
-Default installers and ZIPs exclude plugins, and the plugin list remains hidden in Settings while under development. See the [plugin guide](docs/development/plugins.md) (Chinese) for optional builds and plugin-owned configuration.
+Plugins are not required for everyday use. Default installers and ZIPs do not include optional plugins.
 
 Managed shortcuts recreated at the same path within five minutes recover their group and position in the current desktop session. Retention is memory-only and does not survive restart. Keep your existing settings and layouts when upgrading: keep the installation format and scope, or preserve `data` for portable builds. Back up before upgrading.
 

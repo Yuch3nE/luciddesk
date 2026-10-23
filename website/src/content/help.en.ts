@@ -59,7 +59,12 @@ export const helpPagesEn: HelpPage[] = [
       {
         "id": "control",
         "title": "Keep changes reviewable",
-        "html": "<ul><li><strong>Read first:</strong> build plans from the current workspace, not old panel identifiers.</li><li><strong>Preview first:</strong> a preview is not an applied change. Review it before proceeding.</li><li><strong>Refresh after conflicts:</strong> manual changes can invalidate a plan. Read the workspace and preview again.</li><li><strong>Verify uncertain results:</strong> after a timeout or disconnection, check status and receipts before retrying.</li></ul><p>Disabling CLI control rejects new online queries, previews, and submissions. It does not undo completed changes. Re-enable it in app settings to reconnect.</p>"
+        "html": "<ul><li><strong>Read first:</strong> build plans from the current workspace, not old panel identifiers.</li><li><strong>Preview first:</strong> a preview is not an applied change. Review it before proceeding.</li><li><strong>Refresh after conflicts:</strong> manual changes can invalidate a plan. Read the workspace and preview again.</li><li><strong>Verify uncertain results:</strong> after a timeout or disconnection, check status and receipts before retrying.</li></ul><p>Disabling CLI control rejects new online queries, previews, and submissions. It does not undo submitted operations. Re-enable it in app settings to reconnect.</p>"
+      },
+      {
+        "id": "backup-cli",
+        "title": "Backup, export and restore · Unreleased",
+        "html": "<p>Later development builds let your agent create, export and restore configuration backups. Release 0.22.2 does not include these commands; check the running app’s capabilities first.</p><p>Exports do not overwrite files. Restore replaces current settings and layout and saves a pre-restore copy first. Backups do not include your original files. Review the selected backup, and check the original operation after a timeout instead of submitting it again.</p><p>You can also use Settings → Backup &amp; restore without an agent. See the <a href=\"https://github.com/Yuch3nE/luciddesk/blob/main/docs/cli.md#english-quick-start\">CLI quick start</a>.</p>"
       },
       {
         "id": "verify",
@@ -77,7 +82,7 @@ export const helpPagesEn: HelpPage[] = [
     "slug": "privacy",
     "label": "Privacy",
     "title": "Understand how your desktop data is used.",
-    "description": "A reader-friendly summary of the app privacy policy dated October 20, 2026. Maintainer: Yuchen95.",
+    "description": "A reader-friendly summary of the app privacy policy dated October 24, 2026. Maintainer: Yuchen95.",
     "sections": [
       {
         "id": "scope",
@@ -110,9 +115,14 @@ export const helpPagesEn: HelpPage[] = [
         "html": "<p>The app may write local error logs and keep a limited set of recent diagnostics during a session. Higher log levels or tracing record more detail. Logs may include error locations, stack traces, and personal file paths. They are not sent automatically.</p><p>Issues, screenshots, settings, and logs that you submit may be public. Remove usernames, personal paths, sensitive filenames, and anything else you do not want to share.</p>"
       },
       {
+        "id": "agents",
+        "title": "Information shared with external agents",
+        "html": "<p>The CLI connects to LucidDesk locally. Your external agent may receive file names, paths, layouts and settings and process them through its provider according to its own configuration. LucidDesk does not include an AI chat service. Installing the Skill does not automatically connect to a service or authorize changes.</p><p>Disabling command-line control blocks subsequent access; it cannot retrieve already shared information. Backups and exports may also contain private paths. Review them before sharing or uploading.</p>"
+      },
+      {
         "id": "delete",
         "title": "Retention, backups, and deletion",
-        "html": "<p>You control local data. Automatic backups keep the latest 10 snapshots by default; exported backups remain wherever you saved them. Exit the app before deleting data directories and save anything you want to keep first.</p><ul><li><strong>EXE installer:</strong> uninstall keeps settings by default. Clear the keep-settings option to remove the current account’s default data directory.</li><li><strong>MSI installer:</strong> uninstall retains user settings; remove the default data directory yourself for full cleanup.</li><li><strong>Portable or custom locations:</strong> clean up portable data, custom directories, other users’ data, and exported backups separately.</li></ul><p>The uninstaller does not remove all Windows history, caches, system backups, or data held by third-party services.</p>"
+        "html": "<p>You control local data. Automatic backups keep the latest 10 snapshots by default, configurable in settings. You manage manual backups and exported copies. Exit the app before deleting data directories and save anything you want to keep first.</p><ul><li><strong>EXE installer:</strong> uninstall keeps settings by default. Clear the keep-settings option to remove the current account’s default data directory.</li><li><strong>MSI installer:</strong> uninstall retains user settings; remove the default data directory yourself for full cleanup.</li><li><strong>Portable or custom locations:</strong> clean up portable data, custom directories, other users’ data, and exported backups separately.</li></ul><p>The uninstaller does not remove all Windows history, caches, system backups, or data held by third-party services.</p>"
       },
       {
         "id": "website",
