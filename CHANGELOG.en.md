@@ -6,6 +6,27 @@ Current version: **0.22.2**. Features and fixes by release.
 
 Exit the app before upgrading a portable installation and preserve its `data` folder. See the [portable guide](docs/portable.md) (Chinese).
 
+## Unreleased
+
+### Settings and appearance
+
+- Desktop panels support individual icon-only mode and icon size. Hover to read hidden filenames; settings change defaults for newly created panels only.
+- Move language selection into General and reorganize font, folder panel, theme and material, panel layout, and backup pages. Group related options and label defaults that affect new panels only.
+- Improve material previews and appearance controls, plus light settings backgrounds, text contrast and control boundaries.
+- Improve resource release when closing settings and other windows, reducing accumulation from redundant input-method associations.
+
+### Backup and restore
+
+- Cancel a restore if configuration changes during preparation, preventing an older pre-restore snapshot from overwriting newer changes.
+- Avoid unnecessary rollback when backup validation fails; add verification that failed configuration writes preserve existing data.
+- Protect configuration, database and SQLite sidecar files during export, including filename case variants.
+- Group automatic backup controls and hide interval and retention options when disabled; consolidate manual actions, history and advanced options.
+
+### Website and maintenance
+
+- Redesign homepage feature layouts and product illustrations, including tabs, panel details and presentation colors.
+- Accept either case for README version badge labels in release-note validation.
+
 ## 0.22.2 · 2026-10-22
 
 Changes from the previous official release, **0.21.2**, to **0.22.2**. Existing settings, desktop layouts and backups remain compatible; no reconfiguration is required.

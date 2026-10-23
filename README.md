@@ -39,6 +39,8 @@ LucidDesk 是一款使用 Rust 开发的免费、开源 Windows 桌面整理工�
 
 **当前版本：[v0.22.2](CHANGELOG.md)** · 改善桌面隐藏与恢复，采用静默更新提示。
 
+源码中的后续改动见[未发布更新](CHANGELOG.md#未发布)：包含面板独立图标设置、设置页布局与浅色配色优化，以及备份恢复保护修复；尚未包含在上述正式版本中。
+
 <details>
 <summary>阅读目录</summary>
 
@@ -134,7 +136,7 @@ LucidDesk 是一款使用 Rust 开发的免费、开源 Windows 桌面整理工�
 | 文件搜索 | 安装并运行 Everything，在“设置 → Everything 搜索”中启用搜索面板 |
 | 空格预览 | 安装 PowerToys Peek 或 QuickLook，在“设置 → 文件预览”中选择程序并启用 |
 
-这些软件不包含在 LucidDesk 的任何发布包中。更多操作和快捷键见[使用说明](docs/usage.md)。
+这些软件不包含在 LucidDesk 的任何发布包中。更多操作和快捷键见[使用手册](docs/usage.md)。
 
 ### 🤖 CLI 与 Agent
 
@@ -189,13 +191,13 @@ EXE 与 DLL 必须来自同次构建。安装版卸载时默认勾选“保留�
 
 在“设置 → 备份与恢复”中可以打开配置目录、导出配置或恢复备份。备份只包含设置与布局，**不包含面板引用的原文件**；复制便携目录时，原文件也不会自动跟随。
 
-普通版的设置默认位于 `%LOCALAPPDATA%\LucidDesk`。从普通版改用便携版时，可通过备份与恢复转入配置。自定义数据位置和详细升级步骤见[便携版说明](docs/portable.md)与[使用说明](docs/usage.md)。
+普通版的设置默认位于 `%LOCALAPPDATA%\LucidDesk`。从普通版改用便携版时，可通过备份与恢复转入配置。自定义数据位置和详细升级步骤见[便携版说明](docs/portable.md)与[使用手册](docs/usage.md)。
 
 <a id="界面语言"></a>
 
 ## 🌐 界面语言
 
-支持简体中文、繁體中文、English、日本語、한국어、Deutsch 和 Русский。默认跟随 Windows 显示语言，其他语言回退到英语。在“设置 → 语言”中手动选择，立即生效。
+支持简体中文、繁體中文、English、日本語、한국어、Deutsch 和 Русский。默认跟随 Windows 显示语言，其他语言回退到英语。当前源码在“设置 → 通用”中选择界面语言，立即生效；0.22.2 正式版仍使用独立“语言”页。
 
 切换语言时原位更新界面，保留面板、项目选择和滚动位置；字体搜索词也会保留，候选字体按新语言在后台重新筛选。
 
@@ -302,7 +304,7 @@ MSI 使用 `ensure-wix.ps1` 准备工具后，加 `-InstallerFormat Msi`；`Both
 
 | 文档 | 内容 |
 | --- | --- |
-| [使用说明](docs/usage.md) | 面板操作、快捷键、外观与故障处理 |
+| [使用手册](docs/usage.md) | 面板操作、快捷键、外观与故障处理 |
 | [安装版](docs/installer.md) · [普通 ZIP](docs/package.md) · [便携版](docs/portable.md) | 安装、升级与配置保存 |
 | [更新记录](CHANGELOG.md) | 各版本的应用功能与修复 |
 | [CLI 使用说明](docs/cli.md) · [Agent 技能](skills/luciddesk-control/SKILL.md) | 命令、整理计划、预览与恢复 |

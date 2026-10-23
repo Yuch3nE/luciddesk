@@ -39,6 +39,8 @@ The companion CLI and Skill let an external agent help organize icons and panel 
 
 **Current release: [v0.22.2](CHANGELOG.en.md)** · Better desktop restoration and quiet update checks.
 
+See [Unreleased changes](CHANGELOG.en.md#unreleased) for per-panel icon settings, settings layout and light palette improvements, and backup/restore safeguards in current source builds. These are not yet included in the release above.
+
 <details>
 <summary>On this page</summary>
 
@@ -196,7 +198,7 @@ Use **Settings → Backup & restore** to export or restore your configuration. B
 
 ## 🌐 Languages
 
-The interface supports 简体中文, 繁體中文, English, 日本語, 한국어, Deutsch and Русский. It follows the Windows display language by default and falls back to English for unsupported languages. Choose a language in **Settings → Language**; it applies immediately.
+The interface supports 简体中文, 繁體中文, English, 日本語, 한국어, Deutsch and Русский. It follows the Windows display language by default and falls back to English for unsupported languages. Current source builds offer language selection in **Settings → General**; version 0.22.2 still has a separate Language page. Changes apply immediately.
 
 Language changes update open windows in place while preserving panels, item selection and scroll positions. Font search text is retained, and candidates are filtered for the new language in the background.
 
