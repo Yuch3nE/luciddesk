@@ -1,7 +1,7 @@
 //! Pane geometry shared by rendering, hit testing, dragging and resizing.
 use super::*;
 
-type GeometryKey = (usize, usize, u32, u32, bool, u64, u64, &'static str);
+type GeometryKey = (usize, usize, u32, u32, bool, u64, u64, &'static str, bool);
 #[derive(Clone, Default)]
 pub(super) struct GeometryCache {
     key: Option<GeometryKey>,
@@ -21,6 +21,7 @@ pub struct GroupModel {
     pub tabs: Vec<(PanelId, String)>,
     pub active_tab: PanelId,
     pub list_view: bool,
+    pub icon_display: luciddesk_core::IconDisplay,
     pub fixed_grid: bool,
     pub free_layout: bool,
     pub folder_sort: (u8, bool),
@@ -177,7 +178,7 @@ impl GroupModel {
     }
 
     fn icon_grid(&self, width: f32, height: f32) -> layout::Grid {
-        layout::desktop_grid(width, height, self.icon_size, self.options.grid_scale)
+        layout::desktop_grid(width, height, self.icon_size, self.options.grid_scale, self.icon_display)
     }
     pub(super) fn resize_cell(&self) -> (f32, f32) {
         if self.is_list() {
@@ -189,7 +190,7 @@ impl GroupModel {
 
     fn geometry(&self) -> std::cell::Ref<'_, GeometryCache> {
         let key = (self.items.as_ptr() as usize, self.items.len(), self.icon_size.to_bits(),
-            self.options.grid_scale.to_bits(), self.free_layout, fonts::revision(), assets::font_revision(), crate::i18n::default_font());
+            self.options.grid_scale.to_bits(), self.free_layout, fonts::revision(), assets::font_revision(), crate::i18n::default_font(), self.icon_display.icon_only);
         if self.geometry_cache.borrow().key != Some(key) {
             let grid = self.icon_grid(0.0, 0.0);
             let mut cached = GeometryCache { key: Some(key), columns: 1, ..Default::default() };
@@ -426,16 +427,26 @@ impl GroupModel {
                 height: grid.cell_height,
             };
         }
-        let height = theme::selection_height(
-            grid.icon_size,
-            label::scaled_content_height(
-                &self.items[index].label,
-                (grid.cell_width * scale).round() as u32,
-                (96.0 * scale).round() as u32,
-                grid.text_scale,
-            ) / scale,
-            grid.cell_height,
-        );
+        if self.icon_display.icon_only {
+            let inset = 2.0 * grid.text_scale;
+            return RectDip {
+                x: x + inset, y: y + inset,
+                width: grid.cell_width - inset * 2.0,
+                height: grid.cell_height - inset * 2.0,
+            };
+        }
+        let height = {
+            theme::selection_height(
+                grid.icon_size,
+                label::scaled_content_height(
+                    &self.items[index].label,
+                    (grid.cell_width * scale).round() as u32,
+                    (96.0 * scale).round() as u32,
+                    grid.text_scale,
+                ) / scale,
+                grid.cell_height,
+            )
+        };
         RectDip {
             x,
             y,

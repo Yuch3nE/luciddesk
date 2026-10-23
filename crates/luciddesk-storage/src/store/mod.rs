@@ -214,7 +214,28 @@ impl WorkspaceStore {
             panels.push(row?.into_panel()?);
         }
         drop(statement);
+        let icon_defaults = luciddesk_core::IconDisplay {
+            icon_only: self.preference("pane_icon_only")?.as_deref() == Some("true"),
+            size: self.preference("pane_icon_size")?.as_deref()
+                .and_then(luciddesk_core::IconSize::parse).unwrap_or(luciddesk_core::IconSize::Large),
+        };
+        // Freeze legacy global values before defaults can change.
+        let migration = self.connection.unchecked_transaction()?;
         for panel in &mut panels {
+            let key = format!("panel_icon_display:{}", panel.id().get());
+            let value = self.preference(&key)?;
+            let display = if let Some(value) = &value {
+                let (only, size) = value.split_once('|').ok_or_else(|| StoreError::InvalidData("invalid icon display".into()))?;
+                luciddesk_core::IconDisplay {
+                    icon_only: only.parse().map_err(|_| StoreError::InvalidData("invalid icon-only flag".into()))?,
+                    size: luciddesk_core::IconSize::parse(size).ok_or_else(|| StoreError::InvalidData("invalid icon size".into()))?,
+                }
+            } else { icon_defaults };
+            panel.set_icon_display(display);
+            if value.is_none() {
+                migration.execute("INSERT OR IGNORE INTO metadata(key,value) VALUES (?1,?2)",
+                    params![key, format!("{}|{}", display.icon_only, display.size.name())])?;
+            }
             let (theme, top, hide, kind): (String, bool, bool, String) =
                 self.connection.query_row(
                     "SELECT theme,always_on_top,auto_hide,kind FROM panels WHERE id=?1",
@@ -245,8 +266,10 @@ impl WorkspaceStore {
                 panel.set_list_view(view == "list");
             }
         }
+        migration.commit()?;
         let mut workspace = Workspace::from_panels(panels)
             .map_err(|error| StoreError::InvalidData(error.to_string()))?;
+        workspace.set_icon_defaults(icon_defaults);
         workspace.reconcile_desktop_items(load_desktop_items(&self.connection)?);
         let appearance = self.preference("appearance")?;
         if let Some(value) = appearance {
@@ -404,7 +427,18 @@ impl WorkspaceStore {
             }
         }
 
+        let defaults = workspace.icon_defaults();
+        for (key, value) in [("pane_icon_only", defaults.icon_only.to_string()), ("pane_icon_size", defaults.size.name().into())] {
+            transaction.execute(
+                "INSERT INTO metadata(key,value) VALUES (?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE value != excluded.value",
+                params![key, value],
+            )?;
+        }
         for panel in workspace.panels() {
+            transaction.execute(
+                "INSERT INTO metadata(key,value) VALUES (?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE value != excluded.value",
+                params![format!("panel_icon_display:{}", panel.id().get()), format!("{}|{}", panel.icon_display().icon_only, panel.icon_display().size.name())],
+            )?;
             let key = format!("panel_desktop_list:{}", panel.id().get());
             if panel.supports_tabs() && panel.list_view() {
                 transaction.prepare_cached("INSERT INTO metadata(key,value) VALUES (?1,'1') ON CONFLICT(key) DO UPDATE SET value='1' WHERE value != '1'")?.execute( [&key])?;
@@ -438,8 +472,9 @@ impl WorkspaceStore {
             if !live_panels.contains(&id) {
                 transaction.prepare_cached("DELETE FROM panels WHERE id=?1")?.execute( [id])?;
                 transaction.prepare_cached(
-                    "DELETE FROM metadata WHERE key IN (?1,?2,?3,?4,?5)",
+                    "DELETE FROM metadata WHERE key IN (?1,?2,?3,?4,?5,?6)",
                 )?.execute(params![
+                    format!("panel_icon_display:{id}"),
                     format!("panel_fixed_grid:{id}"),
                     format!("panel_free_layout:{id}"),
                     format!("panel_desktop_list:{id}"),
@@ -568,3 +603,39 @@ impl PersistedPanel {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod icon_display_tests {
+    use super::*;
+    use luciddesk_core::{IconDisplay, IconSize, Panel, PanelId, RectDip};
+
+    #[test]
+    fn legacy_icons_migrate_once_and_new_panels_inherit_only_current_defaults() {
+        let mut store = WorkspaceStore::open_in_memory().unwrap();
+        let mut workspace = Workspace::new();
+        for id in [1, 2] {
+            workspace.add_panel(Panel::new(PanelId::new(id), "Existing", RectDip::default())).unwrap();
+        }
+        store.save_workspace(&workspace).unwrap();
+        store.connection.execute("DELETE FROM metadata WHERE key LIKE 'panel_icon_display:%'", []).unwrap();
+        store.save_metadata_preferences(&[("pane_icon_only", "true"), ("pane_icon_size", "medium")]).unwrap();
+        let legacy = IconDisplay { icon_only: true, size: IconSize::Medium };
+        let migrated = store.load_workspace().unwrap();
+        assert!(migrated.panels().iter().all(|p| p.icon_display() == legacy));
+        // Defaults change before any workspace save: migrated panels must still be pinned.
+        store.save_metadata_preferences(&[("pane_icon_only", "false"), ("pane_icon_size", "small")]).unwrap();
+        let mut loaded = store.load_workspace().unwrap();
+        assert!(loaded.panels().iter().all(|p| p.icon_display() == legacy));
+        loaded.add_panel(Panel::new(PanelId::new(3), "New", RectDip::default())).unwrap();
+        assert_eq!(loaded.panel(PanelId::new(3)).unwrap().icon_display(), IconDisplay { icon_only: false, size: IconSize::Small });
+        loaded.panel_mut(PanelId::new(1)).unwrap().set_icon_display(IconDisplay::DEFAULT);
+        loaded.panel_mut(PanelId::new(2)).unwrap().set_list_view(true);
+        store.save_workspace(&loaded).unwrap();
+        let restored = store.load_workspace().unwrap();
+        assert_eq!(restored, loaded);
+        assert_eq!(restored.panel(PanelId::new(2)).unwrap().icon_display(), legacy);
+        loaded.remove_panel(PanelId::new(1));
+        store.save_workspace(&loaded).unwrap();
+        assert!(store.preference("panel_icon_display:1").unwrap().is_none());
+    }
+}

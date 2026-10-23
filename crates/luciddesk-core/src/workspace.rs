@@ -7,6 +7,7 @@ use std::fmt;
 pub struct Workspace {
     appearance: Option<(PanelTheme, Backdrop)>,
     pane_options: PaneOptions,
+    icon_defaults: crate::IconDisplay,
     panels: Vec<Panel>,
     desktop_items: Vec<DesktopItem>,
     tabs: Vec<PaneTabs>,
@@ -30,6 +31,9 @@ impl Workspace {
     pub const fn pane_options(&self) -> PaneOptions {
         self.pane_options
     }
+    pub const fn icon_defaults(&self) -> crate::IconDisplay { self.icon_defaults }
+    pub fn set_icon_defaults(&mut self, value: crate::IconDisplay) { self.icon_defaults = value; }
+
     pub fn set_pane_options(&mut self, options: PaneOptions) {
         self.pane_options = options;
     }
@@ -40,6 +44,7 @@ impl Workspace {
             panels: Vec::new(),
             appearance: None,
             pane_options: PaneOptions::DEFAULT,
+            icon_defaults: crate::IconDisplay::DEFAULT,
             desktop_items: Vec::new(),
             tabs: Vec::new(),
         }
@@ -61,6 +66,7 @@ impl Workspace {
             panels,
             appearance: None,
             pane_options: PaneOptions::DEFAULT,
+            icon_defaults: crate::IconDisplay::DEFAULT,
             desktop_items: Vec::new(),
             tabs: Vec::new(),
         })
@@ -124,6 +130,7 @@ impl Workspace {
             panel.set_theme(theme);
             panel.set_backdrop(backdrop);
         }
+        panel.set_icon_display(self.icon_defaults);
         self.panels.push(panel);
         Ok(())
     }

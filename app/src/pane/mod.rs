@@ -178,6 +178,9 @@ enum Event {
     FinishPaneMove(bool),
     PreviewPaneMove,
     ToggleHeaderDivider,
+    ToggleIconOnly,
+    SetPanelIconDisplay(PanelId, luciddesk_core::IconDisplay),
+    SetIconSize(interface_flags::IconSize),
     SetSystemRendering(bool),
     SetSystemCorners(interface_flags::SystemCorners),
     ToggleCompactMenu,
@@ -281,7 +284,7 @@ fn desktop_items_for(state: &PaneApp, id: PanelId, current: Option<&[Item]>) -> 
     let panel = state.workspace.panel(id);
     let free_grid = panel
         .filter(|p| p.free_layout())
-        .map(|_| free_layout::grid(&state.workspace));
+        .map(|_| free_layout::grid(&state.workspace, id));
     let fixed = panel.is_some_and(Panel::fixed_grid);
     let details = |item: &luciddesk_core::DesktopItem| ItemDetails {
         free_position: free_grid.map(|grid| free_layout::point(item, grid)),
@@ -380,6 +383,7 @@ fn create_model(state: &PaneApp, id: PanelId) -> Result<GroupModel, String> {
         folder_navigation: [false; 2],
         list_view: panel.list_view(),
         fixed_grid: panel.fixed_grid(),
+        icon_display: panel.icon_display(),
         free_layout: panel.free_layout(),
         folder: panel.folder().map(Path::to_path_buf),
         folder_status: None,
@@ -677,7 +681,7 @@ fn set_order(workspace: &mut Workspace, id: PanelId, items: &[Item]) {
     }
     let columns = fixed_grid::visible_columns(workspace, id);
     let free = workspace.panel(id).is_some_and(Panel::free_layout);
-    let metrics = free_layout::grid(workspace);
+    let metrics = free_layout::grid(workspace, id);
     let fixed = workspace.panel(id).is_some_and(Panel::fixed_grid);
     for (position, item) in items.iter().enumerate() {
         if let Some(entry) = workspace.desktop_item_mut(&item.identity) {

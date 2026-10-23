@@ -21,6 +21,7 @@ impl Tokens {
     pub const VALUE_TEXT: usize = 7;
     pub const STATUS_GOOD: usize = 10;
     pub const STATUS_ERROR: usize = 11;
+    pub const TITLE_BADGE: usize = 12;
 }
 
 pub(super) struct Palette {
@@ -63,6 +64,7 @@ impl Palette {
 
 pub(super) struct SettingsForm<'a> {
     scene: &'a mut Scene,
+    title_badge: Option<String>,
     x: f32,
     width: f32,
     y: f32,
@@ -101,6 +103,7 @@ impl<'a> SettingsForm<'a> {
     pub fn continuation(scene: &'a mut Scene, width: f32, y: f32) -> Self {
         Self {
             scene,
+            title_badge: None,
             x: Tokens::content_x(),
             width: (width - Tokens::content_x() - Tokens::MARGIN).min(Tokens::MAX_WIDTH),
             y,
@@ -116,10 +119,41 @@ impl<'a> SettingsForm<'a> {
         );
         Self {
             scene,
+            title_badge: None,
             x: Tokens::content_x(),
             width,
             y: 84.0 + description_height,
         }
+    }
+    /// Annotate the next setting, reserving space for the badge in its title row.
+    pub fn title_badge(&mut self, label: &str) -> &mut Self {
+        self.title_badge = Some(label.to_owned());
+        self
+    }
+    /// Group related setting rows in one card with inset separators.
+    pub fn group(&mut self, content: impl FnOnce(&mut Self)) {
+        let start = self.scene.cards.len();
+        content(self);
+        if self.scene.cards.len() <= start + 1 { return; }
+        let bottom = self.scene.cards.last().unwrap().bottom;
+        for card in &self.scene.cards[start + 1..] {
+            self.scene.separators.push(Rect::from_xywh(
+                card.left + Tokens::INSET, card.top - Tokens::GAP / 2.0,
+                card.right - card.left - 2.0 * Tokens::INSET, 1.0));
+        }
+        self.scene.cards.truncate(start + 1);
+        self.scene.cards[start].bottom = bottom;
+    }
+    /// A secondary link belongs to the preceding setting, without another card.
+    pub fn footer_link(&mut self, label: &str, action: Action) {
+        let card = self.scene.cards.last_mut().unwrap();
+        let height = text_height(label, 12.0, self.width - 64.0).max(32.0);
+        let top = card.bottom - 8.0;
+        card.bottom = top + height + Tokens::INSET;
+        self.y = card.bottom + Tokens::GAP;
+        self.scene.control(ControlKind::FooterLink,
+            Rect::from_xywh(self.x + 8.0, top, self.width - 16.0, height),
+            label, action, false);
     }
     pub fn section(&mut self, title: &str) {
         if self.y > 120.0 {
@@ -148,7 +182,17 @@ impl<'a> SettingsForm<'a> {
         } else {
             self.width - column - 3.0 * Tokens::INSET
         };
-        let title_height = text_height(title, 14.0, text_width).max(24.0);
+        let badge = self.title_badge.take();
+        let title_width = super::components::text_width(title, 14.0);
+        let badge_width = badge.as_ref().map_or(0.0, |label|
+            (super::components::text_width(label, 11.0) + 36.0).min(text_width));
+        let badge_inline = title_width + Tokens::GAP + badge_width <= text_width;
+        let title_line_height = text_height(title, 14.0, text_width).max(24.0);
+        let badge_height = badge.as_ref().map_or(0.0, |label|
+            text_height(label, 11.0, (badge_width - 36.0).max(1.0)).max(16.0) + 4.0);
+        let title_height = title_line_height + if badge.is_some() && !badge_inline {
+            badge_height + 4.0
+        } else { 0.0 };
         let description_height = if description.is_empty() {
             0.0
         } else {
@@ -181,11 +225,21 @@ impl<'a> SettingsForm<'a> {
                         Tokens::INSET
                     },
                 text_width,
-                title_height,
+                title_line_height,
             ),
             title,
             1,
         );
+        if let Some(label) = badge {
+            let top = self.y + if description.is_empty() && !stacked {
+                (height - title_height) / 2.0
+            } else { Tokens::INSET };
+            self.scene.text(Rect::from_xywh(
+                self.x + Tokens::INSET + if badge_inline { title_width + Tokens::GAP } else { 0.0 },
+                top + if badge_inline { (title_line_height - badge_height) / 2.0 } else { title_line_height + 4.0 },
+                badge_width, badge_height,
+            ), label, Tokens::TITLE_BADGE);
+        }
         if !description.is_empty() {
             self.scene.text(
                 Rect::from_xywh(
@@ -472,13 +526,31 @@ impl<'a> SettingsForm<'a> {
         control.bounds.bottom = self.y + Tokens::ROW_HEIGHT;
         self.y += 48.0;
     }
+    pub fn font_summary(&mut self, selected: &str) {
+        self.button(crate::i18n::text("ui-current-font"), selected,
+            crate::i18n::text("ui-reset-font"), Action::Font(crate::i18n::default_font().into()));
+        self.scene.controls.last_mut().unwrap().enabled = selected != crate::i18n::default_font();
+        let card = self.scene.cards.last_mut().unwrap();
+        let top = card.bottom - 8.0;
+        let inner = self.width - 2.0 * Tokens::INSET;
+        let sample = crate::i18n::text("font-preview");
+        let sample_height = text_height(sample, 20.0, inner).max(32.0);
+        let fallback = format!("{}: {}", crate::i18n::text("font-fallback"), crate::i18n::default_font());
+        let fallback_height = text_height(&fallback, 12.0, inner).max(20.0);
+        card.bottom = top + sample_height + 4.0 + fallback_height + Tokens::INSET;
+        self.y = card.bottom + Tokens::GAP;
+        self.scene.text(Rect::from_xywh(self.x + Tokens::INSET, top, inner, sample_height), sample, 2);
+        self.scene.text(Rect::from_xywh(self.x + Tokens::INSET, top + sample_height + 4.0, inner, fallback_height), fallback, 6);
+    }
+    pub fn font_list_hint(&mut self) {
+        let label = crate::i18n::text("font-list-hint");
+        let height = text_height(label, 12.0, self.width).max(20.0);
+        self.scene.text(Rect::from_xywh(self.x, self.y, self.width, height), label, 6);
+        self.y += height + 4.0;
+    }
     pub fn font_option(&mut self, name: &str, selected: bool) {
-        let label = if name == crate::i18n::default_font() {
-            format!("{} · {}", name, crate::i18n::text("ui-default"))
-        } else {
-            name.into()
-        };
-        self.option(&label, Action::Font(name.into()), selected);
+        self.option(name, Action::Font(name.into()), selected);
+        self.y -= 8.0;
     }
     pub fn pager(&mut self, label: &str, previous: (Action, bool), next: (Action, bool)) {
         let r = self.card(crate::i18n::text("ui-pages"), label, 232.0);
@@ -584,7 +656,7 @@ impl<'a> SettingsForm<'a> {
         self.section(crate::i18n::text("diagnostics-section"));
         self.dropdown(
             crate::i18n::text("diagnostics-level"),
-            "",
+            crate::i18n::text("diagnostics-description"),
             [
                 Level::Error,
                 Level::Warn,
@@ -593,9 +665,35 @@ impl<'a> SettingsForm<'a> {
                 Level::Trace,
             ]
             .into_iter()
-            .map(|value| (value.label(), Action::LogLevel(value), value == current))
+            .map(|value| (crate::i18n::text(match value {
+                Level::Error => "log-level-error", Level::Warn => "log-level-warn",
+                Level::Info => "log-level-info", Level::Debug => "log-level-debug",
+                Level::Trace => "log-level-trace",
+            }), Action::LogLevel(value), value == current))
             .collect(),
         );
+    }
+    /// Independent checkboxes share a card and wrap on narrow windows.
+    pub fn checkboxes(&mut self, title: &str, description: &str, options: Vec<(&str, Action, bool)>) {
+        if options.is_empty() { return; }
+        self.card(title, description, 0.0);
+        let card = *self.scene.cards.last().unwrap();
+        let inner = self.width - 2.0 * Tokens::INSET;
+        let min_cell = options.iter().map(|(label, _, _)| text_width(label, 14.0) + 40.0)
+            .fold(160.0_f32, f32::max);
+        let columns = ((inner + Tokens::GAP) / (min_cell + Tokens::GAP)).floor().max(1.0) as usize;
+        let columns = columns.min(options.len());
+        let cell = (inner - Tokens::GAP * (columns - 1) as f32) / columns as f32;
+        let rows = options.len().div_ceil(columns);
+        let top = card.bottom - 8.0;
+        for (index, (label, action, selected)) in options.into_iter().enumerate() {
+            let x = self.x + Tokens::INSET + (index % columns) as f32 * (cell + Tokens::GAP);
+            let y = top + (index / columns) as f32 * 40.0;
+            self.scene.checkbox(Rect::from_xywh(x, y, cell, 32.0), label, action, selected, true);
+        }
+        let bottom = top + rows as f32 * 40.0 + 8.0;
+        self.scene.cards.last_mut().unwrap().bottom = bottom;
+        self.y = bottom + Tokens::GAP;
     }
     pub fn choices(&mut self, title: &str, description: &str, choices: Vec<(&str, Action, bool)>) {
         let cell = choices

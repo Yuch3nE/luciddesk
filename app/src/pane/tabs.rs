@@ -18,6 +18,7 @@ pub(super) fn independent(workspace: &Workspace, id: PanelId) -> bool {
 
 pub(super) fn decorate(workspace: &Workspace, id: PanelId, model: &mut GroupModel) {
     model.active_tab = id;
+    model.icon_display = workspace.panel(id).map(Panel::icon_display).unwrap_or_default();
     model.fixed_grid = workspace.panel(id).is_some_and(Panel::fixed_grid);
     let free = workspace.panel(id).is_some_and(Panel::free_layout);
     if model.free_layout != free { model.scroll = 0; }
@@ -380,6 +381,7 @@ pub(super) fn restore_cached_model(s: &mut PaneApp, id: PanelId) {
         cached.title = fresh.title.clone();
         if (cached.free_layout && !cached.is_list()) != (fresh.free_layout && !fresh.is_list()) { cached.scroll = 0; }
         cached.list_view = fresh.list_view;
+        cached.icon_display = fresh.icon_display;
         cached.fixed_grid = fresh.fixed_grid;
         cached.free_layout = fresh.free_layout;
         cached.theme = fresh.theme;

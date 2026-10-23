@@ -10,7 +10,7 @@ struct CachedPreview {
 
 pub(super) struct Painter {
     preview: RefCell<Option<CachedPreview>>,
-    brushes: RefCell<super::super::canvas::Brushes<18>>,
+    brushes: RefCell<super::super::canvas::Brushes<19>>,
     icon_bitmap: RefCell<Option<(ID2D1DeviceContext, windows_canvas::Bitmap)>>,
     #[cfg(test)]
     icon_uploads: std::cell::Cell<usize>,
@@ -40,6 +40,7 @@ impl Painter {
             Style::NAV_TEXT,
             14.0,
             14.0,
+            11.0,
         ]
         .iter()
         .enumerate()
@@ -54,7 +55,7 @@ impl Painter {
                 FontWeight(if i == 2 || i == 3 { 600 } else { 400 }),
             ))?
             .with_paragraph_alignment(ParagraphAlignment::Center)
-            .with_word_wrapping(if matches!(i, 1 | 6 | Tokens::STATUS_GOOD | Tokens::STATUS_ERROR) {
+            .with_word_wrapping(if matches!(i, 1 | 6 | Tokens::STATUS_GOOD | Tokens::STATUS_ERROR | Tokens::TITLE_BADGE) {
                 WordWrapping::Wrap
             } else {
                 WordWrapping::NoWrap
@@ -152,7 +153,7 @@ impl Painter {
                     components::navigation_colors(s.material, dark);
                 let [card, card_border, ink, muted, disabled, border, accent, slider_track,
                     slider_border, slider_surface, scroll_thumb, nav_selected, nav_hovered,
-                    nav_selected_hovered, page_background, red, green, blue] = canvas_result(brushes.get(context, &t, [
+                    nav_selected_hovered, page_background, red, green, blue, checkbox_mark] = canvas_result(brushes.get(context, &t, [
                         chrome.card, chrome.card_border,
                         color(palette.ink), color(palette.muted),
                         ColorF { a: 0.55, ..color(palette.muted) },
@@ -168,6 +169,7 @@ impl Painter {
                         color(if dark { 0xef8d8d } else { 0xb83d42 }),
                         color(if dark { 0x8dccaa } else { 0x287b50 }),
                         color(if dark { 0x88baf0 } else { 0x266eae }),
+                        color(if dark { 0x202020 } else { 0xffffff }),
                     ]))?;
                 let selected = nav_selected;
                 let hovered = nav_hovered;
@@ -190,10 +192,6 @@ impl Painter {
                     },
                     page_background,
                 );
-                for r in &s.separators {
-                    let _clip = ContentClip::new(&t, s, r.left >= Tokens::content_x() && !s.fixed_list());
-                    t.fill_rect(r, border);
-                }
                 for r in &s.cards {
                     let _clip = ContentClip::new(&t, s, r.left >= Tokens::content_x() && !s.fixed_list());
                     let rr = RoundedRect {
@@ -203,6 +201,10 @@ impl Painter {
                     };
                     t.fill_rounded_rect(&rr, card);
                     t.draw_rounded_rect(&rr, card_border, 1.0);
+                }
+                for r in &s.separators {
+                    let _clip = ContentClip::new(&t, s, r.left >= Tokens::content_x() && !s.fixed_list());
+                    t.fill_rect(r, border);
                 }
                 if let Some(bounds) = &s.app_icon {
                     let _clip = ContentClip::new(&t, s, true);
@@ -337,9 +339,13 @@ impl Painter {
                             a: 1.0, ..color(if dark { 0xb8b8b8 } else { 0x606060 })
                         }))?;
                         t.clipped_text(&c.label, &self.formats[1],
-                            &Rect::from_xywh(r.left + 16.0, r.top, r.right - r.left - 56.0, r.bottom - r.top), &hint);
-                        t.clipped_icon(if c.selected { "\u{e711}" } else { "\u{e721}" }, &self.formats[4],
-                            &Rect::from_xywh(r.right - 32.0, r.top, 16.0, r.bottom - r.top), &hint);
+                            &Rect::from_xywh(r.left + 40.0, r.top, r.right - r.left - 80.0, r.bottom - r.top), &hint);
+                        t.clipped_icon("\u{e721}", &self.formats[4],
+                            &Rect::from_xywh(r.left + 16.0, r.top, 16.0, r.bottom - r.top), &hint);
+                        if c.selected {
+                            t.clipped_icon("\u{e711}", &self.formats[4],
+                                &Rect::from_xywh(r.right - 32.0, r.top, 16.0, r.bottom - r.top), &hint);
+                        }
                         let focused = unsafe {
                             let focus = windows_sys::Win32::UI::Input::KeyboardAndMouse::GetFocus();
                             let owner = windows_sys::Win32::UI::WindowsAndMessaging::GetWindow(focus,
@@ -351,6 +357,49 @@ impl Painter {
                             t.draw_line(Vector2::new(r.left + 8.0, r.bottom - 1.0),
                                 Vector2::new(r.right - 8.0, r.bottom - 1.0), accent, 2.0);
                         }
+                        continue;
+                    }
+                    if matches!(c.kind, ControlKind::FooterLink) {
+                        let frame = RoundedRect { rect: c.bounds, radius_x: 4.0, radius_y: 4.0 };
+                        if c.enabled && hover == Some(i) { t.fill_rounded_rect(&frame, hovered); }
+                        if c.enabled && focus == Some(i) {
+                            t.draw_rounded_rect(&frame, accent, super::super::control_style::FOCUS_STROKE);
+                        }
+                        let mut label = c.bounds;
+                        label.left += 8.0;
+                        label.right -= 32.0;
+                        t.clipped_text(&c.label, &self.formats[6], &label, if c.enabled { blue } else { disabled });
+                        t.clipped_icon("\u{e8a7}", &self.formats[4],
+                            &Rect::from_xywh(c.bounds.right - 24.0, c.bounds.top, 16.0, c.bounds.bottom - c.bounds.top),
+                            if c.enabled { blue } else { disabled });
+                        continue;
+                    }
+                    if matches!(c.kind, ControlKind::Checkbox) {
+                        let r = c.bounds;
+                        let frame = RoundedRect { rect: r, radius_x: 4.0, radius_y: 4.0 };
+                        if c.enabled && hover == Some(i) {
+                            t.fill_rounded_rect(&frame, hovered);
+                        }
+                        if c.enabled && focus == Some(i) {
+                            t.draw_rounded_rect(&frame, accent, super::super::control_style::FOCUS_STROKE);
+                        }
+                        let box_rect = Rect::from_xywh(r.left + 4.0, (r.top + r.bottom - 18.0) / 2.0, 18.0, 18.0);
+                        let box_shape = RoundedRect { rect: box_rect, radius_x: 3.0, radius_y: 3.0 };
+                        if c.selected {
+                            t.fill_rounded_rect(&box_shape, if c.enabled { accent } else { disabled });
+                            let check = checkbox_mark;
+                            t.draw_line(Vector2::new(box_rect.left + 4.0, box_rect.top + 9.0),
+                                Vector2::new(box_rect.left + 7.5, box_rect.top + 12.5), check, 1.8);
+                            t.draw_line(Vector2::new(box_rect.left + 7.5, box_rect.top + 12.5),
+                                Vector2::new(box_rect.left + 14.0, box_rect.top + 5.5), check, 1.8);
+                        } else {
+                            t.draw_rounded_rect(&box_shape, if c.enabled { muted } else { disabled }, 1.0);
+                        }
+                        let mut label = r;
+                        label.left += 30.0;
+                        label.right -= 4.0;
+                        t.clipped_text(&c.label, &self.combo_format,
+                            &label, if c.enabled { ink } else { disabled });
                         continue;
                     }
                     if !c.enabled && c.is_toggle() {
@@ -722,11 +771,18 @@ impl Painter {
                             bounds.left += Style::NAV_TEXT_INSET;
                         } else if plain {
                             bounds.left += Style::ROW_INSET;
-                            if matches!(c.action, Action::Font(_) | Action::Language(_)) {
-                                bounds.left += 24.0;
+                            if let Action::Font(name) = &c.action {
+                                bounds.right -= 32.0;
                                 if c.selected {
                                     t.clipped_icon("\u{e73e}", &self.formats[4],
-                                        &Rect::from_xywh(c.bounds.left + 12.0, c.bounds.top, 16.0, c.bounds.bottom - c.bounds.top), accent);
+                                        &Rect::from_xywh(c.bounds.right - 28.0, c.bounds.top, 16.0, c.bounds.bottom - c.bounds.top), accent);
+                                }
+                                if name == crate::i18n::default_font() {
+                                    let label = crate::i18n::text("ui-default");
+                                    let width = self.label_width(label)? + 12.0;
+                                    let tag = Rect::from_xywh(bounds.right - width, (bounds.top + bounds.bottom - 22.0) / 2.0, width, 22.0);
+                                    t.clipped_text(label, &self.formats[6], &tag, muted);
+                                    bounds.right = tag.left - 8.0;
                                 }
                             }
                         }
@@ -780,6 +836,20 @@ impl Painter {
                 for (index, (r, text, size)) in s.text.iter().enumerate() {
                     let _navigation_clip = s.navigation_text.contains(&index).then(|| ContentClip::navigation(&t, s));
                     let _clip = ContentClip::new(&t, s, r.left >= Tokens::content_x() && !s.fixed_list());
+                    if *size == Tokens::TITLE_BADGE {
+                        let center = Vector2 { x: r.left + 16.0, y: (r.top + r.bottom) / 2.0 };
+                        t.draw_ellipse(&Ellipse { center, radius_x: 6.0, radius_y: 6.0 }, blue, 1.0);
+                        t.fill_rect(&Rect::from_xywh(center.x - 0.6, center.y - 3.5, 1.2, 4.0), blue);
+                        t.fill_ellipse(&Ellipse {
+                            center: Vector2 { x: center.x, y: center.y + 2.5 },
+                            radius_x: 0.8, radius_y: 0.8,
+                        }, blue);
+                        let mut label = *r;
+                        label.left += 28.0;
+                        label.right -= 8.0;
+                        t.clipped_text(text, &self.formats[*size], &label, blue);
+                        continue;
+                    }
                     if matches!(*size, 4 | 5) {
                         t.clipped_icon(text, &self.formats[*size], r, ink);
                         continue;

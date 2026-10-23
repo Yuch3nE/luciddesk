@@ -434,6 +434,13 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
             };
             PostMessageW(hwnd, WM_SYSCOMMAND, command as usize, 0);
         },
+        Action::ClearFontSearch => unsafe {
+            SetWindowTextW(font_search, windows_sys::w!(""));
+            SetFocus(font_search);
+            *context.font_choices = all_fonts.to_vec();
+            *context.scroll_offset = 0.0;
+            invalidate = true;
+        },
         Action::FontSearch => unsafe {
             SetFocus(font_search);
         },
@@ -493,7 +500,9 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
             }
         }
     }
-    invalidate
+    // A settings action must not depend on a future timer or an unrelated
+    // snapshot change to display its result.
+    invalidate || matches!(c.action, Action::Change(_))
 }
 
 /// Destroying a focused editor can synchronously reenter the owning pane.

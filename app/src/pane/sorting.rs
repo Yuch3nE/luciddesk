@@ -37,7 +37,7 @@ pub(super) fn apply_order(workspace: &mut Workspace, id: PanelId, descending: bo
     let fixed = panel.fixed_grid();
     let columns = fixed_grid::visible_columns(workspace, id);
     let free = workspace.panel(id).is_some_and(Panel::free_layout);
-    let metrics = free_layout::grid(workspace);
+    let metrics = free_layout::grid(workspace, id);
     if (!fixed || entries.iter().enumerate().all(|(at, e)| {
         let p = fixed_grid::position(at, columns);
         e.position == (p.row, p.column) && (!free || workspace.desktop_items()[e.index].pane_position() == Some(luciddesk_core::PointDip::new(p.column as f32 * metrics.cell_width, p.row as f32 * metrics.cell_height)))
@@ -366,7 +366,7 @@ mod tests {
         for free in [false, true] {
             let mut state = super::super::tests::test_state();
             let id = PanelId::new(1);
-            let g = free_layout::grid(&state.workspace);
+            let g = free_layout::grid(&state.workspace, id);
             let mut rect = state.workspace.panel(id).unwrap().rect();
             rect.width = layout::PADDING * 2.0 + g.cell_width * 2.0;
             state.workspace.panel_mut(id).unwrap().set_rect(rect);

@@ -1041,7 +1041,7 @@ impl Renderer {
                                     bitmap,
                                     &Rect::from_xywh(
                                         selection_x,
-                                        y,
+                                        bounds.y,
                                         selection_width,
                                         selection_height,
                                     ),
@@ -1052,7 +1052,7 @@ impl Renderer {
                                     &RoundedRect {
                                         rect: Rect::from_xywh(
                                             selection_x,
-                                            y,
+                                            bounds.y,
                                             selection_width,
                                             selection_height,
                                         ),
@@ -1081,7 +1081,7 @@ impl Renderer {
                             let top = ((if list {
                                 y + (grid.cell_height - ih) / 2.0
                             } else {
-                                y + 2.0 + (grid.icon_size - ih) / 2.0
+                                y + grid.icon_top() + (grid.icon_size - ih) / 2.0
                             }) * scale)
                                 .round()
                                 / scale;
@@ -1099,7 +1099,7 @@ impl Renderer {
                             let top = if list {
                                 y + (grid.cell_height - grid.icon_size) / 2.0
                             } else {
-                                y + 2.0
+                                y + grid.icon_top()
                             };
                             draw_placeholder(
                                 &target,
@@ -1156,7 +1156,7 @@ impl Renderer {
                             }
                             continue;
                         }
-                        if model.renaming.as_ref() == Some(&item.identity) {
+                        if model.renaming.as_ref() == Some(&item.identity) || model.icon_display.icon_only {
                             continue;
                         }
                         let (layout, _) = super::label::layout_scaled(

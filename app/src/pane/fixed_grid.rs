@@ -5,7 +5,7 @@ use std::collections::HashSet;
 /// Columns visible in the current viewport, used for explicit rearrangement.
 pub(super) fn visible_columns(w: &Workspace, id: PanelId) -> usize {
     let width = w.panel(id).map_or(260.0, |p| p.rect().width);
-    layout::desktop_grid(width, 0.0, layout::DESKTOP_ICON_SIZE, w.pane_options().grid_scale).columns
+    layout::desktop_grid(width, 0.0, layout::DESKTOP_ICON_SIZE, w.pane_options().grid_scale, w.panel(id).map(Panel::icon_display).unwrap_or_default()).columns
 }
 /// Coordinate stride for stable drops into a possibly scrolled grid.
 pub(super) fn columns(w: &Workspace, id: PanelId) -> usize {
@@ -16,7 +16,7 @@ pub(super) fn position(slot: usize, columns: usize) -> GridPosition {
 }
 pub(super) fn extent(w: &Workspace, id: PanelId) -> (usize, usize) {
     if w.panel(id).is_some_and(Panel::free_layout) {
-        let (right, bottom) = free_layout::extent(w, id); let g = free_layout::grid(w);
+        let (right, bottom) = free_layout::extent(w, id); let g = free_layout::grid(w, id);
         return ((right / g.cell_width).ceil() as usize, (bottom / g.cell_height).ceil() as usize);
     }
     w.desktop_items().iter().filter_map(|item| match item.placement() {
@@ -26,10 +26,9 @@ pub(super) fn extent(w: &Workspace, id: PanelId) -> (usize, usize) {
 }
 pub(super) fn minimum_width(w: &Workspace, id: PanelId) -> f32 {
     let members = w.tab_group(id).map_or_else(|| vec![id], |g| g.members.clone());
-    let g = free_layout::grid(w);
     members.into_iter().filter(|id| w.panel(*id).is_some_and(Panel::fixed_grid)).map(|id| {
         let width = if w.panel(id).is_some_and(Panel::free_layout) { free_layout::width(w,id) }
-            else { extent(w,id).0 as f32 * g.cell_width };
+            else { extent(w,id).0 as f32 * free_layout::grid(w, id).cell_width };
         if width > 0.0 { width + layout::PADDING * 2.0 } else { 0.0 }
     }).fold(0.0, f32::max)
 }
@@ -62,7 +61,7 @@ pub(super) fn place(w: &mut Workspace, id: PanelId, keys: &[String], start: Grid
         _ => None,
     }).collect();
     let free = w.panel(id).is_some_and(Panel::free_layout);
-    let g = free_layout::grid(w);
+    let g = free_layout::grid(w, id);
     if free {
         for item in ordered_desktop_items(w, id).into_iter().filter(|i| !keys.contains(&i.identity().persistent_key())) {
             let p = free_layout::point(item, g);

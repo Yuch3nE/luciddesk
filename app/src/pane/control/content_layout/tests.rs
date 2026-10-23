@@ -37,12 +37,12 @@ fn folder_sizing_uses_ready_snapshot_and_list_or_icon_metrics() {
     s.workspace.panel_mut(id).unwrap().set_list_view(false);
     let (width, height) = size_with_folders(&s.workspace, id, 4, &folders, None).unwrap();
     assert_eq!(width, 376.0);
-    assert_eq!(height, layout::pane_content_height(5, 96.0, &vec![layout::icon_row_height(metrics(&s.workspace), ["Item"].into_iter()); 5]));
+    assert_eq!(height, layout::pane_content_height(5, 96.0, &vec![layout::icon_row_height(metrics(&s.workspace, PanelId::new(1)), ["Item"].into_iter()); 5]));
     assert_eq!(
         size_with_folders(&s.workspace, id, 4, &folders, Some(2))
             .unwrap()
             .1,
-        layout::pane_content_height(2, 96.0, &[layout::icon_row_height(metrics(&s.workspace), ["Item"].into_iter()); 2])
+        layout::pane_content_height(2, 96.0, &[layout::icon_row_height(metrics(&s.workspace, PanelId::new(1)), ["Item"].into_iter()); 2])
     );
     s.workspace.panel_mut(id).unwrap().set_list_view(true);
     assert_eq!(
@@ -301,6 +301,7 @@ fn arrange_matches_grid_and_native_snap_gap_without_writes() {
                     *height,
                     layout::DESKTOP_ICON_SIZE,
                     s.workspace.pane_options().grid_scale,
+                    Default::default(),
                 );
                 assert!(grid.columns >= 6);
                 assert!(
@@ -438,6 +439,7 @@ fn fit_keeps_position_and_rounds_outward_at_fractional_dpi() {
         height,
         layout::DESKTOP_ICON_SIZE,
         s.workspace.pane_options().grid_scale,
+                    Default::default(),
     );
     assert!(grid.columns >= 5);
     assert!(height >= super::measurement::content_height(&s.workspace, PanelId::new(1), grid.columns, &HashMap::new(), None).unwrap());
@@ -603,7 +605,7 @@ fn free_fit_uses_actual_right_edge_without_rounding_an_extra_column() {
     let mut s=super::super::super::tests::test_state();let id=PanelId::new(1);
     fixed_grid::toggle(&mut s.workspace,id).unwrap();free_layout::toggle(&mut s.workspace,id).unwrap();
     for item in s.workspace.desktop_items_mut() { item.set_pane_position(Some(luciddesk_core::PointDip::new(10.0,20.0))); }
-    let g=metrics(&s.workspace);let expected=layout::PADDING*2.0+10.0+g.cell_width;
+    let g=metrics(&s.workspace, PanelId::new(1));let expected=layout::PADDING*2.0+10.0+g.cell_width;
     let (width,_)=size_with_folders(&s.workspace,id,1,&HashMap::new(),None).unwrap();
     assert_eq!(width,expected);
     assert!(measurement::minimum(&s.workspace,id,width,&HashMap::new()).0 < expected);

@@ -102,9 +102,11 @@ pub(super) enum ControlKind {
     BackButton,
     Row,
     ForwardRow,
+    FooterLink,
     Navigation,
     Caption,
     Toggle,
+    Checkbox,
     Slider(Slider),
     Combo,
 }
@@ -129,6 +131,19 @@ pub(super) struct Control {
 impl Control {
     pub fn is_toggle(&self) -> bool {
         matches!(self.kind, ControlKind::Toggle)
+    }
+
+    pub fn same_toggle(&self, other: &Self) -> bool {
+        if !self.is_toggle() || !other.is_toggle()
+            || (self.bounds.left, self.bounds.top, self.bounds.right, self.bounds.bottom)
+                != (other.bounds.left, other.bounds.top, other.bounds.right, other.bounds.bottom)
+        { return false; }
+        match (&self.action, &other.action) {
+            (Action::Change(a), Action::Change(b)) => std::mem::discriminant(a) == std::mem::discriminant(b),
+            (Action::PluginEnabled(a, _), Action::PluginEnabled(b, _)) => a == b,
+            (Action::BackupPolicy(a), Action::BackupPolicy(b)) => a == b,
+            (a, b) => std::mem::discriminant(a) == std::mem::discriminant(b),
+        }
     }
 }
 
@@ -164,6 +179,13 @@ impl Scene {
             selected,
             enabled,
             kind: ControlKind::Toggle,
+        });
+    }
+    /// The full labeled row is interactive, not just the check mark.
+    pub fn checkbox(&mut self, bounds: Rect, label: &str, action: Action, checked: bool, enabled: bool) {
+        self.controls.push(Control {
+            bounds, label: label.into(), action, selected: checked,
+            enabled, kind: ControlKind::Checkbox,
         });
     }
     pub fn slider(&mut self, bounds: Rect, value: Slider, action: Action) {

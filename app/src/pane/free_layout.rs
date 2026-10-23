@@ -2,12 +2,13 @@
 use super::*;
 use luciddesk_core::{DesktopItem, PointDip};
 
-pub(super) fn grid(w: &Workspace) -> layout::Grid {
+pub(super) fn grid(w: &Workspace, id: PanelId) -> layout::Grid {
     layout::desktop_grid(
         0.0,
         0.0,
         layout::DESKTOP_ICON_SIZE,
         w.pane_options().grid_scale,
+        w.panel(id).map(Panel::icon_display).unwrap_or_default(),
     )
 }
 pub(super) fn point(item: &DesktopItem, g: layout::Grid) -> PointDip {
@@ -21,12 +22,12 @@ pub(super) fn point(item: &DesktopItem, g: layout::Grid) -> PointDip {
         })
 }
 pub(super) fn width(w: &Workspace, id: PanelId) -> f32 {
-    let g=grid(w);
+    let g=grid(w, id);
     w.desktop_items().iter().filter(|i|matches!(i.placement(),DesktopPlacement::Pane { pane_id,.. } if *pane_id==id))
         .map(|i|point(i,g).x+g.cell_width).fold(0.0,f32::max)
 }
 pub(super) fn extent(w: &Workspace, id: PanelId) -> (f32, f32) {
-    let g = grid(w);
+    let g = grid(w, id);
     w.desktop_items().iter().filter(|i| matches!(i.placement(),DesktopPlacement::Pane { pane_id, .. } if *pane_id==id))
         .fold((0.0_f32, 0.0_f32), |(right, bottom), item| {
             let p = point(item, g);
@@ -43,7 +44,7 @@ pub(super) fn toggle(w: &mut Workspace, id: PanelId) -> Result<(), String> {
     }
     let enable = !panel.free_layout();
     if !panel.fixed_grid() { fixed_grid::toggle(w, id)?; }
-    let g = grid(w);
+    let g = grid(w, id);
     let positions: Vec<_> = ordered_desktop_items(w, id)
         .iter()
         .map(|i| (i.identity().clone(), point(i, g)))
@@ -87,7 +88,7 @@ pub(super) fn move_items(
     anchor: &str,
     destination: PointDip,
 ) -> Result<(), String> {
-    let g = grid(w);
+    let g = grid(w, source);
     let columns = fixed_grid::columns(w, source);
     let positions: Vec<_> = ordered_desktop_items(w, source)
         .iter()
@@ -117,6 +118,7 @@ pub(super) fn move_items(
         .map(|(_, p)| p.y)
         .fold(f32::INFINITY, f32::min);
     if w.panel(target).is_none() { return Err("target panel is unavailable".into()); }
+    let target_grid = grid(w, target);
     let dx = (destination.x - origin.x).max(-min_x);
     let dy = (destination.y - origin.y).max(-min_y);
     for (identity, p) in positions {
@@ -124,7 +126,7 @@ pub(super) fn move_items(
         let item = w.desktop_item_mut(&identity).unwrap();
         item.set_placement(DesktopPlacement::Pane {
             pane_id: target,
-            position: GridPosition::new((p.x / g.cell_width) as u32, (p.y / g.cell_height) as u32),
+            position: GridPosition::new((p.x / target_grid.cell_width) as u32, (p.y / target_grid.cell_height) as u32),
         });
         item.set_pane_position(Some(p));
     }
@@ -156,6 +158,25 @@ mod tests {
         toggle(&mut s.workspace, id).unwrap();
         s
     }
+    #[test]
+    fn cross_panel_drag_uses_destination_icon_grid() {
+        let mut s = fixture();
+        let source = PanelId::new(1);
+        let target = PanelId::new(2);
+        let mut options = s.workspace.pane_options();
+        options.grid_scale = 150.0;
+        s.workspace.set_pane_options(options);
+        let p = s.workspace.panel_mut(target).unwrap();
+        p.set_fixed_grid(true);
+        p.set_free_layout(true);
+        p.set_icon_display(luciddesk_core::IconDisplay { icon_only: true, size: luciddesk_core::IconSize::Medium });
+        let key = s.workspace.desktop_items()[0].identity().persistent_key();
+        move_items(&mut s.workspace, source, target, &[key.clone()], &key, PointDip::new(88.0, 88.0)).unwrap();
+        let item = s.workspace.desktop_items().iter().find(|i| i.identity().persistent_key() == key).unwrap();
+        assert_eq!(item.pane_position(), Some(PointDip::new(88.0, 88.0)));
+        assert_eq!(item.placement(), &DesktopPlacement::Pane { pane_id: target, position: GridPosition::new(1, 1) });
+    }
+
     #[test]
     fn coordinates_survive_refresh_reload_and_unchanged_save() {
         let mut s = fixture();
@@ -195,7 +216,7 @@ mod tests {
     fn group_translation_preserves_offsets_and_clamps_as_a_group() {
         let mut s = fixture();
         let id = PanelId::new(1);
-        let g = grid(&s.workspace);
+        let g = grid(&s.workspace, PanelId::new(1));
         let items = ordered_desktop_items(&s.workspace, id);
         let keys: Vec<_> = items
             .iter()
@@ -290,7 +311,7 @@ mod tests {
     fn alignment_rounds_into_hidden_columns_without_clamping_to_old_extent() {
         let mut s = fixture();
         let id = PanelId::new(1);
-        let g = grid(&s.workspace);
+        let g = grid(&s.workspace, PanelId::new(1));
         let key = ordered_desktop_items(&s.workspace, id)[0].identity().persistent_key();
         move_items(&mut s.workspace, id, id, &[key.clone()], &key,
             PointDip::new(7.8 * g.cell_width, 1.7 * g.cell_height)).unwrap();
@@ -330,7 +351,7 @@ mod tests {
             .iter()
             .find(|i| i.identity().persistent_key() == keys[1])
             .unwrap();
-        let g = grid(&s.workspace);
+        let g = grid(&s.workspace, PanelId::new(1));
         let p = point(a, g);
         let q = point(b, g);
         assert!(
@@ -435,7 +456,7 @@ mod tests {
         sorting::apply(&mut s.workspace,id,false).unwrap();
         assert!(!sorting::apply(&mut s.workspace,id,false).unwrap());
         let points:Vec<_>=s.workspace.desktop_items().iter().map(|i|i.pane_position().unwrap()).collect();
-        let mut g=grid(&s.workspace);g.cell_width*=1.5;g.cell_height*=1.5;
+        let mut g=grid(&s.workspace, PanelId::new(1));g.cell_width*=1.5;g.cell_height*=1.5;
         for (i,p) in s.workspace.desktop_items().iter().zip(points) { assert_eq!(point(i,g),p); }
         let items=items_for(&s,id);set_order(&mut s.workspace,id,&items);
         assert!(s.workspace.desktop_items().iter().all(|i|i.pane_position().is_some()));

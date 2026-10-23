@@ -62,16 +62,23 @@ pub fn item_pixels(
         return None;
     }
     let width = (grid.cell_width * scale).round().max(1.0) as u32;
-    let label = crate::pane::label::raster_scaled(name, width, (96.0 * scale).round() as u32, 2, grid.text_scale)?;
+    let label = if grid.icon_only {
+        None
+    } else {
+        Some(crate::pane::label::raster_scaled(name, width, (96.0 * scale).round() as u32, 2, grid.text_scale)?)
+    };
     let label_y = ((grid.icon_size + crate::pane::layout::LABEL_OFFSET) * scale).round() as u32
-        - label.padding;
-    let height = label_y + label.pixels.height;
+        - label.as_ref().map_or(0, |label| label.padding);
+    let height = label.as_ref().map_or_else(
+        || (grid.cell_height * scale).ceil() as u32,
+        |label| label_y + label.pixels.height,
+    );
     let mut data = vec![0; (width * height * 4) as usize];
     let ratio = grid.icon_size * scale / image.width.max(image.height) as f32;
     let iw = (image.width as f32 * ratio).round().max(1.0) as u32;
     let ih = (image.height as f32 * ratio).round().max(1.0) as u32;
     let left = (width - iw) / 2;
-    let top = ((2.0) * scale + (grid.icon_size * scale - ih as f32) / 2.0).round() as u32;
+    let top = (grid.icon_top() * scale + (grid.icon_size * scale - ih as f32) / 2.0).round() as u32;
     let icon = resize(image, iw, ih);
     for y in 0..ih {
         let start = (((top + y) * width + left) * 4) as usize;
@@ -79,16 +86,15 @@ pub fn item_pixels(
         data[start..start + (iw * 4) as usize]
             .copy_from_slice(&icon[source..source + (iw * 4) as usize]);
     }
-    for (source, destination) in label
-        .pixels
-        .data
-        .chunks_exact(4)
-        .zip(data[(label_y * width * 4) as usize..].chunks_exact_mut(4))
-    {
-        let remaining = 255 - u16::from(source[3]);
-        for c in 0..4 {
-            destination[c] =
-                (u16::from(source[c]) + (u16::from(destination[c]) * remaining + 127) / 255) as u8;
+    if let Some(label) = label {
+        for (source, destination) in label.pixels.data.chunks_exact(4)
+            .zip(data[(label_y * width * 4) as usize..].chunks_exact_mut(4))
+        {
+            let remaining = 255 - u16::from(source[3]);
+            for c in 0..4 {
+                destination[c] =
+                    (u16::from(source[c]) + (u16::from(destination[c]) * remaining + 127) / 255) as u8;
+            }
         }
     }
     Some(Pixels {

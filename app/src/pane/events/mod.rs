@@ -88,12 +88,14 @@ pub(super) fn handle(
         return Ok(false);
     }
     if matches!(event, Event::ResetPaneOptions) {
-        let s = state.borrow();
+        let mut s = state.borrow_mut();
         s.store
             .save_metadata_preferences(&[
                 ("pane_title_emoji_color", "true"),
                 ("pane_compact_menu", "true"),
                 ("pane_header_divider", "true"),
+                ("pane_icon_only", "false"),
+                ("pane_icon_size", "large"),
                 ("pane_system_corners", "round"),
                 ("pane_snap_gap", "5"),
                 ("desktop_panel_layout", "compact"),
@@ -102,9 +104,12 @@ pub(super) fn handle(
         interface_flags::TITLE_EMOJI.load(&s.store)?;
         interface_flags::COMPACT_MENU.load(&s.store)?;
         interface_flags::HEADER_DIVIDER.load(&s.store)?;
+        interface_flags::ICON_ONLY.load(&s.store)?;
+        interface_flags::load_icon_size(&s.store)?;
         interface_flags::PANEL_SHADOW.load(&s.store)?;
         interface_flags::load_system_corners(&s.store)?;
         snap::load_gap(&s.store)?;
+        s.workspace.set_icon_defaults(luciddesk_core::IconDisplay::DEFAULT);
         for view in &s.views {
             unsafe {
                 InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0);
@@ -126,6 +131,41 @@ pub(super) fn handle(
             .save(&state.borrow().store, !interface_flags::COMPACT_MENU.get())?;
         return Ok(false);
     }
+    if let Event::SetPanelIconDisplay(target, display) = event {
+        let mut s = state.borrow_mut();
+        let panel = s.workspace.panel_mut(target).ok_or("panel does not exist")?;
+        let previous = panel.icon_display();
+        panel.set_icon_display(display);
+        // Changing artwork does not change Explorer membership or item placement.
+        if let Err(error) = s.store.save_preference(
+            &format!("panel_icon_display:{}", target.get()),
+            &format!("{}|{}", display.icon_only, display.size.name()),
+        ) {
+            s.workspace.panel_mut(target).unwrap().set_icon_display(previous);
+            return Err(error.to_string());
+        }
+        for view in &s.views {
+            let mut model = view.model.borrow_mut();
+            if model.active_tab != target { continue; }
+            model.icon_display = display;
+            model.scroll = 0;
+            model.scroll_x = 0.0;
+            model.hovered_item = None;
+            unsafe {
+                PostMessageW(view.window.hwnd().cast(), window::SYNC_POINTER, 0, 0);
+                InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0);
+            }
+        }
+        return Ok(false);
+    }
+    if matches!(event, Event::ToggleIconOnly) {
+        let mut s = state.borrow_mut();
+        interface_flags::ICON_ONLY.save(&s.store, !interface_flags::ICON_ONLY.get())?;
+        let mut defaults = s.workspace.icon_defaults();
+        defaults.icon_only = interface_flags::ICON_ONLY.get();
+        s.workspace.set_icon_defaults(defaults);
+        return Ok(false);
+    }
     if matches!(event, Event::ToggleHeaderDivider) {
         let s = state.borrow();
         interface_flags::HEADER_DIVIDER.save(&s.store, !interface_flags::HEADER_DIVIDER.get())?;
@@ -144,6 +184,14 @@ pub(super) fn handle(
                 InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0);
             }
         }
+        return Ok(false);
+    }
+    if let Event::SetIconSize(size) = event {
+        let mut s = state.borrow_mut();
+        interface_flags::save_icon_size(&s.store, size)?;
+        let mut defaults = s.workspace.icon_defaults();
+        defaults.size = size;
+        s.workspace.set_icon_defaults(defaults);
         return Ok(false);
     }
     if let Event::SetSystemCorners(corners) = event {

@@ -46,7 +46,7 @@ fn diagnostics_uses_one_dropdown_with_the_current_level_and_all_five_options() {
     assert_eq!(controls.len(), 2);
     let control = &controls[0];
     assert!(matches!(control.kind, ControlKind::Combo));
-    assert_eq!(control.label, luciddesk_diagnostics::level().label());
+    assert!(control.label.contains(luciddesk_diagnostics::level().label()));
     let Action::Dropdown(options) = &control.action else {
         panic!("Expected dropdown");
     };
@@ -55,7 +55,7 @@ fn diagnostics_uses_one_dropdown_with_the_current_level_and_all_five_options() {
             .iter()
             .map(|(label, _, _)| label.as_str())
             .collect::<Vec<_>>(),
-        ["ERROR", "WARN", "INFO", "DEBUG", "TRACE"]
+        ["log-level-error", "log-level-warn", "log-level-info", "log-level-debug", "log-level-trace"].map(crate::i18n::text)
     );
     assert_eq!(
         options.iter().filter(|(_, _, selected)| *selected).count(),
@@ -65,7 +65,7 @@ fn diagnostics_uses_one_dropdown_with_the_current_level_and_all_five_options() {
         let Action::LogLevel(level) = action else {
             panic!("Expected log level");
         };
-        assert_eq!(label, level.label());
+        assert!(label.contains(level.label()));
         assert_eq!(*selected, *level == luciddesk_diagnostics::level());
     }
     assert!(!controls[1].enabled);
@@ -166,12 +166,12 @@ fn native_log_level_dropdown_cancels_and_saves_after_the_popup_returns() {
         false,
         false,
         false,
-    );
+     "system");
     let body = with_titlebar(body, 900.0, false);
     let index = body
         .controls
         .iter()
-        .position(|c| matches!(c.action, Action::Dropdown(_)))
+        .position(|c| matches!(&c.action, Action::Dropdown(options) if options.iter().any(|(_, action, _)| matches!(action, Action::LogLevel(_)))))
         .unwrap();
     unsafe {
         for _ in body.controls[..=index].iter().filter(|c| c.enabled) {
@@ -522,6 +522,16 @@ fn folder_modes_fit_minimum_window_and_show_current_choice() {
         {
             assert!(bounds.right <= 800.0);
         }
+        let columns: Vec<_> = s.controls.iter()
+            .filter(|c| matches!(c.kind, ControlKind::Checkbox)).collect();
+        assert_eq!(columns.len(), 3);
+        for (index, c) in columns.iter().enumerate() {
+            assert!(c.enabled && c.selected);
+            // The label is part of the same hit target as the box.
+            assert!(s.accepts_pointer(c, c.bounds.right - 6.0, (c.bounds.top + c.bounds.bottom) / 2.0));
+            let Action::FolderDefaults(next) = c.action else { panic!("column must update folder defaults") };
+            assert_eq!(next.columns, folder::Defaults::default().columns ^ (1 << (index + 1)));
+        }
         let choices: Vec<_> = s
             .controls
             .iter()
@@ -684,14 +694,17 @@ fn settings_opacity_is_independent_and_rgb_preserves_other_channels() {
 fn panel_options_text_fits_default_and_minimum_window() {
     for (width, height) in [(800.0, MIN_HEIGHT), (900.0, DEFAULT_HEIGHT as f32)] {
         let s = with_titlebar(
-            scene(
+            { let mut body = scene(
                 width,
                 height - TITLE_HEIGHT,
                 1,
                 false,
                 (PanelTheme::Dark, Backdrop::Mica),
                 Default::default(),
-            ),
+            );
+                layout::panel_reset(&mut body, width);
+                body
+            },
             width,
             false,
         );
@@ -897,7 +910,7 @@ fn settings_layout_and_rendering_at_multiple_scales() {
                             }
                             if page == 13 {
                                 layout::general(&mut body, viewport_width,
-                                    crate::startup::Status::DisabledByWindows, false, true, false);
+                                    crate::startup::Status::DisabledByWindows, false, true, false, "system");
                             }
                             let mut s = with_titlebar(body, viewport_width, false);
                             s.scroll_navigation(&mut if at_bottom { f32::MAX } else { 0.0 });
@@ -1513,7 +1526,7 @@ pub(in crate::pane) fn preference_pages_survive_reentry(
 ) {
     for choose in [
         (|a: &Action| matches!(a, Action::Page(1))) as fn(&Action) -> bool,
-        |a| matches!(a, Action::Page(12)),
+        |a| matches!(a, Action::Page(13)),
         |a| matches!(a, Action::Page(0)),
     ] {
         let point = control_position(state, hwnd, 0, choose, 0.5);
@@ -1683,7 +1696,7 @@ fn all_languages_layout_and_render_without_control_overflow() {
     for locale in 0..7 {
         crate::i18n::with_locale(locale, || {
             let painter = Painter::new().unwrap();
-            for page in [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15] {
+            for page in [0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15] {
                 let width = 800.0;
                 let height = MIN_HEIGHT;
                 let material = if page == 7 {
@@ -1725,7 +1738,6 @@ fn all_languages_layout_and_render_without_control_overflow() {
                         page == 10,
                     ),
                     11 => layout::fonts(&mut body, width, &fonts::installed(), 0),
-                    12 => layout::language(&mut body, width, "system"),
                     13 => layout::general(
                         &mut body,
                         width,
@@ -1733,7 +1745,7 @@ fn all_languages_layout_and_render_without_control_overflow() {
                         false,
                         true,
                         false,
-                    ),
+                     "system"),
                     15 => plugin_page::draw(&mut body, width),
                     _ => {}
                 }
@@ -1856,7 +1868,7 @@ fn desktop_gesture_setting_is_translated_and_appended_below_general_controls() {
         crate::i18n::with_locale(locale, || {
             let mut body = scene(800.0, 700.0, 13, false,
                 (PanelTheme::Light, Backdrop::Acrylic), Default::default());
-            layout::general(&mut body, 800.0, crate::startup::Status::Off, false, true, false);
+            layout::general(&mut body, 800.0, crate::startup::Status::Off, false, true, false, "system");
             let bottom = body.controls.iter().map(|c| c.bounds.bottom).fold(0.0_f32, f32::max);
             layout::desktop_gesture(&mut body, 800.0, false);
             let toggle = body.controls.iter().find(|c| matches!(c.action, Action::DesktopDoubleClick(true))).unwrap();
@@ -2266,13 +2278,13 @@ fn grouped_navigation_keeps_routes_selection_and_scrolling_in_all_languages() {
             let builtin: Vec<_> = entries.iter().filter_map(|entry| match entry.action {
                 Action::Page(id) if id != 15 => Some(id), _ => None,
             }).collect();
-            assert_eq!(builtin, [13, 12, 11, 0, 1, 8, 4, 3, 6, 5]);
+            assert_eq!(builtin, [13, 11, 0, 1, 8, 4, 3, 6, 5]);
             let headings: Vec<_> = entries.iter().filter_map(|entry| {
                 entry.section.and_then(|_| match entry.action { Action::Page(id) => Some(id), _ => None })
             }).collect();
             assert!(headings.starts_with(&[13, 0, 4, 6]));
             assert_ne!(entries[1].icon, entries[2].icon);
-            for (page, selected_page) in [(13, 13), (12, 12), (7, 0), (9, 6), (10, 6), (5, 5)] {
+            for (page, selected_page) in [(13, 13), (7, 0), (9, 6), (10, 6), (5, 5)] {
                 for (height, mut offset) in [
                     (260.0, 0.0), (600.0, 0.0), (900.0, 0.0),
                     (260.0, 1000.0), (600.0, 1000.0), (900.0, 1000.0),
@@ -2492,5 +2504,72 @@ fn rendering_mode_shows_matching_corner_controls_without_losing_saved_radius() {
             assert!(matches!(radius.action, Action::Radius(24.0)));
         }
         assert_eq!(interface_flags::pane_corner_radius(24.0), if enabled { 0.0 } else { 24.0 });
+    }
+}
+
+#[test]
+fn icon_defaults_keep_existing_panels_scale_available() {
+    let store = luciddesk_storage::WorkspaceStore::open_in_memory().unwrap();
+    struct Restore<'a>(&'a luciddesk_storage::WorkspaceStore, bool);
+    impl Drop for Restore<'_> {
+        fn drop(&mut self) { interface_flags::ICON_ONLY.save(self.0, self.1).unwrap(); }
+    }
+    let _restore = Restore(&store, interface_flags::ICON_ONLY.get());
+    let options = luciddesk_core::PaneOptions { grid_scale: 150.0, ..Default::default() };
+    for enabled in [false, true, false] {
+        interface_flags::ICON_ONLY.save(&store, enabled).unwrap();
+        let s = scene(800.0, 600.0, 1, false, (PanelTheme::Dark, Backdrop::Mica), options);
+        let size_choices: Vec<_> = s.controls.iter().filter(|c|
+            matches!(c.action, Action::Change(Event::SetIconSize(_)))).collect();
+        let scales: Vec<_> = s.controls.iter().filter(|c|
+            matches!(c.action, Action::GridSize(_))).collect();
+        assert_eq!(size_choices.len(), if enabled { 3 } else { 0 });
+        assert_eq!(scales.len(), 1);
+        if !enabled { assert!(matches!(scales[0].action, Action::GridSize(150.0))); }
+        if enabled { assert_eq!(size_choices.iter().filter(|c| c.selected).count(), 1); }
+    }
+}
+
+#[test]
+fn switch_motion_does_not_transfer_to_a_different_or_moved_control() {
+    let old = Control {
+        bounds: Rect::from_xywh(300.0, 200.0, 40.0, 24.0),
+        label: String::new(),
+        action: Action::Change(Event::SetTitleEmojiColor(true)),
+        selected: false,
+        kind: ControlKind::Toggle,
+        enabled: true,
+    };
+    let mut new = old.clone();
+    new.action = Action::Change(Event::SetTitleEmojiColor(false));
+    new.selected = true;
+    assert!(old.same_toggle(&new));
+    new.action = Action::Change(Event::ToggleIconOnly);
+    assert!(!old.same_toggle(&new));
+    new = old.clone();
+    new.bounds.top += 50.0;
+    assert!(!old.same_toggle(&new));
+    new = old.clone();
+    new.kind = ControlKind::Button;
+    assert!(!old.same_toggle(&new));
+}
+
+#[test]
+fn general_language_dropdown_preserves_selected_preference_and_native_names() {
+    for &(selected, _) in crate::i18n::LANGUAGES.iter() {
+        let mut body = scene(800.0, 560.0, 13, false,
+            (PanelTheme::System, Backdrop::Mica), Default::default());
+        layout::general(&mut body, 800.0, crate::startup::Status::Off, false, false, false, selected);
+        let control = body.controls.iter().find(|c| matches!(&c.action,
+            Action::Dropdown(options) if options.iter().any(|(_, a, _)| matches!(a, Action::Language(_))))).unwrap();
+        let Action::Dropdown(options) = &control.action else { unreachable!() };
+        assert_eq!(options.len(), crate::i18n::LANGUAGES.len());
+        assert_eq!(options.iter().filter(|(_, _, checked)| *checked).count(), 1);
+        for ((label, action, checked), &(code, name)) in options.iter().zip(crate::i18n::LANGUAGES.iter()) {
+            assert!(matches!(action, Action::Language(value) if *value == code));
+            assert_eq!(*checked, code == selected);
+            assert_eq!(label, if code == "system" { crate::i18n::text("language-system") } else { name });
+        }
+        assert!(!body.controls.iter().any(|c| matches!(c.action, Action::Page(12))));
     }
 }

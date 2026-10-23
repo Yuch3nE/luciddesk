@@ -506,7 +506,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     show_panels_shortcut, show_hotkey::status()),
                 unsafe { IsZoomed(hwnd) } != 0,
                 search_visible,
-                (desktop_connected, (interface_flags::PANEL_SHADOW.get(), interface_flags::system_corners(), snap::gap()), interface_flags::HEADER_DIVIDER.get(), interface_flags::COMPACT_MENU.get(), updates.borrow().status(), startup.status(), startup.busy(),
+                (desktop_connected, (interface_flags::display_preferences(), snap::gap(), luciddesk_diagnostics::level()), updates.borrow().status(), startup.status(), startup.busy(),
                     (selected_plugin.clone(), navigation_offset.to_bits(), plugin_pages.iter().map(|p| (p.id.clone(), p.name.clone())).collect::<Vec<_>>())),
             );
             if scroll_page != page {
@@ -529,16 +529,14 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     ) };
                 if let Some(id) = &selected_plugin { plugin_content::draw(&mut body, w, id, plugin_document.clone().unwrap_or_else(|| plugin_content::load(id))); }
                 else if page == 15 { plugin_page::draw(&mut body, w); }
-                if page == 12 {
-                    layout::language(&mut body, w, &chosen_language);
-                }
                 if page == 13 {
-                    layout::general(&mut body, w, startup.status(), startup.busy(), cli_enabled, skill_prompt_copied);
+                    layout::general(&mut body, w, startup.status(), startup.busy(), cli_enabled, skill_prompt_copied, &chosen_language);
                     layout::desktop_gesture(&mut body, w, desktop_double_click);
                 }
                 if page == 1 {
                     layout::desktop_defaults(&mut body, w, layout_defaults);
                     layout::show_panels_shortcut(&mut body, w, show_panels_enabled, show_panels_shortcut);
+                    layout::panel_reset(&mut body, w);
                 }
                 if page == 11 { layout::fonts_status(&mut body, w, &font_choices, if !fonts_loaded { Some("font-loading") } else if font_load_failed { Some("font-load-failed") } else { None }); }
                 if page == 8 { layout::folder_defaults(&mut body, w, folder_defaults, folder_entry_mode); }
@@ -552,6 +550,13 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 full.scroll_to(w, h, &mut scroll_offset);
                 if std::mem::take(&mut reveal_navigation) { full.reveal_navigation(&mut navigation_offset); }
                 full.scroll_navigation(&mut navigation_offset);
+                // Conditional controls can move another switch into the same slot.
+                // Keep motion only for the same toggle at the same location.
+                toggle_motion.retain(|index, _| {
+                    cached_scene.as_ref().and_then(|old| old.controls.get(*index))
+                        .zip(full.controls.get(*index))
+                        .is_some_and(|(old, new)| old.same_toggle(new))
+                });
                 cached_scene = Some(full);
                 scene_key = Some(key);
             }

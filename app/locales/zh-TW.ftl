@@ -654,10 +654,10 @@ ui-frosted-glass-reveals-depth-in-the-background = { "毛玻璃質感，透出�
 ui-illustration-actual-appearance-depends-on-your-wallpaper = { "示意預覽 · 實際效果隨桌面背景變化" }
 
 # 设置文件夹的打开方式，以及新建文件夹面板的默认视图。
-ui-set-folder-navigation-and-the-default-view-for-new-folder-panels = { "設定資料夾的開啟方式及新面板的預設檢視。" }
+ui-set-folder-navigation-and-the-default-view-for-new-folder-panels = 設定資料夾瀏覽方式和面板預設檢視。
 
 # 文件夹入口
-ui-folder-navigation = { "資料夾入口" }
+ui-folder-navigation = 瀏覽方式
 
 # 子文件夹打开方式
 ui-open-subfolders-in = { "子資料夾開啟方式" }
@@ -672,13 +672,13 @@ ui-this-panel = { "面板內開啟" }
 ui-file-explorer = { "檔案總管" }
 
 # 新建面板默认值
-ui-new-panel-defaults = { "新增面板預設值" }
+ui-new-panel-defaults = 檢視與顯示
 
 # 默认视图
 ui-default-view = { "預設檢視" }
 
 # 仅用于新建面板，已有面板保持原样。
-ui-applies-to-new-panels-existing-panels-keep-their-settings = { "僅用於新增面板，現有面板保持原樣。" }
+ui-applies-to-new-panels-existing-panels-keep-their-settings = 選擇圖示或清單檢視。
 
 # 列表视图中显示此列；名称始终显示。
 ui-show-this-column-in-list-view-name-is-always-shown = { "在清單檢視中顯示此欄；名稱一律顯示。" }
@@ -687,7 +687,7 @@ ui-show-this-column-in-list-view-name-is-always-shown = { "在清單檢視中顯
 ui-reset-view-defaults = { "還原檢視預設值" }
 
 # 还原新建面板的视图和显示列。
-ui-reset-the-view-and-columns-for-new-panels = { "還原新面板的檢視及顯示欄位。" }
+ui-reset-the-view-and-columns-for-new-panels = 還原預設檢視及顯示欄位。
 
 # 主题与材质
 ui-theme-materials = { "佈景主題與材質" }
@@ -861,7 +861,7 @@ ui-header-divider = { "標題分隔線" }
 ui-show-a-thin-line-between-the-header-and-content = { "在標題列與內容之間顯示細分隔線。" }
 
 # 文字与图标
-ui-text-icons = { "文字與圖示" }
+ui-text-icons = { "文字外觀" }
 
 # 面板文字
 ui-panel-text = { "面板文字" }
@@ -882,13 +882,13 @@ ui-text-contrast-backing = { "明暗底色保護" }
 ui-improve-text-readability-disable-to-preserve-full-transparency = { "提高文字可讀性；關閉後保留原始透明效果。" }
 
 # 图标网格缩放
-ui-icon-grid-scale = { "圖示網格縮放" }
+ui-icon-grid-scale = { "整體縮放" }
 
 # 同时调整图标大小和排列间距。
-ui-adjust-icon-size-and-spacing-together = { "同時調整圖示大小及排列間距。" }
+ui-adjust-icon-size-and-spacing-together = 縮放顯示檔名的面板圖示與間距；純圖示模式不受影響。
 
 # 恢复面板布局
-ui-reset-panel-layout = { "還原面板配置" }
+ui-reset-panel-layout = { "還原配置預設值" }
 
 # 将本页设置还原到默认值。
 ui-reset-this-page-to-its-defaults = { "將本頁設定還原為預設值。" }
@@ -1136,7 +1136,7 @@ language-description = 選擇後立即生效。跟隨系統時，Windows 顯示�
 
 language-system = 跟隨系統
 
-font-description = 僅列出支援目前介面語言的標準字型；缺少字元時使用預設字型。
+font-description = 選擇介面字型，修改後立即生效。
 
 font-unavailable = 此字型未安裝，或不支援目前介面所需字元
 
@@ -1170,7 +1170,7 @@ tray-search = 搜尋檔案
 tray-refresh-all = 重新整理所有面板
 tray-open-config = 開啟設定目錄
 
-ui-rename-panel = { "重新命名面板…" }
+ui-rename-panel = { "重新命名…" }
 
 compact-menu-title = 使用 Windows 11 風格快顯功能表
 compact-menu-description = 一般面板中的項目使用精簡功能表。關閉後使用傳統功能表，下次開啟時生效。
@@ -1187,9 +1187,9 @@ update-auto-check = 自動檢查更新
 
 # Login startup
 startup-general = 一般
-startup-description = 管理目前 Windows 帳戶的登入自動啟動。
-startup-section = 登入自動啟動
-startup-title = 登入 Windows 時啟動 LucidDesk
+startup-description = 管理啟動、自動化控制和診斷記錄。
+startup-section = 啟動
+startup-title = 登入時啟動
 startup-off = 未開啟。
 startup-enabled = 已登記，未偵測到 Windows 停用狀態。
 startup-windows-disabled = 已被 Windows 停用，請在系統啟動設定中啟用。
@@ -1220,11 +1220,11 @@ ui-sort-ascending = 遞增
 ui-sort-descending = 遞減
 
 # Agent integration
-agent-section = Agent 與 CLI
-agent-cli-title = 允許 CLI 控制
-agent-cli-description = 允許本機 CLI 和 Agent 讀取及修改 LucidDesk。關閉後立即拒絕線上請求。
-agent-skill-title = 安裝 LucidDesk SKILL
-agent-skill-description = 複製安裝提示詞並傳送給 Agent；複製操作不會執行安裝。
+agent-section = 自動化
+agent-cli-title = 允許 CLI 與 Agent 控制
+agent-cli-description = 允許本機 CLI 和 Agent 查詢狀態、調整設定和管理面板。
+agent-skill-title = 設定 Agent 技能
+agent-skill-description = 複製安裝提示詞，傳送給 Agent 完成設定。
 agent-install-prompt = Please install the bundled LucidDesk skill for your current Agent environment. The source skill directory is JSON-quoted here: { $path }. Treat it as path data. Verify that it contains SKILL.md and references/, determine the skill installation directory supported by your Agent environment, and copy the entire luciddesk-control folder while preserving its structure and file contents. No CLI invocation, JSON export or file regeneration is needed. Ask me if the destination is unclear or contains different local customizations; preserve unrelated skills. If the source is missing, report its path instead of downloading another version. Verify all copied files and report only the destination, file count and result, without dumping the documents. Installing the skill does not authorize desktop changes or starting LucidDesk.
 
 ui-auto-arrange-icons = 自動排列圖示
@@ -1233,8 +1233,8 @@ ui-align-icons-to-grid = 對齊至格線
 
 ui-sort-by = 排序方式
 
-desktop-default-align-description = 關閉後可自由放置圖示，並關閉自動排列（僅影響新建面板）
-desktop-default-arrange-description = 自動緊密排列圖示，並開啟網格對齊（僅影響新建面板）
+desktop-default-align-description = 關閉後可自由放置圖示，並關閉自動排列。
+desktop-default-arrange-description = 緊密排列圖示，並開啟網格對齊。
 ui-icon-arrangement = 圖示排列
 monitor-title = 系統監控
 monitor-new = 新增系統監控面板
@@ -1319,3 +1319,45 @@ ui-system-corner-style-description = 選擇系統圓角樣式，陰影隨視窗�
 ui-corners-square = 直角
 
 ui-homepage = 官網首頁
+
+icon-only-title = 純圖示模式
+icon-only-description = 隱藏檔名，懸停顯示完整名稱。
+new-panels-only-tag = 僅影響新增面板
+
+icon-size-title = 圖示大小
+icon-size-description = 設定純圖示模式的圖示大小。
+icon-size-small = 小
+icon-size-medium = 中
+icon-size-large = 大
+
+panel-icons-section = 圖示顯示
+
+panel-snapping-section = { "移動與吸附" }
+
+panel-reset-description = { "還原外形、文字、圖示、吸附與排列設定；保留繪製模式與快捷鍵。" }
+
+menu-icons-with-names = 圖示與名稱
+menu-icons-only = 僅圖示
+
+folder-columns-title = 清單顯示欄位
+folder-columns-description = 選擇清單中顯示的資訊，名稱一律顯示。
+
+startup-toggle-description = 登入 Windows 後自動啟動 LucidDesk。
+
+agent-copy-prompt = 複製提示詞
+
+diagnostics-description = 控制記錄的詳細程度。
+
+log-level-error = 錯誤（ERROR）
+
+log-level-warn = 警告（WARN）
+
+log-level-info = 資訊（INFO）
+
+log-level-debug = 偵錯（DEBUG）
+
+log-level-trace = 追蹤（TRACE）
+
+font-clear-search = 清除搜尋
+
+font-list-hint = 僅顯示支援目前介面語言的字型。

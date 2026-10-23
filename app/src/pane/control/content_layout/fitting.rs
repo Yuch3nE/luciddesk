@@ -31,7 +31,7 @@ pub(super) fn expand(
             }
             (
                 icon_columns.unwrap_or_else(||
-                    ((p.rect().width - layout::PADDING * 2.0) / metrics(w).cell_width)
+                    ((p.rect().width - layout::PADDING * 2.0) / metrics(w, id).cell_width)
                         .floor()
                         .clamp(1.0, 64.0) as u32,
                 ),

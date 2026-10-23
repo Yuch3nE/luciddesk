@@ -1,9 +1,10 @@
 //! Typed workspace preferences. Conversion is pure; saving is one metadata transaction.
 use super::*;
 use SettingValue::{Boolean, Number, Text};
-const FLAGS: [(&str, &str, bool); 4] = [
+const FLAGS: [(&str, &str, bool); 5] = [
     ("interface.title_emoji_color", "pane_title_emoji_color", true),
     ("interface.compact_menu", "pane_compact_menu", true),
+    ("panel_defaults.icon_only", "pane_icon_only", false),
     ("interface.header_divider", "pane_header_divider", true),
     ("interface.panel_shadow", "pane_shadow", false),
 ];
@@ -12,6 +13,7 @@ pub(super) fn contains(key: &str) -> bool {
         || matches!(
             key,
             "interface.system_corners"
+                | "panel_defaults.icon_size"
                 | "interface.snap_gap"
                 | "font.family"
                 | "folder_defaults.list_view"
@@ -26,6 +28,7 @@ pub(super) fn contains(key: &str) -> bool {
 }
 pub(super) fn read(store: &WorkspaceStore) -> Result<BTreeMap<String, SettingValue>, String> {
     let mut values = BTreeMap::new();
+    values.insert("panel_defaults.icon_size".into(), Text(interface_flags::read_icon_size(store)?.name().into()));
     values.insert("interface.system_corners".into(), Text(interface_flags::read_system_corners(store)?.name().into()));
     values.insert("interface.snap_gap".into(), Number(snap::read_gap(store)? as f64));
     for (name, key, default) in FLAGS {
@@ -84,6 +87,7 @@ pub(super) fn patch(
             return Err(format!("invalid setting type: {key}"));
         }
         let valid = match (key.as_str(), value) {
+            ("panel_defaults.icon_size", Text(name)) => interface_flags::IconSize::parse(name).is_some(),
             ("interface.system_corners", Text(name)) => interface_flags::SystemCorners::parse(name).is_some(),
             ("font.family", Text(name)) => {
                 name.is_empty() || name == crate::i18n::default_font() || fonts::available(name)
@@ -115,6 +119,7 @@ fn encode(values: &BTreeMap<String, SettingValue>) -> BTreeMap<String, String> {
         _ => unreachable!(),
     };
     let mut result = BTreeMap::new();
+    result.insert("pane_icon_size".into(), text("panel_defaults.icon_size"));
     result.insert("pane_system_corners".into(), text("interface.system_corners"));
     result.insert("pane_snap_gap".into(), number("interface.snap_gap").to_string());
     for (name, key, _) in FLAGS {
@@ -177,9 +182,11 @@ mod tests {
         assert_eq!(before["interface.panel_shadow"], Boolean(false));
         assert_eq!(before["interface.system_corners"], Text("round".into()));
         assert_eq!(before["interface.snap_gap"], Number(5.0));
+        assert_eq!(before["panel_defaults.icon_size"], Text("large".into()));
         let count = store.change_count();
         let updates = BTreeMap::from([
             ("interface.header_divider".into(), Boolean(false)),
+            ("panel_defaults.icon_size".into(), Text("small".into())),
             ("interface.panel_shadow".into(), Boolean(true)),
             ("interface.snap_gap".into(), Number(32.0)),
             ("interface.system_corners".into(), Text("square".into())),
@@ -192,12 +199,14 @@ mod tests {
         assert_eq!(store.change_count(), count);
         super::super::save(&store, &updates).unwrap();
         assert_eq!(read(&store).unwrap(), after);
-        assert_eq!(store.change_count(), count + 7);
+        assert_eq!(store.change_count(), count + 8);
         super::super::save(&store, &updates).unwrap();
-        assert_eq!(store.change_count(), count + 7);
+        assert_eq!(store.change_count(), count + 8);
         for (key, value) in [
             ("interface.panel_shadow", Text("true".into())),
             ("interface.system_corners", Text("invalid".into())),
+            ("panel_defaults.icon_size", Text("invalid".into())),
+            ("panel_defaults.icon_size", Number(64.0)),
             ("interface.snap_gap", Number(-1.0)),
             ("interface.snap_gap", Number(65.0)),
             ("interface.snap_gap", Number(1.5)),
@@ -210,7 +219,7 @@ mod tests {
             invalid.insert(key.into(), value);
             assert!(super::super::save(&store, &invalid).is_err());
             assert_eq!(read(&store).unwrap(), after);
-            assert_eq!(store.change_count(), count + 7);
+            assert_eq!(store.change_count(), count + 8);
         }
         assert_eq!(notifications.load(std::sync::atomic::Ordering::Relaxed), 1);
         let defaults = folder::Defaults::load(&store).unwrap();

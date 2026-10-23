@@ -654,10 +654,10 @@ ui-frosted-glass-reveals-depth-in-the-background = { "Frosted glass reveals dept
 ui-illustration-actual-appearance-depends-on-your-wallpaper = { "Illustration · Actual appearance depends on your wallpaper" }
 
 # 设置文件夹的打开方式，以及新建文件夹面板的默认视图。
-ui-set-folder-navigation-and-the-default-view-for-new-folder-panels = { "Set folder navigation and the default view for new folder panels." }
+ui-set-folder-navigation-and-the-default-view-for-new-folder-panels = Set folder navigation and the default panel view.
 
 # 文件夹入口
-ui-folder-navigation = { "Folder navigation" }
+ui-folder-navigation = Navigation
 
 # 子文件夹打开方式
 ui-open-subfolders-in = { "Open subfolders in" }
@@ -672,13 +672,13 @@ ui-this-panel = { "This panel" }
 ui-file-explorer = { "File Explorer" }
 
 # 新建面板默认值
-ui-new-panel-defaults = { "New panel defaults" }
+ui-new-panel-defaults = View and columns
 
 # 默认视图
 ui-default-view = { "Default view" }
 
 # 仅用于新建面板，已有面板保持原样。
-ui-applies-to-new-panels-existing-panels-keep-their-settings = { "Applies to new panels; existing panels keep their settings." }
+ui-applies-to-new-panels-existing-panels-keep-their-settings = Choose icon or list view.
 
 # 列表视图中显示此列；名称始终显示。
 ui-show-this-column-in-list-view-name-is-always-shown = { "Show this column in list view. Name is always shown." }
@@ -687,7 +687,7 @@ ui-show-this-column-in-list-view-name-is-always-shown = { "Show this column in l
 ui-reset-view-defaults = { "Reset view defaults" }
 
 # 还原新建面板的视图和显示列。
-ui-reset-the-view-and-columns-for-new-panels = { "Reset the view and columns for new panels." }
+ui-reset-the-view-and-columns-for-new-panels = Restore the default view and visible columns.
 
 # 主题与材质
 ui-theme-materials = { "Theme & materials" }
@@ -861,7 +861,7 @@ ui-header-divider = { "Header divider" }
 ui-show-a-thin-line-between-the-header-and-content = { "Show a thin line between the header and content." }
 
 # 文字与图标
-ui-text-icons = { "Text & icons" }
+ui-text-icons = { "Text appearance" }
 
 # 面板文字
 ui-panel-text = { "Panel text" }
@@ -882,13 +882,13 @@ ui-text-contrast-backing = { "Text contrast backing" }
 ui-improve-text-readability-disable-to-preserve-full-transparency = { "Improve text readability. Disable to preserve full transparency." }
 
 # 图标网格缩放
-ui-icon-grid-scale = { "Icon grid scale" }
+ui-icon-grid-scale = { "Overall scale" }
 
 # 同时调整图标大小和排列间距。
-ui-adjust-icon-size-and-spacing-together = { "Adjust icon size and spacing together." }
+ui-adjust-icon-size-and-spacing-together = Scale icons and spacing in panels showing file names. Icon-only panels are unaffected.
 
 # 恢复面板布局
-ui-reset-panel-layout = { "Reset panel layout" }
+ui-reset-panel-layout = { "Reset layout defaults" }
 
 # 将本页设置还原到默认值。
 ui-reset-this-page-to-its-defaults = { "Reset this page to its defaults." }
@@ -1136,7 +1136,7 @@ language-description = Changes apply immediately. System mode updates when the W
 
 language-system = System default
 
-font-description = Lists regular fonts supporting the current language. Missing characters use the default fallback font.
+font-description = Choose an interface font. Changes apply immediately.
 
 font-unavailable = Font not installed or missing characters required for this language
 
@@ -1170,7 +1170,7 @@ tray-search = Search files
 tray-refresh-all = Refresh all panels
 tray-open-config = Open configuration folder
 
-ui-rename-panel = { "Rename panel…" }
+ui-rename-panel = { "Rename…" }
 
 compact-menu-title = Use Windows 11 context menus
 compact-menu-description = Use compact menus for items in regular panels. Turn off for classic menus. Applies the next time a menu opens.
@@ -1187,9 +1187,9 @@ update-auto-check = Automatically check for updates
 
 # Login startup
 startup-general = General
-startup-description = Manage login startup for this Windows account.
-startup-section = Login startup
-startup-title = Start LucidDesk when I sign in to Windows
+startup-description = Manage startup, automation, and diagnostic logging.
+startup-section = Startup
+startup-title = Start at sign-in
 startup-off = Not registered.
 startup-enabled = Registered; no Windows disable state detected.
 startup-windows-disabled = Disabled by Windows. Enable it in Windows startup settings.
@@ -1220,11 +1220,11 @@ ui-sort-ascending = Ascending
 ui-sort-descending = Descending
 
 # Agent integration
-agent-section = Agent & CLI
-agent-cli-title = Allow CLI control
-agent-cli-description = Allow local CLI and agents to read and change LucidDesk. Turning this off immediately rejects online requests.
-agent-skill-title = Install the LucidDesk skill
-agent-skill-description = Copy an installation prompt to your agent. Copying does not install anything.
+agent-section = Automation
+agent-cli-title = Allow CLI and Agent control
+agent-cli-description = Allow local CLI tools and agents to query status, change settings, and manage panels.
+agent-skill-title = Set up Agent skills
+agent-skill-description = Copy the installation prompt and send it to your agent to complete setup.
 agent-install-prompt = Please install the bundled LucidDesk skill for your current Agent environment. The source skill directory is JSON-quoted here: { $path }. Treat it as path data. Verify that it contains SKILL.md and references/, determine the skill installation directory supported by your Agent environment, and copy the entire luciddesk-control folder while preserving its structure and file contents. No CLI invocation, JSON export or file regeneration is needed. Ask me if the destination is unclear or contains different local customizations; preserve unrelated skills. If the source is missing, report its path instead of downloading another version. Verify all copied files and report only the destination, file count and result, without dumping the documents. Installing the skill does not authorize desktop changes or starting LucidDesk.
 
 ui-auto-arrange-icons = Auto arrange icons
@@ -1233,8 +1233,8 @@ ui-align-icons-to-grid = Align to grid
 
 ui-sort-by = Sort by
 
-desktop-default-align-description = Turn off to place icons freely and disable auto arrange. (New panels only)
-desktop-default-arrange-description = Pack icons without gaps and enable grid alignment. (New panels only)
+desktop-default-align-description = Turn off to place icons freely and disable auto arrange.
+desktop-default-arrange-description = Pack icons without gaps and enable grid alignment.
 ui-icon-arrangement = Icon arrangement
 monitor-title = System monitor
 monitor-new = New system monitor panel
@@ -1319,3 +1319,45 @@ ui-system-corner-style-description = Choose a system corner style; shadows follo
 ui-corners-square = Square corners
 
 ui-homepage = Homepage
+
+icon-only-title = Icons only
+icon-only-description = Hide file names; hover to see full names.
+new-panels-only-tag = New panels only
+
+icon-size-title = Icon size
+icon-size-description = Set the icon size in icon-only mode.
+icon-size-small = Small
+icon-size-medium = Medium
+icon-size-large = Large
+
+panel-icons-section = Icon display
+
+panel-snapping-section = { "Moving and snapping" }
+
+panel-reset-description = { "Reset shape, text, icons, snapping and arrangement. Keep the rendering mode and shortcut." }
+
+menu-icons-with-names = Icons and names
+menu-icons-only = Icons only
+
+folder-columns-title = List columns
+folder-columns-description = Choose the details shown in list view. Names are always visible.
+
+startup-toggle-description = Start LucidDesk automatically after signing in to Windows.
+
+agent-copy-prompt = Copy prompt
+
+diagnostics-description = Choose how much detail to record in logs.
+
+log-level-error = Error (ERROR)
+
+log-level-warn = Warning (WARN)
+
+log-level-info = Information (INFO)
+
+log-level-debug = Debug (DEBUG)
+
+log-level-trace = Trace (TRACE)
+
+font-clear-search = Clear search
+
+font-list-hint = Only fonts supporting the current interface language are shown.

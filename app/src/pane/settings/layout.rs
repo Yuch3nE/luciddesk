@@ -7,13 +7,24 @@ pub(super) fn general(
     busy: bool,
     cli_enabled: bool,
     skill_prompt_copied: bool,
+    language: &str,
 ) {
     let mut form = SettingsForm::new(s, width, crate::i18n::text("startup-description"));
+    form.dropdown(
+        crate::i18n::text("language-title"),
+        crate::i18n::text("language-description"),
+        crate::i18n::LANGUAGES.iter().map(|&(code, name)| (
+            if code == "system" { crate::i18n::text("language-system") } else { name },
+            Action::Language(code), language == code,
+        )).collect(),
+    );
     form.section(crate::i18n::text("startup-section"));
     form.toggle_enabled(
         crate::i18n::text("startup-title"),
         if busy {
             crate::i18n::text("startup-working")
+        } else if matches!(status, crate::startup::Status::Off | crate::startup::Status::Enabled) {
+            crate::i18n::text("startup-toggle-description")
         } else {
             status.message()
         },
@@ -21,13 +32,10 @@ pub(super) fn general(
         status.editable() && !busy,
         Action::Startup(!status.registered()),
     );
-    form.button(
-        crate::i18n::text("startup-manage"),
-        crate::i18n::text("startup-manage-description"),
-        crate::i18n::text("startup-open-settings"),
-        Action::ProjectLink("ms-settings:startupapps"),
-    );
+    form.footer_link(crate::i18n::text("startup-manage"),
+        Action::ProjectLink("ms-settings:startupapps"));
     form.section(crate::i18n::text("agent-section"));
+    form.group(|form| {
     form.toggle(
         crate::i18n::text("agent-cli-title"),
         crate::i18n::text("agent-cli-description"),
@@ -40,10 +48,11 @@ pub(super) fn general(
         crate::i18n::text(if skill_prompt_copied {
             "ui-copied"
         } else {
-            "ui-copy"
+            "agent-copy-prompt"
         }),
         Action::CopySkillPrompt,
     );
+    });
     form.diagnostics();
 }
 
@@ -146,7 +155,7 @@ pub(super) fn folder_defaults(
         .collect(),
     );
     form.section(crate::i18n::text("ui-new-panel-defaults"));
-    form.choices(
+    form.title_badge(crate::i18n::text("new-panels-only-tag")).choices(
         crate::i18n::text("ui-default-view"),
         crate::i18n::text("ui-applies-to-new-panels-existing-panels-keep-their-settings"),
         [
@@ -163,22 +172,20 @@ pub(super) fn folder_defaults(
         })
         .collect(),
     );
-    for (label, column) in [
-        (crate::i18n::text("ui-type"), 1),
-        (crate::i18n::text("ui-modified"), 2),
-        (crate::i18n::text("ui-size"), 3),
-    ] {
-        form.toggle(
+    form.title_badge(crate::i18n::text("new-panels-only-tag")).checkboxes(
+        crate::i18n::text("folder-columns-title"),
+        crate::i18n::text("folder-columns-description"),
+        [
+            (crate::i18n::text("ui-type"), 1),
+            (crate::i18n::text("ui-modified"), 2),
+            (crate::i18n::text("ui-size"), 3),
+        ].into_iter().map(|(label, column)| (
             label,
-            crate::i18n::text("ui-show-this-column-in-list-view-name-is-always-shown"),
+            Action::FolderDefaults(folder::Defaults { columns: value.columns ^ (1 << column), ..value }),
             value.columns & (1 << column) != 0,
-            Action::FolderDefaults(folder::Defaults {
-                columns: value.columns ^ (1 << column),
-                ..value
-            }),
-        );
-    }
-    form.button(
+        )).collect(),
+    );
+    form.title_badge(crate::i18n::text("new-panels-only-tag")).button(
         crate::i18n::text("ui-reset-view-defaults"),
         crate::i18n::text("ui-reset-the-view-and-columns-for-new-panels"),
         crate::i18n::text("ui-reset"),
@@ -190,7 +197,6 @@ pub(super) fn folder_defaults(
 pub(super) fn pages() -> Vec<(usize, &'static str, &'static str)> {
     let mut pages = vec![
         (13, crate::i18n::text("startup-general"), "\u{e713}"),
-        (12, crate::i18n::text("language-title"), "\u{f2b7}"),
         (11, crate::i18n::text("ui-fonts"), "\u{e8d2}"),
         (0, crate::i18n::text("ui-theme-materials"), "\u{e790}"),
         (1, crate::i18n::text("ui-panel-layout"), "\u{f0e2}"),
@@ -543,34 +549,19 @@ fn scene_with_mica(
                 Action::Radius(options.corner_radius),
             );
         }
-        for (title, description, value, event) in [
-            (
+        if !interface_flags::PANEL_SHADOW.get() {
+            form.toggle(
                 crate::i18n::text("ui-show-border"),
                 crate::i18n::text("ui-separate-panels-from-the-desktop-with-a-thin-border"),
                 options.border,
-                Event::ToggleBorder,
-            ),
-            (
-                crate::i18n::text("ui-edge-snapping"),
-                crate::i18n::text("ui-snap-to-nearby-panels-and-screen-edges-when-moving"),
-                options.snap,
-                Event::ToggleSnap,
-            ),
-            (
-                crate::i18n::text("ui-header-divider"),
-                crate::i18n::text("ui-show-a-thin-line-between-the-header-and-content"),
-                interface_flags::HEADER_DIVIDER.get(),
-                Event::ToggleHeaderDivider,
-            ),
-        ] {
-            form.toggle(title, description, value, Action::Change(event));
+                Action::Change(Event::ToggleBorder),
+            );
         }
-        form.slider(
-            crate::i18n::text("ui-snap-gap"),
-            crate::i18n::text("ui-snap-gap-description"),
-            Slider::linear(snap::gap() as f32, snap::MAX_GAP as f32),
-            &snap::gap().to_string(),
-            Action::SnapGap(snap::gap()),
+        form.toggle(
+            crate::i18n::text("ui-header-divider"),
+            crate::i18n::text("ui-show-a-thin-line-between-the-header-and-content"),
+            interface_flags::HEADER_DIVIDER.get(),
+            Action::Change(Event::ToggleHeaderDivider),
         );
         if show_mica {
             form.toggle(
@@ -622,6 +613,7 @@ fn scene_with_mica(
             options.text_protection,
             Action::Change(Event::ToggleTextProtection),
         );
+        form.section(crate::i18n::text("panel-icons-section"));
         form.slider(
             crate::i18n::text("ui-icon-grid-scale"),
             crate::i18n::text("ui-adjust-icon-size-and-spacing-together"),
@@ -629,12 +621,43 @@ fn scene_with_mica(
             &format!("{:.0}%", options.grid_scale),
             Action::GridSize(options.grid_scale),
         );
-        form.button(
-            crate::i18n::text("ui-reset-panel-layout"),
-            crate::i18n::text("ui-reset-this-page-to-its-defaults"),
-            crate::i18n::text("ui-reset"),
-            Action::Change(Event::ResetPaneOptions),
+        form.title_badge(crate::i18n::text("new-panels-only-tag")).toggle(
+            crate::i18n::text("icon-only-title"),
+            crate::i18n::text("icon-only-description"),
+            interface_flags::ICON_ONLY.get(),
+            Action::Change(Event::ToggleIconOnly),
         );
+        if interface_flags::ICON_ONLY.get() {
+            form.title_badge(crate::i18n::text("new-panels-only-tag")).choices(
+                crate::i18n::text("icon-size-title"),
+                crate::i18n::text("icon-size-description"),
+                [
+                    ("icon-size-small", interface_flags::IconSize::Small),
+                    ("icon-size-medium", interface_flags::IconSize::Medium),
+                    ("icon-size-large", interface_flags::IconSize::Large),
+                ].into_iter().map(|(key, size)| (
+                    crate::i18n::text(key),
+                    Action::Change(Event::SetIconSize(size)),
+                    interface_flags::icon_size() == size,
+                )).collect(),
+            );
+        }
+        form.section(crate::i18n::text("panel-snapping-section"));
+        form.toggle(
+            crate::i18n::text("ui-edge-snapping"),
+            crate::i18n::text("ui-snap-to-nearby-panels-and-screen-edges-when-moving"),
+            options.snap,
+            Action::Change(Event::ToggleSnap),
+        );
+        if options.snap {
+            form.slider(
+                crate::i18n::text("ui-snap-gap"),
+                crate::i18n::text("ui-snap-gap-description"),
+                Slider::linear(snap::gap() as f32, snap::MAX_GAP as f32),
+                &snap::gap().to_string(),
+                Action::SnapGap(snap::gap()),
+            );
+        }
     } else if page == 3 {
         let value = peek::settings();
         let resolved = peek::resolved(&value);
@@ -992,45 +1015,25 @@ pub(super) fn fonts_status(
 ) {
     let selected = super::super::fonts::family();
     let mut form = SettingsForm::new(s, width, crate::i18n::text("font-description"));
-    form.button(
-        crate::i18n::text("ui-current-font"),
-        &format!(
-            "{}\n{}: {}",
-            selected,
-            crate::i18n::text("font-fallback"),
-            crate::i18n::default_font()
-        ),
-        crate::i18n::text("ui-reset"),
-        Action::Font(crate::i18n::default_font().into()),
-    );
+    form.font_summary(&selected);
     form.option(crate::i18n::text("font-search"), Action::FontSearch, false);
     form.section(&format!(
         "{} · {}",
         crate::i18n::text("ui-available-fonts"),
         choices.len()
     ));
+    form.font_list_hint();
     for name in choices {
         form.font_option(name, name == &selected);
     }
     if let Some(status) = status {
         form.info(crate::i18n::text(status), "");
     } else if choices.is_empty() {
-        form.info(
+        form.button(
             crate::i18n::text("ui-no-fonts-available"),
             crate::i18n::text("font-search-empty"),
+            crate::i18n::text("font-clear-search"), Action::ClearFontSearch,
         );
-    }
-}
-
-pub(super) fn language(s: &mut Scene, width: f32, selected: &str) {
-    let mut form = SettingsForm::new(s, width, crate::i18n::text("language-description"));
-    for (code, name) in crate::i18n::LANGUAGES {
-        let name = if code == "system" {
-            crate::i18n::text("language-system")
-        } else {
-            name
-        };
-        form.option(name, Action::Language(code), selected == code);
     }
 }
 
@@ -1048,13 +1051,13 @@ pub(super) fn desktop_defaults(s: &mut Scene, width: f32, mode: layout_defaults:
         .fold(120.0_f32, f32::max);
     let mut form = SettingsForm::continuation(s, width, bottom + 24.0);
     form.section(crate::i18n::text("ui-icon-arrangement"));
-    form.toggle(
+    form.title_badge(crate::i18n::text("new-panels-only-tag")).toggle(
         crate::i18n::text("ui-align-icons-to-grid"),
         crate::i18n::text("desktop-default-align-description"),
         mode != layout_defaults::Mode::Free,
         Action::LayoutDefaults(mode.toggle_align()),
     );
-    form.toggle(
+    form.title_badge(crate::i18n::text("new-panels-only-tag")).toggle(
         crate::i18n::text("ui-auto-arrange-icons"),
         crate::i18n::text("desktop-default-arrange-description"),
         mode == layout_defaults::Mode::Compact,
@@ -1099,5 +1102,18 @@ pub(super) fn show_panels_shortcut(
         &show_hotkey::label(shortcut),
         Action::ShowPanelsShortcut,
         Action::ShowPanelsReset,
+    );
+}
+
+pub(super) fn panel_reset(s: &mut Scene, width: f32) {
+    let bottom = s.cards.iter().map(|r| r.bottom)
+        .chain(s.controls.iter().filter(|c| c.bounds.left >= Tokens::content_x()).map(|c| c.bounds.bottom))
+        .fold(120.0_f32, f32::max);
+    let mut form = SettingsForm::continuation(s, width, bottom + 24.0);
+    form.button(
+        crate::i18n::text("ui-reset-panel-layout"),
+        crate::i18n::text("panel-reset-description"),
+        crate::i18n::text("ui-reset"),
+        Action::Change(Event::ResetPaneOptions),
     );
 }

@@ -53,6 +53,8 @@ pub(super) fn runtime(state: &PaneApp) -> serde_json::Value {
         "desktop_hidden":desktop_toggle::hidden(),
         "compact_menu":interface_flags::COMPACT_MENU.get(),
         "header_divider":interface_flags::HEADER_DIVIDER.get(),
+        "icon_only":interface_flags::ICON_ONLY.get(),
+        "icon_size":interface_flags::icon_size().name(),
         "panel_shadow":interface_flags::PANEL_SHADOW.get(),
         "system_corners":interface_flags::system_corners().name(),
         "snap_gap":snap::gap(),
@@ -73,6 +75,7 @@ pub(super) fn present(state: &Rc<RefCell<PaneApp>>) -> Result<(), String> {
         let old_options = s.workspace.pane_options();
         let options = loaded.pane_options();
         s.workspace.set_pane_options(options);
+        s.workspace.set_icon_defaults(loaded.icon_defaults());
         if let Some((theme, backdrop)) = loaded.appearance() {
             s.workspace.set_appearance_defaults(theme, backdrop);
         }
@@ -92,6 +95,8 @@ pub(super) fn present(state: &Rc<RefCell<PaneApp>>) -> Result<(), String> {
         interface_flags::TITLE_EMOJI.load(&s.store)?;
         interface_flags::COMPACT_MENU.load(&s.store)?;
         interface_flags::HEADER_DIVIDER.load(&s.store)?;
+        interface_flags::ICON_ONLY.load(&s.store)?;
+        interface_flags::load_icon_size(&s.store)?;
         interface_flags::PANEL_SHADOW.load(&s.store)?;
         interface_flags::load_system_corners(&s.store)?;
         snap::load_gap(&s.store)?;
@@ -102,7 +107,8 @@ pub(super) fn present(state: &Rc<RefCell<PaneApp>>) -> Result<(), String> {
                 model.theme = panel.theme();
                 model.dark = theme::is_dark(panel.theme());
                 model.backdrop = panel.backdrop();
-                if !model.is_list() && options.grid_scale != old_options.grid_scale {
+                if !model.is_list() && (options.grid_scale != old_options.grid_scale) {
+                    model.scroll_x = 0.0;
                     model.scroll = 0;
                     model.hovered_item = None;
                 }

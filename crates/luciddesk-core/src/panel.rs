@@ -10,6 +10,31 @@ enum PanelSource {
     Monitor,
 }
 
+/// Icon artwork size at 100% scale; cell spacing is independent.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum IconSize { Small, Medium, Large }
+impl IconSize {
+    pub fn name(self) -> &'static str {
+        match self { Self::Small => "small", Self::Medium => "medium", Self::Large => "large" }
+    }
+    pub fn pixels(self) -> f32 {
+        match self { Self::Small => 48.0, Self::Medium => 56.0, Self::Large => 64.0 }
+    }
+    pub fn parse(value: &str) -> Option<Self> {
+        match value { "small" => Some(Self::Small), "medium" => Some(Self::Medium), "large" => Some(Self::Large), _ => None }
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct IconDisplay {
+    pub icon_only: bool,
+    pub size: IconSize,
+}
+impl IconDisplay {
+    pub const DEFAULT: Self = Self { icon_only: false, size: IconSize::Large };
+}
+impl Default for IconDisplay { fn default() -> Self { Self::DEFAULT } }
+
 /// A pane with a mutually exclusive desktop, folder, search, or monitor source.
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 // These flags are independent UI preferences, not mutually exclusive states.
@@ -17,6 +42,8 @@ enum PanelSource {
 pub struct Panel {
     source: PanelSource,
     list_view: bool,
+    #[serde(default)]
+    icon_display: IconDisplay,
     fixed_grid: bool,
     free_layout: bool,
     theme: PanelTheme,
@@ -61,6 +88,7 @@ impl Panel {
             id,
             source: PanelSource::Desktop,
             list_view: false,
+            icon_display: IconDisplay::DEFAULT,
             fixed_grid: false,
             free_layout: false,
             title: title.into(),
@@ -156,6 +184,9 @@ impl Panel {
     pub const fn free_layout(&self) -> bool { self.fixed_grid() && self.free_layout }
     pub const fn set_free_layout(&mut self, enabled: bool) { self.free_layout = enabled; }
     pub const fn set_fixed_grid(&mut self, enabled: bool) { self.fixed_grid = enabled; if !enabled { self.free_layout = false; } }
+
+    pub fn icon_display(&self) -> IconDisplay { self.icon_display }
+    pub fn set_icon_display(&mut self, value: IconDisplay) { self.icon_display = value; }
 
     /// Whether desktop or folder items use rows instead of an icon grid.
     #[must_use]

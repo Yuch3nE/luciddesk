@@ -154,7 +154,7 @@ fn show_editor(
             logical_font.lfHeight -= (dpi as f32 / 96.0).round() as i32;
         } else if !title && !model.borrow().is_list() {
             logical_font.lfHeight = (logical_font.lfHeight as f32
-                * model.borrow().options.grid_scale / 100.0).round() as i32;
+                * if model.borrow().icon_display.icon_only { 1.0 } else { model.borrow().options.grid_scale / 100.0 }).round() as i32;
         }
         let font = CreateFontIndirectW(&raw const logical_font);
         if font.is_null() {
@@ -348,7 +348,7 @@ unsafe fn resize(edit: HWND, pointer: *mut Editor) {
         (
             x,
             grid.cell_width,
-            y + grid.icon_size + super::layout::LABEL_OFFSET - 2.0 / scale,
+            y + grid.icon_top() + grid.icon_size + super::layout::LABEL_OFFSET - 2.0 - 2.0 / scale,
         )
     };
     let center = (left + available / 2.0) * scale;
@@ -749,6 +749,7 @@ mod tests {
             folder_visible_columns: 15,
         folder_navigation: [false; 2],
             list_view: false,
+        icon_display: Default::default(),
             fixed_grid: false,
             free_layout: false,
             folder: None,

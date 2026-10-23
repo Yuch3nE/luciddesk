@@ -105,12 +105,58 @@ pub fn show(
     fixed_grid: bool,
     free_layout: bool,
     sort_order: Option<(u8, bool)>,
+    display: luciddesk_core::IconDisplay,
     tab_position: Option<(usize, usize)>,
 ) -> i32 {
     let topmost = super::quick_reveal::permanent_topmost(owner);
     let mut rows = pane_entries_fixed(folder, visible_columns, auto_hide, locked, topmost, collapsed, fixed_grid, free_layout, tab_position);
     set_sort_entries(&mut rows, sort_order);
+    set_icon_entries(&mut rows, folder.1, display);
     show_entries(owner, anchor, anchored, theme, backdrop, rows)
+}
+
+fn set_icon_entries(rows: &mut Vec<Entry>, list_view: bool, display: luciddesk_core::IconDisplay) {
+    if let Some(view) = rows.iter_mut().find(|row| row.id == 22) {
+        let arrangement: Vec<_> = view.children.drain(..).filter(|row| matches!(row.id, 54 | 55)).collect();
+        view.children = [
+            (25, "menu-icons-with-names", !list_view && !display.icon_only),
+            (70, "menu-icons-only", !list_view && display.icon_only),
+            (26, "ui-list", list_view),
+        ].into_iter().map(|(id, key, checked)| entry(id, crate::i18n::text(key), if checked { "\u{e73e}" } else { "" }, "")).collect();
+        if !arrangement.is_empty() {
+            view.children.push(entry(0, "", "", ""));
+            view.children.extend(arrangement);
+        }
+    }
+    if !list_view && display.icon_only {
+        let mut sizes = entry(74, crate::i18n::text("icon-size-title"), "", "");
+        sizes.children = [
+            (71, "icon-size-small", luciddesk_core::IconSize::Small),
+            (72, "icon-size-medium", luciddesk_core::IconSize::Medium),
+            (73, "icon-size-large", luciddesk_core::IconSize::Large),
+        ].into_iter().map(|(id, key, size)| entry(id, crate::i18n::text(key), if display.size == size { "\u{e73e}" } else { "" }, "")).collect();
+        let at = rows.iter().position(|r| r.id == 22).map_or(0, |i| i + 1);
+        rows.insert(at, sizes);
+    }
+}
+
+#[test]
+fn icon_menu_matches_active_panel_and_preserves_list_mode() {
+    let mut model = super::tests::test_model("Icons");
+    model.icon_display = luciddesk_core::IconDisplay { icon_only: true, size: luciddesk_core::IconSize::Medium };
+    for list in [false, true] {
+        model.list_view = list;
+        let rows = tab_context_entries(&model, false, model.active_tab);
+        let view = rows.iter().find(|r| r.id == 22).unwrap();
+        let only = view.children.iter().find(|r| r.id == 70).unwrap();
+        assert!(only.enabled);
+        assert_eq!(!only.icon.is_empty(), !list);
+        assert_eq!(view.children.iter().filter(|r| matches!(r.id, 25 | 26 | 70) && !r.icon.is_empty()).count(), 1);
+        let sizes = rows.iter().find(|r| r.id == 74);
+        if list { assert!(sizes.is_none()); continue; }
+        let sizes = sizes.unwrap();
+        assert_eq!(sizes.children.iter().filter(|r| !r.icon.is_empty()).map(|r| r.id).collect::<Vec<_>>(), vec![72]);
+    }
 }
 
 #[cfg(test)]
@@ -122,42 +168,36 @@ fn pane_entries(folder: (bool, bool), visible_columns: u8,
 fn pane_entries_fixed(folder: (bool, bool), visible_columns: u8,
     auto_hide: bool, locked: bool, topmost: bool, collapsed: bool, fixed_grid: bool, free_layout: bool,
     tab_position: Option<(usize, usize)>) -> Vec<Entry> {
-    let mut rows = Vec::new();
-    if folder.0 {
-        rows.push(entry(20, crate::i18n::text("ui-open-in-file-explorer"), "", ""));
-    }
-    rows.push(entry(9, crate::i18n::text("ui-refresh"), "", "F5"));
-    if folder.0 {
-        rows.push(entry(21, crate::i18n::text("ui-change-folder"), "", ""));
-    }
-    rows.push(entry(0, "", "", ""));
     let mut view = entry(22, crate::i18n::text("ui-view"), "", "");
     view.children = vec![
-        entry(25, crate::i18n::text("ui-icons"), if folder.1 { "" } else { "\u{e73e}" }, ""),
+        entry(25, crate::i18n::text("menu-icons-with-names"), if folder.1 { "" } else { "\u{e73e}" }, ""),
         entry(26, crate::i18n::text("ui-list"), if folder.1 { "\u{e73e}" } else { "" }, ""),
     ];
-    if folder.0 && folder.1 {
-        view.children.push(entry(0, "", "", ""));
-        let mut columns = entry(24, crate::i18n::text("ui-columns"), "", "");
-        columns.children = column_entries(visible_columns);
-        view.children.push(columns);
-    }
     if !folder.0 && !folder.1 && !locked {
         view.children.push(entry(0, "", "", ""));
         view.children.push(entry(55, crate::i18n::text("ui-align-icons-to-grid"), if free_layout { "" } else { "\u{e73e}" }, ""));
         view.children.push(entry(54, crate::i18n::text("ui-auto-arrange-icons"), if fixed_grid { "" } else { "\u{e73e}" }, ""));
     }
-    rows.push(view);
+    let mut rows = vec![view];
     if !locked {
-        let children = sort_entries(None);
-        rows.push(Entry { children, ..entry(51, crate::i18n::text("ui-sort-by"), "", "") });
+        rows.push(Entry { children: sort_entries(None), ..entry(51, crate::i18n::text("ui-sort-by"), "", "") });
     }
+    if folder.0 && folder.1 {
+        rows.push(Entry { children: column_entries(visible_columns), ..entry(24, crate::i18n::text("ui-columns"), "", "") });
+    }
+    rows.push(entry(0, "", "", ""));
+    if folder.0 {
+        rows.push(entry(20, crate::i18n::text("ui-open-in-file-explorer"), "", ""));
+        rows.push(entry(21, crate::i18n::text("ui-change-folder"), "", ""));
+    }
+    rows.push(entry(9, crate::i18n::text("ui-refresh"), "", "F5"));
     rows.push(entry(0, "", "", ""));
     if !locked {
         rows.push(entry(43, crate::i18n::text("ui-rename-panel"), "", ""));
     }
     rows.extend([
         entry(48, crate::i18n::text(if collapsed { "ui-expand-panel" } else { "ui-collapse-panel" }), "", ""),
+        entry(0, "", "", ""),
         entry(7, crate::i18n::text("ui-auto-collapse"), if auto_hide { "\u{e73e}" } else { "" }, ""),
         entry(10, crate::i18n::text("ui-lock-panel"), if locked { "\u{e73e}" } else { "" }, ""),
         entry(12, crate::i18n::text("ui-always-on-top"), if topmost { "\u{e73e}" } else { "" }, ""),
@@ -237,10 +277,12 @@ pub(super) fn tab_context_entries(model: &super::GroupModel, topmost: bool, targ
     let order = if model.folder.is_some() && target == model.active_tab { Some(model.folder_sort) }
         else { model.sort_orders.borrow().get(&target).copied() };
     set_sort_entries(&mut entries, order);
+    if target == model.active_tab { set_icon_entries(&mut entries, model.is_list(), model.icon_display); }
     if position.is_none_or(|(_, count)| count <= 1) {
         return entries;
     }
     entries.retain(|row| row.id != 43);
+    if target != model.active_tab { entries.retain(|row| !matches!(row.id, 22 | 24)); }
     for row in &mut entries {
         if row.id == 22 {
             // Arrangement commands target the active model, not the clicked tab.
@@ -253,6 +295,8 @@ pub(super) fn tab_context_entries(model: &super::GroupModel, topmost: bool, targ
             row.children.pop();
         }
     }
+    entries.dedup_by(|a, b| a.id == 0 && b.id == 0);
+    if entries.first().is_some_and(|row| row.id == 0) { entries.remove(0); }
     let actions = tab_entries(position, model.locked);
     let mut tab_actions = vec![actions.iter().find(|row| row.id == 49).unwrap().clone()];
     if !model.locked {
@@ -886,9 +930,15 @@ mod tests {
             crate::i18n::text("ui-collapse-panel"));
         assert_eq!(locked.iter().find(|row| row.id == 48).unwrap().label,
             crate::i18n::text("ui-expand-panel"));
-        for rows in [&open, &locked] {
+        for (rows, enabled) in [(&open, false), (&locked, true)] {
             assert!(!rows.iter().any(|row| row.id == 4));
             assert_eq!(rows.last().unwrap().id, 11);
+            let collapse = rows.iter().position(|row| row.id == 48).unwrap();
+            assert_eq!(rows[collapse + 1].id, 0);
+            assert_eq!(rows[collapse + 2..collapse + 5].iter().map(|row| row.id).collect::<Vec<_>>(), [7, 10, 12]);
+            for id in [7, 10, 12] {
+                assert_eq!(!rows.iter().find(|row| row.id == id).unwrap().icon.is_empty(), enabled);
+            }
             assert!(!rows.windows(2).any(|pair| pair[0].id == 0 && pair[1].id == 0));
         }
     }
@@ -1053,7 +1103,7 @@ mod tests {
                 false,
                 luciddesk_core::PanelTheme::Dark,
                 Backdrop::Acrylic,
-                (false, false), 15, false, false, false, None, None
+                (false, false), 15, false, false, false, None, Default::default(), None
             ),
             0
         );
@@ -1111,7 +1161,7 @@ mod tests {
                         false,
                         luciddesk_core::PanelTheme::Dark,
                         Backdrop::Mica,
-                        (false, false), 15, false, false, false, None, None
+                        (false, false), 15, false, false, false, None, Default::default(), None
                     ),
                     0
                 );
@@ -1195,12 +1245,11 @@ fn keyboard_navigation_skips_disabled_rows_and_wraps() {
 }
 
 #[test]
-fn view_contains_only_grid_alignment_and_auto_arrangement() {
+fn view_contains_grid_alignment_and_auto_arrangement() {
     for (fixed, free) in [(false, false), (true, false), (true, true)] {
         let rows = pane_entries_fixed((false, false), 7, false, false, false, false, fixed, free, None);
-        let view = rows.iter().find(|r| r.id == 22).unwrap();
         for (id, checked) in [(54, !fixed), (55, !free)] {
-            let entry = view.children.iter().find(|r| r.id == id).unwrap();
+            let entry = rows.iter().find(|r| r.id == 22).unwrap().children.iter().find(|r| r.id == id).unwrap();
             assert!(entry.enabled);
             assert_eq!(!entry.icon.is_empty(), checked);
         }

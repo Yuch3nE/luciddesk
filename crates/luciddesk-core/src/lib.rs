@@ -23,7 +23,7 @@ pub use appearance::{Backdrop, BackdropKind, PaneOptions, PanelText, PanelTheme,
 pub use geometry::{GridPosition, PointDip, RectDip};
 pub use identity::{MonitorId, PanelId, ShellIdentity};
 pub use item::{DesktopItem, DesktopPlacement};
-pub use panel::Panel;
+pub use panel::{Panel, IconDisplay, IconSize};
 pub use workspace::{PaneTabs, Workspace, WorkspaceError};
 
 #[cfg(test)]

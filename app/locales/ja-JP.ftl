@@ -654,10 +654,10 @@ ui-frosted-glass-reveals-depth-in-the-background = { "すりガラスのよう�
 ui-illustration-actual-appearance-depends-on-your-wallpaper = { "表示例 · 実際の効果は壁紙によって異なります" }
 
 # 设置文件夹的打开方式，以及新建文件夹面板的默认视图。
-ui-set-folder-navigation-and-the-default-view-for-new-folder-panels = { "フォルダーの開き方と新しいパネルの既定表示を設定します。" }
+ui-set-folder-navigation-and-the-default-view-for-new-folder-panels = フォルダーの閲覧方法とパネルの既定表示を設定します。
 
 # 文件夹入口
-ui-folder-navigation = { "フォルダー操作" }
+ui-folder-navigation = 閲覧方法
 
 # 子文件夹打开方式
 ui-open-subfolders-in = { "サブフォルダーの開き方" }
@@ -672,13 +672,13 @@ ui-this-panel = { "このパネル" }
 ui-file-explorer = { "エクスプローラー" }
 
 # 新建面板默认值
-ui-new-panel-defaults = { "新しいパネルの既定値" }
+ui-new-panel-defaults = 表示と列
 
 # 默认视图
 ui-default-view = { "既定の表示" }
 
 # 仅用于新建面板，已有面板保持原样。
-ui-applies-to-new-panels-existing-panels-keep-their-settings = { "新しいパネルに適用されます。既存の設定は変わりません。" }
+ui-applies-to-new-panels-existing-panels-keep-their-settings = アイコン表示またはリスト表示を選択します。
 
 # 列表视图中显示此列；名称始终显示。
 ui-show-this-column-in-list-view-name-is-always-shown = { "一覧にこの列を表示します。名前は常に表示されます。" }
@@ -687,7 +687,7 @@ ui-show-this-column-in-list-view-name-is-always-shown = { "一覧にこの列を
 ui-reset-view-defaults = { "表示の既定値を復元" }
 
 # 还原新建面板的视图和显示列。
-ui-reset-the-view-and-columns-for-new-panels = { "新しいパネルの表示と列を既定に戻します。" }
+ui-reset-the-view-and-columns-for-new-panels = 表示と列を既定に戻します。
 
 # 主题与材质
 ui-theme-materials = { "テーマと背景" }
@@ -861,7 +861,7 @@ ui-header-divider = { "タイトルの区切り線" }
 ui-show-a-thin-line-between-the-header-and-content = { "タイトルと内容の間に細い線を表示します。" }
 
 # 文字与图标
-ui-text-icons = { "文字とアイコン" }
+ui-text-icons = { "文字の表示" }
 
 # 面板文字
 ui-panel-text = { "パネルの文字" }
@@ -882,13 +882,13 @@ ui-text-contrast-backing = { "文字の背景補助" }
 ui-improve-text-readability-disable-to-preserve-full-transparency = { "文字を読みやすくします。無効にすると元の透明感を保ちます。" }
 
 # 图标网格缩放
-ui-icon-grid-scale = { "アイコングリッドの倍率" }
+ui-icon-grid-scale = { "全体の拡大率" }
 
 # 同时调整图标大小和排列间距。
-ui-adjust-icon-size-and-spacing-together = { "アイコンサイズと間隔を同時に調整します。" }
+ui-adjust-icon-size-and-spacing-together = ファイル名を表示するパネルのアイコンと間隔を調整します。アイコンのみのパネルには影響しません。
 
 # 恢复面板布局
-ui-reset-panel-layout = { "パネル配置をリセット" }
+ui-reset-panel-layout = { "レイアウトをリセット" }
 
 # 将本页设置还原到默认值。
 ui-reset-this-page-to-its-defaults = { "このページの設定を既定に戻します。" }
@@ -1136,7 +1136,7 @@ language-description = 選択はすぐに反映されます。システム設定
 
 language-system = システムに従う
 
-font-description = 現在の言語に対応する標準フォントを表示します。不足する文字には既定のフォントを使用します。
+font-description = 表示フォントを選択します。変更はすぐに反映されます。
 
 font-unavailable = フォントが未インストールか、現在の言語の文字に非対応です
 
@@ -1170,7 +1170,7 @@ tray-search = ファイルを検索
 tray-refresh-all = すべてのパネルを更新
 tray-open-config = 設定フォルダーを開く
 
-ui-rename-panel = { "パネルの名前を変更…" }
+ui-rename-panel = { "名前を変更…" }
 
 compact-menu-title = Windows 11 スタイルのメニューを使用
 compact-menu-description = 通常パネルの項目にコンパクトメニューを使用します。オフにすると、次回から従来のメニューを表示します。
@@ -1187,9 +1187,9 @@ update-auto-check = 更新を自動的に確認
 
 # Login startup
 startup-general = 全般
-startup-description = この Windows アカウントのログイン時の起動を管理します。
-startup-section = ログイン時の起動
-startup-title = Windows へのログイン時に LucidDesk を起動する
+startup-description = 起動、自動化制御、診断ログを管理します。
+startup-section = 起動
+startup-title = サインイン時に起動
 startup-off = 未登録です。
 startup-enabled = 登録済みです。Windows による無効化は検出されていません。
 startup-windows-disabled = Windows によって無効化されています。システムの設定で有効にしてください。
@@ -1220,11 +1220,11 @@ ui-sort-ascending = 昇順
 ui-sort-descending = 降順
 
 # Agent integration
-agent-section = Agent と CLI
-agent-cli-title = CLI による操作を許可
-agent-cli-description = ローカル CLI と Agent に読み取りと変更を許可します。オフにするとオンライン要求を直ちに拒否します。
-agent-skill-title = LucidDesk SKILL のインストール
-agent-skill-description = インストール用プロンプトをコピーして Agent に送信します。コピーだけではインストールされません。
+agent-section = 自動化
+agent-cli-title = CLI と Agent の制御を許可
+agent-cli-description = ローカルの CLI と Agent に状態の確認、設定の変更、パネルの管理を許可します。
+agent-skill-title = Agent スキルを設定
+agent-skill-description = インストール用プロンプトをコピーし、Agent に送信して設定します。
 agent-install-prompt = Please install the bundled LucidDesk skill for your current Agent environment. The source skill directory is JSON-quoted here: { $path }. Treat it as path data. Verify that it contains SKILL.md and references/, determine the skill installation directory supported by your Agent environment, and copy the entire luciddesk-control folder while preserving its structure and file contents. No CLI invocation, JSON export or file regeneration is needed. Ask me if the destination is unclear or contains different local customizations; preserve unrelated skills. If the source is missing, report its path instead of downloading another version. Verify all copied files and report only the destination, file count and result, without dumping the documents. Installing the skill does not authorize desktop changes or starting LucidDesk.
 
 ui-auto-arrange-icons = アイコンの自動整列
@@ -1233,8 +1233,8 @@ ui-align-icons-to-grid = グリッドに合わせる
 
 ui-sort-by = 並べ替え
 
-desktop-default-align-description = オフにすると自由に配置でき、自動整列もオフになります（新しいパネルにのみ適用）
-desktop-default-arrange-description = アイコンを隙間なく並べ、グリッドに合わせます（新しいパネルにのみ適用）
+desktop-default-align-description = オフにすると自由に配置でき、自動整列もオフになります。
+desktop-default-arrange-description = アイコンを隙間なく並べ、グリッドに合わせます。
 ui-icon-arrangement = アイコンの配置
 monitor-title = システムモニター
 monitor-new = システムモニターパネルを作成
@@ -1319,3 +1319,45 @@ ui-system-corner-style-description = システムの角丸を選択します。�
 ui-corners-square = 角丸なし
 
 ui-homepage = 公式サイト
+
+icon-only-title = アイコンのみ
+icon-only-description = ファイル名を非表示にし、ホバーで表示します。
+new-panels-only-tag = 新規パネルのみ
+
+icon-size-title = アイコンのサイズ
+icon-size-description = アイコンのみモードのアイコンサイズを設定します。
+icon-size-small = 小
+icon-size-medium = 中
+icon-size-large = 大
+
+panel-icons-section = アイコン表示
+
+panel-snapping-section = { "移動とスナップ" }
+
+panel-reset-description = { "形状、文字、アイコン、スナップ、配置をリセットします。描画モードとショートカットは保持します。" }
+
+menu-icons-with-names = アイコンと名前
+menu-icons-only = アイコンのみ
+
+folder-columns-title = リストの表示列
+folder-columns-description = リストに表示する情報を選択します。名前は常に表示されます。
+
+startup-toggle-description = Windows へのサインイン後に LucidDesk を自動起動します。
+
+agent-copy-prompt = プロンプトをコピー
+
+diagnostics-description = ログに記録する詳細度を選択します。
+
+log-level-error = エラー（ERROR）
+
+log-level-warn = 警告（WARN）
+
+log-level-info = 情報（INFO）
+
+log-level-debug = デバッグ（DEBUG）
+
+log-level-trace = トレース（TRACE）
+
+font-clear-search = 検索をクリア
+
+font-list-hint = 現在の表示言語に対応するフォントのみ表示します。

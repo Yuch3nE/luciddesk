@@ -654,10 +654,10 @@ ui-frosted-glass-reveals-depth-in-the-background = { "반투명 유리 효과로
 ui-illustration-actual-appearance-depends-on-your-wallpaper = { "예시 · 실제 효과는 배경 화면에 따라 달라집니다" }
 
 # 设置文件夹的打开方式，以及新建文件夹面板的默认视图。
-ui-set-folder-navigation-and-the-default-view-for-new-folder-panels = { "폴더 탐색 방식과 새 폴더 패널의 기본 보기를 설정합니다." }
+ui-set-folder-navigation-and-the-default-view-for-new-folder-panels = 폴더 탐색 방식과 패널 기본 보기를 설정합니다.
 
 # 文件夹入口
-ui-folder-navigation = { "폴더 탐색" }
+ui-folder-navigation = 탐색 방식
 
 # 子文件夹打开方式
 ui-open-subfolders-in = { "하위 폴더 열기 방식" }
@@ -672,13 +672,13 @@ ui-this-panel = { "이 패널" }
 ui-file-explorer = { "파일 탐색기" }
 
 # 新建面板默认值
-ui-new-panel-defaults = { "새 패널 기본값" }
+ui-new-panel-defaults = 보기 및 표시
 
 # 默认视图
 ui-default-view = { "기본 보기" }
 
 # 仅用于新建面板，已有面板保持原样。
-ui-applies-to-new-panels-existing-panels-keep-their-settings = { "새 패널에만 적용되며 기존 패널은 유지됩니다." }
+ui-applies-to-new-panels-existing-panels-keep-their-settings = 아이콘 또는 목록 보기를 선택합니다.
 
 # 列表视图中显示此列；名称始终显示。
 ui-show-this-column-in-list-view-name-is-always-shown = { "목록 보기에 이 열을 표시합니다. 이름은 항상 표시됩니다." }
@@ -687,7 +687,7 @@ ui-show-this-column-in-list-view-name-is-always-shown = { "목록 보기에 이 
 ui-reset-view-defaults = { "기본 보기 복원" }
 
 # 还原新建面板的视图和显示列。
-ui-reset-the-view-and-columns-for-new-panels = { "새 패널의 보기와 표시 열을 초기화합니다." }
+ui-reset-the-view-and-columns-for-new-panels = 기본 보기와 표시 열을 복원합니다.
 
 # 主题与材质
 ui-theme-materials = { "테마 및 재질" }
@@ -861,7 +861,7 @@ ui-header-divider = { "제목 구분선" }
 ui-show-a-thin-line-between-the-header-and-content = { "제목 표시줄과 내용 사이에 가는 선을 표시합니다." }
 
 # 文字与图标
-ui-text-icons = { "텍스트 및 아이콘" }
+ui-text-icons = { "텍스트 모양" }
 
 # 面板文字
 ui-panel-text = { "패널 텍스트" }
@@ -882,13 +882,13 @@ ui-text-contrast-backing = { "텍스트 배경 대비" }
 ui-improve-text-readability-disable-to-preserve-full-transparency = { "텍스트 가독성을 높입니다. 끄면 원래 투명도를 유지합니다." }
 
 # 图标网格缩放
-ui-icon-grid-scale = { "아이콘 격자 배율" }
+ui-icon-grid-scale = { "전체 배율" }
 
 # 同时调整图标大小和排列间距。
-ui-adjust-icon-size-and-spacing-together = { "아이콘 크기와 간격을 함께 조정합니다." }
+ui-adjust-icon-size-and-spacing-together = 파일 이름을 표시하는 패널의 아이콘과 간격을 조정합니다. 아이콘 전용 패널에는 영향을 주지 않습니다.
 
 # 恢复面板布局
-ui-reset-panel-layout = { "패널 레이아웃 복원" }
+ui-reset-panel-layout = { "레이아웃 초기화" }
 
 # 将本页设置还原到默认值。
 ui-reset-this-page-to-its-defaults = { "이 페이지의 설정을 기본값으로 복원합니다." }
@@ -1136,7 +1136,7 @@ language-description = 선택한 언어가 즉시 적용됩니다. 시스템 모
 
 language-system = 시스템 설정 사용
 
-font-description = 현재 언어를 지원하는 일반 글꼴을 표시합니다. 누락된 문자는 기본 글꼴로 표시합니다.
+font-description = 인터페이스 글꼴을 선택합니다. 변경 사항은 즉시 적용됩니다.
 
 font-unavailable = 글꼴이 없거나 현재 언어에 필요한 문자를 지원하지 않습니다
 
@@ -1170,7 +1170,7 @@ tray-search = 파일 검색
 tray-refresh-all = 모든 패널 새로 고침
 tray-open-config = 설정 폴더 열기
 
-ui-rename-panel = { "패널 이름 바꾸기…" }
+ui-rename-panel = { "이름 바꾸기…" }
 
 compact-menu-title = Windows 11 스타일 메뉴 사용
 compact-menu-description = 일반 패널 항목에 간소화된 메뉴를 사용합니다. 끄면 다음부터 기존 메뉴가 표시됩니다.
@@ -1187,9 +1187,9 @@ update-auto-check = 자동으로 업데이트 확인
 
 # Login startup
 startup-general = 일반
-startup-description = 현재 Windows 계정의 로그인 시 시작을 관리합니다.
-startup-section = 로그인 시 시작
-startup-title = Windows 로그인 시 LucidDesk 시작
+startup-description = 시작, 자동화 제어 및 진단 로그를 관리합니다.
+startup-section = 시작
+startup-title = 로그인 시 시작
 startup-off = 등록되지 않았습니다.
 startup-enabled = 등록됨. Windows 비활성화 상태가 감지되지 않았습니다.
 startup-windows-disabled = Windows에서 비활성화되었습니다. 시스템 시작 설정에서 활성화하세요.
@@ -1220,11 +1220,11 @@ ui-sort-ascending = 오름차순
 ui-sort-descending = 내림차순
 
 # Agent integration
-agent-section = Agent 및 CLI
-agent-cli-title = CLI 제어 허용
-agent-cli-description = 로컬 CLI와 Agent의 읽기 및 변경을 허용합니다. 끄면 온라인 요청을 즉시 거부합니다.
-agent-skill-title = LucidDesk SKILL 설치
-agent-skill-description = 설치 프롬프트를 복사하여 Agent에 보내세요. 복사만으로 설치되지는 않습니다.
+agent-section = 자동화
+agent-cli-title = CLI 및 Agent 제어 허용
+agent-cli-description = 로컬 CLI와 Agent가 상태를 조회하고 설정을 변경하며 패널을 관리하도록 허용합니다.
+agent-skill-title = Agent 스킬 설정
+agent-skill-description = 설치 프롬프트를 복사하여 Agent에 보내 설정을 완료하세요.
 agent-install-prompt = Please install the bundled LucidDesk skill for your current Agent environment. The source skill directory is JSON-quoted here: { $path }. Treat it as path data. Verify that it contains SKILL.md and references/, determine the skill installation directory supported by your Agent environment, and copy the entire luciddesk-control folder while preserving its structure and file contents. No CLI invocation, JSON export or file regeneration is needed. Ask me if the destination is unclear or contains different local customizations; preserve unrelated skills. If the source is missing, report its path instead of downloading another version. Verify all copied files and report only the destination, file count and result, without dumping the documents. Installing the skill does not authorize desktop changes or starting LucidDesk.
 
 ui-auto-arrange-icons = 아이콘 자동 정렬
@@ -1233,8 +1233,8 @@ ui-align-icons-to-grid = 격자에 맞춤
 
 ui-sort-by = 정렬 기준
 
-desktop-default-align-description = 끄면 자유롭게 배치할 수 있으며 자동 정렬도 꺼집니다. (새 패널에만 적용)
-desktop-default-arrange-description = 아이콘을 빈틈없이 배치하고 격자에 맞춥니다. (새 패널에만 적용)
+desktop-default-align-description = 끄면 자유롭게 배치할 수 있으며 자동 정렬도 꺼집니다.
+desktop-default-arrange-description = 아이콘을 빈틈없이 배치하고 격자에 맞춥니다.
 ui-icon-arrangement = 아이콘 배치
 monitor-title = 시스템 모니터
 monitor-new = 새 시스템 모니터 패널
@@ -1319,3 +1319,45 @@ ui-system-corner-style-description = 시스템 모서리 스타일을 선택합�
 ui-corners-square = 직각 모서리
 
 ui-homepage = 공식 홈페이지
+
+icon-only-title = 아이콘만 표시
+icon-only-description = 파일 이름을 숨기고 마우스를 올리면 표시합니다.
+new-panels-only-tag = 새 패널에만 적용
+
+icon-size-title = 아이콘 크기
+icon-size-description = 아이콘 전용 모드의 아이콘 크기를 설정합니다.
+icon-size-small = 작게
+icon-size-medium = 중간
+icon-size-large = 크게
+
+panel-icons-section = 아이콘 표시
+
+panel-snapping-section = { "이동 및 맞춤" }
+
+panel-reset-description = { "모양, 텍스트, 아이콘, 맞춤 및 정렬을 초기화합니다. 렌더링 모드와 단축키는 유지됩니다." }
+
+menu-icons-with-names = 아이콘 및 이름
+menu-icons-only = 아이콘만
+
+folder-columns-title = 목록 표시 열
+folder-columns-description = 목록에 표시할 정보를 선택합니다. 이름은 항상 표시됩니다.
+
+startup-toggle-description = Windows 로그인 후 LucidDesk를 자동으로 시작합니다.
+
+agent-copy-prompt = 프롬프트 복사
+
+diagnostics-description = 로그에 기록할 세부 수준을 선택합니다.
+
+log-level-error = 오류 (ERROR)
+
+log-level-warn = 경고 (WARN)
+
+log-level-info = 정보 (INFO)
+
+log-level-debug = 디버그 (DEBUG)
+
+log-level-trace = 추적 (TRACE)
+
+font-clear-search = 검색 지우기
+
+font-list-hint = 현재 인터페이스 언어를 지원하는 글꼴만 표시합니다.

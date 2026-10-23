@@ -9,6 +9,7 @@ pub struct Grid {
     pub cell_height: f32,
     pub icon_size: f32,
     pub text_scale: f32,
+    pub icon_only: bool,
     pub visible_rows: usize,
     pub scroll_limit: Option<usize>,
 }
@@ -42,13 +43,19 @@ pub const PADDING: f32 = 12.0;
 pub const HEADER_BUTTONS_WIDTH: f32 = 70.0;
 
 /// Shared grid metrics for rendering and the first desktop pane.
-pub fn desktop_grid(width: f32, height: f32, icon_size: f32, grid_scale: f32) -> Grid {
-    let factor = grid_scale / 100.0;
+pub fn desktop_grid(width: f32, height: f32, icon_size: f32, grid_scale: f32, display: luciddesk_core::IconDisplay) -> Grid {
+    let factor = if display.icon_only { 1.0 } else { grid_scale / 100.0 };
     let mut grid = Grid::system(width, height, icon_size, (88.0, 96.0));
+    if display.icon_only {
+        grid.cell_width = icon_size + 40.0;
+        grid.cell_height = grid.cell_width;
+        grid.icon_size *= display.size.pixels() / DESKTOP_ICON_SIZE;
+    }
     grid.cell_width *= factor;
     grid.cell_height *= factor;
     grid.icon_size *= factor;
     grid.text_scale = factor;
+    grid.icon_only = display.icon_only;
     grid.columns = ((width - PADDING * 2.0) / grid.cell_width).floor().max(1.0) as usize;
     grid.visible_rows = ((height - grid.content_top - PADDING) / grid.cell_height).floor().max(1.0) as usize;
     grid
@@ -79,6 +86,13 @@ pub fn header_button(width: f32, x: f32, y: f32) -> Option<usize> {
 }
 
 impl Grid {
+    /// Icon offset shared by painting and drag previews.
+    pub fn icon_top(self) -> f32 {
+        if self.icon_only {
+            (self.cell_height - self.icon_size) / 2.0
+        } else { 2.0 }
+    }
+
     pub fn list(width: f32, height: f32) -> Self {
         let top = HEADER + LIST_HEADER;
         Self {
@@ -90,6 +104,7 @@ impl Grid {
             cell_height: LIST_ROW,
             icon_size: 20.0,
             text_scale: 1.0,
+            icon_only: false,
             visible_rows: ((height - top - PADDING) / LIST_ROW).floor().max(1.0) as usize,
             scroll_limit: None,
         }
@@ -107,6 +122,7 @@ impl Grid {
             cell_height,
             icon_size,
             text_scale: 1.0,
+            icon_only: false,
             visible_rows: ((height - HEADER - PADDING * 2.0) / cell_height)
                 .floor()
                 .max(1.0) as usize,
@@ -332,6 +348,7 @@ mod resize_tests {
 
 /// Row bounds shared by manual resizing and control-plan fitting (logical DPI).
 pub fn icon_row_height<'a>(grid: Grid, labels: impl Iterator<Item = &'a str>) -> f32 {
+    if grid.icon_only { return grid.cell_height; }
     labels.map(|text| super::theme::selection_height(
         grid.icon_size,
         super::label::scaled_content_height(text, grid.cell_width.round() as u32, 96, grid.text_scale),

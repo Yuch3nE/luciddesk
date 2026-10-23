@@ -282,6 +282,7 @@ pub(super) fn test_model(title: &str) -> GroupModel {
         folder_visible_columns: 15,
         folder_navigation: [false; 2],
         list_view: false,
+        icon_display: Default::default(),
         fixed_grid: false,
             free_layout: false,
         folder: None,

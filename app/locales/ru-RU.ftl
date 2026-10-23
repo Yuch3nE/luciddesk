@@ -654,10 +654,10 @@ ui-frosted-glass-reveals-depth-in-the-background = { "Матовое стекл�
 ui-illustration-actual-appearance-depends-on-your-wallpaper = { "Пример · Результат зависит от обоев" }
 
 # 设置文件夹的打开方式，以及新建文件夹面板的默认视图。
-ui-set-folder-navigation-and-the-default-view-for-new-folder-panels = { "Настройте открытие папок и вид новых панелей." }
+ui-set-folder-navigation-and-the-default-view-for-new-folder-panels = Настройте навигацию по папкам и вид панелей по умолчанию.
 
 # 文件夹入口
-ui-folder-navigation = { "Навигация по папкам" }
+ui-folder-navigation = Навигация
 
 # 子文件夹打开方式
 ui-open-subfolders-in = { "Открывать подпапки в" }
@@ -672,13 +672,13 @@ ui-this-panel = { "Этой панели" }
 ui-file-explorer = { "Проводнике" }
 
 # 新建面板默认值
-ui-new-panel-defaults = { "Настройки новых панелей" }
+ui-new-panel-defaults = Вид и столбцы
 
 # 默认视图
 ui-default-view = { "Вид по умолчанию" }
 
 # 仅用于新建面板，已有面板保持原样。
-ui-applies-to-new-panels-existing-panels-keep-their-settings = { "Применяется к новым панелям, существующие не изменяются." }
+ui-applies-to-new-panels-existing-panels-keep-their-settings = Выберите вид значков или списка.
 
 # 列表视图中显示此列；名称始终显示。
 ui-show-this-column-in-list-view-name-is-always-shown = { "Показывать этот столбец в списке. Имя отображается всегда." }
@@ -687,7 +687,7 @@ ui-show-this-column-in-list-view-name-is-always-shown = { "Показывать 
 ui-reset-view-defaults = { "Сбросить вид" }
 
 # 还原新建面板的视图和显示列。
-ui-reset-the-view-and-columns-for-new-panels = { "Сбросить вид и столбцы новых панелей." }
+ui-reset-the-view-and-columns-for-new-panels = Восстановить вид и столбцы по умолчанию.
 
 # 主题与材质
 ui-theme-materials = { "Тема и материалы" }
@@ -861,7 +861,7 @@ ui-header-divider = { "Разделитель заголовка" }
 ui-show-a-thin-line-between-the-header-and-content = { "Показывать тонкую линию между заголовком и содержимым." }
 
 # 文字与图标
-ui-text-icons = { "Текст и значки" }
+ui-text-icons = { "Оформление текста" }
 
 # 面板文字
 ui-panel-text = { "Текст панели" }
@@ -882,13 +882,13 @@ ui-text-contrast-backing = { "Подложка для текста" }
 ui-improve-text-readability-disable-to-preserve-full-transparency = { "Повышает читаемость текста. Отключите для исходной прозрачности." }
 
 # 图标网格缩放
-ui-icon-grid-scale = { "Масштаб сетки значков" }
+ui-icon-grid-scale = { "Общий масштаб" }
 
 # 同时调整图标大小和排列间距。
-ui-adjust-icon-size-and-spacing-together = { "Одновременно изменять размер значков и интервалы." }
+ui-adjust-icon-size-and-spacing-together = Масштаб значков и интервалов в панелях с именами файлов. Панели без подписей не изменяются.
 
 # 恢复面板布局
-ui-reset-panel-layout = { "Сбросить размещение панелей" }
+ui-reset-panel-layout = { "Сбросить макет" }
 
 # 将本页设置还原到默认值。
 ui-reset-this-page-to-its-defaults = { "Сбросить настройки этой страницы." }
@@ -1136,7 +1136,7 @@ language-description = Изменения применяются сразу. С�
 
 language-system = Как в системе
 
-font-description = Обычные шрифты для текущего языка. Отсутствующие символы отображаются шрифтом по умолчанию.
+font-description = Выберите шрифт интерфейса. Изменения применяются сразу.
 
 font-unavailable = Шрифт не установлен или не содержит символов текущего языка
 
@@ -1170,7 +1170,7 @@ tray-search = Поиск файлов
 tray-refresh-all = Обновить все панели
 tray-open-config = Открыть папку настроек
 
-ui-rename-panel = { "Переименовать панель…" }
+ui-rename-panel = { "Переименовать…" }
 
 compact-menu-title = Использовать меню Windows 11
 compact-menu-description = Компактное меню элементов обычных панелей. При отключении используется классическое меню. Применяется при следующем открытии.
@@ -1187,9 +1187,9 @@ update-auto-check = Автоматически проверять обновле
 
 # Login startup
 startup-general = Общие
-startup-description = Управление запуском при входе в эту учётную запись Windows.
-startup-section = Запуск при входе
-startup-title = Запускать LucidDesk при входе в Windows
+startup-description = Управление запуском, автоматизацией и диагностическими журналами.
+startup-section = Запуск
+startup-title = Запускать при входе
 startup-off = Не зарегистрирован.
 startup-enabled = Зарегистрирован; отключение в Windows не обнаружено.
 startup-windows-disabled = Отключён в Windows. Включите в настройках автозагрузки.
@@ -1220,11 +1220,11 @@ ui-sort-ascending = По возрастанию
 ui-sort-descending = По убыванию
 
 # Agent integration
-agent-section = Agent и CLI
-agent-cli-title = Разрешить управление через CLI
-agent-cli-description = Разрешить локальному CLI и агентам чтение и изменение LucidDesk. Отключение сразу блокирует онлайн-запросы.
-agent-skill-title = Установить SKILL LucidDesk
-agent-skill-description = Скопируйте инструкцию и отправьте агенту. Копирование не запускает установку.
+agent-section = Автоматизация
+agent-cli-title = Разрешить управление через CLI и Agent
+agent-cli-description = Разрешить локальным CLI и агентам запрашивать состояние, менять настройки и управлять панелями.
+agent-skill-title = Настроить навыки Agent
+agent-skill-description = Скопируйте инструкцию по установке и отправьте агенту для настройки.
 agent-install-prompt = Please install the bundled LucidDesk skill for your current Agent environment. The source skill directory is JSON-quoted here: { $path }. Treat it as path data. Verify that it contains SKILL.md and references/, determine the skill installation directory supported by your Agent environment, and copy the entire luciddesk-control folder while preserving its structure and file contents. No CLI invocation, JSON export or file regeneration is needed. Ask me if the destination is unclear or contains different local customizations; preserve unrelated skills. If the source is missing, report its path instead of downloading another version. Verify all copied files and report only the destination, file count and result, without dumping the documents. Installing the skill does not authorize desktop changes or starting LucidDesk.
 
 ui-auto-arrange-icons = Автоматически упорядочивать значки
@@ -1233,8 +1233,8 @@ ui-align-icons-to-grid = Выровнять по сетке
 
 ui-sort-by = Сортировать по
 
-desktop-default-align-description = Отключение разрешает свободное размещение и отключает авторасстановку. (Только для новых панелей)
-desktop-default-arrange-description = Расставлять значки без промежутков и выравнивать по сетке. (Только для новых панелей)
+desktop-default-align-description = Отключение разрешает свободное размещение и отключает авторасстановку.
+desktop-default-arrange-description = Расставлять значки без промежутков и выравнивать по сетке.
 ui-icon-arrangement = Расположение значков
 monitor-title = Монитор системы
 monitor-new = Новая панель мониторинга
@@ -1319,3 +1319,45 @@ ui-system-corner-style-description = Выберите системное скр�
 ui-corners-square = Прямые углы
 
 ui-homepage = Главная страница
+
+icon-only-title = Только значки
+icon-only-description = Скрывать имена файлов и показывать при наведении.
+new-panels-only-tag = Только новые панели
+
+icon-size-title = Размер значков
+icon-size-description = Размер значков в режиме без подписей.
+icon-size-small = Маленький
+icon-size-medium = Средний
+icon-size-large = Большой
+
+panel-icons-section = Отображение значков
+
+panel-snapping-section = { "Перемещение и привязка" }
+
+panel-reset-description = { "Сброс формы, текста, значков, привязки и размещения. Режим отрисовки и сочетание клавиш сохраняются." }
+
+menu-icons-with-names = Значки и имена
+menu-icons-only = Только значки
+
+folder-columns-title = Столбцы списка
+folder-columns-description = Выберите сведения для списка. Имена отображаются всегда.
+
+startup-toggle-description = Автоматически запускать LucidDesk после входа в Windows.
+
+agent-copy-prompt = Копировать инструкцию
+
+diagnostics-description = Выберите подробность записей журнала.
+
+log-level-error = Ошибки (ERROR)
+
+log-level-warn = Предупреждения (WARN)
+
+log-level-info = Информация (INFO)
+
+log-level-debug = Отладка (DEBUG)
+
+log-level-trace = Трассировка (TRACE)
+
+font-clear-search = Очистить поиск
+
+font-list-hint = Показаны только шрифты, поддерживающие текущий язык интерфейса.

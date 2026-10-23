@@ -266,6 +266,7 @@ where
     let mut surface: Option<Surface> = None;
     let mut visibility = super::visibility::Transition::default();
     let mut drag: Option<(usize, POINT, bool)> = None;
+    let mut item_tooltip = ItemTooltip::default();
     let mut drag_offset = luciddesk_core::PointDip::default();
     let mut marquee: Option<super::marquee::Marquee> = None;
     let mut column_drag: Option<ColumnDrag> = None;
@@ -299,6 +300,18 @@ where
             }
             unsafe { super::desktop_toggle::gate(raw.cast(), message, lparam); }
             let hwnd: HWND = raw.cast();
+            if matches!(message, WM_MOUSELEAVE | WM_NCMOUSEMOVE | WM_LBUTTONDOWN
+                | WM_RBUTTONDOWN | WM_MOUSEWHEEL | WM_MOUSEHWHEEL | WM_KEYDOWN
+                | WM_KILLFOCUS | WM_SHOWWINDOW | WM_SIZE | WM_ENTERSIZEMOVE
+                | SYNC_POINTER | TAB_CHANGED | WM_DESTROY)
+                || !model.borrow().icon_display.icon_only
+            {
+                item_tooltip.hide();
+            }
+            if message == WM_DESTROY { item_tooltip = ItemTooltip::default(); }
+            if message == WM_PAINT && drag.is_none() {
+                item_tooltip.refresh(hwnd, &model.borrow());
+            }
             #[cfg(test)]
             if message == WM_APP + 199 {
                 return Some(surface.as_ref().map_or(-1, |s| (s.current_opacity() * 1000.0) as isize));
@@ -1061,6 +1074,9 @@ where
                     }
                     update_pointer(hwnd, &model, Some(point(lparam)));
                     track_client_leave(hwnd);
+                    if drag.is_none() {
+                        item_tooltip.update(hwnd, &model.borrow());
+                    }
                     if let Some((index, start, moved)) = drag.as_mut() {
                         let current = drag_identity.as_ref().and_then(|identity| {
                             model

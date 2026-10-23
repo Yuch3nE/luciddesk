@@ -200,6 +200,7 @@ pub(super) fn show<F: FnMut(Event) -> bool>(
         (model.folder.is_some(), model.is_list())
     };
     let visible_columns = model.borrow().folder_visible_columns;
+    let display = model.borrow().icon_display;
     let fixed_grid = model.borrow().fixed_grid;
     let free_layout = model.borrow().free_layout;
     let tab_position = {
@@ -227,12 +228,27 @@ pub(super) fn show<F: FnMut(Event) -> bool>(
             fixed_grid,
             free_layout,
             { let m = model.borrow(); if m.folder.is_some() { Some(m.folder_sort) } else { m.sort_orders.borrow().get(&m.active_tab).copied() } },
+            display,
             tab_position,
         )
     };
     update_pointer(hwnd, &model, None);
     invalidate(hwnd);
     match command {
+        25 | 70..=73 => {
+            let (target, mut display) = { let m = model.borrow(); (m.active_tab, m.icon_display) };
+            let previous = display;
+            match command {
+                25 => display.icon_only = false,
+                70 => display.icon_only = true,
+                71 => display.size = luciddesk_core::IconSize::Small,
+                72 => display.size = luciddesk_core::IconSize::Medium,
+                _ => display.size = luciddesk_core::IconSize::Large,
+            }
+            if display != previous { event(Event::SetPanelIconDisplay(target, display)); }
+            let is_list = model.borrow().is_list();
+            if matches!(command, 25 | 70) && is_list { event(Event::ToggleListView); }
+        },
         54 => { event(Event::ToggleFixedGrid); },
         55 => { event(Event::ToggleGridAlignment); },
         60..=63 => {
@@ -286,7 +302,7 @@ pub(super) fn show<F: FnMut(Event) -> bool>(
         10 => {
             event(Event::ToggleLocked);
         }
-        25 | 26 => {
+        26 => {
             if model.borrow().is_list() != (command == 26) {
                 event(Event::ToggleListView);
             }
@@ -338,6 +354,7 @@ fn menu(
     fixed_grid: bool,
     free_layout: bool,
     sort_order: Option<(u8, bool)>,
+    display: luciddesk_core::IconDisplay,
     tab_position: Option<(usize, usize)>,
 ) -> i32 {
     let anchored = lparam == -1;
@@ -366,6 +383,7 @@ fn menu(
         fixed_grid,
         free_layout,
         sort_order,
+        display,
         tab_position,
     )
 }

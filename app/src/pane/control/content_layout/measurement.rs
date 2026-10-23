@@ -50,7 +50,7 @@ pub(in crate::pane::control) fn live_query(state: &PaneApp, id: PanelId) -> serd
     let columns = if panel.list_view() {
         1
     } else {
-        ((panel.rect().width - layout::PADDING * 2.0) / metrics(&state.workspace).cell_width)
+        ((panel.rect().width - layout::PADDING * 2.0) / metrics(&state.workspace, id).cell_width)
             .floor()
             .max(1.0) as usize
     };
@@ -71,12 +71,13 @@ pub(super) fn count(w: &Workspace, id: PanelId) -> usize {
         )
         .count()
 }
-pub(super) fn metrics(w: &Workspace) -> layout::Grid {
+pub(super) fn metrics(w: &Workspace, id: PanelId) -> layout::Grid {
     layout::desktop_grid(
         0.0,
         0.0,
         layout::DESKTOP_ICON_SIZE,
         w.pane_options().grid_scale,
+        w.panel(id).map(Panel::icon_display).unwrap_or_default(),
     )
 }
 #[cfg(test)]
@@ -109,7 +110,7 @@ pub(super) fn size_with_folders(
         return Err("max_rows must be 1..10000".into());
     }
     let panel = w.panel(id).unwrap();
-    let g = metrics(w);
+    let g = metrics(w, id);
     let group = members(w, id);
     let list_minimum = if group.iter().any(|member| w.panel(*member).unwrap().list_view()) {
         layout::pane_minimum((layout::LIST_CELL_WIDTH, layout::LIST_ROW), false, false, None).0
@@ -122,8 +123,8 @@ pub(super) fn size_with_folders(
         let columns = (columns as usize).max(fixed_columns).max(((list_minimum - layout::PADDING * 2.0) / g.cell_width).ceil().max(0.0) as usize);
         layout::icon_width(columns, g, group.len() > 1).max(fixed_grid::minimum_width(w,id))
     };
-    let actual = ((width - layout::PADDING * 2.0) / g.cell_width).floor().max(1.0) as usize;
     let height = members(w, id).into_iter().try_fold(0.0_f32, |height, member| {
+        let actual = ((width - layout::PADDING * 2.0) / metrics(w, member).cell_width).floor().max(1.0) as usize;
         content_height(w, member, actual, folders, max_rows).map(|value| height.max(value))
     })?;
     Ok((width, height))
@@ -139,7 +140,7 @@ fn labels<'a>(w: &'a Workspace, id: PanelId, folders: &'a FolderSnapshots) -> Re
 }
 pub(super) fn content_height(w: &Workspace, id: PanelId, columns: usize, folders: &FolderSnapshots, max_rows: Option<u32>) -> Result<f32, String> {
     let panel = w.panel(id).unwrap();
-    let g = metrics(w);
+    let g = metrics(w, id);
     if panel.free_layout() && !panel.list_view() {
         let bottom = free_layout::extent(w, id).1.max(g.icon_size + layout::LABEL_OFFSET + 1.0);
         let bottom = max_rows.map_or(bottom, |rows| bottom.min(rows as f32 * g.cell_height));
@@ -166,7 +167,7 @@ pub(in crate::pane::control) fn minimum(w: &Workspace, id: PanelId, width: f32, 
     let panel = w.panel(id).unwrap();
     if panel.is_search() { return (RectDip::MIN_WIDTH, RectDip::MIN_HEIGHT); }
     if panel.is_monitor() { return (300.0, 400.0); }
-    let g = metrics(w);
+    let g = metrics(w, id);
     let columns = ((width - layout::PADDING * 2.0) / g.cell_width).floor().max(1.0) as usize;
     let cell = if panel.list_view() { (layout::LIST_CELL_WIDTH, layout::LIST_ROW) } else { (g.cell_width, g.cell_height) };
     let first = if panel.list_view() { Some(layout::LIST_ROW) } else {
@@ -181,7 +182,7 @@ pub(in crate::pane::control) fn query(w: &Workspace, id: PanelId) -> serde_json:
     if p.is_search() || p.is_monitor() || p.folder().is_some() {
         return json!({"supported":false,"reason":"desktop panels only"});
     }
-    let g = metrics(w);
+    let g = metrics(w, id);
     let columns = ((p.rect().width - layout::PADDING * 2.0) / g.cell_width)
         .floor()
         .max(1.0) as usize;
@@ -195,7 +196,7 @@ pub(in crate::pane::control) fn query(w: &Workspace, id: PanelId) -> serde_json:
     json!({"supported":true,"item_count":n,"window_item_count":window_count,"icon_columns":columns,"fixed_icon_positions":p.fixed_grid(),"align_icons_to_grid":!p.free_layout(),"content_rows":if p.fixed_grid() && !p.free_layout() && !p.list_view(){fixed_grid::extent(w,id).1}else{n.div_ceil(columns)},
         "cell_dip":{"width":g.cell_width,"height":g.cell_height},"icon_size_dip":g.icon_size,
         "minimum_size_dip":{"width":minimum.0,"height":minimum.1},"gap_px":snap::gap_px(),
-        "required_height_dip":members(w,id).into_iter().filter_map(|member|content_height(w,member,columns,&HashMap::new(),None).ok()).fold(0.0,f32::max)})
+        "required_height_dip":members(w,id).into_iter().filter_map(|member|content_height(w,member,((p.rect().width-layout::PADDING*2.0)/metrics(w,member).cell_width).floor().max(1.0) as usize,&HashMap::new(),None).ok()).fold(0.0,f32::max)})
 }
 pub(super) fn pixel_size(
     w: &Workspace,

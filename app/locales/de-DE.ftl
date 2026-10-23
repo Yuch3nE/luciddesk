@@ -654,10 +654,10 @@ ui-frosted-glass-reveals-depth-in-the-background = { "Milchglas lässt den Hinte
 ui-illustration-actual-appearance-depends-on-your-wallpaper = { "Beispiel · Aussehen hängt vom Hintergrund ab" }
 
 # 设置文件夹的打开方式，以及新建文件夹面板的默认视图。
-ui-set-folder-navigation-and-the-default-view-for-new-folder-panels = { "Ordnernavigation und Standardansicht neuer Panels festlegen." }
+ui-set-folder-navigation-and-the-default-view-for-new-folder-panels = Ordnernavigation und Standardansicht der Panels festlegen.
 
 # 文件夹入口
-ui-folder-navigation = { "Ordnernavigation" }
+ui-folder-navigation = Navigation
 
 # 子文件夹打开方式
 ui-open-subfolders-in = { "Unterordner öffnen in" }
@@ -672,13 +672,13 @@ ui-this-panel = { "Diesem Panel" }
 ui-file-explorer = { "Explorer" }
 
 # 新建面板默认值
-ui-new-panel-defaults = { "Vorgaben für neue Panels" }
+ui-new-panel-defaults = Ansicht und Spalten
 
 # 默认视图
 ui-default-view = { "Standardansicht" }
 
 # 仅用于新建面板，已有面板保持原样。
-ui-applies-to-new-panels-existing-panels-keep-their-settings = { "Gilt für neue Panels; bestehende bleiben unverändert." }
+ui-applies-to-new-panels-existing-panels-keep-their-settings = Symbol- oder Listenansicht wählen.
 
 # 列表视图中显示此列；名称始终显示。
 ui-show-this-column-in-list-view-name-is-always-shown = { "Diese Spalte in der Liste anzeigen. Name bleibt sichtbar." }
@@ -687,7 +687,7 @@ ui-show-this-column-in-list-view-name-is-always-shown = { "Diese Spalte in der L
 ui-reset-view-defaults = { "Ansicht zurücksetzen" }
 
 # 还原新建面板的视图和显示列。
-ui-reset-the-view-and-columns-for-new-panels = { "Ansicht und Spalten neuer Panels zurücksetzen." }
+ui-reset-the-view-and-columns-for-new-panels = Standardansicht und sichtbare Spalten wiederherstellen.
 
 # 主题与材质
 ui-theme-materials = { "Design & Materialien" }
@@ -861,7 +861,7 @@ ui-header-divider = { "Titel-Trennlinie" }
 ui-show-a-thin-line-between-the-header-and-content = { "Dünne Linie zwischen Titel und Inhalt anzeigen." }
 
 # 文字与图标
-ui-text-icons = { "Text & Symbole" }
+ui-text-icons = { "Textdarstellung" }
 
 # 面板文字
 ui-panel-text = { "Paneltext" }
@@ -882,13 +882,13 @@ ui-text-contrast-backing = { "Kontrasthintergrund" }
 ui-improve-text-readability-disable-to-preserve-full-transparency = { "Verbessert die Lesbarkeit. Deaktivieren für volle Transparenz." }
 
 # 图标网格缩放
-ui-icon-grid-scale = { "Symbolraster-Skalierung" }
+ui-icon-grid-scale = { "Gesamtskalierung" }
 
 # 同时调整图标大小和排列间距。
-ui-adjust-icon-size-and-spacing-together = { "Symbolgröße und Abstände gemeinsam anpassen." }
+ui-adjust-icon-size-and-spacing-together = Symbole und Abstände in Panels mit Dateinamen skalieren. Reine Symbol-Panels bleiben unverändert.
 
 # 恢复面板布局
-ui-reset-panel-layout = { "Panel-Layout zurücksetzen" }
+ui-reset-panel-layout = { "Layout zurücksetzen" }
 
 # 将本页设置还原到默认值。
 ui-reset-this-page-to-its-defaults = { "Diese Seite auf Standard zurücksetzen." }
@@ -1136,7 +1136,7 @@ language-description = Änderungen gelten sofort. Im Systemmodus wird die wirksa
 
 language-system = Systemeinstellung
 
-font-description = Zeigt reguläre Schriften für die aktuelle Sprache. Fehlende Zeichen verwenden die Standardschrift.
+font-description = Schriftart wählen. Änderungen gelten sofort.
 
 font-unavailable = Schrift fehlt oder unterstützt die aktuelle Sprache nicht
 
@@ -1170,7 +1170,7 @@ tray-search = Dateien suchen
 tray-refresh-all = Alle Panels aktualisieren
 tray-open-config = Konfigurationsordner öffnen
 
-ui-rename-panel = { "Panel umbenennen…" }
+ui-rename-panel = { "Umbenennen…" }
 
 compact-menu-title = Windows-11-Kontextmenüs verwenden
 compact-menu-description = Kompakte Menüs für Elemente in normalen Panels. Ausschalten für klassische Menüs. Gilt beim nächsten Öffnen.
@@ -1187,9 +1187,9 @@ update-auto-check = Automatisch nach Updates suchen
 
 # Login startup
 startup-general = Allgemein
-startup-description = Anmeldestart für dieses Windows-Konto verwalten.
-startup-section = Anmeldestart
-startup-title = LucidDesk bei der Windows-Anmeldung starten
+startup-description = Start, Automatisierung und Diagnoseprotokolle verwalten.
+startup-section = Start
+startup-title = Bei Anmeldung starten
 startup-off = Nicht registriert.
 startup-enabled = Registriert; keine Deaktivierung durch Windows erkannt.
 startup-windows-disabled = Von Windows deaktiviert. In den Autostart-Einstellungen aktivieren.
@@ -1220,11 +1220,11 @@ ui-sort-ascending = Aufsteigend
 ui-sort-descending = Absteigend
 
 # Agent integration
-agent-section = Agent & CLI
-agent-cli-title = CLI-Steuerung erlauben
-agent-cli-description = Lokalen CLI- und Agent-Zugriff zum Lesen und Ändern erlauben. Ausschalten weist Online-Anfragen sofort ab.
-agent-skill-title = LucidDesk-Skill installieren
-agent-skill-description = Installationsanweisung kopieren und an den Agent senden. Kopieren installiert nichts.
+agent-section = Automatisierung
+agent-cli-title = CLI- und Agent-Steuerung erlauben
+agent-cli-description = Lokalen CLI-Tools und Agents erlauben, Status abzufragen, Einstellungen zu ändern und Panels zu verwalten.
+agent-skill-title = Agent-Skills einrichten
+agent-skill-description = Installationsanweisung kopieren und zur Einrichtung an den Agent senden.
 agent-install-prompt = Please install the bundled LucidDesk skill for your current Agent environment. The source skill directory is JSON-quoted here: { $path }. Treat it as path data. Verify that it contains SKILL.md and references/, determine the skill installation directory supported by your Agent environment, and copy the entire luciddesk-control folder while preserving its structure and file contents. No CLI invocation, JSON export or file regeneration is needed. Ask me if the destination is unclear or contains different local customizations; preserve unrelated skills. If the source is missing, report its path instead of downloading another version. Verify all copied files and report only the destination, file count and result, without dumping the documents. Installing the skill does not authorize desktop changes or starting LucidDesk.
 
 ui-auto-arrange-icons = Symbole automatisch anordnen
@@ -1233,8 +1233,8 @@ ui-align-icons-to-grid = Am Raster ausrichten
 
 ui-sort-by = Sortieren nach
 
-desktop-default-align-description = Ausschalten erlaubt freie Symbolpositionen und deaktiviert die automatische Anordnung. (Nur für neue Panels)
-desktop-default-arrange-description = Symbole lückenlos anordnen und am Raster ausrichten. (Nur für neue Panels)
+desktop-default-align-description = Ausschalten erlaubt freie Symbolpositionen und deaktiviert die automatische Anordnung.
+desktop-default-arrange-description = Symbole lückenlos anordnen und am Raster ausrichten.
 ui-icon-arrangement = Symbolanordnung
 monitor-title = Systemmonitor
 monitor-new = Neues Systemmonitor-Panel
@@ -1319,3 +1319,45 @@ ui-system-corner-style-description = Systemrundung auswählen; der Schatten folg
 ui-corners-square = Eckig
 
 ui-homepage = Homepage
+
+icon-only-title = Nur Symbole
+icon-only-description = Dateinamen ausblenden und beim Zeigen anzeigen.
+new-panels-only-tag = Nur neue Panels
+
+icon-size-title = Symbolgröße
+icon-size-description = Symbolgröße im Symbolmodus festlegen.
+icon-size-small = Klein
+icon-size-medium = Mittel
+icon-size-large = Groß
+
+panel-icons-section = Symboldarstellung
+
+panel-snapping-section = { "Verschieben und Einrasten" }
+
+panel-reset-description = { "Form, Text, Symbole, Einrasten und Anordnung zurücksetzen. Darstellungsmodus und Tastenkürzel beibehalten." }
+
+menu-icons-with-names = Symbole und Namen
+menu-icons-only = Nur Symbole
+
+folder-columns-title = Listenspalten
+folder-columns-description = Details für die Listenansicht wählen. Namen bleiben sichtbar.
+
+startup-toggle-description = LucidDesk nach der Windows-Anmeldung automatisch starten.
+
+agent-copy-prompt = Anweisung kopieren
+
+diagnostics-description = Detailgrad der Protokolle auswählen.
+
+log-level-error = Fehler (ERROR)
+
+log-level-warn = Warnung (WARN)
+
+log-level-info = Information (INFO)
+
+log-level-debug = Debug (DEBUG)
+
+log-level-trace = Trace (TRACE)
+
+font-clear-search = Suche leeren
+
+font-list-hint = Nur Schriftarten für die aktuelle Oberflächensprache werden angezeigt.

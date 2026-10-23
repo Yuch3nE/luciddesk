@@ -365,3 +365,91 @@ mod dpi_tests {
         }
     }
 }
+
+
+// Keep the tooltip text and rectangle in sync without restarting its hover timer
+// on every mouse move. Names are owned because folder inventories can refresh.
+#[derive(Default)]
+pub(super) struct ItemTooltip {
+    tip: Option<crate::pane::tooltip::Tooltip>,
+    current: Option<(String, [i32; 4])>,
+}
+impl ItemTooltip {
+    pub(super) fn hide(&mut self) {
+        if self.current.take().is_some() {
+            if let Some(tip) = &mut self.tip { tip.hide(); }
+        }
+    }
+    pub(super) fn refresh(&mut self, hwnd: HWND, model: &GroupModel) {
+        if self.current.is_some() { self.update(hwnd, model); }
+    }
+    pub(super) fn update(&mut self, hwnd: HWND, model: &GroupModel) {
+        let next = if model.icon_display.icon_only
+            && !model.is_list() && !model.collapsed && model.renaming.is_none()
+        {
+            model.hovered_item.and_then(|index| {
+                let item = model.items.get(index)?;
+                let viewport = Viewport::read(hwnd);
+                let bounds = model.selection_bounds(viewport.grid(model), index, viewport.scale);
+                let s = viewport.scale;
+                Some((item.label.clone(), [
+                    (bounds.x * s).floor() as i32,
+                    (bounds.y * s).floor() as i32,
+                    ((bounds.x + bounds.width) * s).ceil() as i32,
+                    ((bounds.y + bounds.height) * s).ceil() as i32,
+                ]))
+            })
+        } else { None };
+        if next == self.current { return; }
+        self.hide();
+        if let Some((text, [left, top, right, bottom])) = &next {
+            if self.tip.is_none() { self.tip = crate::pane::tooltip::Tooltip::new(hwnd); }
+            if let Some(tip) = &mut self.tip {
+                tip.show(text, RECT { left: *left, top: *top, right: *right, bottom: *bottom });
+            }
+        }
+        self.current = next;
+    }
+}
+
+#[cfg(test)]
+mod icon_only_tooltip_tests {
+    use super::*;
+
+    #[test]
+    fn icon_only_tooltip_tracks_names_and_hides_during_rename_or_list_view() {
+        let _sta = crate::pane::test_support::apartment();
+        let state = crate::pane::tests::test_state();
+        let mut model = crate::pane::create_model(&state, luciddesk_core::PanelId::new(1)).unwrap();
+        model.icon_display.icon_only = true;
+        let window = Window::new("Icon tooltip test").size(420, 300)
+            .on_message(|_, message, _, _| if message == WM_DESTROY { Some(0) } else { None })
+            .create().unwrap();
+        let hwnd = window.hwnd().cast();
+        let mut tooltip = ItemTooltip::default();
+        model.items[0].label = "完整文件名称 & long filename.txt".into();
+        model.hovered_item = Some(0);
+        tooltip.update(hwnd, &model);
+        assert!(tooltip.tip.is_some());
+        assert_eq!(tooltip.current.as_ref().unwrap().0, model.items[0].label);
+        let current = tooltip.current.clone();
+        tooltip.update(hwnd, &model);
+        assert_eq!(tooltip.current, current);
+        model.items[0].label = "Renamed.txt".into();
+        tooltip.refresh(hwnd, &model);
+        assert_eq!(tooltip.current.as_ref().unwrap().0, "Renamed.txt");
+        model.renaming = Some(model.items[0].identity.clone());
+        tooltip.refresh(hwnd, &model);
+        assert!(tooltip.current.is_none());
+        model.renaming = None;
+        tooltip.update(hwnd, &model);
+        model.list_view = true;
+        tooltip.refresh(hwnd, &model);
+        assert!(tooltip.current.is_none());
+        model.list_view = false;
+        tooltip.update(hwnd, &model);
+        model.icon_display.icon_only = false;
+        tooltip.refresh(hwnd, &model);
+        assert!(tooltip.current.is_none());
+    }
+}

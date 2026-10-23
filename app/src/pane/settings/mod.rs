@@ -64,6 +64,7 @@ enum Action {
     LogLevel(luciddesk_diagnostics::Level),
     Font(String),
     FontSearch,
+    ClearFontSearch,
     FolderDefaults(folder::Defaults),
     LayoutDefaults(layout_defaults::Mode),
     FolderEntryMode(folder::EntryMode),

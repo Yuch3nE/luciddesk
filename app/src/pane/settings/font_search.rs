@@ -279,7 +279,7 @@ impl Editor {
                         windows_sys::w!("") as isize,
                     );
                     let mut origin = windows_sys::Win32::Foundation::POINT {
-                        x: ((r.left + 16.0) * scale) as i32,
+                        x: ((r.left + 40.0) * scale) as i32,
                         y: ((r.top + 10.0) * scale) as i32,
                     };
                     ClientToScreen(hwnd, &raw mut origin);
@@ -288,7 +288,7 @@ impl Editor {
                         std::ptr::null_mut(),
                         origin.x,
                         origin.y,
-                        ((r.right - r.left - 56.0) * scale) as i32,
+                        ((r.right - r.left - 80.0) * scale) as i32,
                         ((r.bottom - r.top - 20.0) * scale) as i32,
                         SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOOWNERZORDER,
                     );
