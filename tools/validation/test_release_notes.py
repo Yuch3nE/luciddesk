@@ -57,7 +57,7 @@ class ReleaseNotesTests(unittest.TestCase):
         self.assertEqual(next(p["version"] for p in lock["package"] if p["name"] == "luciddesk"), version)
         self.assertEqual(next(p["version"] for p in lock["package"] if p["name"] == "luciddesk-cli"), version)
         for name in ["README.md", "README.en.md"]:
-            badges = re.findall(r"badge/version-([0-9]+\.[0-9]+\.[0-9]+)-", (ROOT / name).read_text(encoding="utf-8"))
+            badges = re.findall(r"badge/(?i:version)-([0-9]+\.[0-9]+\.[0-9]+)-", (ROOT / name).read_text(encoding="utf-8"))
             self.assertEqual(badges, [version])
         self.assertIn(f"**{version}**", zh.split("\n## ")[0])
         self.assertIn(f"**{version}**", en.split("\n## ")[0])
