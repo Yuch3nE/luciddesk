@@ -1,0 +1,119 @@
+---
+import Section from '~/components/ui/Section.astro';
+import Button from '~/components/ui/Button.astro';
+import { LayoutGrid, FolderOpen, Search, ArrowRight, Sun, Moon, MousePointer2, Folder, FileText, ChevronDown, Ellipsis, ArrowLeft } from 'lucide-react';
+import { localeOf } from '~/lib/i18n';
+const en = localeOf(Astro.url.pathname) === 'en';
+const pick = (zh: string, english: string) => en ? english : zh;
+const features = [
+  { Icon: LayoutGrid, title: pick('按项目收纳，按习惯摆放','A place for every project'), description: pick('把文件、文件夹和快捷方式收进面板。标签区分任务，网格或自由布局适应你的习惯。','Group files, folders and shortcuts into panels. Switch tasks with tabs and choose a grid or a free layout.'), example: pick('工作项目 / 常用工具 / 个人资料','Projects / Everyday tools / Personal'), note: pick('收纳保存引用，不搬动原文件。','Organizing stores references without moving originals.'), href: '/features/#panels' },
+  { Icon: FolderOpen, title: pick('常用目录，就在桌面','Your folders, right here'), description: pick('直接浏览下载、素材和项目目录。文件变化自动刷新，进入子文件夹也无需另开窗口。','Browse downloads, assets and project folders. Contents refresh as files change; open subfolders without another window.'), example: pick('下载 → 素材 → 项目文件','Downloads → Assets → Project files'), note: pick('文件夹面板中的操作会作用于真实文件。','Folder panel operations affect the actual files.'), href: '/features/#folders' },
+  { Icon: Search, title: pick('快速找到，打开前先预览','Find it. Preview it. Open it.'), description: pick('连接 Everything 搜索本机文件，选中后按空格预览，少一次打开与关闭。','Connect Everything to find local files. Select a file and press Space to preview before opening.'), example: pick('搜索文件 → Space 预览 → 打开','Search → Space to preview → Open'), note: pick('需另装 Everything，以及 Peek 或 QuickLook。','Requires Everything and Peek or QuickLook, installed separately.'), href: '/features/#search' },
+];
+---
+<Section id="features">
+  <div class="mb-9 flex flex-wrap items-end justify-between gap-5">
+    <div><p class="mb-3 text-xs font-semibold tracking-widest text-primary dark:text-blue-300">{pick('日常使用','EVERYDAY WORKSPACE')}</p><h2 class="text-3xl font-bold tracking-tight text-heading">{pick('从收纳到寻找，都更顺手。','Less searching. More doing.')}</h2></div>
+    <Button href="/features/" variant="link" text={pick('查看全部功能','View all features')} icon="chevron-right"/>
+  </div>
+  <div class="feature-grid">
+    {features.map((feature,index) => <article data-motion class:list={['feature-story', { 'feature-lead': index === 0 }]}>
+      <div class="feature-copy">
+        <div class="mb-5 flex items-center gap-3 text-primary dark:text-blue-300"><feature.Icon size={22}/><span class="text-xs font-semibold tracking-widest">0{index + 1}</span></div>
+        <h3 class="text-balance text-2xl font-semibold leading-snug text-heading">{feature.title}</h3>
+        <p class="mt-4 text-sm leading-7 text-muted">{feature.description}</p>
+        <a href={feature.href} class="mt-5 inline-flex items-center gap-2 text-sm font-medium text-primary dark:text-blue-300">{pick('了解更多','Learn more')}<ArrowRight size={15}/></a>
+        {index === 0 && <p class="feature-note lead-note">{feature.note}</p>}
+      </div>
+      <div class:list={['feature-demo', `demo-${index}`]} role="img" aria-label={`${feature.title} · ${pick('功能操作示意，非实际截图','Feature illustration, not a screenshot')}`}>
+        {index === 0 && <div class="demo-window">
+          <div class="demo-title demo-tab-header">
+            <div class="demo-tabs"><span class="selected">{pick('工作项目','Projects')}</span><span>{pick('常用工具','Tools')}</span><span>{pick('归档','Archive')}</span></div>
+            <span class="demo-controls"><ChevronDown size={14}/><Ellipsis size={14}/></span>
+          </div>
+          <div class="demo-icons">{[pick('设计素材','Design'),pick('项目文档','Documents'),pick('参考资料','Resources'),pick('工作计划','Work plan')].map((name,i) => <div>{i < 2 ? <Folder size={32} strokeWidth={1.6} className="demo-folder"/> : <FileText size={32} strokeWidth={1.6} className="demo-document"/>}<span>{name}</span></div>)}</div>
+        </div>}
+        {index === 1 && <div class="demo-window">
+          <div class="demo-title demo-folder-title"><ArrowLeft size={14}/><span class="flex items-center justify-center gap-2"><FolderOpen size={15}/>{pick('项目资料','Project files')}</span><Ellipsis size={14}/></div>
+          <div class="demo-columns"><span>{pick('文件名','Name')}</span><span>{pick('大小','Size')}</span></div>
+          {[pick('设计素材','Design assets'),pick('产品说明.pdf','Product brief.pdf'),pick('会议记录.docx','Meeting notes.docx')].map((name,i) => <div class="demo-file"><span class="demo-file-name">{i === 0 ? <Folder size={19} strokeWidth={1.6} className="demo-folder"/> : <FileText size={19} strokeWidth={1.6} className="demo-document"/>}{name}</span><span class="text-muted">{i === 0 ? '—' : i === 1 ? '2.4 MB' : '128 KB'}</span></div>)}
+        </div>}
+        {index === 2 && <div class="demo-window">
+          <div class="demo-search"><Search size={17}/><span>{pick('项目计划','Project plan')}</span><span class="ml-auto text-[10px] text-muted">Everything</span></div>
+          <div class="demo-file demo-result selected"><FileText size={27} strokeWidth={1.6} className="demo-document"/><div class="result-copy"><span class="demo-label">{pick('项目计划.pdf','Project plan.pdf')}</span><span class="result-path">{pick('文档 / 工作项目','Documents / Projects')}</span></div><span class="result-type">PDF</span></div>
+          <div class="demo-preview-hint"><kbd>Space</kbd><span>{pick('打开预览','Quick preview')}</span></div>
+        </div>}
+      </div>
+      {index !== 0 && <p class="feature-note">{feature.note}</p>}
+    </article>)}
+  </div>
+</Section>
+<Section id="appearance">
+  <div class="grid items-center gap-10 border-y border-line py-12 lg:grid-cols-[1.05fr_1fr] lg:gap-20">
+    <div data-motion>
+      <p class="mb-3 text-xs font-semibold tracking-widest text-primary dark:text-blue-300">{pick('外观与专注','MAKE IT YOURS')}</p>
+      <h2 class="text-3xl font-bold leading-snug text-heading">{pick('你的桌面，你的风格。','Make yourself at home.')}</h2>
+      <p class="mt-5 text-sm leading-7 text-muted">{pick('选择浅色或深色，调整材质、圆角和字体。启用双击隐藏桌面后，双击空白处收起图标与面板，需要时再恢复。','Choose light or dark, then tune materials, corners and fonts. Enable double-click to hide desktop icons and panels, and bring them back when needed.')}</p>
+      <p class="mt-4 text-xs leading-6 text-muted">{pick('Mica 系列材质需要 Windows 11，效果随系统、壁纸与设置变化。','Mica materials require Windows 11. Effects vary with your system, wallpaper and settings.')}</p>
+      <a href="/features/#focus" class="mt-5 inline-flex items-center gap-2 text-sm text-primary dark:text-blue-300">{pick('了解外观与专注','Explore appearance and focus')}<ArrowRight size={15}/></a>
+    </div>
+    <div data-motion class="grid grid-cols-2 gap-4" aria-label={pick('浅色与深色外观示意','Light and dark appearance illustrations')}>
+      {[false,true].map(dark => <div class:list={['rounded-2xl border p-6 sm:p-8',dark ? 'border-slate-600 bg-slate-800 text-slate-100' : 'border-white bg-slate-100 text-slate-700']}>
+        {dark ? <Moon size={22}/> : <Sun size={22}/>}
+        <p class="mt-6 text-sm font-semibold">{dark ? pick('深色','Dark') : pick('浅色','Light')}</p>
+        <div class="mt-4 space-y-3" aria-hidden="true">{[0,1,2].map(i => <div class="flex items-center gap-2"><span class="size-4 rounded bg-blue-400/30"></span><span class:list={['h-1.5 rounded',i === 1 ? 'w-9' : 'w-14',dark ? 'bg-slate-500' : 'bg-slate-300']}></span></div>)}</div>
+      </div>)}
+      <p class="col-span-2 mt-2 flex items-center justify-center gap-2 text-xs text-muted"><MousePointer2 size={15}/>{pick('双击隐藏，再次双击恢复','Double-click to hide. Double-click to restore.')}</p>
+    </div>
+  </div>
+</Section>
+
+<style>
+.feature-grid { display:grid; gap:20px; grid-template-columns:repeat(2,minmax(0,1fr)); }
+.feature-story { min-width:0; padding:28px; overflow:hidden; border:1px solid var(--aw-color-line); border-radius:24px; background:var(--aw-color-bg-page); }
+.feature-copy { display:flex; flex-direction:column; align-items:flex-start; min-width:0; }
+.feature-copy > a { margin-top:auto; padding-top:16px; }
+.feature-story:not(.feature-lead) { display:grid; grid-template-rows:subgrid; grid-row:span 3; row-gap:20px; }
+.feature-lead { grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr; align-items:center; gap:32px; padding:32px; }
+.feature-lead .feature-copy > a { margin-top:0; }
+.feature-demo { display:flex; min-width:0; align-items:flex-start; justify-content:center; background:transparent; }
+.feature-lead .feature-demo { align-items:center; }
+.demo-window { width:100%; max-width:460px; border:1px solid var(--aw-color-line); border-radius:12px; overflow:hidden; background:linear-gradient(145deg,#ffffff,#f1f4f7); box-shadow:0 12px 24px -18px rgb(0 0 0 / .18),0 2px 5px -3px rgb(0 0 0 / .08); color:var(--aw-color-text-heading); font-size:12px; }
+:global(.dark) .demo-window { background:linear-gradient(145deg,#25303b,#202a35); border-color:#3b4857; box-shadow:0 12px 24px -18px rgb(0 0 0 / .5),inset 0 1px 0 rgb(255 255 255 / .035); }
+.demo-title { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 16px; border-bottom:1px solid var(--aw-color-line); font-weight:600; }
+.demo-tab-header { gap:8px; padding:10px; }
+.demo-tabs { display:flex; flex:1; min-width:0; gap:4px; color:var(--aw-color-text-muted); font-size:11px; font-weight:400; }
+.demo-tabs span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; border:1px solid transparent; }
+.demo-tabs .selected { border-color:color-mix(in srgb,var(--aw-color-primary) 12%,transparent); font-weight:500; }
+.demo-controls { display:flex; flex-shrink:0; gap:8px; }
+.demo-tabs span { padding:5px 8px; border-radius:6px; }
+.selected { background:color-mix(in srgb,var(--aw-color-primary) 10%,transparent); color:var(--aw-color-primary); }
+:global(.dark) .selected { color:#93c5fd; }
+.demo-icons { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; padding:26px 14px 28px; }
+.demo-icons > div { display:flex; align-items:center; flex-direction:column; gap:10px; font-size:10px; text-align:center; }
+.demo-file { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:0 10px; padding:11px 8px; font-size:11px; }
+.demo-file + .demo-file { border-top:1px solid color-mix(in srgb,var(--aw-color-line) 50%,transparent); }
+.demo-search { display:flex; align-items:center; gap:10px; margin:12px; padding:11px 10px; border:1px solid var(--aw-color-line); border-radius:6px; }
+ .demo-folder-title { display:grid; grid-template-columns:16px minmax(0,1fr) 16px; font-size:11px; }
+.demo-columns { display:flex; justify-content:space-between; margin:0 10px; padding:8px; border-bottom:1px solid var(--aw-color-line); font-size:10px; color:var(--aw-color-text-muted); }
+.demo-file-name { display:flex; align-items:center; gap:10px; min-width:0; }
+.demo-label { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.demo-size { flex-shrink:0; font-size:10px; font-variant-numeric:tabular-nums; color:var(--aw-color-text-muted); }
+.demo-window :global(svg) { flex-shrink:0; }
+.demo-window :global(.demo-folder) { color:#cf971e; fill:#f4cc65; }
+.demo-window :global(.demo-document) { color:#6697d0; fill:color-mix(in srgb,#8ab4e8 10%,var(--aw-color-bg-page)); }
+.demo-result { justify-content:flex-start; min-height:62px; border:1px solid color-mix(in srgb,var(--aw-color-primary) 12%,transparent); border-radius:7px; }
+.result-copy { flex:1; min-width:0; }
+.result-path { display:block; margin-top:4px; font-size:9px; color:var(--aw-color-text-muted); }
+.result-type { flex-shrink:0; font-size:9px; color:var(--aw-color-text-muted); letter-spacing:.03em; }
+.demo-preview-hint { display:flex; align-items:center; justify-content:center; gap:9px; padding:16px 12px; font-size:11px; color:var(--aw-color-text-muted); }
+.demo-preview-hint kbd { border:1px solid var(--aw-color-line); border-bottom-width:2px; border-radius:5px; padding:3px 10px; background:var(--aw-color-bg-page); font:inherit; font-size:10px; }
+.feature-note { margin:0; font-size:11px; color:var(--aw-color-text-muted); line-height:1.8; }
+.feature-copy > .lead-note { margin-top:14px; }
+@media(max-width:767px) {
+  .feature-grid,.feature-lead { grid-template-columns:1fr; }
+  .feature-story,.feature-lead { padding:22px; }
+  .feature-lead { gap:22px; }
+  .feature-story:not(.feature-lead) { display:flex; flex-direction:column; gap:18px; }
+}
+</style>

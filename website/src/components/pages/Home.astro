@@ -7,7 +7,7 @@ import Layout from '~/layouts/PageLayout.astro';
 import { Badge } from '~/components/ui/badge';
 import repository from '~/data/repository.json';
 import HomeHero from '~/components/widgets/HomeHero.astro';
-import FeatureOverview from '~/components/widgets/FeatureOverview.astro';
+import HomeFeatures from '~/components/widgets/HomeFeatures.astro';
 import FAQs from '~/components/widgets/FAQs.astro';
 import Agent from '~/components/widgets/Agent.astro';
 import Downloads from '~/components/widgets/Downloads.astro';
@@ -34,21 +34,17 @@ const faqs = [
 <Layout>
   <HomeHero tagline={t("开源 · 免费 · 为 Windows 打造")} actions={[
     { text: t("下载 Windows 版"), href: '#download', variant: 'primary', icon: 'download' },
-    { text: t("探索功能"), href: '/features/' }
+    { text: t("探索功能"), href: '#features' }
   ]}>
     <Fragment slot="title"><span class="block">{t("桌面有序")}</span><span class="block text-primary dark:text-blue-300">{t("专注自在")}</span></Fragment>
     <Fragment slot="subtitle">{t("把零散图标收进面板，让常用文件触手可及。")}</Fragment>
-    <div slot="content" class="mt-5 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-xs text-muted">
+    <div slot="content" class="mt-5 flex flex-wrap items-center justify-center lg:justify-start gap-x-3 gap-y-2 text-xs text-muted">
       <a href="/changelog/" aria-label={lang === 'en' ? `Current version ${repository.version}, view changelog` : `当前版本 ${repository.version}，查看更新日志`} class="rounded-full outline-offset-4 transition-opacity hover:opacity-80"><Badge variant="outline" className="rounded-full border-primary/20 bg-primary/5 px-3 py-1 font-medium text-primary dark:text-blue-300">{`${lang === 'en' ? 'Current version' : '当前版本'} ${repository.version}`}</Badge></a>
       <span>{t("Windows 10 / 11 x64 · 无需账号 · MIT 开源许可")}</span>
     </div>
     <figure slot="image" class="mx-auto max-w-5xl"><WorkspaceIllustration/></figure>
   </HomeHero>
-  <FeatureOverview id="features" tagline={t("日常使用")} title={t("每一次操作，都少一点打断。")} subtitle={t("从收纳到寻找，再到专注。让桌面配合你的习惯。")} items={[
-    { title: t("面板与标签收纳"), icon: 'layout-grid', description: t("把文件、文件夹和快捷方式拖入面板，按项目分组、自由排列。面板只保存引用，原文件留在原处。") },
-    { title: t("文件触手可及"), icon: 'search', description: t("常用目录直接放到桌面，文件变化自动刷新。连接 Everything 搜索本机文件；需单独安装并启用。") },
-    { title: t("需要时出现"), icon: 'focus', description: t("开启双击隐藏桌面，专注时收起、需要时恢复。空格预览需单独安装 PowerToys Peek 或 QuickLook。") }
-  ]}/>
+  <HomeFeatures/>
   <Agent/>
   <Downloads/>
   <FAQs id="faq" title={t("还有一些小细节。")} items={faqs}/>

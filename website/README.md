@@ -19,7 +19,7 @@ Astro 7 + Tailwind CSS 4 + shadcn/ui + Lucide 的静态官网。React 通过 Ast
 
 ## 页面结构
 
-`/features/` 是独立的中英文功能介绍页，涵盖面板、文件夹、搜索预览、专注外观、Agent 与备份。首页“探索功能”和导航“探索”指向此页，具体操作链接到指南章节。内容在 `ProductFeatures.astro` 中维护。
+`/features/` 是独立的中英文功能介绍页，涵盖面板、文件夹、搜索预览、专注外观、Agent 与备份。首页“探索功能”和导航“功能”指向首页功能区，“查看全部功能”进入详情页，具体操作链接到指南章节。内容在 `ProductFeatures.astro` 中维护。
 
 - `src/pages/index.astro`：首页路由；`src/components/pages/Home.astro` 组合首页与功能、FAQ 数据。
 - `src/layouts/PageLayout.astro`：SEO、主题脚本、页头与页尾。
@@ -28,11 +28,11 @@ Astro 7 + Tailwind CSS 4 + shadcn/ui + Lucide 的静态官网。React 通过 Ast
 - `src/components/FAQAccordion.tsx`：FAQ 交互岛屿；`ThemeToggle.tsx` 使用 shadcn Button 图标按钮，默认跟随系统，点击直接切换明暗并保存偏好。按钮、卡片、标签和 Lucide 图标在构建时渲染。
 - `components.json`：shadcn/ui 后续添加组件的配置。
 - `scripts/finalize-build.mjs`：为 Astro 岛屿引导脚本生成 CSP 精确哈希；允许 Radix 测量高度所需的样式属性。
-- `src/components/WorkspaceIllustration.astro`：内联 SVG 宣传图，随主题切换；其中所有图标均引用 lucide-react，不维护自绘图标路径。
+- `src/components/WorkspaceIllustration.astro`：参照实际面板结构制作的 HTML/CSS 宣传图，随主题切换；其中所有图标均引用 lucide-react，不维护自绘图标路径。
 - `src/styles.css`：站点配色、shadcn/ui 语义变量和动效。
 - `public/theme.js`：浅色、深色和系统模式，沿用 `luciddesk-theme` 偏好存储并同步标签页。
 
-页面使用真实产品说明和 SVG 功能示意，不以实际截图作为首屏。下载入口前往 GitHub Releases，按包名选择安装版或便携版。没有复制模板的演示博客、定价、客户背书和第三方统计。
+页面使用真实产品说明和响应式界面示意，不以实际截图作为首屏。下载入口前往 GitHub Releases，按包名选择安装版或便携版。没有复制模板的演示博客、定价、客户背书和第三方统计。
 
 ## 组件来源
 
@@ -67,3 +67,5 @@ shadcn/ui 源码来自官方 `new-york-v4` 注册表，许可见 `SHADCN-LICENSE
 每次版本更新同步两份 Markdown 后运行 `npm run deploy`，无需在官网重复录入。中英文版本集合不一致会阻止构建。新增版本详情、分页和 sitemap 会在构建时自动生成。官网页面调整不冒充应用版本更新。
 
 更新类型标记由 `src/lib/change-types.ts` 统一归类，`ChangeBadge.tsx` 使用 shadcn Badge 和 Lucide 图标显示新增、优化、修复、性能、文档、发布、移除与维护。列表摘要、版本类型计数与详情逐条复用同一规则；明确的类型分组优先，主题分组按条目动作归类。
+
+首页桌面端使用左文右图，移动端上下排列。`HomeFeatures.astro` 展示面板、文件夹、搜索预览及外观专注，Agent 保持独立章节。宣传图参照 `screenshot/zh/pane.png` 与 `folder.png` 的居中标题和文件列表结构，保留非截图标注。

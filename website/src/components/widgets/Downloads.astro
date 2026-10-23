@@ -3,10 +3,8 @@ import { localeOf, translator, localizedPath } from '~/lib/i18n';
 const lang = localeOf(Astro.url.pathname);
 const t = translator(lang);
 
-import { Card } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
 import Button from '~/components/ui/Button.astro';
-import SectionHeading from '~/components/ui/SectionHeading.astro';
 import Section from '~/components/ui/Section.astro';
 const editions = [
   {title:t('安装版'), recommended:true, filename:'setup.exe', description:t('跟随安装向导完成设置，带有开始菜单和卸载入口。适合固定使用的电脑。')},
@@ -14,23 +12,26 @@ const editions = [
 ];
 ---
 <Section id="download">
-  <SectionHeading tagline={t("开始使用")} title={t("选一种方式，让桌面归位。")}/>
-  <div data-motion class="mb-8 flex flex-col items-center gap-4 text-center">
-    <Button variant="primary" text={t("前往 GitHub 下载")} icon="download" href="https://github.com/Yuch3nE/luciddesk/releases/latest"/>
-    <p class="max-w-2xl text-sm leading-7 text-muted">{t("支持 Windows 10 / 11 x64。打开最新发布页后，在 Assets 中按下方文件名后缀选择安装包。")}</p>
-  </div>
-  <div class="grid gap-5 md:grid-cols-2">
-    {editions.map(({title,recommended,filename,description}, index) => <Card data-motion data-motion-order={index} className="motion-card min-w-0 gap-0 rounded-2xl border-line bg-page p-6 shadow-none sm:p-8">
-      <div class="flex min-h-8 flex-wrap items-center justify-between gap-3">
-        <h3 class="text-xl font-semibold text-heading">{title}</h3>
-        {recommended && <Badge className="rounded-full border-0 bg-primary/10 px-3 py-1 text-xs font-medium text-primary dark:text-blue-300">{t("日常使用推荐")}</Badge>}
+  <div class="overflow-hidden rounded-3xl border border-primary/15 bg-primary/5 p-6 sm:p-10 lg:p-12">
+    <div class="grid gap-10 lg:grid-cols-[1fr_1.05fr] lg:gap-16">
+      <div>
+        <p class="mb-4 text-xs font-semibold tracking-widest text-primary dark:text-blue-300">{t("开始使用")}</p>
+        <h2 class="text-3xl font-bold leading-snug tracking-tight text-heading sm:text-4xl">{lang === 'en' ? 'A clearer desktop starts here.' : <><span class="block">从今天开始，</span><span class="block">给桌面留点余地。</span></>}</h2>
+        <p class="mt-5 text-sm leading-7 text-muted">Windows 10 / 11 · x64<br/>{lang === 'en' ? 'Free and open source. No account needed.' : '免费、开源，无需注册账号。'}</p>
+        <Button variant="primary" text={t("前往 GitHub 下载")} icon="download" href="https://github.com/Yuch3nE/luciddesk/releases/latest" class="mt-7"/>
+        <p class="mt-4 max-w-sm text-xs leading-6 text-muted">{lang === 'en' ? 'On the release page, open Assets and choose a package using the filename below.' : '在发布页展开 Assets，按文件名后缀选择安装包。'}</p>
       </div>
-      <p class="mt-4 mb-5 text-sm leading-7 text-muted">{description}</p>
-      <p class="mt-auto text-xs text-muted">{t("文件名后缀")} <code class="ml-2 rounded bg-primary/5 px-2 py-1 font-mono text-heading">{filename}</code></p>
-    </Card>)}
-  </div>
-  <div class="mt-6 flex flex-col items-start justify-between gap-4 text-xs text-muted sm:flex-row">
-    <p>{t("也提供普通 ZIP 版，版本区别见安装与更新指南。")}</p>
-    <div class="flex flex-wrap gap-4"><a class="underline underline-offset-4" href={localizedPath("/changelog/", lang)}>{lang === "en" ? "What’s new" : "查看更新内容"}</a><a class="shrink-0 underline underline-offset-4" href={localizedPath("/installation/#updates", lang)}>{t("安装与更新指南")}</a></div>
+      <div class="divide-y divide-line rounded-2xl border border-line bg-page px-6">
+        {editions.map(({title,recommended,filename,description}) => <div class="py-6">
+          <div class="flex flex-wrap items-center justify-between gap-3"><h3 class="text-lg font-semibold text-heading">{title}</h3>{recommended && <Badge className="rounded-full border-0 bg-primary/10 px-2.5 py-1 text-[11px] text-primary dark:text-blue-300">{t("日常使用推荐")}</Badge>}</div>
+          <p class="mt-3 text-sm leading-7 text-muted">{description}</p>
+          <code class="mt-4 inline-block rounded-md border border-line bg-surface px-2.5 py-1 text-xs text-heading">{filename}</code>
+        </div>)}
+      </div>
+    </div>
+    <div class="mt-9 flex flex-col justify-between gap-4 border-t border-primary/15 pt-6 text-xs text-muted sm:flex-row">
+      <p>{t("也提供普通 ZIP 版，版本区别见安装与更新指南。")}</p>
+      <div class="flex flex-wrap gap-5"><a class="underline underline-offset-4" href={localizedPath("/changelog/", lang)}>{lang === "en" ? "What’s new" : "查看更新内容"}</a><a class="underline underline-offset-4" href={localizedPath("/installation/#updates", lang)}>{t("安装与更新指南")}</a></div>
+    </div>
   </div>
 </Section>

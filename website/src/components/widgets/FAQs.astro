@@ -1,12 +1,20 @@
 ---
-import SectionHeading from '~/components/ui/SectionHeading.astro';
+import { localeOf } from '~/lib/i18n';
+const en = localeOf(Astro.url.pathname) === 'en';
 import Section from '~/components/ui/Section.astro';
 import FAQAccordion from '~/components/FAQAccordion';
 interface Props { title: string; subtitle?: string; tagline?: string; id?: string; items: { title: string; description: string }[]; }
 const {title, subtitle, tagline, items = [], id} = Astro.props;
 ---
 <Section id={id}>
-  <SectionHeading title={title} subtitle={subtitle} tagline={tagline}/>
-  <div data-motion><FAQAccordion items={items} client:load /></div>
+  <div class="grid gap-8 border-t border-line pt-10 lg:grid-cols-[0.65fr_1.35fr] lg:gap-20">
+    <div>
+      <p class="mb-4 text-xs font-semibold tracking-widest text-primary dark:text-blue-300">{tagline || (en ? 'GOOD TO KNOW' : '使用之前')}</p>
+      <h2 class="text-3xl font-bold tracking-tight text-heading">{title}</h2>
+      <p class="mt-4 text-sm leading-7 text-muted">{subtitle || (en ? 'A few details to help you get started with confidence.' : '关于文件、下载和数据，先把这些小事说清楚。')}</p>
+      <a href="/guide/" class="mt-5 inline-block text-sm font-medium text-primary dark:text-blue-300">{en ? 'Read the user guide →' : '阅读使用指南 →'}</a>
+    </div>
+    <div class="min-w-0"><FAQAccordion items={items} client:load /></div>
+  </div>
   <noscript><dl class="mx-auto max-w-3xl space-y-5">{items.map(item => <div><dt class="font-semibold">{item.title}</dt><dd class="mt-2 text-sm text-muted" set:html={item.description}/></div>)}</dl></noscript>
 </Section>
