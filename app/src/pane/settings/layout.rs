@@ -418,8 +418,7 @@ fn scene_with_mica(
                 "ui-adjust-the-theme-material-and-transparency-changes-apply-immediately",
             ),
         );
-        form.section(crate::i18n::text("ui-appearance"));
-        form.dropdown(
+        form.choices(
             crate::i18n::text("ui-rendering-mode"),
             crate::i18n::text("ui-rendering-mode-description"),
             vec![
@@ -427,9 +426,11 @@ fn scene_with_mica(
                 (crate::i18n::text("ui-system-rendering"), Action::Change(Event::SetSystemRendering(true)), interface_flags::PANEL_SHADOW.get()),
             ],
         );
+        form.section(crate::i18n::text("ui-appearance"));
+        form.group(|form| {
         form.choices(
             crate::i18n::text("ui-app-theme"),
-            crate::i18n::text("ui-choose-light-dark-or-system-default"),
+            "",
             [
                 (crate::i18n::text("ui-system-default"), PanelTheme::System),
                 (crate::i18n::text("ui-light"), PanelTheme::Light),
@@ -452,7 +453,7 @@ fn scene_with_mica(
         };
         form.choices(
             crate::i18n::text("ui-window-material"),
-            crate::i18n::text("ui-choose-the-panel-background-material"),
+            "",
             [
                 (crate::i18n::text("ui-acrylic"), Backdrop::Acrylic),
                 ("Mica", Backdrop::Mica),
@@ -472,7 +473,9 @@ fn scene_with_mica(
             })
             .collect(),
         );
+        });
         form.section(crate::i18n::text("ui-effects-preview"));
+        form.group(|form| {
         let name = match appearance.1.base() {
             Backdrop::Mica => crate::i18n::text("ui-mica-soft-tones"),
             Backdrop::MicaAlt => crate::i18n::text("ui-mica-alt-vivid-depth"),
@@ -481,11 +484,9 @@ fn scene_with_mica(
         };
         form.material_preview(name, appearance.1);
         if let Backdrop::Solid { color, opacity } = appearance.1 {
-            form.button(
+            form.color_button(
                 crate::i18n::text("ui-background-color"),
-                &crate::i18n::format("ui-current-color", &[("color", format!("{:06X}", color))]),
-                crate::i18n::text("ui-edit-colors"),
-                Action::SolidColor,
+                color,
             );
             let value = (opacity * 100.0).round() as u8;
             form.slider(
@@ -495,12 +496,7 @@ fn scene_with_mica(
                 &format!("{value}%"),
                 Action::Opacity(value),
             );
-            form.button(
-                crate::i18n::text("ui-reset-solid-color"),
-                crate::i18n::text("ui-restore-the-default-color-and-opacity"),
-                crate::i18n::text("ui-reset"),
-                Action::SolidReset,
-            );
+            form.footer_link(crate::i18n::text("ui-reset-solid-color"), Action::SolidReset);
         }
         if let Some(value) = material_strength {
             form.slider(
@@ -514,13 +510,9 @@ fn scene_with_mica(
                 },
                 Action::Strength(value),
             );
-            form.button(
-                crate::i18n::text("ui-reset-material"),
-                crate::i18n::text("ui-reset-effect-strength-to-its-default"),
-                crate::i18n::text("ui-reset"),
-                Action::StrengthReset,
-            );
+            form.footer_link(crate::i18n::text("ui-reset-material"), Action::StrengthReset);
         }
+        });
     } else if page == 1 {
         let mut form = SettingsForm::new(
             &mut s,

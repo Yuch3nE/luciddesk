@@ -268,42 +268,21 @@ impl Painter {
                         &preview_edge,
                         stroke,
                     );
-                    // Desktop Mica panes expose one continuous material surface.
-                    if !matches!(material.base(), Backdrop::Mica | Backdrop::MicaAlt) {
-                        let layer = canvas_result(t.create_solid_brush(ColorF {
-                            a: if dark { 0.10 } else { 0.48 },
-                            ..color(0xffffff)
-                        }))?;
-                        t.fill_rounded_rect(
-                            &RoundedRect {
-                                rect: Rect::from_xywh(
-                                    panel.left + 4.0,
-                                    panel.top + 27.0,
-                                    172.0,
-                                    69.0,
-                                ),
-                                radius_x: 3.0,
-                                radius_y: 3.0,
-                            },
-                            &layer,
-                        );
-                    }
+                    t.fill_rounded_rect(&RoundedRect {
+                        rect: Rect::from_xywh(panel.left, panel.top + 28.0, 180.0, 0.75),
+                        radius_x: 0.0, radius_y: 0.0,
+                    }, &preview_edge);
                     t.clipped_text(
                         crate::i18n::text("ui-desktop-panel"),
                         &self.formats[0],
-                        &Rect::from_xywh(panel.left + 10.0, panel.top + 2.0, 120.0, 24.0),
+                        &Rect::from_xywh(panel.left + 20.0, panel.top + 2.0, 140.0, 24.0),
                         ink,
                     );
                     for i in 0..3 {
                         let left = panel.left + 18.0 + i as f32 * 52.0;
-                        t.fill_rounded_rect(
-                            &RoundedRect {
-                                rect: Rect::from_xywh(left, panel.top + 39.0, 28.0, 28.0),
-                                radius_x: 5.0,
-                                radius_y: 5.0,
-                            },
-                            accent,
-                        );
+                        let glyph = if i < 2 { "\u{e8b7}" } else { "\u{e8a5}" };
+                        t.clipped_text(glyph, &self.formats[5],
+                            &Rect::from_xywh(left, panel.top + 39.0, 28.0, 32.0), accent);
                         t.fill_rounded_rect(
                             &RoundedRect {
                                 rect: Rect::from_xywh(left - 2.0, panel.top + 77.0, 32.0, 3.0),
@@ -369,7 +348,8 @@ impl Painter {
                         label.left += 8.0;
                         label.right -= 32.0;
                         t.clipped_text(&c.label, &self.formats[6], &label, if c.enabled { blue } else { disabled });
-                        t.clipped_icon("\u{e8a7}", &self.formats[4],
+                        let icon = if matches!(c.action, Action::SolidReset | Action::StrengthReset) { "\u{e777}" } else { "\u{e8a7}" };
+                        t.clipped_icon(icon, &self.formats[4],
                             &Rect::from_xywh(c.bounds.right - 24.0, c.bounds.top, 16.0, c.bounds.bottom - c.bounds.top),
                             if c.enabled { blue } else { disabled });
                         continue;
@@ -603,7 +583,14 @@ impl Painter {
                             accent,
                         );
                     }
-                    if let Action::ColorPreset(value) = c.action {
+                    let swatch = match c.action {
+                        Action::ColorPreset(value) => Some(value),
+                        Action::SolidColor if c.label.is_empty() => match s.material {
+                            Backdrop::Solid { color, .. } => Some(color), _ => None,
+                        },
+                        _ => None,
+                    };
+                    if let Some(value) = swatch {
                         if c.selected {
                             t.draw_rounded_rect(&rr, accent, 2.0);
                         }

@@ -766,6 +766,13 @@ impl<'a> SettingsForm<'a> {
     pub fn preview(&mut self, name: &str, color: u32, opacity: f32) {
         self.material_preview(name, Backdrop::Solid { color, opacity });
     }
+    pub fn color_button(&mut self, title: &str, value: u32) {
+        let r = self.card(title, &format!("#{value:06X}"), 176.0);
+        self.scene.button(r, crate::i18n::text("ui-edit-colors"), Action::SolidColor, false);
+        self.scene.control(ControlKind::Button,
+            Rect::from_xywh(r.left - 36.0, r.top + 2.0, 28.0, 28.0),
+            "", Action::SolidColor, false);
+    }
     pub fn material_preview(&mut self, name: &str, material: Backdrop) {
         self.scene
             .cards

@@ -49,7 +49,7 @@ pub(super) fn pixels(material: Backdrop, dark: bool) -> Vec<u8> {
             let wallpaper = mix(
                 wallpaper,
                 if dark { [0.0; 3] } else { [255.0; 3] },
-                if dark { 0.22 } else { 0.12 },
+                if dark { 0.68 } else { 0.72 },
             );
             let inside = (20..380).contains(&x) && (20..220).contains(&y);
             let color = if !inside {

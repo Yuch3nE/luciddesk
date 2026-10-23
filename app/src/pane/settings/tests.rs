@@ -2525,16 +2525,14 @@ fn rendering_mode_shows_matching_corner_controls_without_losing_saved_radius() {
         let page = scene(800.0, 560.0, 1, false, (PanelTheme::Dark, Backdrop::Mica), options);
         let appearance = scene(800.0, 600.0, 0, false, (PanelTheme::Dark, Backdrop::Mica), options);
         let first = appearance.controls.iter().find(|control| control.bounds.left >= Tokens::content_x()).unwrap();
-        assert!(matches!(&first.action, Action::Dropdown(choices) if choices.iter().any(|(_, action, _)| matches!(action, Action::Change(Event::SetSystemRendering(_))))));
-        let mode = appearance.controls.iter().find_map(|control| match &control.action {
-            Action::Dropdown(choices) if choices.iter().any(|(_, action, _)| matches!(action, Action::Change(Event::SetSystemRendering(_)))) => Some(choices),
-            _ => None,
-        }).unwrap();
+        assert!(matches!(first.action, Action::Change(Event::SetSystemRendering(_))));
+        let mode: Vec<_> = appearance.controls.iter().filter(|control|
+            matches!(control.action, Action::Change(Event::SetSystemRendering(_)))).collect();
         assert_eq!(mode.len(), 2);
-        assert_eq!(mode.iter().filter(|(_, _, selected)| *selected).count(), 1);
-        for (_, action, selected) in mode.iter() {
-            let Action::Change(Event::SetSystemRendering(system)) = action else { panic!("expected explicit mode"); };
-            assert_eq!(*selected, *system == enabled);
+        assert_eq!(mode.iter().filter(|control| control.selected).count(), 1);
+        for control in mode {
+            let Action::Change(Event::SetSystemRendering(system)) = control.action else { unreachable!() };
+            assert_eq!(control.selected, system == enabled);
         }
         let radius = page.controls.iter().find(|control| matches!(control.action, Action::Radius(_)));
         let styles = page.controls.iter().find_map(|control| match &control.action {
