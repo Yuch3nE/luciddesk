@@ -125,7 +125,11 @@ try {
                 Copy-Item -LiteralPath $_.FullName -Destination $stage
             }
         }
-        Copy-Item -LiteralPath (Join-Path $repoRoot 'docs\usage.md') -Destination (Join-Path $stage 'usage.md')
+        foreach ($manual in @('usage.md', 'usage.en.md')) {
+            # Manuals live under docs/ in the repo but beside the changelog in ZIPs.
+            $manualText = Get-Content -LiteralPath (Join-Path $repoRoot "docs\$manual") -Raw
+            $manualText.Replace('(../CHANGELOG', '(CHANGELOG') | Set-Content -LiteralPath (Join-Path $stage $manual) -Encoding utf8
+        }
         Copy-Item -LiteralPath (Join-Path $repoRoot 'docs\brand.md') -Destination (Join-Path $stage 'brand.md')
         foreach ($guide in @('installer.md', 'portable.md')) {
             Copy-Item -LiteralPath (Join-Path $repoRoot "docs\$guide") -Destination (Join-Path $stage $guide)
