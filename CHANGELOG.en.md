@@ -8,37 +8,39 @@ Exit the app before upgrading a portable installation and preserve its `data` fo
 
 ## 0.23.0 · 2026-10-24
 
-Release notes for the upcoming 0.23.0 version. Release packages are not published yet.
+### Panels and appearance
 
-### CLI
+- Choose icon/list view, icon-only mode, and small, medium or large icons independently for desktop and folder panels. Icon-only mode uses a more compact layout, shows full filenames on hover, and adjusts drag visuals accordingly.
+- Add system and custom rendering modes, with custom rendering selected by default. System rendering uses system shadows and offers square, small-rounded and rounded corners; custom rendering allows an adjustable corner radius.
+- Adjust the gap between panels after snapping. Drag snapping and CLI layouts use the same setting.
+- Refine Acrylic, Mica and Mica Alt backgrounds and transitions, and remove noise textures for a smoother appearance.
+- Reorganize panel menus to make view options, icon sizes and common panel actions easier to find.
 
-- Add CLI backup listing, creation, no-clobber export and restore with frozen previews, pre-restore snapshots, concurrency protection and rollback.
+### Settings and everyday use
 
-- Invalidate stale CLI previews after same-count folder content changes, and stop extra sort-preview retries after the deadline.
-
-- Add per-pane icon/list view, icon-only mode, and small/medium/large icon controls for desktop and folder panes, with capability discovery, offline help, and Agent guidance.
-
-### Settings and appearance
-
-- Desktop panels support individual icon-only mode and icon size. Hover to read hidden filenames; settings change defaults for newly created panels only.
-- Move language selection into General and reorganize font, folder panel, theme and material, panel layout, and backup pages. Group related options and label defaults that affect new panels only.
-- Improve material previews and appearance controls, plus light settings backgrounds, text contrast and control boundaries.
-- Improve resource release when closing settings and other windows, reducing accumulation from redundant input-method associations.
+- Move language selection into General and reorganize font, folder panel, theme and material, panel layout, and backup pages, keeping related options together.
+- Clearly label defaults that apply only to new panels. Existing panels have their own icon display and size controls in their menus.
+- Make setting changes respond more promptly and clarify overall scaling versus icon size controls.
+- Improve material previews, color and effect controls, and the contrast of backgrounds, text and controls in light settings pages.
+- Retry temporary icon-reading failures sooner to reduce delays when loading and refreshing icons.
+- Improve resource release when closing Settings and other windows, reducing memory and handle accumulation after repeated opening and closing.
 
 ### Backup and restore
 
-- Cancel a restore if configuration changes during preparation, preventing an older pre-restore snapshot from overwriting newer changes.
-- Avoid unnecessary rollback when backup validation fails; add verification that failed configuration writes preserve existing data.
-- Protect configuration, database and SQLite sidecar files during export, including filename case variants.
-- Group automatic backup controls and hide interval and retention options when disabled; consolidate manual actions, history and advanced options.
+- Cancel a restore if settings or layout change during preparation, protecting changes made in the meantime.
+- Improve handling of invalid backups and failed configuration writes, avoiding unnecessary rollback and protecting existing data.
+- Prevent backup exports from overwriting active configuration or database files, including filenames that differ only in letter case.
+- Bring manual backup, restore from file, backup history and advanced actions together. Hide interval and retention controls when automatic backup is off.
 
-### Website and maintenance
+### CLI and Agent
 
-- Redesign homepage feature layouts and product illustrations, including tabs, panel details and presentation colors.
-- Unify bilingual manuals, installation/update and CLI guides, clarify backup and external-agent data handling, and include both manuals in ZIP packages.
-- Default the website to Simplified Chinese for Simplified Chinese browser preferences and English otherwise, while preserving manual choices.
-- Refine language switching, theme icons, navigation, buttons and cards; shorten entrance motion and respect reduced-motion preferences and keyboard interaction.
-- Accept either case for README version badge labels in release-note validation.
+- Add commands to list, create, export and restore backups. Exports do not overwrite existing files. Restores use the backup contents confirmed during preview, save the current state first, refuse to proceed if the current configuration changes, and attempt rollback on failure.
+- Control view mode, icon-only mode and icon size independently for desktop and folder panels, with updated command help and the companion Skill.
+- Reject stale previews when folder contents change without changing the file count, and stop retrying sort previews after they time out.
+
+### User documentation
+
+- Update Chinese and English manuals, installation/upgrade and CLI guides, clarify backup scope and external-agent data handling, and include both manuals in ZIP packages.
 
 ## 0.22.2 · 2026-10-22
 

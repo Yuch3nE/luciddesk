@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { validateRelease } from './update-repository.mjs';
-import { syncReleaseDocs, documents } from './sync-release-docs.mjs';
+import { syncReleaseDocs, documents, correctReleaseNotes } from './sync-release-docs.mjs';
+import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -27,6 +28,16 @@ test('reject incomplete, empty and uploading assets', () => {
   }
 });
 
+test('correct only the requested release, preserving tagged history and excluding future changes', () => {
+  const tagged = '# Changelog\n\n## 0.23.0 · date\n\nOld notes\n\n## 0.22.2\n\nTagged history\n';
+  const main = '# Changelog\n\n## 0.24.0\n\nFuture\n\n## 0.23.0 · date\n\nCorrected notes\n\n## 0.22.2\n\nChanged history\n';
+  assert.equal(correctReleaseNotes(tagged, main, '0.23.0'), tagged.replace('Old notes', 'Corrected notes'));
+  assert.equal(correctReleaseNotes(tagged, main.replaceAll('\n', '\r\n'), '0.23.0').replaceAll('\r\n', '\n'), tagged.replace('Old notes', 'Corrected notes'));
+  for (const invalid of ['## 0.24.0\n\nOther', '## 0.23.0\n\n', main + '\n## 0.23.0\n\nDuplicate', main + '\n## 0.23.0\n']) {
+    assert.throws(() => correctReleaseNotes(tagged, invalid, '0.23.0'), /one nonempty/);
+  }
+});
+
 test('import exact release documents and reject mismatched version or commit', async () => {
   const root = await mkdtemp(join(tmpdir(), 'luciddesk-release-test-'));
   try {
@@ -48,5 +59,30 @@ test('import exact release documents and reject mismatched version or commit', a
     for (const file of documents) assert.deepEqual(await readFile(join(source, file)), await readFile(join(target, file)));
     await assert.rejects(syncReleaseDocs(source, target, 'v0.24.0'), /version differ/);
     await assert.rejects(syncReleaseDocs(source, target, 'v0.23.0', '0'.repeat(40)), /stale deployment/);
+
+    execFileSync('git', ['init', target], {stdio:'pipe'});
+    for (const file of ['CHANGELOG.md', 'CHANGELOG.en.md']) {
+      await writeFile(join(target, file), `## 0.24.0\n\nFuture\n\n## 0.23.0 · 2026-10-24\n\nCorrected ${file}\n`);
+    }
+    execFileSync('git', ['-C', target, 'add', '.']);
+    execFileSync('git', ['-C', target, '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-m', 'corrections'], {stdio:'pipe'});
+    await syncReleaseDocs(source, target, 'v0.23.0', '', target);
+    const updated = JSON.parse(await readFile(join(target, 'website/public/release.json'), 'utf8'));
+    assert.equal(updated.commit, manifest.commit);
+    assert.equal(updated.changelogCorrectionsCommit, execFileSync('git', ['-C', target, 'rev-parse', 'HEAD'], {encoding:'utf8'}).trim());
+    for (const file of documents) {
+      const bytes = await readFile(join(target, file));
+      assert.equal(updated.documents[file], createHash('sha256').update(bytes).digest('hex'));
+      if (file.startsWith('CHANGELOG')) {
+        assert.match(bytes.toString(), /Corrected/);
+        assert.doesNotMatch(bytes.toString(), /Future/);
+        assert.doesNotMatch(await readFile(join(source, file), 'utf8'), /Corrected/);
+      } else assert.deepEqual(bytes, await readFile(join(source, file)));
+    }
+    // An invalid translation must not partially overwrite build inputs.
+    await writeFile(join(target, 'CHANGELOG.en.md'), '## 0.24.0\n\nWrong version\n');
+    const before = await readFile(join(target, 'CHANGELOG.md'));
+    await assert.rejects(syncReleaseDocs(source, target, 'v0.23.0', '', target), /one nonempty/);
+    assert.deepEqual(await readFile(join(target, 'CHANGELOG.md')), before);
   } finally { await rm(root, {recursive:true, force:true}); }
 });
