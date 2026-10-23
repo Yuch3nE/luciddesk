@@ -522,134 +522,142 @@ fn scene_with_mica(
             ),
         );
         form.section(crate::i18n::text("ui-panel-shape"));
-        if interface_flags::PANEL_SHADOW.get() {
-            form.dropdown(
-                crate::i18n::text("ui-corner-style"),
-                crate::i18n::text("ui-system-corner-style-description"),
-                vec![
-                    (crate::i18n::text("ui-corners-square"), Action::Change(Event::SetSystemCorners(interface_flags::SystemCorners::Square)), interface_flags::system_corners() == interface_flags::SystemCorners::Square),
-                    (crate::i18n::text("ui-corners-standard"), Action::Change(Event::SetSystemCorners(interface_flags::SystemCorners::Round)), interface_flags::system_corners() == interface_flags::SystemCorners::Round),
-                    (crate::i18n::text("ui-corners-small"), Action::Change(Event::SetSystemCorners(interface_flags::SystemCorners::Small)), interface_flags::system_corners() == interface_flags::SystemCorners::Small),
-                ],
-            );
-        } else {
-            form.slider(
-                crate::i18n::text("ui-corner-radius"),
-                crate::i18n::text("ui-adjust-corner-rounding-for-panels-and-tabs"),
-                Slider::linear(options.corner_radius, luciddesk_core::PaneOptions::MAX_CORNER_RADIUS),
-                &format!("{:.1}", options.corner_radius),
-                Action::Radius(options.corner_radius),
-            );
-        }
-        if !interface_flags::PANEL_SHADOW.get() {
+        form.group(|form| {
+            if interface_flags::PANEL_SHADOW.get() {
+                form.dropdown(
+                    crate::i18n::text("ui-corner-style"),
+                    crate::i18n::text("ui-system-corner-style-description"),
+                    vec![
+                        (crate::i18n::text("ui-corners-square"), Action::Change(Event::SetSystemCorners(interface_flags::SystemCorners::Square)), interface_flags::system_corners() == interface_flags::SystemCorners::Square),
+                        (crate::i18n::text("ui-corners-standard"), Action::Change(Event::SetSystemCorners(interface_flags::SystemCorners::Round)), interface_flags::system_corners() == interface_flags::SystemCorners::Round),
+                        (crate::i18n::text("ui-corners-small"), Action::Change(Event::SetSystemCorners(interface_flags::SystemCorners::Small)), interface_flags::system_corners() == interface_flags::SystemCorners::Small),
+                    ],
+                );
+            } else {
+                form.slider(
+                    crate::i18n::text("ui-corner-radius"),
+                    crate::i18n::text("ui-adjust-corner-rounding-for-panels-and-tabs"),
+                    Slider::linear(options.corner_radius, luciddesk_core::PaneOptions::MAX_CORNER_RADIUS),
+                    &format!("{:.1}", options.corner_radius),
+                    Action::Radius(options.corner_radius),
+                );
+            }
+            if !interface_flags::PANEL_SHADOW.get() {
+                form.toggle(
+                    crate::i18n::text("ui-show-border"),
+                    crate::i18n::text("ui-separate-panels-from-the-desktop-with-a-thin-border"),
+                    options.border,
+                    Action::Change(Event::ToggleBorder),
+                );
+            }
             form.toggle(
-                crate::i18n::text("ui-show-border"),
-                crate::i18n::text("ui-separate-panels-from-the-desktop-with-a-thin-border"),
-                options.border,
-                Action::Change(Event::ToggleBorder),
+                crate::i18n::text("ui-header-divider"),
+                crate::i18n::text("ui-show-a-thin-line-between-the-header-and-content"),
+                interface_flags::HEADER_DIVIDER.get(),
+                Action::Change(Event::ToggleHeaderDivider),
             );
-        }
-        form.toggle(
-            crate::i18n::text("ui-header-divider"),
-            crate::i18n::text("ui-show-a-thin-line-between-the-header-and-content"),
-            interface_flags::HEADER_DIVIDER.get(),
-            Action::Change(Event::ToggleHeaderDivider),
-        );
-        if show_mica {
-            form.toggle(
-                crate::i18n::text("compact-menu-title"),
-                crate::i18n::text("compact-menu-description"),
-                interface_flags::COMPACT_MENU.get(),
-                Action::Change(Event::ToggleCompactMenu),
-            );
-        }
+            if show_mica {
+                form.toggle(
+                    crate::i18n::text("compact-menu-title"),
+                    crate::i18n::text("compact-menu-description"),
+                    interface_flags::COMPACT_MENU.get(),
+                    Action::Change(Event::ToggleCompactMenu),
+                );
+            }
+        });
         form.section(crate::i18n::text("ui-text-icons"));
-        form.toggle(
-            crate::i18n::text("title-emoji-rendering"),
-            crate::i18n::text("title-emoji-rendering-description"),
-            interface_flags::TITLE_EMOJI.get(),
-            Action::Change(Event::SetTitleEmojiColor(
-                !interface_flags::TITLE_EMOJI.get(),
-            )),
-        );
-        form.choices(
-            crate::i18n::text("ui-panel-text"),
-            crate::i18n::text("ui-automatic-mode-selects-text-brightness-for-the-background"),
-            [
-                (
-                    crate::i18n::text("ui-automatic"),
-                    luciddesk_core::PanelText::Auto,
-                ),
-                (
-                    crate::i18n::text("ui-light-text"),
-                    luciddesk_core::PanelText::Light,
-                ),
-                (
-                    crate::i18n::text("ui-dark-text"),
-                    luciddesk_core::PanelText::Dark,
-                ),
-            ]
-            .into_iter()
-            .map(|(label, value)| {
-                (
-                    label,
-                    Action::Change(Event::SetPanelText(value)),
-                    options.text == value,
-                )
-            })
-            .collect(),
-        );
-        form.toggle(
-            crate::i18n::text("ui-text-contrast-backing"),
-            crate::i18n::text("ui-improve-text-readability-disable-to-preserve-full-transparency"),
-            options.text_protection,
-            Action::Change(Event::ToggleTextProtection),
-        );
-        form.section(crate::i18n::text("panel-icons-section"));
-        form.slider(
-            crate::i18n::text("ui-icon-grid-scale"),
-            crate::i18n::text("ui-adjust-icon-size-and-spacing-together"),
-            Slider::centered(grid_slider_position(options.grid_scale), 1.0),
-            &format!("{:.0}%", options.grid_scale),
-            Action::GridSize(options.grid_scale),
-        );
-        form.title_badge(crate::i18n::text("new-panels-only-tag")).toggle(
-            crate::i18n::text("icon-only-title"),
-            crate::i18n::text("icon-only-description"),
-            interface_flags::ICON_ONLY.get(),
-            Action::Change(Event::ToggleIconOnly),
-        );
-        if interface_flags::ICON_ONLY.get() {
-            form.title_badge(crate::i18n::text("new-panels-only-tag")).choices(
-                crate::i18n::text("icon-size-title"),
-                crate::i18n::text("icon-size-description"),
+        form.group(|form| {
+            form.toggle(
+                crate::i18n::text("title-emoji-rendering"),
+                crate::i18n::text("title-emoji-rendering-description"),
+                interface_flags::TITLE_EMOJI.get(),
+                Action::Change(Event::SetTitleEmojiColor(
+                    !interface_flags::TITLE_EMOJI.get(),
+                )),
+            );
+            form.choices(
+                crate::i18n::text("ui-panel-text"),
+                crate::i18n::text("ui-automatic-mode-selects-text-brightness-for-the-background"),
                 [
-                    ("icon-size-small", interface_flags::IconSize::Small),
-                    ("icon-size-medium", interface_flags::IconSize::Medium),
-                    ("icon-size-large", interface_flags::IconSize::Large),
-                ].into_iter().map(|(key, size)| (
-                    crate::i18n::text(key),
-                    Action::Change(Event::SetIconSize(size)),
-                    interface_flags::icon_size() == size,
-                )).collect(),
+                    (
+                        crate::i18n::text("ui-automatic"),
+                        luciddesk_core::PanelText::Auto,
+                    ),
+                    (
+                        crate::i18n::text("ui-light-text"),
+                        luciddesk_core::PanelText::Light,
+                    ),
+                    (
+                        crate::i18n::text("ui-dark-text"),
+                        luciddesk_core::PanelText::Dark,
+                    ),
+                ]
+                .into_iter()
+                .map(|(label, value)| {
+                    (
+                        label,
+                        Action::Change(Event::SetPanelText(value)),
+                        options.text == value,
+                    )
+                })
+                .collect(),
             );
-        }
-        form.section(crate::i18n::text("panel-snapping-section"));
-        form.toggle(
-            crate::i18n::text("ui-edge-snapping"),
-            crate::i18n::text("ui-snap-to-nearby-panels-and-screen-edges-when-moving"),
-            options.snap,
-            Action::Change(Event::ToggleSnap),
-        );
-        if options.snap {
+            form.toggle(
+                crate::i18n::text("ui-text-contrast-backing"),
+                crate::i18n::text("ui-improve-text-readability-disable-to-preserve-full-transparency"),
+                options.text_protection,
+                Action::Change(Event::ToggleTextProtection),
+            );
+        });
+        form.section(crate::i18n::text("panel-icons-section"));
+        form.group(|form| {
             form.slider(
-                crate::i18n::text("ui-snap-gap"),
-                crate::i18n::text("ui-snap-gap-description"),
-                Slider::linear(snap::gap() as f32, snap::MAX_GAP as f32),
-                &snap::gap().to_string(),
-                Action::SnapGap(snap::gap()),
+                crate::i18n::text("ui-icon-grid-scale"),
+                crate::i18n::text("ui-adjust-icon-size-and-spacing-together"),
+                Slider::centered(grid_slider_position(options.grid_scale), 1.0),
+                &format!("{:.0}%", options.grid_scale),
+                Action::GridSize(options.grid_scale),
             );
-        }
+            form.title_badge(crate::i18n::text("new-panels-only-tag")).toggle(
+                crate::i18n::text("icon-only-title"),
+                crate::i18n::text("icon-only-description"),
+                interface_flags::ICON_ONLY.get(),
+                Action::Change(Event::ToggleIconOnly),
+            );
+            if interface_flags::ICON_ONLY.get() {
+                form.title_badge(crate::i18n::text("new-panels-only-tag")).choices(
+                    crate::i18n::text("icon-size-title"),
+                    crate::i18n::text("icon-size-description"),
+                    [
+                        ("icon-size-small", interface_flags::IconSize::Small),
+                        ("icon-size-medium", interface_flags::IconSize::Medium),
+                        ("icon-size-large", interface_flags::IconSize::Large),
+                    ].into_iter().map(|(key, size)| (
+                        crate::i18n::text(key),
+                        Action::Change(Event::SetIconSize(size)),
+                        interface_flags::icon_size() == size,
+                    )).collect(),
+                );
+            }
+        });
+        form.section(crate::i18n::text("panel-snapping-section"));
+        form.group(|form| {
+            form.toggle(
+                crate::i18n::text("ui-edge-snapping"),
+                crate::i18n::text("ui-snap-to-nearby-panels-and-screen-edges-when-moving"),
+                options.snap,
+                Action::Change(Event::ToggleSnap),
+            );
+            if options.snap {
+                form.slider(
+                    crate::i18n::text("ui-snap-gap"),
+                    crate::i18n::text("ui-snap-gap-description"),
+                    Slider::linear(snap::gap() as f32, snap::MAX_GAP as f32),
+                    &snap::gap().to_string(),
+                    Action::SnapGap(snap::gap()),
+                );
+            }
+        });
     } else if page == 3 {
         let value = peek::settings();
         let resolved = peek::resolved(&value);
@@ -1044,18 +1052,20 @@ pub(super) fn desktop_defaults(s: &mut Scene, width: f32, mode: layout_defaults:
         .fold(120.0_f32, f32::max);
     let mut form = SettingsForm::continuation(s, width, bottom + 24.0);
     form.section(crate::i18n::text("ui-icon-arrangement"));
-    form.title_badge(crate::i18n::text("new-panels-only-tag")).toggle(
-        crate::i18n::text("ui-align-icons-to-grid"),
-        crate::i18n::text("desktop-default-align-description"),
-        mode != layout_defaults::Mode::Free,
-        Action::LayoutDefaults(mode.toggle_align()),
-    );
-    form.title_badge(crate::i18n::text("new-panels-only-tag")).toggle(
-        crate::i18n::text("ui-auto-arrange-icons"),
-        crate::i18n::text("desktop-default-arrange-description"),
-        mode == layout_defaults::Mode::Compact,
-        Action::LayoutDefaults(mode.toggle_auto_arrange()),
-    );
+    form.group(|form| {
+        form.title_badge(crate::i18n::text("new-panels-only-tag")).toggle(
+            crate::i18n::text("ui-align-icons-to-grid"),
+            crate::i18n::text("desktop-default-align-description"),
+            mode != layout_defaults::Mode::Free,
+            Action::LayoutDefaults(mode.toggle_align()),
+        );
+        form.title_badge(crate::i18n::text("new-panels-only-tag")).toggle(
+            crate::i18n::text("ui-auto-arrange-icons"),
+            crate::i18n::text("desktop-default-arrange-description"),
+            mode == layout_defaults::Mode::Compact,
+            Action::LayoutDefaults(mode.toggle_auto_arrange()),
+        );
+    });
 }
 
 pub(super) fn show_panels_shortcut(
@@ -1078,24 +1088,26 @@ pub(super) fn show_panels_shortcut(
         .fold(120.0_f32, f32::max);
     let mut form = SettingsForm::continuation(s, width, bottom + 24.0);
     form.section(crate::i18n::text("show-panels-hotkey"));
-    form.toggle(
-        crate::i18n::text("show-panels-enable"),
-        crate::i18n::text("show-panels-description"),
-        enabled,
-        Action::ShowPanelsEnable,
-    );
-    let status = show_hotkey::status();
-    form.shortcut(
-        crate::i18n::text("ui-global-shortcut"),
-        if status.is_empty() {
-            crate::i18n::text("show-panels-disabled")
-        } else {
-            &status
-        },
-        &show_hotkey::label(shortcut),
-        Action::ShowPanelsShortcut,
-        Action::ShowPanelsReset,
-    );
+    form.group(|form| {
+        form.toggle(
+            crate::i18n::text("show-panels-enable"),
+            crate::i18n::text("show-panels-description"),
+            enabled,
+            Action::ShowPanelsEnable,
+        );
+        let status = show_hotkey::status();
+        form.shortcut(
+            crate::i18n::text("ui-global-shortcut"),
+            if status.is_empty() {
+                crate::i18n::text("show-panels-disabled")
+            } else {
+                &status
+            },
+            &show_hotkey::label(shortcut),
+            Action::ShowPanelsShortcut,
+            Action::ShowPanelsReset,
+        );
+    });
 }
 
 pub(super) fn panel_reset(s: &mut Scene, width: f32) {

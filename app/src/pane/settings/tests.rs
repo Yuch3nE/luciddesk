@@ -704,6 +704,8 @@ fn panel_options_text_fits_default_and_minimum_window() {
                 (PanelTheme::Dark, Backdrop::Mica),
                 Default::default(),
             );
+                layout::desktop_defaults(&mut body, width, layout_defaults::Mode::Free);
+                layout::show_panels_shortcut(&mut body, width, false, show_hotkey::default_shortcut());
                 layout::panel_reset(&mut body, width);
                 body
             },
@@ -858,6 +860,11 @@ fn settings_layout_and_rendering_at_multiple_scales() {
                                 ),
                                 luciddesk_core::PaneOptions::default(),
                             );
+                            if page == 1 {
+                                layout::desktop_defaults(&mut body, viewport_width, layout_defaults::Mode::Free);
+                                layout::show_panels_shortcut(&mut body, viewport_width, false, show_hotkey::default_shortcut());
+                                layout::panel_reset(&mut body, viewport_width);
+                            }
                             if matches!(page, 6 | 9 | 10) {
                                 let view = recovery::View {
                                     status: "手动备份成功 · 上次备份：今天 14:32".into(),
