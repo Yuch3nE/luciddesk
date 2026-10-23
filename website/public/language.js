@@ -76,7 +76,9 @@
       document.body.replaceChildren(...parsed.body.childNodes);
       document.dispatchEvent(new Event('luciddesk:language-swapped'));
       document.dispatchEvent(new Event('luciddesk:theme-updated'));
-      try { localStorage.setItem(storageKey, lang); } catch { /* This page can still switch. */ }
+      if (manual) {
+        try { localStorage.setItem(storageKey, lang); } catch { /* This page can still switch. */ }
+      }
       restorePosition();
       if (manual) document.querySelector('[data-language-switch]')?.focus({preventScroll:true});
     } catch {
@@ -115,8 +117,20 @@
     const button = event.target.closest?.('[data-language-switch]');
     if (button) switchLanguage(button.dataset.languageTarget);
   });
-  try {
-    const preferred = localStorage.getItem(storageKey);
-    if (preferred === 'en' || preferred === 'zh') switchLanguage(preferred, false);
-  } catch { /* Default language works without browser storage. */ }
+  function preferredLanguage() {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved === 'en' || saved === 'zh') return saved;
+    } catch { /* System language also works without browser storage. */ }
+    // Use the primary browser/system language, not a secondary Chinese language.
+    // An explicit script takes precedence over the region (e.g. zh-Hant-CN).
+    const tag = navigator.languages?.[0] || navigator.language || '';
+    try {
+      const locale = new Intl.Locale(tag);
+      if (locale.language === 'zh' &&
+          (locale.script === 'Hans' || (!locale.script && ['CN', 'SG'].includes(locale.region)))) return 'zh';
+    } catch { /* Unknown language tags fall back to English. */ }
+    return 'en';
+  }
+  switchLanguage(preferredLanguage(), false);
 })();
