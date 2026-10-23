@@ -12,6 +12,11 @@ pub(super) fn summary(topic: &str) -> &'static str {
         "workspace" => "Read a complete workspace snapshot",
         "settings" => "Read and update supported app settings",
         "font" => "Discover available fonts",
+        "backup" => "Create, export and restore validated configuration backups",
+        "backup.list" => "List backup history and busy state",
+        "backup.create" => "Create a manual backup in the app backup directory",
+        "backup.export" => "Export current configuration or a selected backup without overwriting files",
+        "backup.restore" => "Restore the reviewed backup with a before-restore snapshot and conflict checks",
         "startup" => "Inspect and configure Windows startup",
         "monitor" => "Discover monitor IDs and work areas",
         "skill" => "Export the bundled Agent guide offline",
@@ -35,7 +40,7 @@ pub(super) fn summary(topic: &str) -> &'static str {
         "pane.remove" => "Remove a pane; release its items only when explicitly requested",
         "pane.geometry" => "Set pane position and size in monitor-relative DIPs",
         "pane.fit" => "Fit pane content to an icon column count",
-        "pane.snap" => "Snap beside another pane with a fixed 5-physical-pixel gap",
+        "pane.snap" => "Snap beside another pane using the configured physical-pixel gap",
         "pane.arrange" => "Arrange panes into columns on a monitor",
         "pane.sort" => "Sort once by name, modified date, type or size; ascending unless descending=true",
         "item.assign" => "Assign desktop items to a pane",
@@ -69,8 +74,11 @@ pub(super) fn examples(topic: &str, mutation: bool) -> Vec<String> {
     let args = match topic {
         "" => return ["help pane", "help pane snap", "capabilities --json", "workspace get --json"]
             .map(|s| format!("luciddesk-cli {s}")).into(),
+        "backup.create" => "",
+        "backup.export" => "--path C:\\Backups\\export.db",
+        "backup.restore" => "--path C:\\Backups\\saved.db",
         "pane.create" => "--title Work",
-        "pane.update" => "--id 1 --locked true",
+        "pane.update" => "--id 1 --icon-only true --icon-size large",
         "pane.remove" | "folder.back" | "folder.home" | "folder.refresh"
         | "search.refresh" | "search.more" | "tab.select" | "tab.detach" => "--id 1",
         "pane.sort" => "--id 1 --sort-column modified --descending true",

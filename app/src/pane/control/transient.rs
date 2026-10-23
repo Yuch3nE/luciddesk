@@ -4,7 +4,7 @@ use luciddesk_api::Operation;
 pub(super) fn is_runtime(op: &Operation) -> bool {
     matches!(
         op,
-        Operation::StartupSet { .. } | Operation::FolderNavigate { .. }
+        Operation::BackupCreate { .. } | Operation::BackupExport { .. } | Operation::BackupRestore { .. } | Operation::StartupSet { .. } | Operation::FolderNavigate { .. }
             | Operation::FolderRefresh { .. }
             | Operation::FolderBack { .. }
             | Operation::FolderHome { .. }
@@ -21,6 +21,7 @@ fn id(raw: &str) -> Result<PanelId, String> {
         .ok_or_else(|| "invalid panel ID".into())
 }
 pub(super) fn prepare(workspace: &Workspace, op: &Operation) -> Result<Operation, String> {
+    if super::backups::supported(op) { return Ok(op.clone()); }
     if let Operation::StartupSet {expected_status,..} = op {
         let status = crate::startup::Status::from_code(expected_status).ok_or("invalid expected startup status")?;
         if !status.editable() {return Err("startup status does not permit changes".into());}
@@ -73,7 +74,7 @@ pub(super) fn fingerprint(s: &PaneApp) -> String {
     let mut folders: Vec<_> = s
         .folders
         .iter()
-        .map(|(id, source)| (id.get(), source.navigation_context(), source.items.len(), source.loading, &source.status))
+        .map(|(id, source)| (id.get(), source.navigation_context(), source.content_revision, source.items.len(), source.loading, &source.status))
         .collect();
     folders.sort();
     let searches: Vec<_> = s

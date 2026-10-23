@@ -56,7 +56,7 @@ pub(super) fn query(s: &PaneApp, id: PanelId) -> Result<serde_json::Value, Strin
     let source = s.folders.get(&id);
     Ok(
         json!({"content_layout":super::content_layout::live_query(s,id),"pane_id":id.get().to_string(),"root_path":panel.folder(),"list_view":panel.list_view(),"preferences":preferences(&prefs),
-        "runtime":s.views.iter().find(|v|v.id==id).map(|v|{let m=v.model.borrow();json!({"list_view":m.list_view,"sort_column_index":m.folder_sort.0,"descending":m.folder_sort.1,"column_widths":m.folder_columns,"visible_columns_mask":m.folder_visible_columns})}),"current_path":source.map(|s|&s.path),"loading":source.is_some_and(|s|s.loading),"available":source.is_some(),"error":source.and_then(|s|s.status.as_deref()),
+        "runtime":s.views.iter().find(|v|v.id==id).map(|v|{let m=v.model.borrow();json!({"list_view":m.list_view,"sort_column_index":m.folder_sort.0,"descending":m.folder_sort.1,"column_widths":m.folder_columns,"visible_columns_mask":m.folder_visible_columns})}),"content_revision":source.map(|s|s.content_revision.to_string()),"current_path":source.map(|s|&s.path),"loading":source.is_some_and(|s|s.loading),"available":source.is_some(),"error":source.and_then(|s|s.status.as_deref()),
         "can_navigate":source.map(|s|s.navigation()),"inventory_source":"current_app_snapshot",
         "items":source.map(|s|s.items.iter().map(|item|json!({"display_name":item.label,"path":item.identity.file_system_path(),"is_folder":item.details.folder,"kind":item.details.kind,"size":item.details.size})).collect::<Vec<_>>()).unwrap_or_default()}),
     )

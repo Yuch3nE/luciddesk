@@ -6,6 +6,9 @@
   },
   {
     "op": "pane.update",
+    "icon_only": true,
+    "icon_size": "medium",
+    "list_view": false,
     "pane_id": "9007199254740993",
     "title": "新标题",
     "locked": false
@@ -175,5 +178,16 @@
     "item_id": "item-1",
     "column": 2,
     "row": 3
+  },
+  {
+    "op": "backup.create"
+  },
+  {
+    "op": "backup.export",
+    "path": "C:\\Backups\\export.db"
+  },
+  {
+    "op": "backup.restore",
+    "path": "C:\\Backups\\saved.db"
   }
 ]

@@ -256,6 +256,7 @@ impl WorkspaceStore {
                 [&config.source],
             )?;
         }
+        staging.as_file().sync_all().map_err(|e| StoreError::InvalidData(e.to_string()))?;
         staging
             .persist_noclobber(path)
             .map_err(|e| StoreError::InvalidData(e.to_string()))?;

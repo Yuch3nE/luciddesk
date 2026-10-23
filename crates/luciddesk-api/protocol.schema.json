@@ -44,7 +44,8 @@
             "monitor.list",
             "folder.get",
             "search.get",
-            "startup.get"
+            "startup.get",
+            "backup.list"
           ]
         },
         "id": {
@@ -394,6 +395,20 @@
                   },
                   "collapsed": {
                     "type": "boolean"
+                  },
+                  "list_view": {
+                    "type": "boolean"
+                  },
+                  "icon_only": {
+                    "type": "boolean"
+                  },
+                  "icon_size": {
+                    "type": "string",
+                    "enum": [
+                      "small",
+                      "medium",
+                      "large"
+                    ]
                   },
                   "always_on_top": {
                     "type": "boolean"
@@ -1180,6 +1195,53 @@
                     }
                   }
                 ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "op"
+                ],
+                "properties": {
+                  "op": {
+                    "const": "backup.create"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "op",
+                  "path"
+                ],
+                "properties": {
+                  "op": {
+                    "const": "backup.export"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "op",
+                  "path"
+                ],
+                "properties": {
+                  "op": {
+                    "const": "backup.restore"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                }
               }
             ]
           }

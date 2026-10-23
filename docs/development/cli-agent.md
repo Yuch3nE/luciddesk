@@ -30,7 +30,7 @@ CLI 和主程序保持相同发布版本；控制协议版本另行维护。CLI 
 
 `pane/layout.rs` 统一图标行内容高度、面板最小尺寸和完整列宽；`model.rs` 与 `control/content_layout/measurement.rs` 共用这些计算。普通面板按 `ordered_desktop_items` 的实际显示顺序测量，文件夹使用已加载的条目标签，不在适配时扫描目录。末行按实际文字高度收紧，标签组取各成员所需高度的最大值；列表视图保留列表最小宽度，混合视图仍将图标宽度向上对齐整列。
 
-`pane/snap.rs` 的 `AxisTargets` 统一物理像素中的边缘候选坐标，CLI 按 side/align 选择，手动拖动仍使用接近阈值。吸附间距固定为 5 物理像素；它与 `pane.arrange` 的 DIP 布局间距是不同参数。跨显示器操作按目标 DPI 换算一次，锚点不移动，仍检查越界和重叠。
+`pane/snap.rs` 的 `AxisTargets` 统一物理像素中的边缘候选坐标，CLI 按 side/align 选择，手动拖动仍使用接近阈值。吸附与 `pane.arrange` 都读取 `interface.snap_gap`（默认 5 物理像素），不提供单次间距覆盖。跨显示器操作按目标 DPI 换算一次，锚点不移动，仍检查越界和重叠。
 
 布局预览通过 `observe_layout` 读取可见窗口的实际边界和有效收起状态，并合并计划中前序的几何修改。`Prepared` 保存观测值，提交时重新核对；窗口移动或自动收起等变化返回 `CONFLICT`，Agent 应重新查询和预览。吸附要求源与目标展开。观测仅读取窗口和内存，不保存自动收起状态，也不增加数据库写入。
 
@@ -291,3 +291,44 @@ CLI、文档、schema 和 Skill 已纳入普通/便携 ZIP、Inno EXE、MSI 和 
 新增 folder.fit / folder.refresh（共 26 个操作），文件夹也可参与 pane.fit、pane.arrange 和 pane.snap。图标适配指定每行数量；列表适配保留宽度并计入表头；max_rows 限制可见行数，完整清单保留供滚动访问。只使用加载完成的运行时快照，查询与预览不扫描目录。刷新通过现有异步目录工作线程执行，不保存数据库；加载状态、错误、数量和导航变化使过期适配计划冲突。
 
 38 项控制测试、11 项 API 测试、6 项 CLI 测试及 93 项 schema 用例通过，Skill 验证通过。真实 Debug/CLI 创建临时文件夹面板，验证列表 5 行、图标每行 4 个最多 2 行、17 个条目完整保留、刷新 not_persisted、回执重试不重复执行、相同适配无变化。随后删除临时面板，核对原有 8 个面板几何和全部图标归属未变。证据：target/folder-cli-live/result.json；刷新零数据库写入与旧计划冲突由控制层集成测试断言。多屏和跨会话仍保留未验收状态。
+
+## 面板显示协议补齐（未发布）
+
+`pane.update` 增加可选 `list_view`、`icon_only`、`icon_size`；图标大小通过严格枚举限定为 small/medium/large。普通与文件夹面板共用这些字段；搜索和监控面板不接受。`capabilities.pane_display` 声明支持字段、类型和面板级作用域。省略字段保持原值，显式 null 拒绝。
+
+显示设置只更新指定标签，仍遵守计划锁定检查、预览无写入、事务保存及回执机制。保存复用 workspace 事务中的 `panel_icon_display:<id>`，无需额外写配置。布局适配读取计划中的面板显示设置，允许同一批次先切换显示再适配大小。
+
+## CLI 审计补充（2026-10-24，未发布）
+
+- 文件夹后台扫描完成后，即使路径、文件数及 loading 状态均未改变，也必须使旧预览失效。Source 使用进程内递增的 `content_revision` 标记扫描结果与类型元数据更新；重建 Source 不复用旧版本。CLI 状态指纹包含该标记，`folder.get` 同时提供字符串版本号。查询无需逐项散列或重新访问文件系统。该版本仅表示当前进程中已收到的快照，不保证尚未收到的文件系统变化已被观察到。
+- 排序预览每次请求返回后重新计算剩余时间；睡眠后再次检查截止时间。超时保留最后一次 `SORT_METADATA_PENDING` 及后续操作信息，不额外发送已过期的预览请求，不自动提交。
+- 本次检查覆盖输入校验、计划提交/回执、排序重试、文件夹快照、搜索、设置、标签与几何操作。临时目录重命名回归验证同数量内容变化导致 `CONFLICT` 且不写入；另验证慢请求超时后仅调用一次，以及快照/Source 重建的版本变化。Windows 启动策略、Everything 真实服务及跨屏行为仍需相应环境的端到端验证。
+
+### Skill 场景验收补充（2026-10-24，未发布）
+
+新增 `app/src/pane/control/scenarios.rs`，通过独立命名管道、临时 SQLite 工作区和真实 UI 消息循环验证流程，不连接 Explorer，不向正在运行的用户工作区提交修改。
+
+| 场景 | 本次验证 |
+| --- | --- |
+| 面板默认值与标签 | 修改默认值不改变已有面板；新面板继承；合并、切换、独立图标大小、拆分和删除 |
+| 计划与恢复 | 预览不创建面板；同 token/request ID 重放及 request.get 返回原回执；旧计划明确冲突 |
+| 文件夹 | 继承默认视图及列；等待加载；进入子目录、返回根目录；删除映射保留真实文件 |
+| Everything | 使用本机真实服务，只读查询本仓库；按 generation 等待、加载下一页、空查询清空 |
+
+文件夹后台扫描可能在 ready 后再次完成，使预览到提交之间发生正常冲突。场景仅对明确的 `CONFLICT` 重新读取并预览，最多五次；不对超时、未知结果或展示失败重做操作。Skill 已补充此说明。本轮未发现额外产品逻辑缺陷。
+
+验证：控制层 65 项、API 11 项、CLI 24 项通过；schema 99 组（28 个操作）通过，Skill 校验通过。日志为 `target/skill-control-acceptance.log` 和 `target/skill-cli-api-acceptance.log`。执行控制层验收：`cargo test -p luciddesk --bin luciddesk pane::control:: --locked -- --test-threads=1 --include-ignored`。真实 Everything 场景默认忽略，显式运行要求服务启动且本仓库已索引、结果超过一页；无该环境时不要启用 ignored 场景。
+
+边界：场景客户端使用协议请求，CLI 参数解析和恢复提示由独立 CLI 测试覆盖，不等同于全部命令逐一经过 EXE 的实机验收。图标归属、几何与跨屏使用已有隔离/合成测试；本机仅一台显示器。Windows 启动状态已只读确认，策略变化仍使用模拟测试，未修改真实启动项。MSIX、跨会话、物理多屏及热插拔仍未实测。
+
+
+## CLI 备份与恢复（2026-10-24，未发布）
+
+新增 `backup.list` 查询及 `backup.create/export/restore` 单操作计划。备份预览使用私有临时副本，最大 64 MiB，校验完整性、配置和兼容性；不会修改工作区或用户源文件。Prepared 持有副本，提交时移动到回执对应任务，淘汰时释放。导出父目录必须存在，禁止现有目标、活动配置路径和 ADS 路径；写入复用存储层的临时文件、sync_all、persist_noclobber，避免检查后目标被抢先创建的覆盖风险。
+
+应用 UI 线程捕获一致性快照，后台线程写备份或导出。CLI 和 GUI 共用 backup.view.busy；控制窗口定时收取结果并更新原回执，无需客户端持续在线。恢复后台先保存 before-restore 快照，回到 UI 线程后重检存储修订、完整工作区和待保存状态，再调用已有 restore_backup 与 runtime::reload；只有恢复成功而加载失败时才回滚，回退文件不在此次操作中清理。回执区分 pending/completed/failed 及 not_committed/committed/rolled_back/unknown；不把请求被接受当作恢复完成。
+
+测试覆盖：固定预览源、损坏输入、活动路径、已有目标、导出竞争、默认与指定源导出、GUI/CLI 忙碌互斥、恢复期间修改、成功恢复、加载失败回滚及二次失败、回执仅执行一次。私有管道验证创建、导出、轮询和重放。恢复测试使用临时数据库及注入的加载函数，未恢复用户工作区；原有 GUI 恢复及存储层回归另行验证。
+
+
+本次验收结果：控制层 70 项（Everything 环境测试 1 项默认跳过）、GUI 恢复 12 项、存储 67 项、API 11 项、CLI 25 项通过，schema 109 组通过。正式包通过嵌入图标、运行库与 Agent 载荷检查。安装后实际创建并导出备份，校验文件一致、SQLite integrity_check、原回执重放和 Skill 内容一致；恢复只做预览。重启前后 9 个面板、82 个桌面项目及标签组保持一致。证据：`target/cli-backup-live/result.json`、`target/cli-backup-local-update.json` 及 `target/cli-backup-*.log`。未在用户工作区实际恢复，也不据此宣称已模拟所有掉电或设备故障。

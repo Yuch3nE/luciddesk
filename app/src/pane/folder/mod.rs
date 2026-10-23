@@ -14,6 +14,12 @@ use windows::Win32::{
     UI::Shell::*,
 };
 
+// Distinguish complete snapshots even when paths/counts return to their old values.
+fn next_content_revision() -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
 pub(super) struct Source {
     pub path: PathBuf,
     root: PathBuf,
@@ -24,6 +30,7 @@ pub(super) struct Source {
     updates: mpsc::Receiver<Result<Vec<Item>, String>>,
     images: mpsc::Receiver<Vec<Item>>,
     pub items: Vec<Item>,
+    pub content_revision: u64,
     pub status: Option<String>,
     pub loading: bool,
     pending_rename: Option<PathBuf>,
@@ -31,6 +38,7 @@ pub(super) struct Source {
 
 impl Source {
     fn apply_scan(&mut self, result: Result<Vec<Item>, String>) {
+        self.content_revision = next_content_revision();
         self.loading = false;
         match result {
             Ok(items) => {
@@ -291,6 +299,7 @@ impl Source {
             updates,
             images: image_updates,
             items: Vec::new(),
+            content_revision: next_content_revision(),
             status: None,
             loading: true,
             pending_rename: None,
@@ -360,6 +369,7 @@ pub(super) fn poll(state: &mut PaneApp) -> Vec<(PanelId, ShellIdentity)> {
                     patched |= applied;
                 }
             }
+            if kind_changed { source.content_revision = next_content_revision(); }
             if kind_changed && source.sort.0 == 1 { sort_items(&mut source.items, source.sort); }
             changed |= patched;
         }

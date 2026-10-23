@@ -22,6 +22,7 @@ pub(super) fn flag(flag: &str) -> Option<&'static str> {
         "--icon-columns" => "icon_columns",
         "--title" => "title",
         "--path" => "path",
+        "--source" => "source",
         "--query" => "query",
         "--into" => "into_pane_id",
         "--monitor" => "monitor_id",
@@ -34,6 +35,8 @@ pub(super) fn flag(flag: &str) -> Option<&'static str> {
         "--collapsed" => "collapsed",
         "--always-on-top" => "always_on_top",
         "--list-view" => "list_view",
+        "--icon-only" => "icon_only",
+        "--icon-size" => "icon_size",
         "--enabled" => "enabled",
         "--expected-status" => "expected_status",
         "--ids" => "item_ids",
@@ -56,7 +59,7 @@ pub(super) fn value(flag_name: &str, raw: &str) -> Result<(String, Value), Strin
                 .filter(|n| (1..=64).contains(n))
                 .ok_or("--icon-columns expects 1..64")?
         ),
-        "auto_compact" | "align_icons_to_grid" | "descending" | "locked" | "auto_hide" | "collapsed" | "always_on_top" | "list_view" | "enabled" => json!(
+        "icon_only" | "auto_compact" | "align_icons_to_grid" | "descending" | "locked" | "auto_hide" | "collapsed" | "always_on_top" | "list_view" | "enabled" => json!(
             raw.parse::<bool>()
                 .map_err(|_| format!("{flag_name} expects true or false"))?
         ),
@@ -197,10 +200,15 @@ fn preview_call(request: &Request, timeout: Duration, call: &mut impl FnMut(&Req
     loop {
         let remaining = deadline.saturating_duration_since(std::time::Instant::now());
         let response = call(request, remaining);
-        if request.command != "plan.preview" || !response.error.as_ref().is_some_and(|e| e.code == "SORT_METADATA_PENDING") || remaining <= Duration::from_millis(50) {
+        if request.command != "plan.preview" || !response.error.as_ref().is_some_and(|e| e.code == "SORT_METADATA_PENDING") {
             return response;
         }
+        // The transport call itself consumes budget. Preserve the last pending
+        // response (and its continuation plan) instead of dispatching after expiry.
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        if remaining <= Duration::from_millis(50) { return response; }
         std::thread::sleep(Duration::from_millis(50));
+        if std::time::Instant::now() >= deadline { return response; }
     }
 }
 
@@ -232,6 +240,30 @@ fn submit(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn slow_pending_preview_does_not_dispatch_after_deadline() {
+        let mut request = parse_words(&["status"]).request;
+        request.command = "plan.preview".into();
+        let mut calls = 0;
+        let response = preview_call(&request, Duration::from_millis(60), &mut |request, _| {
+            calls += 1;
+            std::thread::sleep(Duration::from_millis(70));
+            let mut pending = Response::failure(&request.request_id, "SORT_METADATA_PENDING", "pending");
+            pending.data = Some(json!({"pending_preview":{"plan":{"retained":true}}}));
+            pending
+        });
+        assert_eq!(calls, 1);
+        assert_eq!(response.error.unwrap().code, "SORT_METADATA_PENDING");
+        assert_eq!(response.data.unwrap()["pending_preview"]["plan"]["retained"], true);
+    }
+    #[test]
+    fn icon_display_flags_validate_types_and_enum() {
+        assert!(matches!(parse_words(&["pane","update","--id","1","--icon-only","true","--icon-size","medium"]).operation,
+            Some(Operation::Update { icon_only: Some(true), icon_size: Some(luciddesk_api::IconSize::Medium), .. })));
+        for fields in [json!({"icon_size":"huge"}), json!({"icon_only":"true"}), json!({"icon_size":null})] {
+            assert!(operation("pane.update", Some("1".into()), None, BTreeMap::new(), Some(serde_json::to_vec(&fields).unwrap())).is_err());
+        }
+    }
     #[test]
     fn arrangement_sort_and_position_flags_are_typed() {
         assert!(matches!(parse_words(&["pane","update","--id","1","--auto-compact","false","--align-icons-to-grid","false"]).operation,
@@ -422,5 +454,18 @@ mod tests {
                 assert_eq!(response.data.unwrap()["recovery"]["plan_token"], "token");
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod backup_tests {
+    use super::*;
+    #[test]
+    fn backup_shortcuts_parse_source_and_reject_overwrite_or_missing_path() {
+        assert!(matches!(operation("backup.create",None,None,BTreeMap::new(),None).unwrap(),Operation::BackupCreate {}));
+        let fields=BTreeMap::from([value("--path","C:\\Backups\\out.db").unwrap(),value("--source","C:\\Backups\\in.db").unwrap()]);
+        assert!(matches!(operation("backup.export",None,None,fields,None).unwrap(),Operation::BackupExport{source:Some(_),..}));
+        assert!(operation("backup.restore",None,None,BTreeMap::new(),None).is_err());
+        assert!(flag("--overwrite").is_none());
     }
 }

@@ -1,5 +1,8 @@
 //! CLI dispatcher. Requests use a dedicated message, not the maintenance wake.
 mod plans;
+mod backups;
+#[cfg(test)]
+mod scenarios;
 mod sort_metadata;
 mod settings;
 mod geometry;
@@ -40,6 +43,7 @@ struct Snapshot {
     plans: plans::Plans,
     fonts: font_catalog::Catalog,
     startup: startup::Control,
+    backups: backups::Control,
 }
 impl Snapshot {
     fn new() -> Self {
@@ -52,6 +56,7 @@ impl Snapshot {
             plans: plans::Plans::default(),
             fonts: font_catalog::Catalog::default(),
             startup: startup::Control::default(),
+            backups: backups::Control::default(),
         }
     }
     fn respond(&mut self, state: &mut PaneApp, request: &Request) -> Response {
@@ -105,6 +110,7 @@ impl Snapshot {
             return self.plans.handle(state, &base, &self.item_ids, request, &monitors);
         }
         let data = match request.command.as_str() {
+            "backup.list" => match backups::query(state) { Ok(value)=>value, Err(error)=>return fail("CAPABILITY_UNAVAILABLE", &error) },
             "startup.get" => self.startup.query(),
             "font.list" => self.fonts.query(),
             "monitor.list" => geometry::monitors(&monitors),
@@ -134,7 +140,7 @@ impl Snapshot {
                 json!({"application_version":env!("CARGO_PKG_VERSION"), "data_dir":directory, "desktop_connected":state.session.as_ref().is_some_and(hybrid::is_alive), "desktop_sync_status":hybrid::membership_status(state), "workspace_save_pending":hybrid::workspace_save_pending(state), "desktop_diagnostic":luciddesk_explorer::filter::desktop_filter_diagnostics(), "read_only":false})
             }
             "capabilities" => {
-                json!({"commands":luciddesk_api::COMMANDS,"protocol_version":1,"max_frame_bytes":luciddesk_api::MAX_FRAME,"writes":true,"plans":true,"concurrency_tokens":true,"plan_operations":luciddesk_api::OPERATIONS,"pane_geometry":true,"pane_sort_columns":["name","modified","type","size"],"pane_arrangement":true,"item_position":true,"content_layout":{"kinds":["desktop","folder"],"arrange_anchor":"top_right","gap_px":snap::gap_px(),"icon_columns_min":1,"icon_columns_max":64},"item_ids":"opaque-instance-scoped","schema_version":1})
+                json!({"commands":luciddesk_api::COMMANDS,"protocol_version":1,"max_frame_bytes":luciddesk_api::MAX_FRAME,"writes":true,"plans":true,"concurrency_tokens":true,"plan_operations":luciddesk_api::OPERATIONS,"backup":{"operations":["create","export","restore"],"overwrite":false,"max_source_bytes":67108864,"restore_source":"frozen_at_preview"},"pane_geometry":true,"pane_sort_columns":["name","modified","type","size"],"pane_arrangement":true,"pane_display":{"kinds":["desktop","folder"],"fields":["list_view","icon_only","icon_size"],"icon_sizes":["small","medium","large"],"scope":"pane"},"item_position":true,"content_layout":{"kinds":["desktop","folder"],"arrange_anchor":"top_right","gap_px":snap::gap_px(),"icon_columns_min":1,"icon_columns_max":64},"item_ids":"opaque-instance-scoped","schema_version":1})
             }
             command => {
                 let pane_values: Vec<_> = state.workspace.panels().iter().map(|panel| {
@@ -284,6 +290,7 @@ fn start_at(
             }
             if let Some(state) = weak.upgrade() {
                 if state.try_borrow_mut().is_ok() {
+                    if let Some((id,data)) = snapshot.backups.poll(&state) { snapshot.plans.system_result(&id,data); }
                     while let Ok(pending) = receive.try_recv() {
                         if Instant::now() < pending.expires {
                             let previous = state.borrow().store.change_count();
@@ -293,7 +300,11 @@ fn start_at(
                                 snapshot.respond(&mut state.borrow_mut(), &pending.request);
                             if pending.request.command=="plan.apply" {
                                 if let Some(action)=snapshot.plans.take_runtime_action(&response) {
-                                    if let luciddesk_api::Operation::StartupSet {enabled,expected_status} = action {
+                                    if backups::supported(&action) {
+                                        let prepared = snapshot.plans.take_backup(&response).expect("backup preview retained");
+                                        let data = snapshot.backups.apply(&state, &response.request_id, prepared);
+                                        response = snapshot.plans.system_result(&response.request_id, data).unwrap();
+                                    } else if let luciddesk_api::Operation::StartupSet {enabled,expected_status} = action {
                                         let data=snapshot.startup.apply(&response.request_id,enabled,&expected_status);
                                         response=snapshot.plans.system_result(&response.request_id,data).unwrap();
                                     } else {
@@ -334,6 +345,7 @@ fn start_at(
                             let _ = pending.reply.send(response);
                         }
                     }
+                    if snapshot.backups.busy() { unsafe { SetTimer(raw.cast(), 1, 25, None); } }
                 } else {
                     unsafe {
                         SetTimer(raw.cast(), 1, 25, None);
@@ -431,6 +443,30 @@ mod tests {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
+    #[test]
+    fn display_changes_refresh_existing_window_without_recreating_it() {
+        let _sta = crate::pane::test_support::apartment();
+        let state = Rc::new(RefCell::new(super::super::tests::test_state()));
+        let id = PanelId::new(1);
+        create_view(&state, id).unwrap();
+        let hwnd = state.borrow().views[0].window.hwnd();
+        let before = state.borrow().workspace.clone();
+        let display = luciddesk_core::IconDisplay { icon_only: true, size: luciddesk_core::IconSize::Small };
+        {
+            let mut app = state.borrow_mut();
+            let panel = app.workspace.panel_mut(id).unwrap();
+            panel.set_list_view(true);
+            panel.set_icon_display(display);
+            app.views[0].model.borrow_mut().scroll_x = 500.0;
+        }
+        present(&state, &before).unwrap();
+        let app = state.borrow();
+        assert_eq!(app.views[0].window.hwnd(), hwnd);
+        let model = app.views[0].model.borrow();
+        assert!(model.list_view);
+        assert_eq!(model.icon_display, display);
+        assert_eq!(model.scroll_x, 0.0);
+    }
     #[test]
     fn committed_tab_selection_reuses_window_and_detach_restores_cached_content() {
         let _sta=crate::pane::test_support::apartment();
@@ -616,6 +652,14 @@ fn present(state: &Rc<RefCell<PaneApp>>, before: &Workspace) -> Result<(), Strin
                 model.title = panel.title().to_owned();
                 model.locked = panel.locked();
                 model.auto_hide = panel.auto_hide();
+                if model.list_view != panel.list_view() || model.icon_display != panel.icon_display() {
+                    model.list_view = panel.list_view();
+                    model.icon_display = panel.icon_display();
+                    model.scroll = 0;
+                    model.scroll_x = 0.0;
+                    model.hovered_item = None;
+                    unsafe { PostMessageW(view.window.hwnd().cast(), window::SYNC_POINTER, 0, 0); }
+                }
             }
             if before.panel(view.id).is_none_or(|old| {
                 old.collapsed() != panel.collapsed() || old.auto_hide() != panel.auto_hide()

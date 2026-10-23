@@ -18,12 +18,21 @@ pub struct Plan {
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SnapSide { Left, Right, Top, Bottom }
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IconSize { Small, Medium, Large }
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SnapAlign { #[default] Start, Center, End }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "op", deny_unknown_fields)]
 pub enum Operation {
+    #[serde(rename = "backup.create")]
+    BackupCreate {},
+    #[serde(rename = "backup.export")]
+    BackupExport { path: String, #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "optional")] source: Option<String> },
+    #[serde(rename = "backup.restore")]
+    BackupRestore { path: String },
     #[serde(rename = "pane.sort")]
     Sort {
         pane_id: String,
@@ -153,6 +162,12 @@ pub enum Operation {
     #[serde(rename = "pane.update")]
     Update {
         pane_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "optional")]
+        list_view: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "optional")]
+        icon_only: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "optional")]
+        icon_size: Option<IconSize>,
         #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "optional")]
         auto_compact: Option<bool>,
         #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "optional")]

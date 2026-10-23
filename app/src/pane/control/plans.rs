@@ -19,10 +19,12 @@ pub(super) struct Prepared {
     folders: Vec<(PanelId, luciddesk_storage::FolderPreferences)>,
     folders_changed: bool,
     runtime_action: Option<Operation>,
+    backup: Option<super::backups::Prepared>,
 }
 struct Receipt {
     desktop_membership: Option<Vec<String>>,
     runtime_action: Option<Operation>,
+    backup: Option<super::backups::Prepared>,
     id: String,
     signature: String,
     response: Response,
@@ -173,7 +175,7 @@ fn prepare(
         return Ok(Prepared {
             token:luciddesk_api::request_id(),base:plan.base.clone(),expires:Instant::now()+TTL,
             next:workspace.clone(),refs:HashMap::new(),diff:json!({"runtime_action":action,"persistence":if matches!(action,Operation::StartupSet{..}){"operating_system"}else{"none"}}),membership:false,applied:false,
-            settings:None,settings_changed:false,layout:None,layout_observation:None,folders:Vec::new(),folders_changed:false,runtime_action:Some(action),
+            settings:None,settings_changed:false,layout:None,layout_observation:None,folders:Vec::new(),folders_changed:false,runtime_action:Some(action),backup:None,
         });
     }
     if plan.operations.iter().any(|op| matches!(op, Operation::SettingsUpdate { .. })) {
@@ -201,7 +203,7 @@ fn prepare(
             layout_observation: None,
             folders: Vec::new(),
             folders_changed: false,
-            runtime_action: None,
+            runtime_action: None, backup: None,
         });
     }
     let mut next = workspace.clone();
@@ -241,7 +243,7 @@ fn prepare(
                 for op in expanded.into_iter().rev() { operations.push_front(op); }
             }
             Operation::FolderRefresh{..}|Operation::FolderNavigate{..}|Operation::FolderBack{..}|Operation::FolderHome{..}|Operation::SearchQuery{..}|Operation::SearchRefresh{..}|Operation::SearchMore{..} => unreachable!("handled above"),
-            Operation::StartupSet { .. } | Operation::SettingsUpdate { .. } => unreachable!("handled above"),
+            Operation::BackupCreate { .. } | Operation::BackupExport { .. } | Operation::BackupRestore { .. } | Operation::StartupSet { .. } | Operation::SettingsUpdate { .. } => unreachable!("handled above"),
             Operation::FolderUpdate { pane_id, path, list_view, sort_column, descending, column_widths, visible_columns } => {
                 let target=id(pane_id)?;
                 let panel=next.panel(target).filter(|p|p.folder().is_some()).ok_or_else(||("NOT_FOUND".into(),"folder panel does not exist".into()))?;
@@ -319,6 +321,9 @@ fn prepare(
             }
             Operation::Update {
                 pane_id,
+                list_view,
+                icon_only,
+                icon_size,
                 auto_compact,
                 align_icons_to_grid,
                 title,
@@ -334,7 +339,7 @@ fn prepare(
                 if panel.is_search() {
                     return Err(invalid("search panel window options are controlled separately"));
                 }
-                if title.is_none()
+                if title.is_none() && icon_only.is_none() && icon_size.is_none() && list_view.is_none()
                     && auto_compact.is_none() && align_icons_to_grid.is_none()
                     && locked.is_none()
                     && auto_hide.is_none()
@@ -349,8 +354,23 @@ fn prepare(
                         "explicitly unlock the panel first".into(),
                     ));
                 }
+                if icon_only.is_some() || icon_size.is_some() || list_view.is_some() {
+                    if panel.is_monitor() { return Err(invalid("icon display options require a desktop or folder pane")); }
+                    let mut display = panel.icon_display();
+                    if let Some(value) = icon_only { display.icon_only = *value; }
+                    if let Some(value) = icon_size {
+                        display.size = match value {
+                            luciddesk_api::IconSize::Small => luciddesk_core::IconSize::Small,
+                            luciddesk_api::IconSize::Medium => luciddesk_core::IconSize::Medium,
+                            luciddesk_api::IconSize::Large => luciddesk_core::IconSize::Large,
+                        };
+                    }
+                    let panel = next.panel_mut(target).unwrap();
+                    panel.set_icon_display(display);
+                    if let Some(value) = list_view { panel.set_list_view(*value); }
+                }
                 if auto_compact.is_some() || align_icons_to_grid.is_some() {
-                    if !panel.supports_tabs() { return Err(invalid("arrangement options require a desktop pane")); }
+                    if !next.panel(target).unwrap().supports_tabs() { return Err(invalid("arrangement options require a desktop pane")); }
                     if *auto_compact == Some(true) && *align_icons_to_grid == Some(false) {
                         return Err(invalid("auto_compact=true requires grid alignment"));
                     }
@@ -569,7 +589,7 @@ fn prepare(
         layout,
         folders: folders.into_iter().collect(),
         folders_changed,
-        runtime_action: None,
+        runtime_action: None, backup: None,
     })
 }
 fn receipt_pending(receipt:&Receipt)->bool {receipt.response.data.as_ref().is_some_and(|data|data["presentation_status"]=="pending")}
@@ -583,6 +603,9 @@ impl Plans {
         Some(receipt.response.clone())
     }
 
+    pub(super) fn take_backup(&mut self, response: &Response) -> Option<super::backups::Prepared> {
+        self.receipts.iter_mut().find(|r| r.id == response.request_id)?.backup.take()
+    }
     pub(super) fn take_runtime_action(&mut self,response:&Response)->Option<Operation> {
         self.receipts.iter_mut().find(|r|r.id==response.request_id)?.runtime_action.take()
     }
@@ -656,7 +679,13 @@ impl Plans {
             self.metadata.remove(&request.request_id);
             match prepared {
                 Err((code, message)) => fail(&code, &message),
-                Ok(plan) => {
+                Ok(mut plan) => {
+                    if let Some(op) = plan.runtime_action.as_ref().filter(|op| super::backups::supported(op)) {
+                        match super::backups::prepare(state, op) {
+                            Ok(backup) => { plan.diff = backup.summary.clone(); plan.backup = Some(backup); }
+                            Err(error) => return fail("INVALID_REQUEST", &error),
+                        }
+                    }
                     let response = Response::success(
                         &request.request_id,
                         json!(context),
@@ -741,7 +770,7 @@ impl Plans {
             }
             self.receipts.push_back(Receipt {
                 desktop_membership: (plan.membership && changed).then(||hybrid::desired_membership(state)),
-                runtime_action:plan.runtime_action.take(),
+                runtime_action:plan.runtime_action.take(),backup:plan.backup.take(),
                 id: request.request_id.clone(),
                 signature,
                 response: response.clone(),
@@ -924,6 +953,45 @@ mod tests {
         req
     }
     #[test]
+    fn same_count_folder_rename_invalidates_prepared_fit() {
+        let _sta = crate::pane::test_support::apartment();
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("one.txt"), "fixture").unwrap();
+        let id = PanelId::new(1);
+        let mut app = super::super::super::tests::test_state();
+        app.workspace.panel_mut(id).unwrap().set_folder(Some(root.path().into()));
+        app.store.save_workspace(&app.workspace).unwrap();
+        let state = Rc::new(RefCell::new(app));
+        create_view(&state, id).unwrap();
+        let wait_for = |name: &str| {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            loop {
+                folder::poll(&mut state.borrow_mut());
+                let ready = {
+                    let app = state.borrow();
+                    let source = &app.folders[&id];
+                    !source.loading && source.items.len() == 1 && source.items[0].label.starts_with(name)
+                };
+                if ready { break; }
+                assert!(Instant::now() < deadline, "folder snapshot did not arrive: {name}");
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        };
+        wait_for("one");
+        let mut snapshot = Snapshot::new();
+        let p = preview(&mut snapshot, &mut state.borrow_mut(), json!([{"op":"folder.fit","pane_id":"1","max_rows":4}]));
+        assert!(p.ok, "{p:?}");
+        let revision = state.borrow().folders[&id].content_revision;
+        let changes = state.borrow().store.change_count();
+        std::fs::rename(root.path().join("one.txt"), root.path().join("renamed-longer-name.txt")).unwrap();
+        // Simulate the background watcher: no CLI refresh/loading transition.
+        state.borrow().folders[&id].refresh();
+        wait_for("renamed");
+        assert_ne!(state.borrow().folders[&id].content_revision, revision);
+        assert_eq!(snapshot.respond(&mut state.borrow_mut(), &apply(&p)).error.unwrap().code, "CONFLICT");
+        assert_eq!(state.borrow().store.change_count(), changes);
+    }
+    #[test]
     fn folder_refresh_is_transient_and_invalidates_prepared_fit() {
         let _sta=crate::pane::test_support::apartment();
         let root=tempfile::tempdir().unwrap();std::fs::write(root.path().join("one.txt"),"fixture").unwrap();
@@ -1081,7 +1149,7 @@ mod tests {
         for index in 0..1024 {
             let id=format!("pending-{index}");
             snapshot.plans.receipts.push_back(Receipt {
-                desktop_membership:None,runtime_action:None,signature:String::new(),
+                desktop_membership:None,runtime_action:None,backup:None,signature:String::new(),
                 response:Response::success(&id,json!({}),json!({"presentation_status":"pending"})),
                 id,expires:Instant::now()-Duration::from_secs(1),
             });
@@ -1107,7 +1175,7 @@ mod tests {
         for (membership,outcome) in [(expected,"failed"),(vec!["different desired membership".into()],"superseded")] {
             let mut plans=Plans::default();
             plans.receipts.push_back(Receipt {
-                desktop_membership:Some(membership),runtime_action:None,id:"receipt".into(),signature:String::new(),
+                desktop_membership:Some(membership),runtime_action:None,backup:None,id:"receipt".into(),signature:String::new(),
                 response:Response::success("receipt",json!({}),json!({"commit_status":"committed","presentation_status":"pending"})),
                 expires:Instant::now()+TTL,
             });
@@ -1443,6 +1511,68 @@ mod tests {
                 .code,
             "CAPABILITY_UNAVAILABLE"
         );
+    }
+    #[test]
+    fn folder_display_updates_and_invalid_batches_remain_atomic() {
+        let mut state = super::super::super::tests::test_state();
+        let mut snapshot = Snapshot::new();
+        let id = PanelId::new(1);
+        state.workspace.panel_mut(id).unwrap().set_folder(Some(std::env::temp_dir()));
+        let before = state.workspace.clone();
+        let changes = state.store.change_count();
+        let invalid = preview(&mut snapshot, &mut state, json!([
+            {"op":"pane.update","pane_id":"1","icon_only":true},
+            {"op":"pane.update","pane_id":"999","icon_size":"small"}
+        ]));
+        assert!(!invalid.ok);
+        assert_eq!(state.workspace, before);
+        assert_eq!(state.store.change_count(), changes);
+        let p = preview(&mut snapshot, &mut state,
+            json!([{"op":"pane.update","pane_id":"1","icon_only":true,"list_view":false}]));
+        assert!(p.ok, "{p:?}");
+        assert!(snapshot.respond(&mut state, &apply(&p)).ok);
+        assert!(state.workspace.panel(id).unwrap().icon_display().icon_only);
+        assert!(!state.workspace.panel(id).unwrap().list_view());
+    }
+    #[test]
+    fn icon_display_preview_is_independent_persistent_and_locked() {
+        let mut state = super::super::super::tests::test_state();
+        let mut snapshot = Snapshot::new();
+        let id = PanelId::new(1);
+        let other = state.workspace.panel(PanelId::new(2)).unwrap().icon_display();
+        let before = state.workspace.panel(id).unwrap().icon_display();
+        state.workspace.set_tab_groups(vec![luciddesk_core::PaneTabs {
+            members: vec![id, PanelId::new(2)], active: PanelId::new(2),
+        }]).unwrap();
+        let p = preview(&mut snapshot, &mut state,
+            json!([{"op":"pane.update","pane_id":"1","icon_only":true,"icon_size":"small","list_view":true}]));
+        assert!(p.ok, "{p:?}");
+        assert_eq!(state.workspace.panel(id).unwrap().icon_display(), before);
+        assert!(snapshot.respond(&mut state, &apply(&p)).ok);
+        let expected = luciddesk_core::IconDisplay { icon_only: true, size: luciddesk_core::IconSize::Small };
+        assert_eq!(state.workspace.panel(id).unwrap().icon_display(), expected);
+        assert!(state.workspace.panel(id).unwrap().list_view());
+        assert!(!state.workspace.panel(PanelId::new(2)).unwrap().list_view());
+        assert_eq!(state.workspace.panel(PanelId::new(2)).unwrap().icon_display(), other);
+        assert_eq!(state.store.preference("panel_icon_display:1").unwrap().as_deref(), Some("true|small"));
+        let restored = state.store.load_workspace().unwrap();
+        assert_eq!(restored.panel(id).unwrap().icon_display(), expected);
+        assert!(restored.panel(id).unwrap().list_view());
+        let changes = state.store.change_count();
+        let same = preview(&mut snapshot, &mut state,
+            json!([{"op":"pane.update","pane_id":"1","icon_only":true,"icon_size":"small","list_view":true}]));
+        let result = snapshot.respond(&mut state, &apply(&same));
+        assert!(result.ok);
+        assert_eq!(result.data.unwrap()["changed"], false);
+        assert_eq!(state.store.change_count(), changes);
+        let p = preview(&mut snapshot, &mut state,
+            json!([{"op":"pane.update","pane_id":"1","icon_size":"medium"}]));
+        assert!(snapshot.respond(&mut state, &apply(&p)).ok);
+        assert!(state.workspace.panel(id).unwrap().icon_display().icon_only);
+        state.workspace.panel_mut(id).unwrap().set_locked(true);
+        let denied = preview(&mut snapshot, &mut state,
+            json!([{"op":"pane.update","pane_id":"1","icon_only":false}]));
+        assert_eq!(denied.error.unwrap().code, "PANE_LOCKED");
     }
     #[test]
     fn options_require_explicit_unlock_and_preview_lists_shared_changes() {

@@ -694,3 +694,22 @@ fn enumeration_preserves_native_type_hidden_and_size_attributes() {
     assert_eq!(entries.len(), 2);
     assert!(luciddesk_shell::enumerate_folder(&root.path().join("missing")).is_err());
 }
+
+#[test]
+fn content_revision_tracks_same_count_scans_and_source_recreation() {
+    let root = tempfile::tempdir().unwrap();
+    let mut source = Source::start(root.path().into(), Default::default()).unwrap();
+    let initial = source.content_revision;
+    source.apply_scan(Ok(vec![patch_item()]));
+    let first = source.content_revision;
+    assert_ne!(initial, first);
+    let mut renamed = patch_item();
+    renamed.label = "renamed".into();
+    source.apply_scan(Ok(vec![renamed]));
+    assert_eq!(source.items.len(), 1);
+    assert_ne!(source.content_revision, first);
+    let revision = source.content_revision;
+    drop(source);
+    let replacement = Source::start(root.path().into(), Default::default()).unwrap();
+    assert_ne!(replacement.content_revision, revision);
+}

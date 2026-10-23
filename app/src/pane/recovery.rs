@@ -131,7 +131,7 @@ fn name(label: &str) -> String {
         time.wMilliseconds
     )
 }
-fn records(directory: &Path) -> Vec<Record> {
+pub(super) fn records(directory: &Path) -> Vec<Record> {
     let mut result: Vec<_> = std::fs::read_dir(directory)
         .into_iter()
         .flatten()

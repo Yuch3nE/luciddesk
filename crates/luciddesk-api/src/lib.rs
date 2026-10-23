@@ -5,7 +5,7 @@ mod plan;
 mod strict_json;
 pub use strict_json::validate_json;
 pub mod transport;
-pub use plan::{SnapSide, SnapAlign, Context, Operation, Plan, SettingValue, FolderColumn};
+pub use plan::{IconSize, SnapSide, SnapAlign, Context, Operation, Plan, SettingValue, FolderColumn};
 pub const VERSION: u32 = 1;
 pub const MAX_FRAME: usize = 4 * 1024 * 1024;
 pub const COMMANDS: &[&str] = &[
@@ -15,6 +15,7 @@ pub const COMMANDS: &[&str] = &[
     "settings.get",
     "font.list",
     "startup.get",
+    "backup.list",
     "monitor.list",
     "folder.get",
     "search.get",
@@ -56,6 +57,9 @@ pub const OPERATIONS: &[&str] = &[
     "search.refresh",
     "search.more",
     "startup.set",
+    "backup.create",
+    "backup.export",
+    "backup.restore",
 ];
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

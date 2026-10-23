@@ -113,8 +113,9 @@ fn document(topic: &str) -> Result<Value, String> {
         doc["options"] = json!(["--json: machine-readable output", "help, -h, --help: offline help"]);
     }
     let detail = match topic {
+        "backup.create" | "backup.export" | "backup.restore" => Some("Single-operation plan. Apply returns an asynchronous receipt: poll request get until operation_status is terminal. Export never overwrites files. Restore preview validates and freezes the source (maximum 64 MiB); apply saves a rollback backup and rejects concurrent configuration changes. Retain rollback_path; rolled_back means restore failed. Never rerun an uncertain restore with a new request ID."),
         "pane.sort" => Some("One-time sort; defaults to name ascending. Specify --descending true for newest-first modified dates. Keeps arrangement mode; repacks using visible columns. Metadata reads run off the UI thread; previews wait up to --timeout-ms and apply the measured order without rereading files."),
-        "pane.update" => Some("Desktop panes: auto_compact=true enables aligned compact packing; align_icons_to_grid=false disables compact packing and preserves free positions. Conflicting true/false is rejected. These two fields affect only the named pane, including in a tab group."),
+        "pane.update" => Some("list_view, icon_only and icon_size (small/medium/large) affect only the named desktop or folder pane, including inactive tabs; list views retain these preferences without changing their appearance. They do not modify defaults for new panes. Desktop panes: auto_compact=true enables aligned compact packing; align_icons_to_grid=false disables compact packing and preserves free positions. Conflicting true/false is rejected. These two fields affect only the named pane, including in a tab group."),
         "item.position" => Some("Requires an existing member of an unlocked desktop pane with auto_compact=false. Aligned mode: column/row (0..10000), occupied cells rejected. Free mode: x/y (0..1000000), relative to pane content in DIP, overlap allowed. Do not mix coordinate types. Use item.assign first for another pane; other icons stay in place."),
         _ => None,
     };
@@ -181,7 +182,7 @@ fn document(topic: &str) -> Result<Value, String> {
             "--max-rows",
             "--icon-columns",
             "--title",
-            "--path",
+            "--path", "--source",
             "--query",
             "--into",
             "--monitor",
@@ -194,6 +195,8 @@ fn document(topic: &str) -> Result<Value, String> {
             "--collapsed",
             "--always-on-top",
             "--list-view",
+            "--icon-only",
+            "--icon-size",
             "--enabled",
             "--expected-status",
             "--ids",
