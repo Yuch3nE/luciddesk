@@ -1963,6 +1963,8 @@ fn native_font_search_tracks_window_and_handles_clear_and_page_leave() {
     show(&state, PanelId::new(1)).unwrap();
     let hwnd = state.borrow().settings.as_ref().unwrap().hwnd().cast();
     unsafe {
+        assert!(windows_sys::Win32::UI::Input::Ime::ImmGetContext(hwnd).is_null(),
+            "non-text settings canvas must not activate an IME");
         ShowWindow(hwnd, SW_SHOWNOACTIVATE);
         let mut bounds = RECT::default();
         GetClientRect(hwnd, &raw mut bounds);
@@ -1997,6 +1999,13 @@ fn native_font_search_tracks_window_and_handles_clear_and_page_leave() {
         );
         let editor = GetPropW(hwnd, windows_sys::w!("LucidDesk.FontSearch"));
         assert!(!editor.is_null());
+        assert!(windows_sys::Win32::UI::Input::Ime::ImmGetContext(editor).is_null(),
+            "opening the font page must not activate an IME");
+        SetFocus(editor);
+        let input = windows_sys::Win32::UI::Input::Ime::ImmGetContext(editor);
+        assert!(!input.is_null(), "focused font search must restore its default IME context");
+        windows_sys::Win32::UI::Input::Ime::ImmReleaseContext(editor, input);
+
         assert_ne!(IsWindowVisible(editor), 0);
         SetWindowTextW(editor, windows_sys::w!("微软雅黑"));
         assert_eq!(GetWindowTextLengthW(editor), 4);
@@ -2185,6 +2194,14 @@ fn search_font_lifetime_survives_detached_callback_and_releases_on_close() {
 #[test]
 #[ignore = "Native window memory measurement; run alone on an interactive desktop"]
 fn native_daily_memory_lifecycle() {
+    // Diagnostic isolation applies only to this test thread, never the application.
+    if std::env::var_os("LUCIDDESK_SETTINGS_MEMORY_DISABLE_IME").is_some() {
+        unsafe { windows_sys::Win32::UI::Input::Ime::ImmDisableIME(0); }
+    }
+    let observe_only = std::env::var_os("LUCIDDESK_SETTINGS_MEMORY_OBSERVE_ONLY").is_some();
+    if observe_only {
+        println!("SETTINGS observation mode: handle growth is recorded, not asserted; memory and lifetime checks remain enabled");
+    }
     use windows_sys::Win32::System::{ProcessStatus::*, Threading::*};
     let _sta = crate::pane::test_support::apartment();
     let state = Rc::new(RefCell::new(super::super::tests::test_state()));
@@ -2212,25 +2229,57 @@ fn native_daily_memory_lifecycle() {
         let user = GetGuiResources(process, GR_USEROBJECTS);
         println!("SETTINGS {phase} cycle={cycle} private_kib={} working_kib={} handles={handles} gdi={gdi} user={user}",
             memory.PrivateUsage / 1024, memory.WorkingSetSize / 1024);
-        (gdi, user)
+        (gdi, user, handles, memory.PrivateUsage, memory.WorkingSetSize)
     };
     sample("before", 0);
     let mut warm = None;
-    for cycle in 1..=12 {
-        for page in [0, 1, 5, 3] {
+    let cycles = std::env::var("LUCIDDESK_SETTINGS_MEMORY_CYCLES").ok()
+        .and_then(|value| value.parse::<usize>().ok()).unwrap_or(60).max(20);
+    let mut closed_memory = Vec::with_capacity(cycles);
+    let pages: Vec<usize> = std::env::var("LUCIDDESK_SETTINGS_MEMORY_PAGES").unwrap_or_else(|_| "13,0,1,8,11,5,3".into())
+        .split(',').map(|value| value.parse().unwrap()).collect();
+    for cycle in 1..=cycles {
+        for &page in &pages {
             host::show_at(&state, PanelId::new(1), page).unwrap();
+            let hwnd = state.borrow().settings.as_ref().unwrap().hwnd().cast();
+            unsafe {
+                SendMessageW(hwnd, SELECT_TEST_PAGE, page, 0);
+                SendMessageW(hwnd, WM_PAINT, 0, 0);
+            }
             settle();
+            let editor = unsafe { GetPropW(hwnd, windows_sys::w!("LucidDesk.FontSearch")) };
+            assert_eq!(!editor.is_null() && unsafe { IsWindowVisible(editor) } != 0, page == 11,
+                "font editor visibility must match the actual page");
         }
         sample("open", cycle);
         let hwnd = state.borrow().settings.as_ref().unwrap().hwnd().cast();
+        let editor = unsafe { GetPropW(hwnd, windows_sys::w!("LucidDesk.FontSearch")) };
         unsafe { SendMessageW(hwnd, WM_CLOSE, 0, 0); }
         settle();
+        assert!(editor.is_null() || unsafe { IsWindow(editor) } == 0, "search window survived settings close");
         assert!(state.borrow().settings.is_none());
         assert_eq!(unsafe { IsWindow(hwnd) }, 0);
         assert_eq!(Rc::strong_count(&state), 1);
         let resources = sample("closed", cycle);
-        if cycle == 3 { warm = Some(resources); }
-        if cycle > 3 { assert_eq!(resources, warm.unwrap(), "native GUI objects accumulated"); }
+        closed_memory.push((resources.3, resources.4));
+        if cycle == 12 { warm = Some(resources); }
+        if cycle > 12 && !observe_only {
+            let (gdi, user, handles, _, _) = warm.unwrap();
+            // Input services may initialize lazily; allow bounded setup, not per-cycle growth.
+            assert!(resources.0 <= gdi + 1 && resources.1 <= user + 2 && resources.2 <= handles + 8,
+                "native resources accumulated: warm={:?}, current={resources:?}", warm.unwrap());
+        }
+    }
+    let mean = |range: std::ops::Range<usize>, field: usize| {
+        closed_memory[range].iter().map(|&(private, working)| if field == 0 { private } else { working }).sum::<usize>() / 10
+    };
+    for (field, name) in [(0, "private"), (1, "working")] {
+        let warm = mean(if cycles >= 60 { 20..30 } else { 0..10 }, field);
+        let late = mean(cycles - 10..cycles, field);
+        println!("SETTINGS trend {name} warm_mean_kib={} late_mean_kib={} delta_kib={}",
+            warm / 1024, late / 1024, (late as i64 - warm as i64) / 1024);
+        // Compare ten-sample windows after warmup, without trimming the process working set.
+        assert!(late <= warm + 8 * 1024 * 1024, "settings {name} grew by more than 8 MiB after warmup");
     }
     // Exercise the real pane window, model, and renderer with 8 MiB of icons.
     for cycle in 1..=8 {

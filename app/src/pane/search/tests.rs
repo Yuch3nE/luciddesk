@@ -220,6 +220,11 @@ fn clear_button_keeps_fixed_input_and_ime_escape_is_not_intercepted() {
     create_fixture_view(&app);
     let hwnd = app.borrow().views[0].window.hwnd().cast();
     unsafe {
+        use windows_sys::Win32::UI::Input::Ime::{ImmGetContext, ImmReleaseContext};
+        assert!(ImmGetContext(hwnd).is_null());
+        let context = ImmGetContext(edit(hwnd));
+        assert!(!context.is_null(), "search editor must retain IME composition");
+        ImmReleaseContext(edit(hwnd), context);
         SetWindowTextW(edit(hwnd), wide("query").as_ptr());
         SendMessageW(hwnd, INPUT, 0, 0);
         let mut bounds = RECT::default();

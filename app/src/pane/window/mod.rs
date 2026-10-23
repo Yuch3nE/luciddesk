@@ -293,7 +293,7 @@ where
     let window = Window::new(&window_title)
         .size(bounds.width as i32, bounds.height as i32)
         .style(WS_POPUP | WS_THICKFRAME | WS_SYSMENU)
-        .ex_style(WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOOLWINDOW)
+        .ex_style(WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE)
         .on_message(move |raw, message, wparam, lparam| {
             if unsafe { crate::window_visibility::defer_show(message, lparam, show_prepared.get()) } {
                 return Some(0);
@@ -1504,6 +1504,7 @@ where
         .create()
         .map_err(|e| e.to_string())?;
     let hwnd = window.hwnd().cast();
+    unsafe { crate::window_visibility::prepare_canvas(hwnd); }
     if model_init.borrow().monitor.is_some() {
         unsafe { SetTimer(hwnd, super::monitor::TIMER, 250, None); }
     }

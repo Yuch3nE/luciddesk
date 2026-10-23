@@ -1,6 +1,17 @@
 //! Keep windows hidden until their native frame and content are ready.
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
+/// Finish creating a non-text canvas built with temporary WS_EX_NOACTIVATE.
+/// The builder shows windows before returning, so input services must not attach
+/// until we can remove the unused IME context. Native text editors keep theirs.
+pub unsafe fn prepare_canvas(hwnd: windows_sys::Win32::Foundation::HWND) {
+    unsafe {
+        windows_sys::Win32::UI::Input::Ime::ImmAssociateContextEx(hwnd, std::ptr::null_mut(), 0);
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE,
+            GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & !(WS_EX_NOACTIVATE as isize));
+    }
+}
+
 // windows-window::create unconditionally calls ShowWindow before returning.
 // Handle this in the window procedure, before Windows commits visibility.
 // Background notification windows pass false throughout their lifetime.

@@ -137,13 +137,34 @@ impl CandidateLoad {
         let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let stop = cancelled.clone();
         let (sender, receiver) = std::sync::mpsc::channel();
-        std::thread::Builder::new().name("font-candidates".into()).spawn(move || {
-            let names = enumerate_candidates(sample, default, &stop);
-            if !stop.load(std::sync::atomic::Ordering::Relaxed) { let _ = sender.send(names); }
-        }).map_err(|error| error.to_string())?;
+        // Reuse one scanning thread to bound concurrent scans and per-thread
+        // font caches when the settings window is reopened.
+        font_worker()?.send(FontScan { sample, default, stop, sender })
+            .map_err(|error| error.to_string())?;
         Ok(Self { cancelled, receiver })
     }
     pub(super) fn poll(&self) -> Result<Vec<String>, std::sync::mpsc::TryRecvError> { self.receiver.try_recv() }
+}
+struct FontScan {
+    sample: &'static str,
+    default: &'static str,
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    sender: std::sync::mpsc::Sender<Vec<String>>,
+}
+fn font_worker() -> Result<&'static std::sync::mpsc::Sender<FontScan>, String> {
+    static WORKER: std::sync::OnceLock<Result<std::sync::mpsc::Sender<FontScan>, String>> = std::sync::OnceLock::new();
+    WORKER.get_or_init(|| {
+        let (sender, receiver) = std::sync::mpsc::channel::<FontScan>();
+        std::thread::Builder::new().name("font-candidates".into()).spawn(move || {
+            for request in receiver {
+                let names = enumerate_candidates(request.sample, request.default, &request.stop);
+                if !request.stop.load(std::sync::atomic::Ordering::Relaxed) {
+                    let _ = request.sender.send(names);
+                }
+            }
+        }).map_err(|error| error.to_string())?;
+        Ok(sender)
+    }).as_ref().map_err(Clone::clone)
 }
 impl Drop for CandidateLoad {
     fn drop(&mut self) { self.cancelled.store(true, std::sync::atomic::Ordering::Relaxed); }

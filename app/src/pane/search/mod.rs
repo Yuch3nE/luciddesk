@@ -851,7 +851,7 @@ pub(super) fn create(
     let show_prepared = Rc::clone(&prepared);
     let window = windows_window::Window::new(crate::i18n::text("ui-everything-search"))
         .style(WS_POPUP | WS_THICKFRAME)
-        .ex_style(WS_EX_TOOLWINDOW | WS_EX_NOREDIRECTIONBITMAP)
+        .ex_style(WS_EX_TOOLWINDOW | WS_EX_NOREDIRECTIONBITMAP | WS_EX_NOACTIVATE)
         .size(rect.width.max(1.0) as i32, TOP as i32)
         .on_message(move |raw, msg, wp, lp| {
             if unsafe { crate::window_visibility::defer_show(msg, lp, show_prepared.get()) } {
@@ -1420,6 +1420,7 @@ pub(super) fn create(
         .map_err(|e| e.to_string())?;
     let hwnd = window.hwnd().cast();
     unsafe {
+        crate::window_visibility::prepare_canvas(hwnd);
         SetWindowSubclass(hwnd, Some(super::window::borderless_proc), 1, 0);
     }
     let mut native = Editor::new(hwnd)?;

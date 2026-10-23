@@ -2,6 +2,130 @@ use super::search::everything_settings;
 use super::*;
 
 #[test]
+#[ignore = "Repeated native window measurement; run alone on an interactive desktop"]
+fn native_other_windows_memory_lifecycle() {
+    use windows_sys::Win32::{System::{ProcessStatus::*, Threading::*},
+        UI::{Input::KeyboardAndMouse::SetFocus, WindowsAndMessaging::*}};
+    let _sta = crate::pane::test_support::apartment();
+    let kind = std::env::var("LUCIDDESK_WINDOW_PROBE").unwrap_or_else(|_| "pane".into());
+    assert!(["pane", "folder", "search", "rename", "tooltip", "drag"].contains(&kind.as_str()));
+    let state = Rc::new(RefCell::new(test_state()));
+    let directory = tempfile::tempdir().unwrap();
+    if kind == "folder" {
+        state.borrow_mut().workspace.panel_mut(PanelId::new(1)).unwrap().set_folder(Some(directory.path().into()));
+    } else if kind == "search" {
+        state.borrow_mut().workspace.panel_mut(PanelId::new(1)).unwrap().set_search(true);
+    }
+    let pump = || {
+        let until = std::time::Instant::now() + std::time::Duration::from_millis(100);
+        while std::time::Instant::now() < until {
+            unsafe {
+                let mut msg = MSG::default();
+                while PeekMessageW(&mut msg, std::ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
+                    TranslateMessage(&msg);
+                    DispatchMessageW(&msg);
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    };
+    let persistent_owner = matches!(kind.as_str(), "rename" | "tooltip" | "drag");
+    if persistent_owner { create_view(&state, PanelId::new(1)).unwrap(); }
+    let mut samples = Vec::new();
+    let cycles = std::env::var("LUCIDDESK_WINDOW_CYCLES").ok()
+        .and_then(|value| value.parse::<usize>().ok()).unwrap_or(120).max(60);
+    for cycle in 1..=cycles {
+        if !persistent_owner { create_view(&state, PanelId::new(1)).unwrap(); }
+        let hwnd = state.borrow().views[0].window.hwnd().cast();
+        let model = state.borrow().views[0].model.clone();
+        let weak = Rc::downgrade(&model);
+        unsafe {
+            assert!(windows_sys::Win32::UI::Input::Ime::ImmGetContext(hwnd).is_null(), "canvas must not attach input services");
+            assert_eq!(GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & WS_EX_NOACTIVATE as isize, 0,
+                "canvas must still support normal keyboard activation");
+        }
+        if kind == "rename" {
+            rename::show_title(hwnd, model.clone(), Box::new(|_| Ok(()))).unwrap();
+            let editor = unsafe { GetPropW(hwnd, windows_sys::w!("LucidDesk.RenameEdit")) };
+            assert!(!editor.is_null());
+            unsafe {
+                let context = windows_sys::Win32::UI::Input::Ime::ImmGetContext(editor);
+                assert!(!context.is_null(), "rename must retain composition support");
+                windows_sys::Win32::UI::Input::Ime::ImmReleaseContext(editor, context);
+            }
+            unsafe { SetWindowTextW(editor, windows_sys::w!("测试名称 😀")); }
+            pump();
+            rename::cancel(hwnd);
+            assert_eq!(unsafe { IsWindow(editor) }, 0);
+            assert!(!rename::active(hwnd));
+        } else if kind == "tooltip" {
+            let mut tip = tooltip::Tooltip::new(hwnd).unwrap();
+            tip.show("完整文件名 😀", windows_sys::Win32::Foundation::RECT { left: 0, top: 0, right: 200, bottom: 100 });
+            pump();
+            drop(tip);
+        } else if kind == "drag" {
+            use windows_sys::Win32::Foundation::{POINT, SIZE};
+            let pixels = assets::Pixels { width: 48, height: 48, data: vec![128; 48 * 48 * 4] };
+            let image = drag_drop::image::DragImage::new(hwnd, &pixels,
+                POINT { x: 200, y: 200 }, POINT::default(), SIZE { cx: 48, cy: 48 }).unwrap();
+            image.move_to(POINT { x: 220, y: 220 });
+            pump();
+            drop(image);
+        } else {
+            unsafe { SetForegroundWindow(hwnd); SetFocus(hwnd); SendMessageW(hwnd, WM_PAINT, 0, 0); }
+            if kind == "search" {
+                unsafe {
+                    let editor = GetPropW(hwnd, windows_sys::w!("LucidDesk.SearchInput"));
+                    assert!(!editor.is_null());
+                    SetFocus(editor);
+                    SetWindowTextW(editor, windows_sys::w!("项目计划"));
+                    SendMessageW(editor, WM_IME_STARTCOMPOSITION, 0, 0);
+                    SendMessageW(editor, WM_IME_ENDCOMPOSITION, 0, 0);
+                }
+            }
+            pump();
+        }
+        drop(model);
+        if !persistent_owner {
+            let view = state.borrow_mut().views.remove(0);
+            drop(view);
+            assert_eq!(unsafe { IsWindow(hwnd) }, 0);
+            assert!(weak.upgrade().is_none(), "window retained its model");
+        }
+        pump();
+        unsafe {
+            let process = GetCurrentProcess();
+            let mut memory = PROCESS_MEMORY_COUNTERS_EX::default();
+            memory.cb = size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32;
+            assert_ne!(GetProcessMemoryInfo(process, (&raw mut memory).cast(), memory.cb), 0);
+            let mut handles = 0;
+            assert_ne!(GetProcessHandleCount(process, &mut handles), 0);
+            let sample = (memory.PrivateUsage, memory.WorkingSetSize, handles,
+                GetGuiResources(process, GR_GDIOBJECTS), GetGuiResources(process, GR_USEROBJECTS));
+            if cycle % 10 == 0 { println!("WINDOW {kind} cycle={cycle} private_kib={} working_kib={} handles={} gdi={} user={}", sample.0/1024, sample.1/1024, sample.2, sample.3, sample.4); }
+            samples.push(sample);
+        }
+    }
+    let warm = samples[29];
+    let last = samples[cycles - 1];
+    assert!(last.2 <= warm.2 + 8 && last.3 <= warm.3 + 2 && last.4 <= warm.4 + 2,
+        "{kind} native resources accumulated: warm={warm:?}, last={last:?}");
+    for working in [false, true] {
+        let mean = |range: std::ops::Range<usize>| {
+            let count = range.len();
+            samples[range].iter().map(|s| if working { s.1 } else { s.0 }).sum::<usize>() / count
+        };
+        // Long text-editor runs have transient text-service/font allocations.
+        // Average sixty cycles rather than one short peak or trough.
+        let (early, late) = if cycles >= 240 {
+            (mean(60..120), mean(cycles - 60..cycles))
+        } else { (mean(20..30), mean(cycles - 10..cycles)) };
+        println!("WINDOW {kind} working={working} warm_mean_kib={} late_mean_kib={}", early/1024, late/1024);
+        assert!(late <= early + 8 * 1024 * 1024, "{kind} memory kept growing");
+    }
+}
+
+#[test]
 fn new_panes_and_tabs_copy_layout_defaults_without_changing_existing_panes() {
     let _apartment = crate::pane::test_support::apartment();
     let state = Rc::new(RefCell::new(test_state()));

@@ -24,6 +24,8 @@ const SELECT_PLUGIN: u32 = WM_APP + 97;
 const SELECT_SETTING: u32 = WM_APP + 98;
 #[cfg(test)]
 const INSPECT_STARTUP: u32 = WM_APP + 198;
+#[cfg(test)]
+const SELECT_TEST_PAGE: u32 = WM_APP + 199;
 thread_local! { static PLUGIN_SELECTION: RefCell<Option<String>> = const { RefCell::new(None) }; }
 const PREPARE_REVEAL: u32 = WM_APP + 96;
 const REVEAL_TIMER: usize = 0x4c5055;

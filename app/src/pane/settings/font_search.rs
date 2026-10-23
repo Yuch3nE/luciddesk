@@ -131,6 +131,12 @@ pub(super) unsafe extern "system" fn font_search_focus(
         if msg == WM_CHAR && matches!(wp, 9 | 27) {
             return 0;
         }
+        if msg == WM_SETFOCUS {
+            // Merely opening the font page must not activate an input method.
+            // Restore the default context only when the user edits the query.
+            windows_sys::Win32::UI::Input::Ime::ImmAssociateContextEx(
+                hwnd, std::ptr::null_mut(), windows_sys::Win32::UI::Input::Ime::IACE_DEFAULT);
+        }
         if matches!(msg, WM_SETFOCUS | WM_KILLFOCUS) {
             InvalidateRect(GetWindow(hwnd, GW_OWNER), std::ptr::null(), 0);
         }
@@ -221,6 +227,8 @@ impl Editor {
                         if self.hwnd.is_null() {
                             return false;
                         }
+                        windows_sys::Win32::UI::Input::Ime::ImmAssociateContextEx(
+                            self.hwnd, std::ptr::null_mut(), 0);
                         SetPropW(hwnd, windows_sys::w!("LucidDesk.FontSearch"), self.hwnd);
                         windows_sys::Win32::UI::Shell::SetWindowSubclass(
                             hwnd,

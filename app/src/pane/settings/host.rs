@@ -113,7 +113,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
     let window = windows_window::Window::new(crate::i18n::text("ui-luciddesk-settings"))
         .size(900, DEFAULT_HEIGHT)
         .style(WS_OVERLAPPEDWINDOW)
-        .ex_style(WS_EX_APPWINDOW | WS_EX_NOREDIRECTIONBITMAP)
+        .ex_style(WS_EX_APPWINDOW | WS_EX_NOREDIRECTIONBITMAP | WS_EX_NOACTIVATE)
         .on_message(move |raw, msg, wp, lp| {
             let hwnd = raw.cast();
             if unsafe { defer_show(msg, lp, show_prepared.get()) } {
@@ -290,6 +290,16 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 selected_plugin = PLUGIN_SELECTION.with(|pending| pending.borrow_mut().take());
                 page = 15; scene_key = None; scroll_offset = 0.0; focus = None; reveal_navigation = true;
                 recording_peek = false; recording_show_panels = false; style_input = None;
+                unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
+                return Some(0);
+            }
+            #[cfg(test)]
+            if msg == SELECT_TEST_PAGE {
+                page = wp;
+                scene_key = None;
+                scroll_offset = 0.0;
+                focus = None;
+                hover = None;
                 unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
                 return Some(0);
             }
@@ -1072,6 +1082,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
             return Err(crate::i18n::text("ui-could-not-initialize-settings-window-frame").into());
         }
         let hwnd = window.hwnd().cast();
+        crate::window_visibility::prepare_canvas(hwnd);
         let dpi = GetDpiForWindow(hwnd).max(96) as f32 / 96.0;
         let mut monitor = MONITORINFO {
             cbSize: size_of::<MONITORINFO>() as u32,

@@ -352,6 +352,7 @@ fn show_level(
     resume_parent: Rc<Cell<bool>>,
     picker_options: Option<super::dropdown::Options>,
 ) -> i32 {
+    let accepts_text = picker_options.is_some();
     let dark = super::theme::is_dark(theme);
     let backdrop = default_material(backdrop, dark);
     let scale = unsafe { GetDpiForWindow(owner) }.max(96) as f32 / 96.0;
@@ -417,7 +418,7 @@ fn show_level(
     let mut hover_timer_running = false;
     let window = windows_window::Window::new(crate::i18n::text("ui-group-menu"))
         .style(WS_POPUP)
-        .ex_style(WS_EX_TOOLWINDOW | WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOPMOST)
+        .ex_style(WS_EX_TOOLWINDOW | WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOPMOST | WS_EX_NOACTIVATE)
         .size(width, height)
         .on_message(move |raw, message, wparam, lparam| {
             let hwnd = raw.cast();
@@ -698,6 +699,13 @@ fn show_level(
     };
     let hwnd = window.hwnd().cast();
     unsafe {
+        crate::window_visibility::prepare_canvas(hwnd);
+        // Pickers support type-ahead, including composed characters. Ordinary
+        // command menus have no text input and do not need an IME context.
+        if accepts_text {
+            windows_sys::Win32::UI::Input::Ime::ImmAssociateContextEx(hwnd, std::ptr::null_mut(),
+                windows_sys::Win32::UI::Input::Ime::IACE_DEFAULT);
+        }
         SetWindowLongPtrW(hwnd, GWLP_HWNDPARENT, owner as isize);
         // Prepare the complete first frame while the popup is still hidden.
         // Neither the content target nor the material starts at full opacity.
@@ -1126,7 +1134,7 @@ mod tests {
             let mut title = [0u16; 32];
             unsafe {
                 let len = GetWindowTextW(hwnd, title.as_mut_ptr(), title.len() as i32);
-                if String::from_utf16_lossy(&title[..len.max(0) as usize]) == "面板菜单" {
+                if String::from_utf16_lossy(&title[..len.max(0) as usize]) == crate::i18n::text("ui-group-menu") {
                     PostMessageW(hwnd, WM_CLOSE, 0, 0);
                 }
             }
@@ -1149,9 +1157,18 @@ mod tests {
             assert_ne!(SetTimer(owner, 99, 160, Some(tick)), 0);
         }
         let mut samples = Vec::new();
+        let picker = std::env::var("LUCIDDESK_MENU_PROBE").is_ok_and(|value| value == "picker");
         for batch in 0..6 {
             let started = Instant::now();
             for _ in 0..20 {
+                if picker {
+                    assert_eq!(show_picker(owner, (luciddesk_core::PanelTheme::Dark, Backdrop::Mica),
+                        (1..=40).map(|id| entry(id, format!("Item {id}"), "", "")).collect(),
+                        super::super::dropdown::Options {
+                            anchor: RECT { left: 40, top: 40, right: 300, bottom: 80 }, current: Some(20),
+                        }), 0);
+                    continue;
+                }
                 assert_eq!(
                     show(
                         owner,
@@ -1181,9 +1198,10 @@ mod tests {
                     GetGuiResources(process, GR_USEROBJECTS),
                 );
                 println!(
-                    "menus={} private_kib={} handles={} gui={gui:?} batch_ms={}",
+                    "menus={} private_kib={} working_kib={} handles={} gui={gui:?} batch_ms={}",
                     (batch + 1) * 20,
                     memory.PrivateUsage / 1024,
+                    memory.WorkingSetSize / 1024,
                     handles,
                     started.elapsed().as_millis()
                 );
