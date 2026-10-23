@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "astro dev --host 127.0.0.1 --port 8787",
-    "build": "node scripts/update-repository.mjs && astro build && node scripts/finalize-build.mjs && node scripts/build-locales.mjs",
+    "build": "node scripts/update-repository.mjs && astro build && node scripts/finalize-build.mjs && node scripts/build-locales.mjs && node scripts/check-manual.mjs",
     "check": "astro check",
     "preview": "astro preview --host 127.0.0.1 --port 8787",
     "deploy": "npm run check && npm run build && wrangler deploy"

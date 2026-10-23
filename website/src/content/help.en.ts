@@ -1,3 +1,4 @@
+import { manualEn } from './manual';
 import type { HelpPage } from './help';
 export const helpPagesEn: HelpPage[] = [
   {
@@ -33,54 +34,7 @@ export const helpPagesEn: HelpPage[] = [
       }
     ]
   },
-  {
-    "slug": "guide",
-    "label": "User guide",
-    "title": "A desktop that works your way.",
-    "description": "Create your first panel, find files, preview documents, and back up your layout. This guide covers version 0.22.2.",
-    "sections": [
-      {
-        "id": "first-panel",
-        "title": "Create your first panel",
-        "html": "<ol><li>Start LucidDesk and find its icon in the Windows system tray. Expand hidden icons if necessary.</li><li>Choose the tray command to create a new panel.</li><li>Drag desktop items into it. Try one panel for work and another for personal projects.</li><li>Drag the title area to move a panel and its edges to resize it. Drag items back to the desktop to remove them from the panel.</li></ol><p><strong>Organizing or closing a desktop panel only changes references; it does not move or delete the original files.</strong> File commands such as delete, rename, and cut do affect the actual files.</p><p>Not installed yet? See <a href=\"/installation/\">installation and updates</a>.</p>"
-      },
-      {
-        "id": "panels",
-        "title": "Pick the right panel",
-        "html": "<ul><li><strong>Desktop panels:</strong> group references to desktop files, folders, and shortcuts.</li><li><strong>Folder panels:</strong> choose a directory to browse its contents directly. Changes refresh automatically. Closing the panel only removes the mapping.</li><li><strong>Search panels:</strong> connect to a separately installed copy of Everything to find files on your computer.</li></ul><p>By default, double-clicking a folder in a folder panel opens it inside the panel. Use <kbd>Alt</kbd> + <kbd>←</kbd> to go back. Settings → Folder panels lets you open folders in File Explorer instead.</p><p>Dragging files into a folder panel copies them to that directory. Delete, cut, rename, and paste act on real files.</p>"
-      },
-      {
-        "id": "organize",
-        "title": "Arrange panels and tabs",
-        "html": "<p>The title-bar ellipsis and background context menu provide view, sorting, locking, and tab controls. Locking prevents moving or renaming a panel, but you can still resize it.</p><ul><li><strong>Icon or list view:</strong> each panel remembers its own choice.</li><li><strong>Auto-arrange:</strong> desktop panels pack icons together. Disable it to keep empty spaces; disable grid alignment for free placement.</li><li><strong>Tabs:</strong> create tabs in desktop panels, or drag one desktop panel onto another’s title bar and release after the merge preview appears.</li><li><strong>Tab shortcuts:</strong> <kbd>Ctrl</kbd> + <kbd>T</kbd> creates a tab, <kbd>Ctrl</kbd> + <kbd>Tab</kbd> switches tabs, and <kbd>Ctrl</kbd> + <kbd>W</kbd> closes the current tab.</li></ul><p>Folder and search panels cannot merge into tabs. Closing tabs does not delete original files. Closing the whole panel closes all its tabs.</p>"
-      },
-      {
-        "id": "search",
-        "title": "Enable file search",
-        "html": "<ol><li>Install and start Everything 1.4 or later separately.</li><li>Enable search panels in LucidDesk’s Everything search settings. Select <code>Everything.exe</code> if it is not found automatically.</li><li>Enter a filename. If the connection fails, check that Everything is running and press <kbd>F5</kbd> to retry.</li></ol><p>Everything query syntax is supported: try <code>ext:pdf</code> or <code>folder:</code>. Use <kbd>Ctrl</kbd> + <kbd>L</kbd> to focus the query, <kbd>↓</kbd> to enter results, <kbd>Enter</kbd> to open an item, and <kbd>Ctrl</kbd> + <kbd>Enter</kbd> to reveal it in File Explorer.</p><p>Deleting a result deletes the real file. Closing the search panel does not delete files. Query text is not kept for the next launch.</p>"
-      },
-      {
-        "id": "preview",
-        "title": "Preview with the space bar",
-        "html": "<p>Install PowerToys Peek or QuickLook separately, then enable file previews in LucidDesk settings and choose the tool. Search and previews are off by default; neither tool is bundled.</p><p>Select a file and press the preview shortcut, which defaults to Space. If nothing opens, check the tool, the integration setting, and your selection. While renaming a file, Space still types a space.</p>"
-      },
-      {
-        "id": "shortcuts",
-        "title": "Everyday shortcuts",
-        "html": "<ul><li><kbd>Enter</kbd>: open the selected item.</li><li><kbd>F2</kbd>: rename; <kbd>Enter</kbd> confirms and <kbd>Esc</kbd> cancels.</li><li><kbd>Ctrl</kbd> + <kbd>A</kbd>: select all items in the panel.</li><li><kbd>Ctrl</kbd> + click: toggle selection; <kbd>Shift</kbd> + click: select a range.</li><li><kbd>Ctrl</kbd> + <kbd>C</kbd> / <kbd>X</kbd>: copy / cut selected files.</li></ul><p>Shortcuts act on the focused panel. Click a panel or item first.</p><p>Enable double-click to hide the desktop in Settings → General → Desktop actions. Double-click an empty desktop area to hide it, and again to restore it. You can also show panels from the tray menu.</p>"
-      },
-      {
-        "id": "backup",
-        "title": "Back up settings and layouts",
-        "html": "<p>Export or restore a backup in Settings → Backup and restore. Restore asks for confirmation and creates a pre-restore backup before replacing the corresponding state.</p><p>Backups include settings, layout, item references, and folder mappings, <strong>not the contents of your files</strong>. Automatic backups default to a five-minute interval, keep the latest 10 copies, and are created only after settings or layout changes. These settings are adjustable.</p><p>Standard copies use <code>%LOCALAPPDATA%\\LucidDesk</code> by default; portable copies use <code>data</code> beside the program. Open the configuration directory from the tray to confirm. See <a href=\"/privacy/\">data and privacy</a>.</p>"
-      },
-      {
-        "id": "troubleshooting",
-        "title": "If something is not working",
-        "html": "<ul><li><strong>Missing panels:</strong> find the tray icon and use its show-panels command.</li><li><strong>Missing desktop DLL:</strong> extract the full package and keep the executable and DLL from the same release.</li><li><strong>Old version still running:</strong> exit the old tray instance before starting the new one.</li><li><strong>Desktop connection issue:</strong> check that Explorer is running, read the status in Settings → About, and try reconnecting. Avoid multiple apps taking over the desktop at once.</li><li><strong>Configuration or database error:</strong> keep the data and error details. Check the version before deleting or replacing anything.</li></ul><p>You can <a href=\"https://github.com/Yuch3nE/luciddesk/issues\">report an issue on GitHub</a>. Remove personal paths and sensitive filenames from logs or screenshots before sharing.</p>"
-      }
-    ]
-  },
+  manualEn,
   {
     "slug": "agent",
     "label": "Agent integration",

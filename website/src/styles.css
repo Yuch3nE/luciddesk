@@ -119,6 +119,16 @@
 .help-copy pre { padding: 1.25rem; border: 1px solid var(--aw-color-line); border-radius: .75rem; background: var(--aw-color-surface); overflow-x: auto; }
 .help-copy pre code { padding: 0; white-space: pre; }
 .help-copy blockquote { border-left: 3px solid var(--aw-color-primary); padding: .5rem 1.25rem; color: var(--aw-color-text-heading); }
+.help-copy h3 { margin-top: 2rem; font-size: 1.1rem; font-weight: 600; color: var(--aw-color-text-heading); scroll-margin-top: 6rem; }
+.help-copy img { max-width: 100%; height: auto; border: 1px solid var(--aw-color-line); border-radius: .75rem; }
+.manual-table { overflow-x: auto; border: 1px solid var(--aw-color-line); border-radius: .75rem; }
+.manual-table table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+.manual-table th, .manual-table td { min-width: 8rem; padding: .75rem 1rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--aw-color-line); }
+.manual-table th { background: var(--aw-color-surface); color: var(--aw-color-text-heading); font-weight: 600; }
+.manual-table tr:last-child td { border-bottom: 0; }
+.help-copy details { border: 1px solid var(--aw-color-line); border-radius: .75rem; padding: 1rem; }
+.help-copy summary { cursor: pointer; color: var(--aw-color-text-heading); font-weight: 500; }
+.help-copy details[open] > :not(summary) { margin-top: 1rem; }
 
 /* Shared translucent surfaces: solid alpha layers avoid gradient banding. */
 :root {

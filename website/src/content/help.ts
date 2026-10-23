@@ -1,3 +1,4 @@
+import { manualZh } from './manual';
 export interface HelpSection { id: string; title: string; html: string; }
 export interface HelpPage { slug: string; title: string; description: string; label: string; sections: HelpSection[]; }
 export const helpPages: HelpPage[] = [
@@ -12,20 +13,7 @@ export const helpPages: HelpPage[] = [
       {id:'uninstall', title:'卸载与清理', html:`<p>安装版可从 Windows“设置 → 应用”卸载。EXE 卸载默认保留配置；取消“保留用户配置”可删除当前账户的默认数据目录。MSI 卸载保留用户配置。</p><p>便携版删除前先关闭登录自启并退出程序。删除包含 <code>data</code> 的整个目录，也会删除其中的设置与布局，操作前请备份。更多数据保留范围见<a href="/privacy/#delete">隐私说明</a>。</p>`},
     ],
   },
-  {
-    slug:'guide', title:'让桌面按你的习惯工作', label:'使用指南',
-    description:'从第一个面板开始，逐步了解文件收纳、搜索、预览和备份。内容对应应用 0.22.2。',
-    sections:[
-      {id:'first-panel', title:'创建你的第一个面板', html:`<ol><li>启动 LucidDesk，在任务栏通知区域找到应用图标；未显示时，先展开隐藏图标。</li><li>从托盘菜单选择“新建面板”。</li><li>将桌面图标拖进面板，按工作、学习或项目分别收纳。</li><li>拖动标题区域移动面板，拖动边缘调整大小；将图标拖回桌面可取消收纳。</li></ol><p><strong>收纳、移出和关闭桌面面板只改变引用关系，不会为整理而移动或删除原文件。</strong>但文件菜单中的删除、重命名和剪切等操作会影响真实文件。</p><p>尚未安装？先看<a href="/installation/">安装与更新指南</a>。</p>`},
-      {id:'panels', title:'选择合适的面板', html:`<ul><li><strong>桌面面板：</strong>收纳桌面文件、文件夹和快捷方式的引用，适合按项目分类。</li><li><strong>文件夹面板：</strong>从菜单选择“新建文件夹面板”，选定目录后直接浏览其内容，文件变化会自动刷新。关闭面板只移除映射。</li><li><strong>搜索面板：</strong>连接本机 Everything，查找电脑上的文件，需要单独安装并启用。</li></ul><p>文件夹面板默认双击文件夹会在面板内进入，按 <kbd>Alt</kbd> + <kbd>←</kbd> 返回。可在“设置 → 文件夹面板 → 文件夹入口模式”切换为在资源管理器中打开。</p><p>向文件夹面板拖入文件会复制到当前目录；删除、剪切、重命名和粘贴操作都会作用于真实文件。</p>`},
-      {id:'organize', title:'调整布局与标签', html:`<p>面板标题栏的“…”菜单或空白处右键菜单提供视图切换、排序、锁定和标签等操作。锁定面板后不能移动或改名，仍可调整大小。</p><ul><li><strong>图标或列表：</strong>每个面板可保存自己的视图选择。</li><li><strong>自动排列：</strong>普通桌面面板会连续排列图标；关闭后可保留空位。关闭“对齐到网格”可自由摆放。</li><li><strong>标签页：</strong>普通桌面面板可新建标签。将一个普通面板拖到另一个的标题栏，等待合并预览后松开。</li><li><strong>切换标签：</strong><kbd>Ctrl</kbd> + <kbd>T</kbd> 新建，<kbd>Ctrl</kbd> + <kbd>Tab</kbd> 切换，<kbd>Ctrl</kbd> + <kbd>W</kbd> 关闭当前标签。</li></ul><p>文件夹和搜索面板不支持标签合并。关闭标签不删除原文件；关闭整个面板窗口会同时关闭其中所有标签。</p>`},
-      {id:'search', title:'开启文件搜索', html:`<ol><li>单独安装并启动 Everything 1.4 或更新版本。</li><li>在 LucidDesk 设置的“Everything 搜索”页启用搜索面板；必要时浏览选择 <code>Everything.exe</code>。</li><li>输入文件名查找。没有连接成功时，确认 Everything 正在运行，再按 <kbd>F5</kbd> 重试。</li></ol><p>支持 Everything 查询语法，例如 <code>ext:pdf</code> 查找 PDF，<code>folder:</code> 筛选文件夹。按 <kbd>Ctrl</kbd> + <kbd>L</kbd> 聚焦查询框，按 <kbd>↓</kbd> 进入结果，<kbd>Enter</kbd> 打开，<kbd>Ctrl</kbd> + <kbd>Enter</kbd> 在资源管理器中定位。</p><p>搜索结果指向真实文件，删除结果会删除对应原文件。关闭搜索面板不会删除文件，查询文字不会保存到下次启动。</p>`},
-      {id:'preview', title:'用空格快速预览', html:`<p>单独安装 PowerToys Peek 或 QuickLook，再在 LucidDesk 设置中启用文件预览并选择对应工具。搜索和预览默认关闭，不包含在安装包中。</p><p>选中文件后按预览快捷键（默认空格）。预览没有打开时，检查工具是否可用、功能是否启用，以及是否已经选中文件；重命名时的空格仍用于输入。</p>`},
-      {id:'shortcuts', title:'常用操作', html:`<ul><li><kbd>Enter</kbd>：打开选中项。</li><li><kbd>F2</kbd>：重命名；<kbd>Enter</kbd> 确认，<kbd>Esc</kbd> 取消。</li><li><kbd>Ctrl</kbd> + <kbd>A</kbd>：全选当前面板。</li><li><kbd>Ctrl</kbd> + 点击：切换单项选择；<kbd>Shift</kbd> + 点击：连续选择。</li><li><kbd>Ctrl</kbd> + <kbd>C</kbd> / <kbd>X</kbd>：复制 / 剪切选中文件。</li></ul><p>这些快捷键作用于当前获得焦点的面板。先点击面板或图标，再进行键盘操作。</p><p>在“设置 → 通用 → 桌面操作”开启“双击隐藏桌面”后，双击桌面空白处可隐藏，再次双击恢复。也可使用托盘“显示所有面板”找回。</p>`},
-      {id:'backup', title:'备份设置与布局', html:`<p>在“设置 → 备份与恢复”导出备份或从文件恢复。恢复前会确认并建立恢复前备份；恢复会替换相应状态。</p><p>备份包含设置、面板布局、收纳关系与文件夹映射，<strong>不包含真实文件内容</strong>。默认自动备份间隔为五分钟、保留最近 10 份，仅在设置或布局改变后生成；可在设置中调整。</p><p>普通版本默认数据目录为 <code>%LOCALAPPDATA%\\LucidDesk</code>，便携版默认使用程序旁的 <code>data</code>。托盘“打开配置目录”显示实际位置。更多说明见<a href="/privacy/">数据与隐私</a>。</p>`},
-      {id:'troubleshooting', title:'遇到问题时', html:`<ul><li><strong>找不到面板：</strong>检查托盘隐藏图标，再选择“显示面板”。</li><li><strong>提示缺少桌面 DLL：</strong>完整解压发布包，确认主程序和 DLL 来自同一个版本。</li><li><strong>启动后仍是旧版本：</strong>先从托盘退出旧实例，再运行新版。</li><li><strong>桌面连接异常：</strong>确认 Explorer 正常运行，在“设置 → 关于”查看原因并尝试重连，避免同时使用多个桌面接管工具。</li><li><strong>配置或数据库报错：</strong>保留原数据和错误信息，核对版本，不要直接删除原库。</li></ul><p>需要反馈时，可提交<a href="https://github.com/Yuch3nE/luciddesk/issues">问题反馈（GitHub）</a>。分享日志和截图前，去掉个人路径、敏感文件名等信息。</p>`},
-    ],
-  },
+  manualZh,
   {
     slug:'agent', title:'说出想法，让 Agent 协助整理', label:'Agent 联动',
     description:'连接你使用的外部 Agent，先查看桌面、预览改动，再应用整理方案。',
