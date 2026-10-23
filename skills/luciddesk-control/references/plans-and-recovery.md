@@ -2,7 +2,7 @@
 
 ## Batch plans
 
-For related desktop changes, use a single plan so validation and durable workspace changes form one transaction. Settings, startup, folder navigation/refresh and search actions require separate single-operation plans.
+For related desktop changes, use a single plan so validation and durable workspace changes form one transaction. Backup operations, settings, startup, folder navigation/refresh and search actions require separate single-operation plans.
 
 1. Query `workspace get --json` for fresh `context`, exact IDs, pane kinds and lock state. Use already-discovered capabilities unless the instance changed.
 2. Serialize UTF-8 JSON without BOM: `protocol_version:1`, `base` equal to the complete returned context, and ordered `operations`. Pass via `--input -` or a file. Use dotted operation names (`pane.update`) in JSON and words (`pane update`) at the CLI.
@@ -20,6 +20,7 @@ Shortcut input differs from a plan: operation fields omit `op`; `settings update
 | Action | Decision |
 | --- | --- |
 | `review_then_apply` | Review diff, then apply within existing authorization. |
+| `wait_and_preview` | Pure preview is pending; pass `stdin_json` to the returned `args`, keeping the preview request ID and a bounded deadline. No apply occurred. |
 | `query_receipt` | Query original receipt; poll pending status within a deadline. |
 | `refresh_and_preview` | Read fresh state, then build a new plan preserving concurrent changes. |
 | `inspect_state` | Inspect current state; also query folder/search/settings/startup as relevant. Workspace alone may not establish their state. |
@@ -49,7 +50,7 @@ On timeout or transport failure after submission, query first. Exact replay is o
 | `INVALID_REQUEST` | Fix input using command help/schema. |
 | `CAPABILITY_UNAVAILABLE` | Inspect relevant loading/backend state; folders/search may work without desktop integration. |
 | `BUSY` | Bounded delay/deadline; retain mutation identity. |
-| `SORT_METADATA_PENDING` | Pure preview is still reading file properties; nothing was saved. The CLI polls within its timeout. If still pending, use the returned `pending_preview` with the same preview request ID; do not query an apply receipt or claim a commit. |
+| `SORT_METADATA_PENDING` | Pure preview is still reading file properties; nothing was saved. The CLI polls within its timeout and preserves the last pending response when the budget is exhausted. If still pending, use the returned `pending_preview` with the same preview request ID; do not query an apply receipt or claim a commit. |
 | `NOT_FOUND`, `PANE_LOCKED` | Re-query targets or resolve lock within task scope. |
 | `PERSISTENCE_ERROR` | Report failure and inspect state before another plan. |
 

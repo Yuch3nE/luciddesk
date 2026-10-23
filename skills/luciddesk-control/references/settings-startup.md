@@ -1,34 +1,58 @@
-## Common workflows
+# Settings, defaults and startup
 
-### Enable snapping while dragging or adjust diagnostics
+## Choose scope before changing values
 
-Query `settings get --json` and use only returned keys. For “enable snapping when I drag panels”, write this plain settings map to a UTF-8 file without BOM:
+Query `settings get --json`. `values` contains loaded TOML settings; `workspace_values` contains database preferences. Use only returned keys and their types. One `settings.update` must be the sole operation in its plan and cannot mix these two persistence domains. Omitted fields are preserved; disk edits not yet reloaded are not reflected in the query.
+
+| User intent | Scope |
+| --- | --- |
+| Change this pane's icon/list view, icon-only mode or icon size | `pane.update`; check `capabilities.pane_display` and [Change one pane](desktop-layout.md#change-one-pane). |
+| Choose icon display for future panes | `panel_defaults.icon_only` / `panel_defaults.icon_size`; existing panes are unchanged. |
+| Choose the default folder view/columns | `folder_defaults.*`; existing folder panes are unchanged. |
+| Set the gap between snapped panes | `interface.snap_gap`, in physical pixels; it is not the drag detection threshold. |
+| Enable snapping during dragging | `panel_defaults.snap`; use `pane snap` to position a pane now. |
+
+Do not infer every `panel_defaults.*` key is new-pane-only: grid scale and drag snapping also govern current behavior. Follow the particular setting's semantics. Appearance/font changes are application settings, not pane display overrides.
+
+## Preview a settings map
+
+Write a typed UTF-8 JSON map without BOM, for example:
 
 ```json
 {"panel_defaults.snap":true}
 ```
 
-Run `settings update --input settings.json --dry-run --json`, review the diff, apply `next_step.args`, and query settings again. This enables drag snapping; positioning panes now uses `pane snap`. For a requested log-level change, the same workflow accepts `{"diagnostics.level":"debug"}`; restore the previous value when the requested diagnostic session ends. Do not enable diagnostic logging for ordinary organization tasks.
+Run `settings update --input settings.json --dry-run --json`, inspect the diff, apply the returned `next_step.args`, then query saved values and runtime activation separately. For failed activation, inspect the error and dependency; preview a fresh same-value update only when activation should be retried.
 
-### Change font or login startup
+`cli.enabled:false` cuts off subsequent online verification and receipt queries. Use only when disabling control was requested; inspect the apply response and explain that re-enabling requires the Settings UI.
 
-- Font: query `font list --json`, wait for ready results, then pass `{"font.family":"EXACT_RETURNED_FAMILY"}` through `settings update --input font.json --dry-run --json`. Apply and check `runtime.font_family`; do not mix font/workspace preferences with TOML settings in the same update.
-- Startup: query `startup get --json`, ensure `editable:true` and no pending/error state, then use `startup set --enabled true --expected-status OBSERVED_STATUS --dry-run --json`. Replace `OBSERVED_STATUS` with the returned status. Apply within the user's request and poll the original receipt to terminal `operation_status`, then verify `startup get`. To disable, use `false` with a fresh observed status.
+Backup settings configure policy. For backup files and restoration use the workflow below. Change `diagnostics.level` only for requested diagnostics and restore its previous value when that diagnostic session ends.
 
-## Settings and fonts
+## Back up, export or restore configuration
 
-Read `settings get --json`. `values` holds loaded TOML configuration and `workspace_values` holds database preferences. Submit typed dotted fields in a `settings.update` operation's `values` map. It must be the sole operation, and must not mix the two persistence domains. Omitted fields are preserved; disk edits not yet reloaded are not reflected in this query.
+Check capabilities first: older apps do not expose `backup.list`, `backup.create`, `backup.export`, or `backup.restore`. These save settings and panel layouts, not user files or plugin-owned settings. Never copy/edit a live database as a substitute.
 
-Use only keys returned by `settings get`. Common TOML fields include `diagnostics.level` (`error`, `warn`, `info`, `debug`, `trace`), `search.enabled`, and `panel_defaults.snap`. `cli.enabled:false` intentionally cuts off subsequent online verification and receipt queries; change it only when the user requests disabling control. Verify the apply response and explain that re-enabling requires the Settings UI.
+- `backup list --json`: obtain exact backup paths and busy state.
+- `backup create --dry-run --json`: preview a new manual backup in the app backup directory.
+- `backup export --path C:\Backups\export.db --dry-run --json`: export current configuration. Add `--source ABSOLUTE_BACKUP_PATH` to export an existing backup instead.
+- `backup restore --path ABSOLUTE_BACKUP_PATH --dry-run --json`: preview replacing current settings and layout. Use only for an explicitly requested restore, not as a cleanup or troubleshooting shortcut.
 
-Verify saved values and runtime activation separately. For failed activation, inspect the error, resolve the dependency, then preview a fresh same-value update if activation should be retried.
+Each action requires its own plan. Review the restore's panel count and replacement scope, then submit the exact returned token within existing authorization. Preview validates and freezes a private copy of the selected file; changes to the original file afterward are not included. Sources are standalone backup files, limited to 64 MiB for preview. Current configuration and live database paths are not restore sources. Export destinations must have an existing parent directory and must not exist; there is no overwrite flag.
 
-Discover supported keys and value constraints through `settings get` and `help settings update --json`; do not treat a copied preference catalog as authoritative. Folder defaults affect newly created panels. Saving a backup policy does not imply a backup completed. For `font.family`, an empty string selects the language default.
+Retain the apply request ID and poll `request get` until `data.result.data.operation_status` is terminal. An accepted `pending` result is not completion. Successful exports/creates return `path`; restore returns `rollback_path` for the saved pre-restore state. Restoration rejects concurrent configuration changes before replacement. A failed runtime reload triggers rollback; `commit_status:rolled_back` means restoration failed and prior data was recovered. `unknown` or `rollback_error` requires inspection; do not automatically restore again. Keep the rollback file.
 
-Before choosing a font, query `font list --json` and boundedly wait for `busy:false` with no error. Choose an exact returned family and verify `runtime.font_family` after applying. Discovery is cached for 60 seconds and invalidated by language sample changes; retain generation when consistency matters.
+After restoration, re-query settings/workspace and discard previously prepared plans and cached IDs. If the restored configuration disables CLI control, online queries will be denied: verify in the app UI and do not bypass the setting. Never automatically retry a restore shortcut after timeout; query the original receipt. The app's GUI and CLI share the backup busy gate.
+
+## Fonts
+
+Query `font list --json`; boundedly wait for `busy:false` and no error. Choose an exact returned family, submit `{"font.family":"EXACT_RETURNED_FAMILY"}` through the settings workflow, then verify `runtime.font_family`. An empty string selects the language default.
+
+Discovery is cached for 60 seconds and invalidated by language sample changes. Keep its generation when comparing results. Font/workspace preferences must not be mixed with TOML settings in one update.
 
 ## Login startup
 
-Query `startup get` and boundedly wait until not busy and without error. Distinguish `status`, `registered`, and `effective_enabled`; require `editable:true` before changing OS login behavior within the user's requested scope.
+Query `startup get --json`; wait within a deadline until not busy and without error. Distinguish `status`, `registered` and `effective_enabled`. Require `editable:true` before changing login behavior.
 
-Submit `startup.set` alone with `enabled:boolean` and the observed `expected_status`. The app checks current OS state before writing. Do not bypass Windows restrictions or another installation. Poll the original receipt until `operation_status` is completed/failed and inspect `commit_status`, `startup_status`, and error. Initial acceptance is not completion. Unknown outcomes require rechecking OS state before planning another action.
+Preview `startup set --enabled true --expected-status OBSERVED_STATUS --dry-run --json` (or `false` to disable) using the freshly observed status. Submit it alone and retain the original receipt. The app checks OS state before writing; do not bypass Windows policy or switch installations.
+
+Poll the receipt until `operation_status` is terminal, then inspect `commit_status`, `startup_status` and error and re-query `startup get`. Acceptance is not completion. Unknown outcomes require checking OS state before another action; see [Plans and recovery](plans-and-recovery.md).
