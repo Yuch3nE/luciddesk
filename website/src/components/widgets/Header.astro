@@ -20,7 +20,7 @@ const links = [
       <img src="/assets/app-icon.png" width="32" height="32" alt=""/>LucidDesk
     </a>
     <nav class="site-nav" aria-label={t('主导航')}>
-      <ul>{links.map(link => <li><a href={localizedPath(link.href, lang)} aria-current={link.active ? 'page' : undefined}>{link.label}</a></li>)}</ul>
+      <ul>{links.map((link, index) => <li><a href={localizedPath(link.href, lang)} data-page={['/features', '/agent', '/installation', '/guide', '/changelog'][index]} aria-current={link.active ? 'page' : undefined}>{link.label}</a></li>)}</ul>
     </nav>
     <div class="header-tools">
       <RepositoryLink lang={lang} compact className="header-repository"/>
