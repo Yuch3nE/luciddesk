@@ -13,10 +13,10 @@
   const animate = (element, delay, illustration = false) => {
     if (preference.matches || document.hidden || element.contains(document.activeElement)) return;
     const animation = element.animate([
-      { opacity: 0, transform: illustration ? 'translateY(12px) scale(.985)' : 'translateY(12px)' },
+      { opacity: 0, transform: illustration ? 'translateY(8px) scale(.99)' : 'translateY(8px)' },
       { opacity: 1, transform: 'translateY(0) scale(1)' },
     ], {
-      duration: illustration ? 700 : 480,
+      duration: illustration ? 520 : 360,
       delay,
       easing: 'cubic-bezier(.22, 1, .36, 1)',
       fill: 'backwards',
@@ -33,10 +33,10 @@
       observer.unobserve(element);
       if (element.dataset.motion === 'sequence') {
         element.querySelectorAll('[data-motion-stage]').forEach((stage, index) => {
-          animate(stage, Math.min(index, 4) * 65);
+          animate(stage, Math.min(index, 3) * 45);
         });
       } else {
-        animate(element, Math.min(Number(element.dataset.motionOrder) || 0, 3) * 65,
+        animate(element, Math.min(Math.max(Number(element.dataset.motionOrder) || 0, 0), 3) * 45,
           element.dataset.motion === 'illustration');
       }
     }

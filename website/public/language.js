@@ -74,6 +74,14 @@
       // first-paint CSS animation on content the visitor has already seen.
       document.body.setAttribute('data-motion-suppressed', '');
       document.body.replaceChildren(...parsed.body.childNodes);
+      // The translated body contains a new button, so a CSS transition alone
+      // cannot interpolate from the previous language's selected segment.
+      if (manual && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        document.querySelector('.language-thumb')?.animate([
+          { transform: lang === 'en' ? 'translateX(calc(100% + 0.125rem))' : 'translateX(0)' },
+          { transform: lang === 'en' ? 'translateX(0)' : 'translateX(calc(100% + 0.125rem))' },
+        ], { duration: 240, easing: 'cubic-bezier(.22, 1, .36, 1)' });
+      }
       document.dispatchEvent(new Event('luciddesk:language-swapped'));
       document.dispatchEvent(new Event('luciddesk:theme-updated'));
       if (manual) {

@@ -18,7 +18,9 @@ export default function ThemeToggle({lang = 'zh'}: {lang?: 'zh' | 'en'}) {
     const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
     document.dispatchEvent(new CustomEvent('luciddesk:theme-change', {detail: next}));
   }}>
-    <Sun className="size-4 dark:hidden" aria-hidden="true"/>
-    <Moon className="hidden size-4 dark:block" aria-hidden="true"/>
+    <span className="theme-symbol relative size-4" aria-hidden="true">
+      <Sun className="theme-sun absolute inset-0 size-4" />
+      <Moon className="theme-moon absolute inset-0 size-4" />
+    </span>
   </Button>;
 }

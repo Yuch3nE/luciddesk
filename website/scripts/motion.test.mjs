@@ -10,7 +10,8 @@ function setup(reduced = false) {
   const observed = new Set();
   const animations = [];
   let callback;
-  const preference = { matches: reduced, addEventListener() {} };
+  let preferenceChanged;
+  const preference = { matches: reduced, addEventListener(_, fn) { preferenceChanged = fn; } };
   const element = top => ({
     dataset: {}, isConnected: true,
     getBoundingClientRect: () => ({ top, bottom: top + 100 }),
@@ -42,7 +43,9 @@ function setup(reduced = false) {
   runInNewContext(source, context);
   return { context, visible, below, observed, animations,
     enter: target => callback([{ target, isIntersecting: true }]),
-    emit: name => listeners.get(name)(),
+    emit: (name, event) => listeners.get(name)(event),
+    hide() { document.hidden = true; listeners.get('visibilitychange')(); },
+    reduce() { preference.matches = true; preferenceChanged(); },
   };
 }
 
@@ -85,4 +88,28 @@ test('repeated script execution does not create duplicate observers', () => {
   runInNewContext(source, state.context);
   state.enter(state.below);
   assert.equal(state.animations.length, 1);
+});
+
+test('switching to reduced motion cancels animations already running', () => {
+  const state = setup();
+  state.enter(state.below);
+  state.reduce();
+  assert.equal(state.animations[0].cancelled, true);
+});
+
+test('backgrounding the page cancels animation and prevents new motion', () => {
+  const state = setup();
+  state.enter(state.below);
+  state.hide();
+  assert.equal(state.animations[0].cancelled, true);
+  state.enter(state.below);
+  assert.equal(state.animations.length, 1);
+});
+
+test('keyboard focus immediately reveals animated content', () => {
+  const state = setup();
+  state.enter(state.below);
+  state.below.contains = () => true;
+  state.emit('focusin', { target: {} });
+  assert.equal(state.animations[0].cancelled, true);
 });
