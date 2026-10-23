@@ -2,12 +2,13 @@
 
 [简体中文](CHANGELOG.md) · English
 
-Current version: **0.22.2**. Features and fixes by release.
+Current version: **0.23.0**. Features and fixes by release.
 
 Exit the app before upgrading a portable installation and preserve its `data` folder. See the [portable guide](docs/portable.md) (Chinese).
 
-## Unreleased
+## 0.23.0 · 2026-10-24
 
+Release notes for the upcoming 0.23.0 version. Release packages are not published yet.
 
 ### CLI
 
@@ -34,6 +35,9 @@ Exit the app before upgrading a portable installation and preserve its `data` fo
 ### Website and maintenance
 
 - Redesign homepage feature layouts and product illustrations, including tabs, panel details and presentation colors.
+- Unify bilingual manuals, installation/update and CLI guides, clarify backup and external-agent data handling, and include both manuals in ZIP packages.
+- Default the website to Simplified Chinese for Simplified Chinese browser preferences and English otherwise, while preserving manual choices.
+- Refine language switching, theme icons, navigation, buttons and cards; shorten entrance motion and respect reduced-motion preferences and keyboard interaction.
 - Accept either case for README version badge labels in release-note validation.
 
 ## 0.22.2 · 2026-10-22

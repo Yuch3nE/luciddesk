@@ -12,7 +12,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-2EA44F?style=flat-square&labelColor=374151)](LICENSE)
 [![CI status](https://img.shields.io/github/actions/workflow/status/Yuch3nE/luciddesk/build.yml?style=flat-square&label=CI&labelColor=374151)](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml)
-[![Version: 0.22.2](https://img.shields.io/badge/Version-0.22.2-8250DF?style=flat-square&labelColor=374151)](CHANGELOG.md)
+[![Version: 0.23.0](https://img.shields.io/badge/Version-0.23.0-8250DF?style=flat-square&labelColor=374151)](CHANGELOG.md)
 [![Windows: 10 / 11](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D4?style=flat-square&labelColor=374151)](#系统与兼容性)
 [![Arch: x64](https://img.shields.io/badge/Arch-x64-64748B?style=flat-square&labelColor=374151)](docs/portable.md)
 
@@ -37,9 +37,9 @@ LucidDesk 是一款使用 Rust 开发的免费、开源 Windows 桌面整理工�
 
 <sub>功能示意 · 实际界面见下方截图</sub>
 
-**当前版本：[v0.22.2](CHANGELOG.md)** · 改善桌面隐藏与恢复，采用静默更新提示。
+**源码版本：[v0.23.0](CHANGELOG.md#0230--2026-10-24)（待发布）** · 面板独立图标设置、设置页优化与 CLI 安全备份恢复。
 
-源码中的后续改动见[未发布更新](CHANGELOG.md#未发布)：包含面板独立图标设置、设置页与浅色配色优化、备份恢复保护，以及 CLI 备份、导出和恢复命令；尚未包含在上述正式版本中。
+当前可下载的正式版仍为 **0.22.2**。0.23.0 的新增功能需使用对应开发构建，发布后可通过正常更新获取。
 
 <details>
 <summary>阅读目录</summary>

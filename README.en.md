@@ -12,7 +12,7 @@ Desktop panels · Folder panels · Everything search · Spacebar preview · Agen
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-2EA44F?style=flat-square&labelColor=374151)](LICENSE)
 [![CI status](https://img.shields.io/github/actions/workflow/status/Yuch3nE/luciddesk/build.yml?style=flat-square&label=CI&labelColor=374151)](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml)
-[![Version: 0.22.2](https://img.shields.io/badge/Version-0.22.2-8250DF?style=flat-square&labelColor=374151)](CHANGELOG.en.md)
+[![Version: 0.23.0](https://img.shields.io/badge/Version-0.23.0-8250DF?style=flat-square&labelColor=374151)](CHANGELOG.en.md)
 [![Windows: 10 / 11](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D4?style=flat-square&labelColor=374151)](#compatibility)
 [![Arch: x64](https://img.shields.io/badge/Arch-x64-64748B?style=flat-square&labelColor=374151)](docs/portable.md)
 
@@ -37,9 +37,9 @@ The companion CLI and Skill let an external agent help organize icons and panel 
 
 <sub>Feature illustration · See screenshots below for the actual interface</sub>
 
-**Current release: [v0.22.2](CHANGELOG.en.md)** · Better desktop restoration and quiet update checks.
+**Source version: [v0.23.0](CHANGELOG.en.md#0230--2026-10-24) (upcoming)** · Per-panel icon controls, refined settings, and safe CLI backup and restore.
 
-See [Unreleased changes](CHANGELOG.en.md#unreleased) for per-panel icon settings, settings layout and light palette improvements, backup/restore safeguards, and CLI backup, export and restore commands in current source builds. These are not yet included in the release above.
+The current downloadable release remains **0.22.2**. New 0.23.0 features require a corresponding development build until release packages are available.
 
 <details>
 <summary>On this page</summary>
