@@ -149,6 +149,17 @@ impl Painter {
                         ..color(palette.border)
                     };
                 }
+                if !dark {
+                    // Give settings a stable surface hierarchy while retaining native translucency.
+                    chrome.card = ColorF {
+                        a: if native { chrome.card.a.max(0.80) } else { 1.0 },
+                        ..color(0xfafcfe)
+                    };
+                    chrome.card_border = ColorF {
+                        a: if native { 0.80 } else { 1.0 },
+                        ..color(0xd4dce5)
+                    };
+                }
                 let [nav_selection, nav_hover, nav_selection_hover] =
                     components::navigation_colors(s.material, dark);
                 let [card, card_border, ink, muted, disabled, border, accent, slider_track,
@@ -157,15 +168,15 @@ impl Painter {
                         chrome.card, chrome.card_border,
                         color(palette.ink), color(palette.muted),
                         ColorF { a: 0.55, ..color(palette.muted) },
-                        ColorF { a: if native { 0.45 } else { 1.0 }, ..color(palette.border) },
+                        ColorF { a: if native && dark { 0.45 } else { 1.0 }, ..color(palette.border) },
                         color(palette.accent),
                         // Light sliders need opaque strokes on translucent cards.
                         ColorF { a: if dark && native { 0.45 } else { 1.0 }, ..color(palette.slider_track) },
                         ColorF { a: if dark && native { 0.45 } else { 1.0 }, ..color(palette.slider_border) },
                         if dark { chrome.card } else { color(0xffffff) },
                         color(palette.scroll_thumb), nav_selection, nav_hover, nav_selection_hover,
-                        ColorF { a: if native { if dark { 0.12 } else { 0.22 } } else { 1.0 },
-                            ..color(if dark { 0x242424 } else { 0xf9f9f9 }) },
+                        ColorF { a: if native { if dark { 0.12 } else { 0.55 } } else { 1.0 },
+                            ..color(if dark { 0x242424 } else { 0xf0f3f7 }) },
                         color(if dark { 0xef8d8d } else { 0xb83d42 }),
                         color(if dark { 0x8dccaa } else { 0x287b50 }),
                         color(if dark { 0x88baf0 } else { 0x266eae }),
@@ -204,7 +215,7 @@ impl Painter {
                 }
                 for r in &s.separators {
                     let _clip = ContentClip::new(&t, s, r.left >= Tokens::content_x() && !s.fixed_list());
-                    t.fill_rect(r, border);
+                    t.fill_rect(r, if dark { border } else { card_border });
                 }
                 if let Some(bounds) = &s.app_icon {
                     let _clip = ContentClip::new(&t, s, true);
@@ -529,6 +540,8 @@ impl Painter {
                                 selected
                             } else if c.enabled && hover == Some(i) {
                                 hovered
+                            } else if !dark {
+                                slider_surface
                             } else {
                                 card
                             },

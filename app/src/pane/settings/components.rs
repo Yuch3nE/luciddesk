@@ -49,14 +49,14 @@ impl Palette {
             }
         } else {
             Self {
-                background: 0xf3f3f3,
-                ink: 0x202020,
-                muted: 0x666666,
-                border: 0xdfdfdf,
-                accent: 0x0067c0,
-                slider_track: 0x8a8a8a,
-                slider_border: 0xc4c4c4,
-                scroll_thumb: 0x888888,
+                background: 0xe9edf2,
+                ink: 0x202833,
+                muted: 0x566170,
+                border: 0xb7c0cc,
+                accent: 0x0969b8,
+                slider_track: 0x8995a4,
+                slider_border: 0xa3aebb,
+                scroll_thumb: 0x758293,
             }
         }
     }
