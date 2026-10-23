@@ -451,6 +451,8 @@ fn backup_in_progress_preserves_policy_controls_and_prevents_duplicate_jobs() {
             .unwrap();
         assert!(toggle.enabled);
         assert_eq!(toggle.selected, enabled);
+        assert_eq!(body.controls.iter().filter(|c|
+            matches!(c.action, Action::BackupPolicy(_))).count(), if enabled { 3 } else { 1 });
         assert!(
             body.controls
                 .iter()

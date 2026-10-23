@@ -348,7 +348,11 @@ impl Painter {
                         label.left += 8.0;
                         label.right -= 32.0;
                         t.clipped_text(&c.label, &self.formats[6], &label, if c.enabled { blue } else { disabled });
-                        let icon = if matches!(c.action, Action::SolidReset | Action::StrengthReset) { "\u{e777}" } else { "\u{e8a7}" };
+                        let icon = match c.action {
+                            Action::SolidReset | Action::StrengthReset => "\u{e777}",
+                            Action::BackupAdvanced => "\u{e76c}",
+                            _ => "\u{e8a7}",
+                        };
                         t.clipped_icon(icon, &self.formats[4],
                             &Rect::from_xywh(c.bounds.right - 24.0, c.bounds.top, 16.0, c.bounds.bottom - c.bounds.top),
                             if c.enabled { blue } else { disabled });

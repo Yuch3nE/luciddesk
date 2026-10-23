@@ -1361,3 +1361,5 @@ log-level-trace = 追蹤（TRACE）
 font-clear-search = 清除搜尋
 
 font-list-hint = 僅顯示支援目前介面語言的字型。
+
+backup-restore-state-changed = 還原準備期間設定已變更，已取消還原。請重新選擇備份，目前設定保持不變。

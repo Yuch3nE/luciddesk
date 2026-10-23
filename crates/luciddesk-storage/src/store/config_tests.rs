@@ -201,6 +201,33 @@ fn corrupted_backup_config_is_rejected_before_changing_live_state() {
     assert_eq!(std::fs::read(store.config_path().unwrap()).unwrap(), before);
 }
 
+#[cfg(windows)]
+#[test]
+fn restore_config_write_failure_rolls_back_database_and_preserves_source() {
+    use std::os::windows::fs::OpenOptionsExt;
+    let (dir, mut store) = open();
+    store.save_preference("search_enabled", "0").unwrap();
+    let backup = dir.path().join("snapshot.db");
+    store.export_backup(&backup).unwrap();
+    let source = std::fs::read(&backup).unwrap();
+    store.save_preference("search_enabled", "1").unwrap();
+    let before = store.backup_snapshot().unwrap().backup_content().unwrap();
+    let config_path = store.config_path().unwrap();
+    let config = std::fs::read(&config_path).unwrap();
+    let revision = store.change_count();
+    let locked = std::fs::OpenOptions::new().read(true).share_mode(1)
+        .open(&config_path).unwrap();
+    assert!(store.restore_backup(&backup).is_err());
+    drop(locked);
+    assert_eq!(store.change_count(), revision);
+    assert_eq!(store.backup_snapshot().unwrap().backup_content().unwrap(), before);
+    assert_eq!(std::fs::read(&config_path).unwrap(), config);
+    assert_eq!(std::fs::read(&backup).unwrap(), source);
+    drop(store);
+    let store = WorkspaceStore::open(&dir.path().join("workspace.db")).unwrap();
+    assert_eq!(store.preference("search_enabled").unwrap().as_deref(), Some("1"));
+}
+
 #[test]
 fn missing_fields_default_and_malformed_tables_do_not() {
     let doc = "config_version = 1\n[panel_defaults]\ncorner_radius=2.5"

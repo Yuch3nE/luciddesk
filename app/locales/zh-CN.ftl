@@ -1361,3 +1361,5 @@ log-level-trace = 跟踪（TRACE）
 font-clear-search = 清空搜索
 
 font-list-hint = 仅显示支持当前界面语言的字体。
+
+backup-restore-state-changed = 恢复准备期间配置已变化，已取消恢复。请重新选择备份，当前配置保持不变。

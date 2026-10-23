@@ -1361,3 +1361,5 @@ log-level-trace = Trace (TRACE)
 font-clear-search = Clear search
 
 font-list-hint = Only fonts supporting the current interface language are shown.
+
+backup-restore-state-changed = Configuration changed while preparing the restore. Restore canceled; select the backup again. Your current configuration is unchanged.

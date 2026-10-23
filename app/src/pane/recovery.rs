@@ -83,7 +83,7 @@ enum Outcome {
     BackupSaved(String, u64),
     Unchanged(u64),
     Inspect(RestoreInput),
-    ReadyRestore(RestoreInput, PathBuf),
+    ReadyRestore(RestoreInput, PathBuf, u64),
 }
 pub(super) struct Manager {
     pub view: View,
@@ -316,7 +316,7 @@ pub(super) fn maintain(state: &Rc<RefCell<PaneApp>>) {
                     }
                 });
             }
-            Ok(Outcome::ReadyRestore(input, rollback)) => {
+            Ok(Outcome::ReadyRestore(input, rollback, revision)) => {
                 state
                     .borrow_mut()
                     .runtime
@@ -328,7 +328,7 @@ pub(super) fn maintain(state: &Rc<RefCell<PaneApp>>) {
                 let weak = Rc::downgrade(state);
                 window::defer_action(move || {
                     if let Some(state) = weak.upgrade() {
-                        apply_restore(&state, input, rollback);
+                        apply_restore(&state, input, rollback, revision);
                     }
                 });
             }
@@ -550,21 +550,25 @@ fn confirm_restore(state: &Rc<RefCell<PaneApp>>, input: RestoreInput) {
         .view
         .busy = false;
     let result = (|| {
-        let snapshot = state
-            .borrow()
-            .store
-            .backup_snapshot()
-            .map_err(|e| e.to_string())?;
+        let (snapshot, revision) = {
+            let s = state.borrow();
+            (s.store.backup_snapshot().map_err(|e| e.to_string())?, s.store.change_count())
+        };
         begin(state, crate::i18n::text("ui-backing-up-current-state"), move |directory| {
             let (rollback, _) = save_snapshot(&snapshot, &directory, "before-restore", 5)?;
-            Ok(Outcome::ReadyRestore(input, rollback))
+            Ok(Outcome::ReadyRestore(input, rollback, revision))
         })
     })();
     if let Err(e) = result {
         set_status(state, &crate::i18n::format("ui-restore-not-performed", &[("e", format!("{}", e))]));
     }
 }
-fn apply_restore(state: &Rc<RefCell<PaneApp>>, input: RestoreInput, rollback: PathBuf) {
+fn apply_restore(state: &Rc<RefCell<PaneApp>>, input: RestoreInput, rollback: PathBuf, revision: u64) {
+    if state.borrow().store.change_count() != revision || hybrid::workspace_save_pending(&state.borrow()) {
+        state.borrow_mut().runtime.as_mut().unwrap().backup.view.busy = false;
+        set_status(state, crate::i18n::text("backup-restore-state-changed"));
+        return;
+    }
     apply_restore_with(state, input, rollback, runtime::reload);
 }
 fn apply_restore_with(
@@ -578,7 +582,14 @@ fn apply_restore_with(
         .store
         .restore_backup(&input.path())
         .map_err(|e| e.to_string());
-    let result = result.and_then(|_| reload(state));
+    if let Err(error) = result {
+        // Storage validates before replacement and rolls back failed writes.
+        // Do not overwrite newer live data with an older rollback snapshot.
+        state.borrow_mut().runtime.as_mut().unwrap().backup.view.busy = false;
+        set_status(state, &crate::i18n::format("ui-restore-not-performed", &[("e", error)]));
+        return;
+    }
+    let result = reload(state);
     state
         .borrow_mut()
         .runtime
@@ -731,11 +742,7 @@ fn execute(state: &Rc<RefCell<PaneApp>>, event: &Event) -> Result<(), String> {
                 return Ok(());
             };
             let s = state.borrow();
-            if s.runtime.as_ref().is_some_and(|r| r.path == path)
-                || path
-                    .file_name()
-                    .is_some_and(|p| p == "workspace.db" || p == "config.toml")
-            {
+            if reserved_export_path(&s, &path) {
                 return Err(crate::i18n::text("backup-export-path-reserved").into());
             }
             let snapshot = if let Event::ExportBackupPath(source) = event {
@@ -753,6 +760,18 @@ fn execute(state: &Rc<RefCell<PaneApp>>, event: &Event) -> Result<(), String> {
         }
         _ => Ok(()),
     }
+}
+
+fn reserved_export_path(state: &PaneApp, path: &Path) -> bool {
+    let name = path.file_name().map(|name| name.to_string_lossy().to_ascii_lowercase());
+    if name.as_deref().is_some_and(|name| ["workspace.db", "workspace.db-wal", "workspace.db-shm", "config.toml"].contains(&name)) {
+        return true;
+    }
+    let destination = path.canonicalize().ok();
+    state.runtime.as_ref().is_some_and(|runtime| runtime.path == path
+        || destination.as_ref().is_some_and(|target| runtime.path.canonicalize().ok().as_ref() == Some(target)))
+        || state.store.config_path().is_some_and(|config| config == path
+            || destination.as_ref().is_some_and(|target| config.canonicalize().ok().as_ref() == Some(target)))
 }
 
 #[cfg(test)]
@@ -836,6 +855,53 @@ mod tests {
     }
 
     use super::*;
+    fn staged_input(bytes: &[u8]) -> RestoreInput {
+        let temporary = tempfile::tempdir().unwrap();
+        let original = temporary.path().join("restore.db");
+        std::fs::write(&original, bytes).unwrap();
+        RestoreInput { original, temporary, count: 0, version: "test".into(), missing: vec![] }
+    }
+
+    #[test]
+    fn invalid_restore_never_replaces_newer_configuration_with_rollback() {
+        let root = tempfile::tempdir().unwrap();
+        let state = state(root.path());
+        state.borrow().store.save_preference("sentinel", "old").unwrap();
+        let rollback = root.path().join("rollback.db");
+        state.borrow().store.export_backup(&rollback).unwrap();
+        state.borrow().store.save_preference("sentinel", "new").unwrap();
+        let before = state.borrow().store.backup_snapshot().unwrap().backup_content().unwrap();
+        apply_restore_with(&state, staged_input(b"corrupt"), rollback, |_| panic!("invalid backup must not reload or roll back"));
+        assert_eq!(state.borrow().store.backup_snapshot().unwrap().backup_content().unwrap(), before);
+        assert!(!view(&state.borrow()).busy);
+    }
+
+    #[test]
+    fn changes_after_rollback_snapshot_cancel_restore_without_touching_live_data() {
+        let root = tempfile::tempdir().unwrap();
+        let state = state(root.path());
+        let rollback = root.path().join("rollback.db");
+        state.borrow().store.export_backup(&rollback).unwrap();
+        let revision = state.borrow().store.change_count();
+        let input = staged_input(&std::fs::read(&rollback).unwrap());
+        state.borrow().store.save_preference("sentinel", "new").unwrap();
+        state.borrow_mut().runtime.as_mut().unwrap().backup.view.busy = true;
+        apply_restore(&state, input, rollback, revision);
+        assert_eq!(state.borrow().store.preference("sentinel").unwrap().as_deref(), Some("new"));
+        assert_eq!(view(&state.borrow()).status, crate::i18n::text("backup-restore-state-changed"));
+        assert!(!view(&state.borrow()).busy);
+    }
+
+    #[test]
+    fn export_rejects_case_variants_and_live_database_sidecars() {
+        let root = tempfile::tempdir().unwrap();
+        let state = state(root.path());
+        for name in ["WORKSPACE.DB", "Config.Toml", "workspace.db-wal", "WORKSPACE.DB-SHM"] {
+            assert!(reserved_export_path(&state.borrow(), &root.path().join(name)));
+        }
+        assert!(!reserved_export_path(&state.borrow(), &root.path().join("export.db")));
+    }
+
     fn state(root: &Path) -> Rc<RefCell<PaneApp>> {
         let mut state = super::super::tests::test_state();
         let path = root.join("workspace.db");
