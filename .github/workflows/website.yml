@@ -1,0 +1,106 @@
+name: Deploy website
+
+on:
+  workflow_run:
+    workflows: ['Build CI']
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Latest stable release tag (empty = discover latest)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: website-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.repository == 'Yuch3nE/luciddesk' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_repository.full_name == github.repository))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: website
+    env:
+      ASTRO_TELEMETRY_DISABLED: '1'
+      RELEASE_DEPLOY: '1'
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Verify publishing job succeeded
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            echo 'publish=true' >> "$GITHUB_OUTPUT"
+          else
+            count=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/jobs" --jq '[.jobs[] | select(.name == "release" and .conclusion == "success")] | length' | awk '{sum += $1} END {print sum}')
+            echo "publish=$([ "$count" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-node@v6
+        if: steps.gate.outputs.publish == 'true'
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - name: Resolve latest complete release
+        if: steps.gate.outputs.publish == 'true'
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: node scripts/update-repository.mjs
+      - uses: actions/checkout@v7.0.1
+        if: steps.gate.outputs.publish == 'true'
+        with:
+          ref: refs/tags/${{ steps.release.outputs.tag }}
+          path: release-source
+          persist-credentials: false
+      - name: Import version-matched documentation
+        if: steps.gate.outputs.publish == 'true'
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: node scripts/sync-release-docs.mjs
+      - name: Install, test and build
+        if: steps.gate.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          npm ci
+          node --test scripts/*.test.mjs
+          npm run check
+          npm run build
+      - name: Deploy verified website
+        if: steps.gate.outputs.publish == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing CLOUDFLARE_API_TOKEN'; exit 1; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Missing CLOUDFLARE_ACCOUNT_ID'; exit 1; }
+          node scripts/update-repository.mjs
+          npx --yes wrangler@4.151.3 deploy
+      - name: Verify public version and documentation
+        if: steps.gate.outputs.publish == 'true'
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: node scripts/check-deployed-release.mjs

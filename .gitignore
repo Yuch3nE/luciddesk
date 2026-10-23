@@ -7,3 +7,7 @@
 .vscode/
 __pycache__/
 *.pyc
+
+# Generated website release provenance
+website/public/release.json
+/release-source/

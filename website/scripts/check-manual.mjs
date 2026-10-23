@@ -12,7 +12,11 @@ for (const [language, source] of [['zh', '../docs/usage.md'], ['en', '../docs/us
   for (const id of legacy) assert.ok(ids.includes(id), `${language}: missing legacy anchor ${id}`);
   const headings = [...markdown.matchAll(/^## (.+)$/gm)];
   assert.equal([...html.matchAll(/<section\b/g)].length, headings.length, `${language}: missing chapters`);
-  assert.ok(html.includes('0.22.2') && html.includes(language === 'zh' ? '未发布' : 'Unreleased'));
+  // Preserve the release source's version and status labels, without pinning
+  // validation to one historical app release.
+  for (const version of new Set(markdown.match(/\b\d+\.\d+\.\d+\b/g) ?? [])) assert.ok(html.includes(version));
+  const unreleased = language === 'zh' ? '未发布' : 'Unreleased';
+  if (markdown.includes(unreleased)) assert.ok(html.includes(unreleased));
   for (const [, target] of html.matchAll(/\bhref="#([^"]+)"/g)) {
     assert.ok(ids.includes(decodeURIComponent(target)), `${language}: broken chapter link ${target}`);
   }

@@ -23,6 +23,8 @@ const anchors: Record<string, string> = {
 };
 
 async function manualPage(source: typeof zhManual, english: boolean): Promise<HelpPage> {
+  const ref = import.meta.env.RELEASE_TAG || 'main';
+  if (ref !== 'main' && !/^v?\d+\.\d+\.\d+$/.test(ref)) throw new Error('Invalid manual release reference');
   let html = await source.compiledContent();
   const headings = source.getHeadings().filter(heading => heading.depth === 2);
   const ids = new Map(headings.map(heading => [heading.slug, anchors[heading.text] ?? heading.slug]));
@@ -34,9 +36,9 @@ async function manualPage(source: typeof zhManual, english: boolean): Promise<He
     else if (['installer.md', 'portable.md', 'package.md', 'msix.md'].includes(target)) target = '/installation/';
     else if (target === 'cli.md') target = '/agent/';
     else if (!/^(https?:|mailto:|\/)/.test(target)) {
-      const path = new URL(target, 'https://github.com/Yuch3nE/luciddesk/blob/main/docs/');
+      const path = new URL(target, `https://github.com/Yuch3nE/luciddesk/blob/${ref}/docs/`);
       target = attribute === 'src'
-        ? path.href.replace('github.com/Yuch3nE/luciddesk/blob/main', 'raw.githubusercontent.com/Yuch3nE/luciddesk/main')
+        ? path.href.replace(`github.com/Yuch3nE/luciddesk/blob/${ref}`, `raw.githubusercontent.com/Yuch3nE/luciddesk/${ref}`)
         : path.href;
     }
     return `${attribute}="${target}"`;
