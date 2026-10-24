@@ -18,17 +18,27 @@ mod focus_tests;
 #[path = "client_reentrancy_tests.rs"]
 mod reentrancy_tests;
 
-/// Owns one desktop membership session. Dropping it restores removed view items.
+const ATTACH_TIMEOUT: Duration = Duration::from_secs(3);
+const ACK_TIMEOUT: Duration = Duration::from_secs(3);
+const MENU_ACK_TIMEOUT: Duration = Duration::from_secs(5);
+const SEND_TIMEOUT_MS: u32 = 1500;
+
+#[derive(Clone, Copy)]
+struct PendingHidden {
+    sequence: u32,
+    started: Instant,
+}
+
+/// Owns one desktop membership session. Dropping it requests restoration of removed view items.
 pub struct FilterSession {
     view: HWND,
     owner: HWND,
     hook: HHOOK,
     module: HMODULE,
     sequence: Cell<u32>,
-    timed_out: Cell<bool>,
+    retired: Cell<bool>,
     in_flight: Cell<bool>,
-    pending_hidden: Cell<Option<u32>>,
-    hidden_started: Cell<Option<Instant>>,
+    pending_hidden: Cell<Option<PendingHidden>>,
     update: Cell<Option<u32>>,
     explorer_watch: Option<explorer::ExplorerWatch>,
 }
@@ -78,7 +88,7 @@ fn attach_os_error(view: HWND, stage: diagnostics::Stage) -> String {
 }
 
 fn wait_for_attach(target: &AttachTarget, owner: HWND) -> Result<(), String> {
-    wait_for_attach_with(target, owner, Duration::from_secs(3), || crate::desktop_view().ok())
+    wait_for_attach_with(target, owner, ATTACH_TIMEOUT, || crate::desktop_view().ok())
 }
 
 fn wait_for_attach_with(
@@ -195,9 +205,9 @@ impl FilterSession {
                 hook,
                 module,
                 sequence: Cell::new(0),
-                timed_out: Cell::new(false),
+                retired: Cell::new(false),
                 in_flight: Cell::new(false),
-                pending_hidden: Cell::new(None), hidden_started: Cell::new(None),
+                pending_hidden: Cell::new(None),
                 update: Cell::new(None),
                 explorer_watch: None,
             };
@@ -214,7 +224,7 @@ impl FilterSession {
     #[must_use]
     pub fn is_alive(&self) -> bool {
         unsafe {
-            !self.timed_out.get()
+            !self.retired.get()
                 && self.explorer_watch.as_ref().is_none_or(|watch| watch.alive())
                 && IsWindow(self.view) != 0
                 && GetPropW(self.view, OWNER) == self.owner
@@ -230,7 +240,7 @@ impl FilterSession {
     /// Call poll_hidden until complete before submitting another transaction.
     pub fn submit_hidden(&self, names: &[String]) -> Result<(), String> {
         let _request = self.enter_request()?;
-        if self.timed_out.get() {
+        if self.retired.get() {
             return Err("桌面过滤连接已超时，等待重新连接".into());
         }
         if self.pending_hidden.get().is_some() {
@@ -239,31 +249,27 @@ impl FilterSession {
         let sequence = self.next_sequence();
         let bytes = wire::encode(wire::SET, sequence, names)?;
         self.transmit(&bytes)?;
-        self.hidden_started.set(Some(Instant::now()));
-        self.pending_hidden.set(Some(sequence));
+        self.pending_hidden.set(Some(PendingHidden { sequence, started: Instant::now() }));
         Ok(())
     }
 
     /// Returns false while Explorer is still processing the submitted set.
     pub fn poll_hidden(&self) -> Result<bool, String> {
-        let Some(sequence) = self.pending_hidden.get() else { return Ok(true); };
+        let Some(PendingHidden { sequence, started }) = self.pending_hidden.get() else { return Ok(true); };
         unsafe {
             if !self.is_alive() {
                 self.pending_hidden.set(None);
-                self.hidden_started.set(None);
                 return Err(format!("桌面过滤连接已断开; {}", diagnostics::summary(self.view)));
             }
             if GetPropW(self.view, ACK) as usize != sequence as usize {
-                if self.hidden_started.get().is_some_and(|started| started.elapsed() >= Duration::from_secs(3)) {
-                    self.timed_out.set(true);
+                if started.elapsed() >= ACK_TIMEOUT {
+                    self.retired.set(true);
                     self.pending_hidden.set(None);
-                    self.hidden_started.set(None);
                     return Err(format!("桌面分组同步确认超时; sequence={sequence}; {}", diagnostics::summary(self.view)));
                 }
                 return Ok(false);
             }
             self.pending_hidden.set(None);
-            self.hidden_started.set(None);
             let error = GetPropW(self.view, REQUEST_ERROR) as usize as u32;
             if error != 0 {
                 return Err(format!("桌面过滤请求未完成 (0x{error:08x}); {}", diagnostics::summary(self.view)));
@@ -288,15 +294,14 @@ impl FilterSession {
     /// remains filtered; the caller must finish even if the operation fails.
     pub fn begin_update(&self) -> Result<(), String> {
         self.ensure_idle()?;
-        if self.timed_out.get() {
+        if self.retired.get() {
             return Err("桌面过滤连接已超时，等待重新连接".into());
         }
         if self.pending_hidden.get().is_some() {
             return Err("桌面分组同步尚未完成，请稍后重试".into());
         }
-        if self.update.get().is_some() {
-            if unsafe { GetPropW(self.view, UPDATE_RELEASE) as usize }
-                != self.update.get().unwrap() as usize
+        if let Some(sequence) = self.update.get() {
+            if unsafe { GetPropW(self.view, UPDATE_RELEASE) as usize } != sequence as usize
             {
                 return Err("已有活动身份更新".into());
             }
@@ -438,18 +443,82 @@ impl FilterSession {
                 self.owner as usize,
                 (&raw const data) as isize,
                 SMTO_ABORTIFHUNG | SMTO_ERRORONEXIT,
-                1500,
+                SEND_TIMEOUT_MS,
                 &raw mut accepted,
             ) == 0
             {
                 // Delivery failure can leave the operation executing in Explorer.
                 // Retire the session rather than reuse its single ACK slot.
                 let error = std::io::Error::last_os_error();
-                self.timed_out.set(true);
+                self.retired.set(true);
                 return Err(format!("桌面过滤请求发送失败，执行结果不确定: {error}"));
             }
             if accepted != MAGIC {
                 return Err("Explorer 拒绝桌面过滤请求".into());
+            }
+        }
+        Ok(())
+    }
+    fn ack_result(&self, op: u32) -> Result<(), String> {
+        unsafe {
+            if wire::is_desktop_visibility(op) {
+                let error = GetPropW(self.view, REQUEST_ERROR) as usize as u32;
+                return if error == 0 { Ok(()) } else {
+                    Err(format!("桌面显隐请求失败 (0x{error:08x}); op={op}"))
+                };
+            }
+            if wire::is_menu_transaction(op) {
+                let error = GetPropW(self.view, MENU_ERROR) as usize as u32;
+                return if error == 0 {
+                    Ok(())
+                } else {
+                    Err(format!("独立原生菜单不可用 (0x{error:08x})"))
+                };
+            }
+            let error = GetPropW(self.view, ERROR) as usize as u32;
+            if error != 0 {
+                return Err(format!("桌面过滤失败，已请求恢复原生项目 (0x{error:08x}); {}", diagnostics::summary(self.view)));
+            }
+            let retry = GetPropW(self.view, REQUEST_ERROR) as usize as u32;
+            if retry != 0 {
+                return Err(format!("桌面过滤请求未完成 (0x{retry:08x}); {}", diagnostics::summary(self.view)));
+            }
+            Ok(())
+        }
+    }
+    fn pump_request_messages(op: u32) -> Result<(), String> {
+        unsafe {
+            if wire::is_menu_transaction(op) {
+                // Explorer can synchronously query our windows while creating
+                // its Shell view. Menu callers must hold no UI model borrows.
+                let mut message = MSG::default();
+                for _ in 0..32 {
+                    if PeekMessageW(&raw mut message, null_mut(), 0, 0, PM_REMOVE) == 0 {
+                        break;
+                    }
+                    if message.message == WM_QUIT {
+                        PostQuitMessage(message.wParam as i32);
+                        return Err("菜单操作被退出请求中断".into());
+                    }
+                    TranslateMessage(&message);
+                    DispatchMessageW(&message);
+                }
+                MsgWaitForMultipleObjectsEx(
+                    0,
+                    std::ptr::null(),
+                    5,
+                    QS_ALLINPUT,
+                    MWMO_INPUTAVAILABLE,
+                );
+            } else {
+                // Shell view updates may synchronously query an owner HWND.
+                // Service sent messages without dispatching queued app actions
+                // while the caller still owns its workspace/model borrow.
+                let mut message = MSG::default();
+                PeekMessageW(&raw mut message, null_mut(), 0, 0, PM_NOREMOVE | PM_QS_SENDMESSAGE);
+                MsgWaitForMultipleObjectsEx(
+                    0, std::ptr::null(), 5, QS_SENDMESSAGE, MWMO_INPUTAVAILABLE,
+                );
             }
         }
         Ok(())
@@ -459,7 +528,7 @@ impl FilterSession {
         // An accepted request without an ACK has an unknown outcome. Retire
         // this session instead of treating a live HWND as a healthy protocol.
         // Cleanup must remain possible before the supervisor reconnects.
-        if self.timed_out.get() && !matches!(op,
+        if self.retired.get() && !matches!(op,
             wire::DETACH | wire::UPDATE_END | wire::MENU_FINISH | wire::MENU_CANCEL
             | wire::DESKTOP_RESTORE | wire::DESKTOP_GESTURE_OFF)
         {
@@ -475,7 +544,7 @@ impl FilterSession {
             let started = Instant::now();
             // The menu worker itself allows three seconds to prepare. Give
             // its reply time to reach this outer IPC boundary before timing out.
-            let timeout = Duration::from_secs(if wire::is_menu_transaction(op) { 5 } else { 3 });
+            let timeout = if wire::is_menu_transaction(op) { MENU_ACK_TIMEOUT } else { ACK_TIMEOUT };
             while started.elapsed() < timeout {
                 if op == wire::DETACH && GetPropW(self.view, OWNER).is_null() {
                     return Ok(());
@@ -484,71 +553,14 @@ impl FilterSession {
                     return Err("等待确认期间桌面过滤连接已断开".into());
                 }
                 if GetPropW(self.view, ACK) as usize == sequence as usize {
-                    if wire::is_desktop_visibility(op) {
-                        let error = GetPropW(self.view, REQUEST_ERROR) as usize as u32;
-                        return if error == 0 { Ok(()) } else {
-                            Err(format!("桌面显隐请求失败 (0x{error:08x}); op={op}"))
-                        };
-                    }
-                    if wire::is_menu_transaction(op) {
-                        let error = GetPropW(self.view, MENU_ERROR) as usize as u32;
-                        return if error == 0 {
-                            Ok(())
-                        } else {
-                            Err(format!("独立原生菜单不可用 (0x{error:08x})"))
-                        };
-                    }
-                    let error = GetPropW(self.view, ERROR) as usize as u32;
-                    return if error == 0 {
-                        let retry = GetPropW(self.view, REQUEST_ERROR) as usize as u32;
-                        if retry == 0 {
-                            Ok(())
-                        } else {
-                            Err(format!(
-                                "桌面过滤请求未完成 (0x{retry:08x}); {}", diagnostics::summary(self.view)
-                            ))
-                        }
-                    } else {
-                        Err(format!("桌面过滤失败，已请求恢复原生项目 (0x{error:08x}); {}", diagnostics::summary(self.view)))
-                    };
+                    return self.ack_result(op);
                 }
-                if wire::is_menu_transaction(op) {
-                    // Explorer can synchronously query our windows while creating
-                    // its Shell view. Menu callers must hold no UI model borrows.
-                    let mut message = MSG::default();
-                    for _ in 0..32 {
-                        if PeekMessageW(&raw mut message, null_mut(), 0, 0, PM_REMOVE) == 0 {
-                            break;
-                        }
-                        if message.message == WM_QUIT {
-                            PostQuitMessage(message.wParam as i32);
-                            return Err("菜单操作被退出请求中断".into());
-                        }
-                        TranslateMessage(&message);
-                        DispatchMessageW(&message);
-                    }
-                    MsgWaitForMultipleObjectsEx(
-                        0,
-                        std::ptr::null(),
-                        5,
-                        QS_ALLINPUT,
-                        MWMO_INPUTAVAILABLE,
-                    );
-                } else {
-                    // Shell view updates may synchronously query an owner HWND.
-                    // Service sent messages without dispatching queued app actions
-                    // while the caller still owns its workspace/model borrow.
-                    let mut message = MSG::default();
-                    PeekMessageW(&raw mut message, null_mut(), 0, 0, PM_NOREMOVE | PM_QS_SENDMESSAGE);
-                    MsgWaitForMultipleObjectsEx(
-                        0, std::ptr::null(), 5, QS_SENDMESSAGE, MWMO_INPUTAVAILABLE,
-                    );
-                }
+                Self::pump_request_messages(op)?;
             }
             let description = if wire::is_menu_transaction(op) {
                 "Explorer 菜单准备或释放超时"
             } else {
-                self.timed_out.set(true);
+                self.retired.set(true);
                 "桌面过滤响应超时"
             };
             Err(format!(
@@ -562,6 +574,26 @@ impl FilterSession {
         }
     }
 }
+impl Drop for FilterSession {
+    fn drop(&mut self) {
+        self.explorer_watch.take();
+        let _ = self.request(wire::DETACH, &[]);
+        unsafe {
+            UnhookWindowsHookEx(self.hook);
+            FreeLibrary(self.module);
+        }
+    }
+}
+
+#[cfg(test)]
+fn test_session(view: HWND, owner: HWND, sequence: u32) -> FilterSession {
+    FilterSession {
+        view, owner, hook: null_mut(), module: null_mut(), sequence: Cell::new(sequence),
+        retired: Cell::new(false), in_flight: Cell::new(false), pending_hidden: Cell::new(None),
+        update: Cell::new(None), explorer_watch: None,
+    }
+}
+
 #[cfg(test)]
 mod attach_tests {
     use super::*;
@@ -658,16 +690,6 @@ mod attach_tests {
     }
 }
 
-impl Drop for FilterSession {
-    fn drop(&mut self) {
-        self.explorer_watch.take();
-        let _ = self.request(wire::DETACH, &[]);
-        unsafe {
-            UnhookWindowsHookEx(self.hook);
-            FreeLibrary(self.module);
-        }
-    }
-}
 
 #[cfg(test)]
 mod update_tests {
@@ -711,12 +733,7 @@ mod update_tests {
         });
         unsafe {
             let hwnd = receiver_channel.recv_timeout(Duration::from_secs(5)).unwrap() as HWND;
-            let session = std::mem::ManuallyDrop::new(FilterSession {
-                view: hwnd, owner: hwnd, hook: null_mut(), module: null_mut(),
-                sequence: Cell::new(0), timed_out: Cell::new(false), in_flight: Cell::new(false),
-                pending_hidden: Cell::new(None), hidden_started: Cell::new(None),
-                update: Cell::new(None), explorer_watch: None,
-            });
+            let session = std::mem::ManuallyDrop::new(test_session(hwnd, hwnd, 0));
             let rejected = session.clear_selection();
             let healthy_after_rejection = session.is_alive();
             let timeout = session.clear_selection();
@@ -755,11 +772,7 @@ mod update_tests {
                 null_mut(), null_mut(), instance, null_mut());
             assert!(!hwnd.is_null());
             SetPropW(hwnd, OWNER, hwnd);
-            let session = std::mem::ManuallyDrop::new(FilterSession {
-                view: hwnd, owner: hwnd, hook: null_mut(), module: null_mut(),
-                sequence: Cell::new(0), timed_out: Cell::new(false), in_flight: Cell::new(false), pending_hidden: Cell::new(None), hidden_started: Cell::new(None),
-                update: Cell::new(None), explorer_watch: None,
-            });
+            let session = std::mem::ManuallyDrop::new(test_session(hwnd, hwnd, 0));
             assert!(session.is_alive());
             let error = session.clear_selection().unwrap_err();
             assert!(error.contains("桌面过滤响应超时; op=2, sequence=1, ack=0"), "{error}");
@@ -798,15 +811,10 @@ mod update_tests {
                 null_mut(), null_mut(), instance, null_mut());
             assert!(!hwnd.is_null());
             SetPropW(hwnd, OWNER, hwnd);
-            let session = std::mem::ManuallyDrop::new(FilterSession {
-                view: hwnd, owner: hwnd, hook: null_mut(), module: null_mut(),
-                sequence: Cell::new(0), timed_out: Cell::new(false), in_flight: Cell::new(false),
-                pending_hidden: Cell::new(None), hidden_started: Cell::new(None),
-                update: Cell::new(None), explorer_watch: None,
-            });
+            let session = std::mem::ManuallyDrop::new(test_session(hwnd, hwnd, 0));
             let names: Vec<_> = (0..100).map(|i| format!("test:{i}")).collect();
             session.submit_hidden(&names).unwrap();
-            let sequence = session.pending_hidden.get().unwrap();
+            let sequence = session.pending_hidden.get().unwrap().sequence;
             for _ in 0..100 { assert!(!session.poll_hidden().unwrap()); }
             assert!(session.submit_hidden(&[]).is_err());
             assert!(session.clear_selection().is_err(), "must preserve outstanding ACK");
@@ -818,7 +826,7 @@ mod update_tests {
             SetPropW(hwnd, ACK, sequence as usize as _);
             assert!(session.poll_hidden().unwrap());
             session.submit_hidden(&[]).unwrap();
-            let sequence = session.pending_hidden.get().unwrap();
+            let sequence = session.pending_hidden.get().unwrap().sequence;
             SetPropW(hwnd, REQUEST_ERROR, 123usize as _);
             SetPropW(hwnd, ACK, sequence as usize as _);
             assert!(session.poll_hidden().is_err());
@@ -829,13 +837,13 @@ mod update_tests {
             assert!(session.poll_hidden().is_err());
             SetPropW(hwnd, OWNER, hwnd);
             session.submit_hidden(&names).unwrap();
-            let sequence = session.pending_hidden.get().unwrap();
-            session.hidden_started.set(Some(Instant::now() - Duration::from_secs(4)));
+            let sequence = session.pending_hidden.get().unwrap().sequence;
+            session.pending_hidden.set(Some(PendingHidden { sequence, started: Instant::now() - Duration::from_secs(4) }));
             SetPropW(hwnd, ACK, sequence as usize as _);
             assert_eq!(session.poll_hidden(), Ok(true), "an available ACK wins over delayed polling");
             session.submit_hidden(&names).unwrap();
-            let sequence = session.pending_hidden.get().unwrap();
-            session.hidden_started.set(Some(Instant::now() - Duration::from_secs(4)));
+            let sequence = session.pending_hidden.get().unwrap().sequence;
+            session.pending_hidden.set(Some(PendingHidden { sequence, started: Instant::now() - Duration::from_secs(4) }));
             assert!(session.poll_hidden().unwrap_err().contains("确认超时"));
             assert!(!session.is_alive());
             SetPropW(hwnd, ACK, sequence as usize as _);
@@ -897,10 +905,7 @@ mod update_tests {
             let view = receiver.recv_timeout(Duration::from_secs(2)).unwrap() as HWND;
             SetPropW(view, OWNER, owner);
             PostMessageW(owner, ACTION, 0, 0);
-            let session = std::mem::ManuallyDrop::new(FilterSession { timed_out: Cell::new(false), in_flight: Cell::new(false),
-                view, owner, hook: null_mut(), module: null_mut(), sequence: Cell::new(0), pending_hidden: Cell::new(None), hidden_started: Cell::new(None),
-                update: Cell::new(None), explorer_watch: None,
-            });
+            let session = std::mem::ManuallyDrop::new(test_session(view, owner, 0));
             let result = session.set_hidden(&["test:item".into()]);
             let mut message = MSG::default();
             let queued = PeekMessageW(&raw mut message, owner, ACTION, ACTION, PM_REMOVE);
@@ -928,10 +933,7 @@ mod update_tests {
             let hwnd = CreateWindowExW(0, class, class, WS_POPUP, 0, 0, 1, 1,
                 null_mut(), null_mut(), instance, null_mut());
             assert!(!hwnd.is_null());
-            let session = std::mem::ManuallyDrop::new(FilterSession { timed_out: Cell::new(false), in_flight: Cell::new(false),
-                view: hwnd, owner: hwnd, hook: null_mut(), module: null_mut(),
-                sequence: Cell::new(0), pending_hidden: Cell::new(None), hidden_started: Cell::new(None), update: Cell::new(None), explorer_watch: None,
-            });
+            let session = std::mem::ManuallyDrop::new(test_session(hwnd, hwnd, 0));
             SetPropW(hwnd, OWNER, hwnd);
             let started = Instant::now();
             assert!(session.set_hidden(&[]).unwrap_err().contains("已断开"));
@@ -963,15 +965,8 @@ mod update_tests {
             SetPropW(hwnd, OWNER, hwnd);
             // STATIC rejects WM_COPYDATA, so this exercises a real transport
             // rejection without injecting into the user's Explorer.
-            let session = std::mem::ManuallyDrop::new(FilterSession { timed_out: Cell::new(false), in_flight: Cell::new(false),
-                view: hwnd,
-                owner: hwnd,
-                hook: null_mut(),
-                module: null_mut(),
-                sequence: Cell::new(42), pending_hidden: Cell::new(None), hidden_started: Cell::new(None),
-                update: Cell::new(Some(42)),
-                explorer_watch: None,
-            });
+            let session = std::mem::ManuallyDrop::new(test_session(hwnd, hwnd, 42));
+            session.update.set(Some(42));
             assert!(session.finish_update().is_err());
             assert_eq!(GetPropW(hwnd, UPDATE_RELEASE) as usize, 42);
             assert_eq!(session.update.get(), Some(42));

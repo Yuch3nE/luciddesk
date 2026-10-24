@@ -85,11 +85,7 @@ fn sent_focus_callback_times_out_inline_but_succeeds_when_deferred() {
             let view = receiver.recv_timeout(Duration::from_secs(2)).unwrap() as HWND;
             SetPropW(view, OWNER, owner);
             let context = Box::new(Context {
-                session: std::mem::ManuallyDrop::new(FilterSession {
-                    view, owner, hook: null_mut(), module: null_mut(),
-                    sequence: Cell::new(0), timed_out: Cell::new(false), in_flight: Cell::new(false),
-                    pending_hidden: Cell::new(None), hidden_started: Cell::new(None), update: Cell::new(None), explorer_watch: None,
-                }),
+                session: std::mem::ManuallyDrop::new(test_session(view, owner, 0)),
                 deferred, result: std::cell::RefCell::new(None),
             });
             SetWindowLongPtrW(owner, GWLP_USERDATA, (&raw const *context) as isize);
