@@ -248,6 +248,7 @@ impl State {
         )
     }
     fn restore(&mut self) -> bool {
+        let _sample = diagnostics::Sample::start(self.hwnd, diagnostics::Metric::Restore);
         self.failed = true;
         self.paused = false;
         self.updating = false;
@@ -609,6 +610,7 @@ unsafe extern "system" fn subclass(
                     }
                     return Some(0);
                 }
+                let _sample = diagnostics::Sample::start(hwnd, diagnostics::Metric::Paint);
                 let result = state.apply_membership();
                 if state.apply_result(result).is_some() && !state.failed {
                     unsafe {
@@ -664,6 +666,7 @@ unsafe extern "system" fn subclass(
                     // Do not restore all members on a cleanup/read error. Normal
                     // filtering will retry; presentation must always be released.
                     state.updating = false;
+                    let _sample = diagnostics::Sample::start(hwnd, diagnostics::Metric::Background);
                     let result = state.apply_membership();
                     state.apply_result(result);
                     state.redraw(true);
@@ -676,6 +679,7 @@ unsafe extern "system" fn subclass(
                     return Some(0);
                 }
                 let request = state.pending.take();
+                let _sample = request.as_ref().and_then(|_| diagnostics::Sample::start(hwnd, diagnostics::Metric::Request));
                 if request.is_some() {
                     unsafe {
                         RemovePropW(hwnd, REQUEST_ERROR);
@@ -731,7 +735,7 @@ unsafe extern "system" fn subclass(
                     } else if state.paused {
                         Ok(())
                     } else {
-                        let _sample = diagnostics::Sample::start(state.hwnd);
+                        let _sample = diagnostics::Sample::start(state.hwnd, diagnostics::Metric::Background);
                         state.apply_membership()
                     };
                     if let Some(error) = state.apply_result(result) {

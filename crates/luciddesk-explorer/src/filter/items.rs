@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
-use super::diagnostics::Stage;
+use super::diagnostics::{Stage, Sample, Metric};
 use windows::{
     Win32::{
         Foundation::POINT,
@@ -50,6 +50,7 @@ struct ShellView<'a> { folder: &'a IFolderView2, objects: &'a IShellFolderView }
 impl View for ShellView<'_> {
     fn snapshot(&mut self) -> Result<Vec<Item>> { snapshot(self.folder) }
     fn present(&mut self, targets: &[&Item]) -> Result<BTreeSet<String>> {
+        let _sample = Sample::phase(Metric::Present);
         // Verify identities without invoking unrelated metadata or layout reads.
         unsafe {
             let count = self.folder.ItemCount(SVGIO_ALLVIEW)?;
@@ -66,9 +67,10 @@ impl View for ShellView<'_> {
         }
     }
     fn exists(&mut self, name: &str) -> Result<bool> { exists(name) }
-    fn add(&mut self, row: &Item) -> Result<()> { unsafe { self.objects.AddObject(row.pidl).map(|_| ()) } }
-    fn remove(&mut self, row: &Item) -> Result<()> { unsafe { self.objects.RemoveObject(Some(row.pidl)).map(|_| ()) } }
+    fn add(&mut self, row: &Item) -> Result<()> { let _sample = Sample::phase(Metric::Add); unsafe { self.objects.AddObject(row.pidl).map(|_| ()) } }
+    fn remove(&mut self, row: &Item) -> Result<()> { let _sample = Sample::phase(Metric::Remove); unsafe { self.objects.RemoveObject(Some(row.pidl)).map(|_| ()) } }
     fn position(&mut self, rows: &[(*const ITEMIDLIST, POINT)]) -> Result<()> {
+        let _sample = Sample::phase(Metric::Position);
         let ids: Vec<_> = rows.iter().map(|(id, _)| *id).collect();
         let points: Vec<_> = rows.iter().map(|(_, point)| *point).collect();
         unsafe { self.folder.SelectAndPositionItems(ids.len() as u32, ids.as_ptr(), Some(points.as_ptr()), SVSI_POSITIONITEM.0 as u32) }
@@ -135,10 +137,15 @@ fn validate_snapshot(before: &[RowRevision], after: &[RowRevision]) -> Result<()
 }
 
 pub fn snapshot(folder: &IFolderView2) -> Result<Vec<Item>> {
+    let _sample = Sample::phase(Metric::Snapshot);
     unsafe {
-        let parent: IShellFolder = folder.GetFolder()?;
+        let parent: IShellFolder = {
+            let _sample = Sample::phase(Metric::Folder);
+            folder.GetFolder()?
+        };
         let mut result = Vec::new();
         for index in 0..folder.ItemCount(SVGIO_ALLVIEW)? {
+            let read_sample = Sample::phase(Metric::Read);
             let mut row = Item {
                 pidl: folder.Item(index)?,
                 name: String::new(),
@@ -148,6 +155,8 @@ pub fn snapshot(folder: &IFolderView2) -> Result<Vec<Item>> {
                 return Err(changed_snapshot());
             }
             row.position = folder.GetItemPosition(row.pidl)?;
+            drop(read_sample);
+            let _name_sample = Sample::phase(Metric::Names);
             let item: IShellItem = SHCreateItemWithParent(None, &parent, row.pidl)?;
             let raw = item.GetDisplayName(SIGDN_DESKTOPABSOLUTEPARSING)?;
             let name = raw.to_string();
@@ -158,6 +167,7 @@ pub fn snapshot(folder: &IFolderView2) -> Result<Vec<Item>> {
         // Names may invoke Shell extensions and reenter Explorer. Verify the
         // ordered PIDLs and positions again before using rows as a write plan
         // or restoration baseline. These reads never freeze or mutate the view.
+        let _validate_sample = Sample::phase(Metric::Validate);
         let before = result
             .iter()
             .map(row_revision)
