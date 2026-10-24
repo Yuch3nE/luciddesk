@@ -1,13 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { validateRelease } from './update-repository.mjs';
-import { syncReleaseDocs, documents, correctReleaseNotes, validateManualPair } from './sync-release-docs.mjs';
+import { syncReleaseDocs, documents, correctReleaseNotes, validateManualPair, validateReleaseDoc } from './sync-release-docs.mjs';
 import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { execFileSync } from 'node:child_process';
 const repo = {full_name:'Yuch3nE/luciddesk', stargazers_count:10};
+test('other public document corrections reject wrong versions and incomplete content', () => {
+  const valid = '<!-- release-doc-version: 0.23.0 -->\n# CLI\n## Usage\nInstructions';
+  assert.equal(validateReleaseDoc(valid, '0.23.0'), true);
+  assert.equal(validateReleaseDoc('Legacy document', '0.23.0'), false);
+  assert.throws(() => validateReleaseDoc(valid, '0.24.0'), /version/);
+  assert.throws(() => validateReleaseDoc('<!-- release-doc-version: 0.23.0 -->', '0.23.0'), /incomplete/);
+});
 test('manual corrections require matching bilingual release versions and content', () => {
   const valid = '<!-- manual-version: 0.23.0 -->\n# Manual\n## Start\nInstructions';
   assert.equal(validateManualPair([valid, valid], '0.23.0'), true);
@@ -99,6 +106,14 @@ test('import exact release documents and reject mismatched version or commit', a
       assert.equal(manualManifest.documents[file], createHash('sha256').update(bytes).digest('hex'));
       assert.doesNotMatch(await readFile(join(source, file), 'utf8'), /Corrected manual/);
     }
+    await writeFile(join(target, 'docs/cli.md'), '<!-- release-doc-version: 0.23.0 -->\n# CLI\n## Usage\nCorrected CLI');
+    await syncReleaseDocs(source, target, 'v0.23.0', '', target);
+    const docManifest = JSON.parse(await readFile(join(target, 'website/public/release.json'), 'utf8'));
+    assert.deepEqual(docManifest.documentCorrections, {commit:updated.changelogCorrectionsCommit, files:['docs/cli.md']});
+    const cliBytes = await readFile(join(target, 'docs/cli.md'));
+    assert.match(cliBytes.toString(), /Corrected CLI/);
+    assert.equal(docManifest.documents['docs/cli.md'], createHash('sha256').update(cliBytes).digest('hex'));
+    assert.doesNotMatch(await readFile(join(source, 'docs/cli.md'), 'utf8'), /Corrected CLI/);
     // An invalid translation must not partially overwrite build inputs.
     await writeFile(join(target, 'CHANGELOG.en.md'), '## 0.24.0\n\nWrong version\n');
     const before = await readFile(join(target, 'CHANGELOG.md'));

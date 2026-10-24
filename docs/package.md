@@ -1,3 +1,5 @@
+<!-- release-doc-version: 0.23.0 -->
+
 # LucidDesk 免安装版
 
 LucidDesk 提供桌面分组、文件夹面板和 Everything 搜索入口。开发者：**Yuchen95**。主要验证与维护平台为 Windows 11 x64。
@@ -90,7 +92,7 @@ Windows 10 的用户反馈不等于每个构建均完成验收；ARM64 和远程
 
 不使用 Agent 或脚本时，无需配置 CLI。需要连接 Agent 时，在“设置 → 通用 → Agent 与 CLI”复制 Skill 安装提示词，交给你使用的 Agent；复制不会自动安装或授权整理。安装器不会修改 Agent 的目录或系统 PATH。
 
-在程序目录打开 PowerShell，运行 `.\luciddesk-cli.exe status --json` 可检查连接，`help` 可查看命令。详细用法见随包 `cli.md` 或[在线 Agent 指南](https://luciddesk.bbkingdom365.com/agent/)。CLI 备份、导出与恢复属于未发布功能，使用前检查 `capabilities --json`。
+在程序目录打开 PowerShell，运行 `.\luciddesk-cli.exe status --json` 可检查连接，`help` 可查看命令。详细用法见随包 `cli.md` 或[在线 Agent 指南](https://luciddesk.bbkingdom365.com/agent/)。CLI 支持备份、导出与恢复；使用前通过 `capabilities --json` 检查正在运行的程序支持哪些操作。
 
 
 ## 可选插件

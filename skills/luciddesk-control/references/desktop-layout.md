@@ -2,7 +2,7 @@
 
 ## Change one pane
 
-The display fields below are unreleased additions; use them only when `capabilities.pane_display` advertises the required fields.
+The display fields below are included in LucidDesk 0.23.0; use them only when `capabilities.pane_display` advertises the required fields.
 
 `pane update --id ID --list-view false --icon-only true --icon-size medium --dry-run --json` changes only the named desktop or folder pane, including inactive tabs. Sizes are `small`, `medium`, `large`. Omitted fields preserve state. List view retains icon preferences without displaying them; pass `list_view:false` to show icons. Locked panes require an explicit unlock. Window locking/folding/topmost options still apply across a tab group; display options do not.
 

@@ -63,8 +63,8 @@ export const helpPagesEn: HelpPage[] = [
       },
       {
         "id": "backup-cli",
-        "title": "Backup, export and restore · Unreleased",
-        "html": "<p>Later development builds let your agent create, export and restore configuration backups. Release 0.22.2 does not include these commands; check the running app’s capabilities first.</p><p>Exports do not overwrite files. Restore replaces current settings and layout and saves a pre-restore copy first. Backups do not include your original files. Review the selected backup, and check the original operation after a timeout instead of submitting it again.</p><p>You can also use Settings → Backup &amp; restore without an agent. See the <a href=\"https://github.com/Yuch3nE/luciddesk/blob/main/docs/cli.md#english-quick-start\">CLI quick start</a>.</p>"
+        "title": "Backup, export and restore",
+        "html": "<p>LucidDesk 0.23.0 lets your agent list, create, export and restore configuration backups. Use the CLI shipped with the app and check the running app’s capabilities first.</p><p>Exports do not overwrite files. Restore replaces current settings and layout and saves a pre-restore copy first. Backups do not include your original files. Review the selected backup, and check the original operation after a timeout instead of submitting it again.</p><p>You can also use Settings → Backup &amp; restore without an agent. See the <a href=\"https://github.com/Yuch3nE/luciddesk/blob/main/docs/cli.md#english-quick-start\">CLI quick start</a>.</p>"
       },
       {
         "id": "verify",

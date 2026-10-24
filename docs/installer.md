@@ -1,3 +1,5 @@
+<!-- release-doc-version: 0.23.0 -->
+
 # 安装与更新
 
 下载请到 [GitHub Releases](https://github.com/Yuch3nE/luciddesk/releases)，选择对应版本的附件。安装后从[使用手册](https://luciddesk.bbkingdom365.com/guide/)开始。
@@ -11,7 +13,7 @@
 3. 使用与原来相同的安装格式和范围更新；不要只替换单个 EXE 或 DLL。
 4. 启动后检查版本、面板和文件夹路径。原始文件需要另行备份。
 
-程序只检查更新并打开下载页面，不会自动安装新版。标有“未发布”的文档功能不一定包含在下载的正式版中。
+程序只检查更新并打开下载页面，不会自动安装新版。安装后可在“设置 → 关于”确认版本。
 
 ## EXE 安装包
 
@@ -63,7 +65,7 @@ msiexec.exe /i "LucidDesk-<版本>-windows-x64.msi" INSTALLFOLDER="D:\Apps\Lucid
 
 不使用 Agent 或脚本时，无需配置 CLI。需要连接 Agent 时，在“设置 → 通用 → Agent 与 CLI”复制 Skill 安装提示词，交给你使用的 Agent；复制不会自动安装或授权整理。安装器不会修改 Agent 的目录或系统 PATH。
 
-在程序目录打开 PowerShell，运行 `.\luciddesk-cli.exe status --json` 可检查连接，`help` 可查看命令。详细用法见随包 `cli.md` 或[在线 Agent 指南](https://luciddesk.bbkingdom365.com/agent/)。CLI 备份、导出与恢复属于未发布功能，使用前检查 `capabilities --json`。
+在程序目录打开 PowerShell，运行 `.\luciddesk-cli.exe status --json` 可检查连接，`help` 可查看命令。详细用法见随包 `cli.md` 或[在线 Agent 指南](https://luciddesk.bbkingdom365.com/agent/)。CLI 支持备份、导出与恢复；使用前通过 `capabilities --json` 检查正在运行的程序支持哪些操作。
 
 
 ## EXE 安装内容

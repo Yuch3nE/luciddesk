@@ -1,3 +1,5 @@
+<!-- release-doc-version: 0.23.0 -->
+
 # LucidDesk Privacy Policy
 
 [简体中文](PRIVACY.md) · English
@@ -40,7 +42,7 @@ If you enable Everything search or Peek/QuickLook previews, LucidDesk passes sea
 
 The CLI communicates locally with the running LucidDesk app. It can read panels, file names, paths and settings, and perform organization tasks you request. LucidDesk does not include an AI chat service. Your external agent may send queried information to its service provider, depending on that agent's settings and privacy policy. Installing the Skill does not automatically connect to a service or authorize desktop changes.
 
-Disabling command-line control rejects subsequent online access, but does not undo submitted operations or retrieve information already shared with an agent. Unreleased CLI backup, export and restore commands use local backup files. Those files may contain private paths; review them before sharing or uploading them.
+Disabling command-line control rejects subsequent online access, but does not undo submitted operations or retrieve information already shared with an agent. CLI backup, export and restore commands use local backup files. Those files may contain private paths; review them before sharing or uploading them.
 
 ## Diagnostics and information you share
 

@@ -44,7 +44,7 @@ shadcn/ui 源码来自官方 `new-york-v4` 注册表，许可见 `SHADCN-LICENSE
 
 `src/content/help.ts` / `help.en.ts` 保存安装、Agent 和隐私内容。使用指南正文只维护仓库的 `docs/usage.md` 与 `docs/usage.en.md`，由 `src/content/manual.ts` 在构建时通过 Astro Markdown 渲染导入，再交给 `[slug].astro` 与 `HelpLayout.astro`。不要再复制一份指南 HTML。
 
-手册以当前功能为准，必须在具体章节标明未发布功能，并保留正式版基线说明。`manual.ts` 将二级标题转为目录、映射原有 `/guide/#backup` 等链接并转换仓库相对链接；截图直接引用仓库资源，表格在窄屏横向滚动。修改章节标题时同步锚点映射，并检查中英文目录、旧链接、版本标记和 `dist/_languages/en/guide/index.json`。安装及隐私内容仍需核对各专题文档。
+面向用户的指南以当前正式版本为准；只有确实未发布的功能才标明未发布。发布时核对双语手册、CLI、安装和隐私说明的适用版本及正文，并更新对应的文档版本标记。发布后修订的同步规则见[官网自动发布](../docs/development/website-deployment.md)。`manual.ts` 将二级标题转为目录、映射原有 `/guide/#backup` 等链接并转换仓库相对链接；截图直接引用仓库资源，表格在窄屏横向滚动。修改章节标题时同步锚点映射，并检查中英文目录、旧链接、版本标记和 `dist/_languages/en/guide/index.json`。安装及隐私内容仍需核对各专题文档。
 
 ## 仓库信息
 

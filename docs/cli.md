@@ -1,10 +1,12 @@
+<!-- release-doc-version: 0.23.0 -->
+
 # CLI 使用
 
 [English quick start](#english-quick-start)
 
 使用安装目录中的 `luciddesk-cli.exe` 控制正在运行的 LucidDesk。无需安装 Rust，也无需编译。主程序、CLI 和 Skill 应来自同一套发布包；命令不会替你启动主程序。
 
-本文以 0.22.2 及后续开发版本为准。**面板独立图标设置、CLI 备份/导出/恢复尚未发布**；先用 `capabilities --json` 确认当前程序支持，版本号相同也不代表开发构建功能相同。
+适用于 LucidDesk 0.23.0。面板独立图标设置和备份、导出、恢复命令已包含在此版本中；使用前可通过 `capabilities --json` 确认正在运行的程序支持哪些操作。
 
 ## 先确认连接
 
@@ -44,7 +46,7 @@ $result
 | 合并或切换标签 | `tab merge`、`tab select` |
 | 浏览文件夹、搜索 | `folder get`、`folder navigate`、`search query` |
 | 修改设置、登录自启 | `settings get/update`、`startup get/set` |
-| 创建、导出或恢复备份（未发布） | `backup list/create/export/restore` |
+| 创建、导出或恢复备份 | `backup list/create/export/restore` |
 | 查看某条命令的参数 | `help 资源 命令`，例如 `help backup export` |
 
 ## English quick start
@@ -53,7 +55,7 @@ Use the `luciddesk-cli.exe` shipped with your running LucidDesk installation. No
 
 Use `--dry-run --json` on a mutation, review its diff, then execute the returned `data.next_step.args` array to apply that exact preview. Without `--dry-run`, mutation shortcuts preview and submit immediately. Keep the returned request ID and use `request get --id ID --json` to check pending or uncertain results before retrying.
 
-Per-pane icon controls and `backup list/create/export/restore` are **unreleased**; check capabilities before use. Backup exports require a new absolute destination path. Restore replaces settings and layout, validates and freezes the selected backup at preview, and saves a pre-restore copy. It does not restore your original files. Keep `rollback_path` if recovery fails; do not repeatedly submit a restore. See the [online Agent guide](https://luciddesk.bbkingdom365.com/agent/) for general setup; the detailed command reference below is in Chinese.
+LucidDesk 0.23.0 includes per-pane icon controls and `backup list/create/export/restore`; check the running app’s capabilities before use. Backup exports require a new absolute destination path. Restore replaces settings and layout, validates and freezes the selected backup at preview, and saves a pre-restore copy. It does not restore your original files. Keep `rollback_path` if recovery fails; do not repeatedly submit a restore. See the [online Agent guide](https://luciddesk.bbkingdom365.com/agent/) for general setup; the detailed command reference below is in Chinese.
 
 ## 帮助与命令发现
 
@@ -126,7 +128,7 @@ CLI 只连接本机当前用户会话中的应用。查询不会修改工作区�
 
 ## 面板显示
 
-以下选项属于当前开发版本（尚未发布）。先查询 `capabilities --json`，确认 `pane_display` 支持对应字段。
+以下选项适用于 LucidDesk 0.23.0。先查询 `capabilities --json`，确认 `pane_display` 支持对应字段。
 
 ```powershell
 luciddesk-cli pane update --id 1 --list-view false --icon-only true --icon-size medium --dry-run --json
@@ -425,7 +427,7 @@ luciddesk-cli item position --pane 1 --item-id ITEM_A --x 180.5 --y 90 --dry-run
 读取 `capabilities.pane_sort_columns`、`pane_arrangement`、`item_position` 确认运行中应用支持扩展；协议版本保持 1，旧请求语义不变。预览、冲突保护、幂等回执及无变化不写库沿用统一计划逻辑。
 
 
-## 配置备份、导出与恢复（未发布）
+## 配置备份、导出与恢复
 
 - `backup list --json`：列出备份目录、记录和忙碌状态。
 - `backup create --dry-run --json`：预览创建手动备份，保存到应用备份目录。

@@ -13,6 +13,13 @@ export function validateManualPair(manuals, version) {
   if (manuals.some(text => !/^# .+/m.test(text) || !/^## .+/m.test(text))) throw new Error('Manual content is incomplete');
   return true;
 }
+export function validateReleaseDoc(text, version) {
+  const marker = text.match(/^<!-- release-doc-version: (\d+\.\d+\.\d+) -->/m);
+  if (!marker) return false;
+  if (marker[1] !== version) throw new Error('Document version must match the release');
+  if (!/^# .+/m.test(text) || !/^## .+/m.test(text)) throw new Error('Document content is incomplete');
+  return true;
+}
 // Only the matching release section may be corrected; future releases and older
 // history from main must never leak into a version-matched deployment.
 export function correctReleaseNotes(original, corrected, version) {
@@ -44,6 +51,7 @@ export async function syncReleaseDocs(source, targetRoot, tag, expectedCommit = 
   const manualFiles = ['docs/usage.md', 'docs/usage.en.md'];
   const manuals = correctionsRoot ? await Promise.all(manualFiles.map(file => readFile(resolve(correctionsRoot, file), 'utf8'))) : [];
   const correctedManuals = correctionsRoot && validateManualPair(manuals, version);
+  const correctedDocuments = [];
   const entries = await Promise.all(documents.map(async file => {
     let bytes = await readFile(resolve(source, file));
     if (file.startsWith('CHANGELOG') && !bytes.toString().includes(`## ${version} ·`)) throw new Error(`Missing release notes: ${file}`);
@@ -51,6 +59,13 @@ export async function syncReleaseDocs(source, targetRoot, tag, expectedCommit = 
       bytes = Buffer.from(correctReleaseNotes(bytes.toString(), await readFile(resolve(correctionsRoot, file), 'utf8'), version));
     }
     if (correctedManuals && manualFiles.includes(file)) bytes = Buffer.from(manuals[manualFiles.indexOf(file)]);
+    if (correctionsRoot && !file.startsWith('CHANGELOG') && !manualFiles.includes(file)) {
+      const text = await readFile(resolve(correctionsRoot, file), 'utf8');
+      if (validateReleaseDoc(text, version)) {
+        bytes = Buffer.from(text);
+        correctedDocuments.push(file);
+      }
+    }
     return [file, bytes];
   }));
   const hashes = {};
@@ -62,7 +77,7 @@ export async function syncReleaseDocs(source, targetRoot, tag, expectedCommit = 
   }
   const provenance = resolve(targetRoot, 'website/public/release.json');
   await mkdir(dirname(provenance), {recursive:true});
-  await writeFile(provenance, JSON.stringify({tag, commit:sha, changelogCorrectionsCommit:correctionsCommit, manualCorrectionsCommit:correctedManuals ? correctionsCommit : undefined, documents:hashes}, null, 2) + '\n');
+  await writeFile(provenance, JSON.stringify({tag, commit:sha, changelogCorrectionsCommit:correctionsCommit, manualCorrectionsCommit:correctedManuals ? correctionsCommit : undefined, documentCorrections:correctedDocuments.length ? {commit:correctionsCommit, files:correctedDocuments.sort()} : undefined, documents:hashes}, null, 2) + '\n');
   console.log(`Imported documentation from ${tag} (${sha}) without modifying the release source.`);
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
