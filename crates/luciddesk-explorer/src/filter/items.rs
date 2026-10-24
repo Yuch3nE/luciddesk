@@ -137,6 +137,12 @@ fn validate_snapshot(before: &[RowRevision], after: &[RowRevision]) -> Result<()
 }
 
 pub fn snapshot(folder: &IFolderView2) -> Result<Vec<Item>> {
+    read_snapshot(folder, true)
+}
+
+// Read-only paint checks need identities, but never consume layout coordinates.
+// Full snapshots still verify both identities and positions before any write.
+fn read_snapshot(folder: &IFolderView2, positions: bool) -> Result<Vec<Item>> {
     let _sample = Sample::phase(Metric::Snapshot);
     unsafe {
         let parent: IShellFolder = {
@@ -154,7 +160,7 @@ pub fn snapshot(folder: &IFolderView2) -> Result<Vec<Item>> {
             if row.pidl.is_null() {
                 return Err(changed_snapshot());
             }
-            row.position = folder.GetItemPosition(row.pidl)?;
+            if positions { row.position = folder.GetItemPosition(row.pidl)?; }
             drop(read_sample);
             let _name_sample = Sample::phase(Metric::Names);
             let item: IShellItem = SHCreateItemWithParent(None, &parent, row.pidl)?;
@@ -190,7 +196,7 @@ pub fn snapshot(folder: &IFolderView2) -> Result<Vec<Item>> {
             if row.pidl.is_null() {
                 return Err(changed_snapshot());
             }
-            row.position = folder.GetItemPosition(row.pidl)?;
+            if positions { row.position = folder.GetItemPosition(row.pidl)?; }
             after.push(row_revision(&row)?);
         }
         if folder.ItemCount(SVGIO_ALLVIEW)? != count {
@@ -210,6 +216,19 @@ pub struct Membership {
     user_layout_changed: bool,
 }
 impl Membership {
+    pub fn paint_is_clean(&self, folder: &IFolderView2) -> std::result::Result<bool, ApplyError> {
+        self.check_paint(|| read_snapshot(folder, false))
+    }
+    fn check_paint(&self, read: impl FnOnce() -> Result<Vec<Item>>) -> std::result::Result<bool, ApplyError> {
+        // Never bypass baseline capture or a pending restoration. Reappearing
+        // hidden items (including silent Shell refreshes) require a full write
+        // transaction, not a mutation based on this identity-only snapshot.
+        if self.desired.is_empty() || self.baseline.is_empty() || self.hidden.keys().any(|name| !self.desired.contains(name)) {
+            return Ok(false);
+        }
+        let current = read().map_err(|error| ApplyError { error, before_write: true, stage: Stage::Snapshot })?;
+        Ok(!current.iter().any(|row| self.desired.contains(&row.name)))
+    }
     fn needs_position_restore(&self, current: &[Item], added: bool) -> bool {
         // New rows may need their original auto-arrange order even when their
         // current coordinates happen to match. Otherwise leave equal positions alone.
@@ -532,6 +551,30 @@ mod tests {
         let mut membership = Membership::default();
         membership.hidden.insert("a".into(), row("a"));
         membership
+    }
+    #[test]
+    fn paint_check_only_skips_transactions_with_no_membership_work() {
+        let mut membership = hidden();
+        membership.desired.insert("a".into());
+        // No baseline yet: even an empty desktop must use the full path.
+        assert!(!membership.check_paint(|| panic!("must not read")).unwrap());
+        membership.baseline.insert("a".into(), POINT { x: 10, y: 20 });
+        assert!(membership.check_paint(|| Ok(vec![row("other")])).unwrap());
+        assert!(membership.check_paint(|| Ok(vec![])).unwrap());
+        // Silent refresh and a newly desired visible item both force full reads.
+        assert!(!membership.check_paint(|| Ok(vec![row("a")])).unwrap());
+        membership.desired.insert("new".into());
+        assert!(!membership.check_paint(|| Ok(vec![row("new")])).unwrap());
+        let error = membership.check_paint(|| Err(changed_snapshot())).unwrap_err();
+        assert!(error.before_write && error.retryable());
+        assert_eq!(error.stage, Stage::Snapshot);
+        membership.desired.remove("a");
+        assert!(!membership.check_paint(|| panic!("release must use full path")).unwrap());
+        assert!(membership.hidden.contains_key("a"));
+        assert_eq!(membership.baseline["a"].x, 10);
+        membership.hidden.clear();
+        membership.desired.clear();
+        assert!(!membership.check_paint(|| panic!("baseline cleanup needs full path")).unwrap());
     }
     #[test]
     fn existence_only_discards_confirmed_missing_files() {

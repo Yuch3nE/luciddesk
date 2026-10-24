@@ -611,7 +611,9 @@ unsafe extern "system" fn subclass(
                     return Some(0);
                 }
                 let _sample = diagnostics::Sample::start(hwnd, diagnostics::Metric::Paint);
-                let result = state.apply_membership();
+                let result = state.membership.paint_is_clean(&state.folder).and_then(|clean| {
+                    if clean { Ok(()) } else { state.apply_membership() }
+                });
                 if state.apply_result(result).is_some() && !state.failed {
                     unsafe {
                         windows_sys::Win32::Graphics::Gdi::ValidateRect(hwnd, std::ptr::null());
