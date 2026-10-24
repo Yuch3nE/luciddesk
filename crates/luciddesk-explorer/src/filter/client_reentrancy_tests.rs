@@ -67,7 +67,7 @@ fn nested_requests_preserve_outer_request_and_session_health() {
                 session: std::mem::ManuallyDrop::new(FilterSession {
                     view: hwnd, owner: hwnd, hook: null_mut(), module: null_mut(),
                     sequence: Cell::new(0), timed_out: Cell::new(false), in_flight: Cell::new(false),
-                    pending_hidden: Cell::new(None), update: Cell::new(None), explorer_watch: None,
+                    pending_hidden: Cell::new(None), hidden_started: Cell::new(None), update: Cell::new(None), explorer_watch: None,
                 }),
                 entered: Cell::new(false), rejected: Cell::new(false), requests: Cell::new(0),
                 queued: mode == 2,

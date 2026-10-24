@@ -88,7 +88,7 @@ fn sent_focus_callback_times_out_inline_but_succeeds_when_deferred() {
                 session: std::mem::ManuallyDrop::new(FilterSession {
                     view, owner, hook: null_mut(), module: null_mut(),
                     sequence: Cell::new(0), timed_out: Cell::new(false), in_flight: Cell::new(false),
-                    pending_hidden: Cell::new(None), update: Cell::new(None), explorer_watch: None,
+                    pending_hidden: Cell::new(None), hidden_started: Cell::new(None), update: Cell::new(None), explorer_watch: None,
                 }),
                 deferred, result: std::cell::RefCell::new(None),
             });

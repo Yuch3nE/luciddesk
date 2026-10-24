@@ -28,6 +28,7 @@ pub struct FilterSession {
     timed_out: Cell<bool>,
     in_flight: Cell<bool>,
     pending_hidden: Cell<Option<u32>>,
+    hidden_started: Cell<Option<Instant>>,
     update: Cell<Option<u32>>,
     explorer_watch: Option<explorer::ExplorerWatch>,
 }
@@ -196,7 +197,7 @@ impl FilterSession {
                 sequence: Cell::new(0),
                 timed_out: Cell::new(false),
                 in_flight: Cell::new(false),
-                pending_hidden: Cell::new(None),
+                pending_hidden: Cell::new(None), hidden_started: Cell::new(None),
                 update: Cell::new(None),
                 explorer_watch: None,
             };
@@ -238,6 +239,7 @@ impl FilterSession {
         let sequence = self.next_sequence();
         let bytes = wire::encode(wire::SET, sequence, names)?;
         self.transmit(&bytes)?;
+        self.hidden_started.set(Some(Instant::now()));
         self.pending_hidden.set(Some(sequence));
         Ok(())
     }
@@ -248,12 +250,20 @@ impl FilterSession {
         unsafe {
             if !self.is_alive() {
                 self.pending_hidden.set(None);
+                self.hidden_started.set(None);
                 return Err(format!("桌面过滤连接已断开; {}", diagnostics::summary(self.view)));
             }
             if GetPropW(self.view, ACK) as usize != sequence as usize {
+                if self.hidden_started.get().is_some_and(|started| started.elapsed() >= Duration::from_secs(3)) {
+                    self.timed_out.set(true);
+                    self.pending_hidden.set(None);
+                    self.hidden_started.set(None);
+                    return Err(format!("桌面分组同步确认超时; sequence={sequence}; {}", diagnostics::summary(self.view)));
+                }
                 return Ok(false);
             }
             self.pending_hidden.set(None);
+            self.hidden_started.set(None);
             let error = GetPropW(self.view, REQUEST_ERROR) as usize as u32;
             if error != 0 {
                 return Err(format!("桌面过滤请求未完成 (0x{error:08x}); {}", diagnostics::summary(self.view)));
@@ -421,6 +431,7 @@ impl FilterSession {
                 lpData: bytes.as_ptr().cast_mut().cast(),
             };
             let mut accepted = 0;
+            windows_sys::Win32::Foundation::SetLastError(0);
             if SendMessageTimeoutW(
                 self.view,
                 WM_COPYDATA,
@@ -430,8 +441,14 @@ impl FilterSession {
                 1500,
                 &raw mut accepted,
             ) == 0
-                || accepted != MAGIC
             {
+                // Delivery failure can leave the operation executing in Explorer.
+                // Retire the session rather than reuse its single ACK slot.
+                let error = std::io::Error::last_os_error();
+                self.timed_out.set(true);
+                return Err(format!("桌面过滤请求发送失败，执行结果不确定: {error}"));
+            }
+            if accepted != MAGIC {
                 return Err("Explorer 拒绝桌面过滤请求".into());
             }
         }
@@ -656,6 +673,66 @@ impl Drop for FilterSession {
 mod update_tests {
     use super::*;
     #[test]
+    fn transport_timeout_retires_session_but_explicit_rejection_does_not() {
+        use std::sync::mpsc;
+        unsafe extern "system" fn receiver(hwnd: HWND, msg: u32, wp: usize, lp: isize) -> isize {
+            unsafe {
+                if msg == WM_COPYDATA {
+                    let data = &*(lp as *const COPYDATASTRUCT);
+                    let bytes = std::slice::from_raw_parts(data.lpData.cast::<u8>(), data.cbData as usize);
+                    let request = wire::decode(bytes).unwrap();
+                    if request.op == wire::DETACH {
+                        RemovePropW(hwnd, OWNER);
+                        return MAGIC as isize;
+                    }
+                    if request.sequence == 1 { return 0; }
+                    std::thread::sleep(Duration::from_millis(1800));
+                    SetPropW(hwnd, ACK, request.sequence as usize as _);
+                    return MAGIC as isize;
+                }
+                if msg == WM_CLOSE { DestroyWindow(hwnd); PostQuitMessage(0); return 0; }
+                DefWindowProcW(hwnd, msg, wp, lp)
+            }
+        }
+        let (sender, receiver_channel) = mpsc::channel();
+        let worker = std::thread::spawn(move || unsafe {
+            let class = windows_sys::w!("LucidDeskTransportTimeoutTest");
+            let instance = GetModuleHandleW(null_mut());
+            assert_ne!(RegisterClassW(&WNDCLASSW { lpfnWndProc: Some(receiver), hInstance: instance,
+                lpszClassName: class, ..Default::default() }), 0);
+            let hwnd = CreateWindowExW(0, class, class, WS_POPUP, 0, 0, 1, 1,
+                null_mut(), null_mut(), instance, null_mut());
+            assert!(!hwnd.is_null());
+            SetPropW(hwnd, OWNER, hwnd);
+            sender.send(hwnd as usize).unwrap();
+            let mut message = MSG::default();
+            while GetMessageW(&raw mut message, null_mut(), 0, 0) > 0 { DispatchMessageW(&message); }
+            UnregisterClassW(class, instance);
+        });
+        unsafe {
+            let hwnd = receiver_channel.recv_timeout(Duration::from_secs(5)).unwrap() as HWND;
+            let session = std::mem::ManuallyDrop::new(FilterSession {
+                view: hwnd, owner: hwnd, hook: null_mut(), module: null_mut(),
+                sequence: Cell::new(0), timed_out: Cell::new(false), in_flight: Cell::new(false),
+                pending_hidden: Cell::new(None), hidden_started: Cell::new(None),
+                update: Cell::new(None), explorer_watch: None,
+            });
+            let rejected = session.clear_selection();
+            let healthy_after_rejection = session.is_alive();
+            let timeout = session.clear_selection();
+            let healthy_after_timeout = session.is_alive();
+            // Cleanup is still allowed and waits for the delayed receiver to return.
+            let detached = session.request(wire::DETACH, &[]);
+            PostMessageW(hwnd, WM_CLOSE, 0, 0);
+            worker.join().unwrap();
+            assert!(rejected.unwrap_err().contains("拒绝"));
+            assert!(healthy_after_rejection);
+            assert!(timeout.unwrap_err().contains("执行结果不确定"));
+            assert!(!healthy_after_timeout);
+            assert!(detached.is_ok(), "{detached:?}");
+        }
+    }
+    #[test]
     fn accepted_timeout_retires_session_even_with_live_owner_and_late_ack() {
         unsafe extern "system" fn accept(hwnd: HWND, msg: u32, wp: usize, lp: isize) -> isize {
             unsafe {
@@ -680,7 +757,7 @@ mod update_tests {
             SetPropW(hwnd, OWNER, hwnd);
             let session = std::mem::ManuallyDrop::new(FilterSession {
                 view: hwnd, owner: hwnd, hook: null_mut(), module: null_mut(),
-                sequence: Cell::new(0), timed_out: Cell::new(false), in_flight: Cell::new(false), pending_hidden: Cell::new(None),
+                sequence: Cell::new(0), timed_out: Cell::new(false), in_flight: Cell::new(false), pending_hidden: Cell::new(None), hidden_started: Cell::new(None),
                 update: Cell::new(None), explorer_watch: None,
             });
             assert!(session.is_alive());
@@ -721,9 +798,10 @@ mod update_tests {
                 null_mut(), null_mut(), instance, null_mut());
             assert!(!hwnd.is_null());
             SetPropW(hwnd, OWNER, hwnd);
-            let session = std::mem::ManuallyDrop::new(FilterSession { timed_out: Cell::new(false), in_flight: Cell::new(false),
+            let session = std::mem::ManuallyDrop::new(FilterSession {
                 view: hwnd, owner: hwnd, hook: null_mut(), module: null_mut(),
-                sequence: Cell::new(0), pending_hidden: Cell::new(None),
+                sequence: Cell::new(0), timed_out: Cell::new(false), in_flight: Cell::new(false),
+                pending_hidden: Cell::new(None), hidden_started: Cell::new(None),
                 update: Cell::new(None), explorer_watch: None,
             });
             let names: Vec<_> = (0..100).map(|i| format!("test:{i}")).collect();
@@ -749,6 +827,20 @@ mod update_tests {
             session.submit_hidden(&names).unwrap();
             RemovePropW(hwnd, OWNER);
             assert!(session.poll_hidden().is_err());
+            SetPropW(hwnd, OWNER, hwnd);
+            session.submit_hidden(&names).unwrap();
+            let sequence = session.pending_hidden.get().unwrap();
+            session.hidden_started.set(Some(Instant::now() - Duration::from_secs(4)));
+            SetPropW(hwnd, ACK, sequence as usize as _);
+            assert_eq!(session.poll_hidden(), Ok(true), "an available ACK wins over delayed polling");
+            session.submit_hidden(&names).unwrap();
+            let sequence = session.pending_hidden.get().unwrap();
+            session.hidden_started.set(Some(Instant::now() - Duration::from_secs(4)));
+            assert!(session.poll_hidden().unwrap_err().contains("确认超时"));
+            assert!(!session.is_alive());
+            SetPropW(hwnd, ACK, sequence as usize as _);
+            assert!(!session.is_alive(), "late ACK cannot revive a timed-out session");
+            assert!(session.submit_hidden(&names).is_err());
             DestroyWindow(hwnd);
             UnregisterClassW(class, instance);
         }
@@ -806,7 +898,7 @@ mod update_tests {
             SetPropW(view, OWNER, owner);
             PostMessageW(owner, ACTION, 0, 0);
             let session = std::mem::ManuallyDrop::new(FilterSession { timed_out: Cell::new(false), in_flight: Cell::new(false),
-                view, owner, hook: null_mut(), module: null_mut(), sequence: Cell::new(0), pending_hidden: Cell::new(None),
+                view, owner, hook: null_mut(), module: null_mut(), sequence: Cell::new(0), pending_hidden: Cell::new(None), hidden_started: Cell::new(None),
                 update: Cell::new(None), explorer_watch: None,
             });
             let result = session.set_hidden(&["test:item".into()]);
@@ -838,7 +930,7 @@ mod update_tests {
             assert!(!hwnd.is_null());
             let session = std::mem::ManuallyDrop::new(FilterSession { timed_out: Cell::new(false), in_flight: Cell::new(false),
                 view: hwnd, owner: hwnd, hook: null_mut(), module: null_mut(),
-                sequence: Cell::new(0), pending_hidden: Cell::new(None), update: Cell::new(None), explorer_watch: None,
+                sequence: Cell::new(0), pending_hidden: Cell::new(None), hidden_started: Cell::new(None), update: Cell::new(None), explorer_watch: None,
             });
             SetPropW(hwnd, OWNER, hwnd);
             let started = Instant::now();
@@ -876,7 +968,7 @@ mod update_tests {
                 owner: hwnd,
                 hook: null_mut(),
                 module: null_mut(),
-                sequence: Cell::new(42), pending_hidden: Cell::new(None),
+                sequence: Cell::new(42), pending_hidden: Cell::new(None), hidden_started: Cell::new(None),
                 update: Cell::new(Some(42)),
                 explorer_watch: None,
             });
