@@ -595,18 +595,54 @@ fn test_session(view: HWND, owner: HWND, sequence: u32) -> FilterSession {
 }
 
 #[cfg(test)]
-mod attach_tests {
+mod test_windows {
     use super::*;
-    struct Window(HWND);
+
+    // Own the window and its optional class on the creating thread, including
+    // assertion-unwind paths. System classes must never be unregistered.
+    pub(super) struct Window {
+        pub hwnd: HWND,
+        class: Option<windows_sys::core::PCWSTR>,
+        instance: HMODULE,
+    }
     impl Window {
-        fn new() -> Self {
-            let hwnd = unsafe { CreateWindowExW(0, windows_sys::w!("STATIC"), windows_sys::w!("attach target test"),
-                WS_POPUP, 0, 0, 1, 1, null_mut(), null_mut(), null_mut(), null_mut()) };
-            assert!(!hwnd.is_null());
-            Self(hwnd)
+        pub fn new() -> Self { Self::create(windows_sys::w!("STATIC"), None) }
+        pub fn with_proc(class: windows_sys::core::PCWSTR, proc: WNDPROC) -> Self {
+            Self::create(class, proc)
+        }
+        fn create(class: windows_sys::core::PCWSTR, proc: WNDPROC) -> Self {
+            unsafe {
+                let instance = if proc.is_some() { GetModuleHandleW(null_mut()) } else { null_mut() };
+                if proc.is_some() {
+                    assert_ne!(RegisterClassW(&WNDCLASSW { lpfnWndProc: proc, hInstance: instance,
+                        lpszClassName: class, ..Default::default() }), 0);
+                }
+                let mut window = Self { hwnd: null_mut(), class: proc.map(|_| class), instance };
+                window.hwnd = CreateWindowExW(0, class, windows_sys::w!("client test"), WS_POPUP,
+                    0, 0, 1, 1, null_mut(), null_mut(), instance, null_mut());
+                assert!(!window.hwnd.is_null());
+                window
+            }
+        }
+        pub fn owner(&self, owner: HWND) {
+            unsafe { assert_ne!(SetPropW(self.hwnd, OWNER, owner), 0); }
         }
     }
-    impl Drop for Window { fn drop(&mut self) { unsafe { DestroyWindow(self.0); } } }
+    impl Drop for Window {
+        fn drop(&mut self) {
+            unsafe {
+                // A WM_CLOSE callback or parent destruction may already have closed it.
+                if IsWindow(self.hwnd) != 0 { DestroyWindow(self.hwnd); }
+                if let Some(class) = self.class { UnregisterClassW(class, self.instance); }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod attach_tests {
+    use super::*;
+    use super::test_windows::Window;
     #[test]
     fn attach_observes_result_after_a_callback_crosses_the_deadline() {
         unsafe extern "system" fn delayed(hwnd: HWND, _: u32, id: usize, _: u32) {
@@ -621,33 +657,33 @@ mod attach_tests {
         for id in [1, 2] {
             let view = Window::new();
             let owner = Window::new();
-            let target = AttachTarget::capture(view.0).unwrap();
+            let target = AttachTarget::capture(view.hwnd).unwrap();
             unsafe {
-                assert_ne!(SetPropW(owner.0, windows_sys::w!("LucidDesk.Test.AttachTarget"), view.0), 0);
-                assert_ne!(SetTimer(owner.0, id, 1, Some(delayed)), 0);
+                assert_ne!(SetPropW(owner.hwnd, windows_sys::w!("LucidDesk.Test.AttachTarget"), view.hwnd), 0);
+                assert_ne!(SetTimer(owner.hwnd, id, 1, Some(delayed)), 0);
             }
-            let result = wait_for_attach_with(&target, owner.0, Duration::from_millis(100), || Some(view.0 as isize));
+            let result = wait_for_attach_with(&target, owner.hwnd, Duration::from_millis(100), || Some(view.hwnd as isize));
             if id == 1 { assert!(result.is_ok(), "{result:?}"); }
             else { assert!(result.unwrap_err().contains("0x80004005")); }
         }
         // A late success on a replaced desktop must still be rejected.
         let view = Window::new();
         let owner = Window::new();
-        let target = AttachTarget::capture(view.0).unwrap();
+        let target = AttachTarget::capture(view.hwnd).unwrap();
         unsafe {
-            assert_ne!(SetPropW(owner.0, windows_sys::w!("LucidDesk.Test.AttachTarget"), view.0), 0);
-            assert_ne!(SetTimer(owner.0, 1, 1, Some(delayed)), 0);
+            assert_ne!(SetPropW(owner.hwnd, windows_sys::w!("LucidDesk.Test.AttachTarget"), view.hwnd), 0);
+            assert_ne!(SetTimer(owner.hwnd, 1, 1, Some(delayed)), 0);
         }
         let mut discoveries = 0;
-        let error = wait_for_attach_with(&target, owner.0, Duration::from_millis(100), || {
+        let error = wait_for_attach_with(&target, owner.hwnd, Duration::from_millis(100), || {
             discoveries += 1;
-            (discoveries == 1).then_some(view.0 as isize)
+            (discoveries == 1).then_some(view.hwnd as isize)
         }).unwrap_err();
         assert!(error.contains("桌面视图已被替换"), "{error}");
         let view = Window::new();
         let owner = Window::new();
-        let target = AttachTarget::capture(view.0).unwrap();
-        let error = wait_for_attach_with(&target, owner.0, Duration::from_millis(20), || Some(view.0 as isize)).unwrap_err();
+        let target = AttachTarget::capture(view.hwnd).unwrap();
+        let error = wait_for_attach_with(&target, owner.hwnd, Duration::from_millis(20), || Some(view.hwnd as isize)).unwrap_err();
         assert!(error.contains("未确认桌面过滤连接"), "{error}");
     }
     #[test]
@@ -656,35 +692,35 @@ mod attach_tests {
         for stage in [diagnostics::Stage::LoadLibrary, diagnostics::Stage::Export,
             diagnostics::Stage::Hook, diagnostics::Stage::PostAttach] {
             unsafe { windows_sys::Win32::Foundation::SetLastError(5); }
-            let error = attach_os_error(view.0, stage);
+            let error = attach_os_error(view.hwnd, stage);
             assert!(error.contains("HRESULT=0x80070005"));
             assert!(error.contains(&format!("({})", stage as usize)));
         }
         unsafe { windows_sys::Win32::Foundation::SetLastError(0); }
-        assert!(attach_os_error(view.0, diagnostics::Stage::Hook).contains("HRESULT=0x80004005"));
+        assert!(attach_os_error(view.hwnd, diagnostics::Stage::Hook).contains("HRESULT=0x80004005"));
     }
     #[test]
     fn destroyed_attach_target_aborts_without_waiting_for_timeout() {
         let view = Window::new();
         let owner = Window::new();
-        let target = AttachTarget::capture(view.0).unwrap();
+        let target = AttachTarget::capture(view.hwnd).unwrap();
         drop(view);
         let started = Instant::now();
-        assert!(wait_for_attach(&target, owner.0).unwrap_err().contains("已失效"));
+        assert!(wait_for_attach(&target, owner.hwnd).unwrap_err().contains("已失效"));
         assert!(started.elapsed() < Duration::from_secs(1));
     }
     #[test]
     fn current_target_rejects_replacement_missing_view_and_changed_parent() {
         let view = Window::new();
         let replacement = Window::new();
-        let target = AttachTarget::capture(view.0).unwrap();
-        assert!(target.current(Some(view.0 as isize)));
-        assert!(!target.current(Some(replacement.0 as isize)));
+        let target = AttachTarget::capture(view.hwnd).unwrap();
+        assert!(target.current(Some(view.hwnd as isize)));
+        assert!(!target.current(Some(replacement.hwnd as isize)));
         assert!(!target.current(None));
         unsafe {
-            SetWindowLongPtrW(view.0, GWL_STYLE, WS_CHILD as isize);
-            SetParent(view.0, replacement.0);
-            assert_eq!(GetParent(view.0), replacement.0);
+            SetWindowLongPtrW(view.hwnd, GWL_STYLE, WS_CHILD as isize);
+            SetParent(view.hwnd, replacement.hwnd);
+            assert_eq!(GetParent(view.hwnd), replacement.hwnd);
         }
         assert!(!target.alive());
     }
@@ -694,15 +730,23 @@ mod attach_tests {
 #[cfg(test)]
 mod update_tests {
     use super::*;
+    use super::test_windows::Window;
+
+    unsafe fn received_request(lp: isize) -> wire::Request {
+        unsafe {
+            let data = &*(lp as *const COPYDATASTRUCT);
+            let bytes = std::slice::from_raw_parts(data.lpData.cast::<u8>(), data.cbData as usize);
+            wire::decode(bytes).unwrap()
+        }
+    }
+
     #[test]
     fn transport_timeout_retires_session_but_explicit_rejection_does_not() {
         use std::sync::mpsc;
         unsafe extern "system" fn receiver(hwnd: HWND, msg: u32, wp: usize, lp: isize) -> isize {
             unsafe {
                 if msg == WM_COPYDATA {
-                    let data = &*(lp as *const COPYDATASTRUCT);
-                    let bytes = std::slice::from_raw_parts(data.lpData.cast::<u8>(), data.cbData as usize);
-                    let request = wire::decode(bytes).unwrap();
+                    let request = received_request(lp);
                     if request.op == wire::DETACH {
                         RemovePropW(hwnd, OWNER);
                         return MAGIC as isize;
@@ -718,18 +762,13 @@ mod update_tests {
         }
         let (sender, receiver_channel) = mpsc::channel();
         let worker = std::thread::spawn(move || unsafe {
-            let class = windows_sys::w!("LucidDeskTransportTimeoutTest");
-            let instance = GetModuleHandleW(null_mut());
-            assert_ne!(RegisterClassW(&WNDCLASSW { lpfnWndProc: Some(receiver), hInstance: instance,
-                lpszClassName: class, ..Default::default() }), 0);
-            let hwnd = CreateWindowExW(0, class, class, WS_POPUP, 0, 0, 1, 1,
-                null_mut(), null_mut(), instance, null_mut());
-            assert!(!hwnd.is_null());
-            SetPropW(hwnd, OWNER, hwnd);
+            let window = Window::with_proc(windows_sys::w!("LucidDeskTransportTimeoutTest"), Some(receiver));
+            let hwnd = window.hwnd;
+            window.owner(hwnd);
             sender.send(hwnd as usize).unwrap();
             let mut message = MSG::default();
             while GetMessageW(&raw mut message, null_mut(), 0, 0) > 0 { DispatchMessageW(&message); }
-            UnregisterClassW(class, instance);
+
         });
         unsafe {
             let hwnd = receiver_channel.recv_timeout(Duration::from_secs(5)).unwrap() as HWND;
@@ -754,9 +793,7 @@ mod update_tests {
         unsafe extern "system" fn accept(hwnd: HWND, msg: u32, wp: usize, lp: isize) -> isize {
             unsafe {
                 if msg == WM_COPYDATA {
-                    let data = &*(lp as *const COPYDATASTRUCT);
-                    let bytes = std::slice::from_raw_parts(data.lpData.cast::<u8>(), data.cbData as usize);
-                    if wire::decode(bytes).unwrap().op == wire::DETACH {
+                    if received_request(lp).op == wire::DETACH {
                         RemovePropW(hwnd, OWNER);
                     }
                     MAGIC as isize
@@ -764,14 +801,9 @@ mod update_tests {
             }
         }
         unsafe {
-            let class = windows_sys::w!("LucidDeskAcceptedTimeoutTest");
-            let instance = GetModuleHandleW(null_mut());
-            assert_ne!(RegisterClassW(&WNDCLASSW { lpfnWndProc: Some(accept), hInstance: instance,
-                lpszClassName: class, ..Default::default() }), 0);
-            let hwnd = CreateWindowExW(0, class, class, WS_POPUP, 0, 0, 1, 1,
-                null_mut(), null_mut(), instance, null_mut());
-            assert!(!hwnd.is_null());
-            SetPropW(hwnd, OWNER, hwnd);
+            let window = Window::with_proc(windows_sys::w!("LucidDeskAcceptedTimeoutTest"), Some(accept));
+            let hwnd = window.hwnd;
+            window.owner(hwnd);
             let session = std::mem::ManuallyDrop::new(test_session(hwnd, hwnd, 0));
             assert!(session.is_alive());
             let error = session.clear_selection().unwrap_err();
@@ -791,8 +823,6 @@ mod update_tests {
             assert!(started.elapsed() < Duration::from_secs(1));
             assert!(session.request(wire::DETACH, &[]).is_ok(), "cleanup must still reach Explorer");
             assert!(GetPropW(hwnd, OWNER).is_null());
-            DestroyWindow(hwnd);
-            UnregisterClassW(class, instance);
         }
     }
 
@@ -803,14 +833,9 @@ mod update_tests {
             else { unsafe { DefWindowProcW(hwnd, msg, wp, lp) } }
         }
         unsafe {
-            let class = windows_sys::w!("LucidDeskAsyncMembershipTest");
-            let instance = GetModuleHandleW(null_mut());
-            assert_ne!(RegisterClassW(&WNDCLASSW { lpfnWndProc: Some(accept), hInstance: instance,
-                lpszClassName: class, ..Default::default() }), 0);
-            let hwnd = CreateWindowExW(0, class, class, WS_POPUP, 0, 0, 1, 1,
-                null_mut(), null_mut(), instance, null_mut());
-            assert!(!hwnd.is_null());
-            SetPropW(hwnd, OWNER, hwnd);
+            let window = Window::with_proc(windows_sys::w!("LucidDeskAsyncMembershipTest"), Some(accept));
+            let hwnd = window.hwnd;
+            window.owner(hwnd);
             let session = std::mem::ManuallyDrop::new(test_session(hwnd, hwnd, 0));
             let names: Vec<_> = (0..100).map(|i| format!("test:{i}")).collect();
             session.submit_hidden(&names).unwrap();
@@ -835,7 +860,7 @@ mod update_tests {
             session.submit_hidden(&names).unwrap();
             RemovePropW(hwnd, OWNER);
             assert!(session.poll_hidden().is_err());
-            SetPropW(hwnd, OWNER, hwnd);
+            window.owner(hwnd);
             session.submit_hidden(&names).unwrap();
             let sequence = session.pending_hidden.get().unwrap().sequence;
             session.pending_hidden.set(Some(PendingHidden { sequence, started: Instant::now() - Duration::from_secs(4) }));
@@ -849,8 +874,6 @@ mod update_tests {
             SetPropW(hwnd, ACK, sequence as usize as _);
             assert!(!session.is_alive(), "late ACK cannot revive a timed-out session");
             assert!(session.submit_hidden(&names).is_err());
-            DestroyWindow(hwnd);
-            UnregisterClassW(class, instance);
         }
     }
 
@@ -862,9 +885,7 @@ mod update_tests {
             unsafe {
                 match msg {
                     WM_COPYDATA => {
-                        let data = &*(lp as *const COPYDATASTRUCT);
-                        let bytes = std::slice::from_raw_parts(data.lpData.cast::<u8>(), data.cbData as usize);
-                        let request = wire::decode(bytes).unwrap();
+                        let request = received_request(lp);
                         PostMessageW(hwnd, WORK, request.sequence as usize, wp as isize);
                         MAGIC as isize
                     }
@@ -884,23 +905,17 @@ mod update_tests {
             }
         }
         unsafe {
-            let owner = CreateWindowExW(0, windows_sys::w!("STATIC"), windows_sys::w!(""),
-                WS_POPUP, 0, 0, 1, 1, null_mut(), null_mut(), null_mut(), null_mut());
-            assert!(!owner.is_null());
+            let owner_window = Window::new();
+            let owner = owner_window.hwnd;
             let (sender, receiver) = std::sync::mpsc::channel();
             let worker = std::thread::spawn(move || {
-                let class = windows_sys::w!("LucidDeskMembershipCallbackTest");
-                let instance = GetModuleHandleW(null_mut());
-                assert_ne!(RegisterClassW(&WNDCLASSW { lpfnWndProc: Some(peer), hInstance: instance,
-                    lpszClassName: class, ..Default::default() }), 0);
-                let hwnd = CreateWindowExW(0, class, class, WS_POPUP, 0, 0, 1, 1,
-                    null_mut(), null_mut(), instance, null_mut());
+                let window = Window::with_proc(windows_sys::w!("LucidDeskMembershipCallbackTest"), Some(peer));
+                let hwnd = window.hwnd;
                 sender.send(hwnd as usize).unwrap();
                 let mut message = MSG::default();
                 while GetMessageW(&raw mut message, null_mut(), 0, 0) > 0 {
                     DispatchMessageW(&message);
                 }
-                UnregisterClassW(class, instance);
             });
             let view = receiver.recv_timeout(Duration::from_secs(2)).unwrap() as HWND;
             SetPropW(view, OWNER, owner);
@@ -911,7 +926,7 @@ mod update_tests {
             let queued = PeekMessageW(&raw mut message, owner, ACTION, ACTION, PM_REMOVE);
             PostMessageW(view, WM_CLOSE, 0, 0);
             worker.join().unwrap();
-            DestroyWindow(owner);
+            drop(owner_window);
             assert!(result.is_ok(), "sent callback must not deadlock ACK: {result:?}");
             assert_ne!(queued, 0, "posted application actions must remain queued");
         }
@@ -925,44 +940,22 @@ mod update_tests {
                 MAGIC as isize
             } else { unsafe { DefWindowProcW(hwnd, msg, wp, lp) } }
         }
-        unsafe {
-            let class = windows_sys::w!("LucidDeskDisconnectBeforeAckTest");
-            let instance = GetModuleHandleW(null_mut());
-            assert_ne!(RegisterClassW(&WNDCLASSW { lpfnWndProc: Some(disconnected), hInstance: instance,
-                lpszClassName: class, ..Default::default() }), 0);
-            let hwnd = CreateWindowExW(0, class, class, WS_POPUP, 0, 0, 1, 1,
-                null_mut(), null_mut(), instance, null_mut());
-            assert!(!hwnd.is_null());
-            let session = std::mem::ManuallyDrop::new(test_session(hwnd, hwnd, 0));
-            SetPropW(hwnd, OWNER, hwnd);
-            let started = Instant::now();
-            assert!(session.set_hidden(&[]).unwrap_err().contains("已断开"));
-            assert!(started.elapsed() < Duration::from_secs(1));
-            SetPropW(hwnd, OWNER, hwnd);
-            assert!(session.request(wire::DETACH, &[]).is_ok(), "detaching is successful once ownership is removed");
-            DestroyWindow(hwnd);
-            UnregisterClassW(class, instance);
-        }
+        let window = Window::with_proc(windows_sys::w!("LucidDeskDisconnectBeforeAckTest"), Some(disconnected));
+        let hwnd = window.hwnd;
+        let session = std::mem::ManuallyDrop::new(test_session(hwnd, hwnd, 0));
+        window.owner(hwnd);
+        let started = Instant::now();
+        assert!(session.set_hidden(&[]).unwrap_err().contains("已断开"));
+        assert!(started.elapsed() < Duration::from_secs(1));
+        window.owner(hwnd);
+        assert!(session.request(wire::DETACH, &[]).is_ok(), "detaching is successful once ownership is removed");
     }
     #[test]
     fn rejected_release_keeps_token_and_can_be_acknowledged_outside_ipc() {
         unsafe {
-            let hwnd = CreateWindowExW(
-                0,
-                windows_sys::w!("STATIC"),
-                windows_sys::w!(""),
-                WS_POPUP,
-                0,
-                0,
-                1,
-                1,
-                null_mut(),
-                null_mut(),
-                null_mut(),
-                std::ptr::null(),
-            );
-            assert!(!hwnd.is_null());
-            SetPropW(hwnd, OWNER, hwnd);
+            let window = Window::new();
+            let hwnd = window.hwnd;
+            window.owner(hwnd);
             // STATIC rejects WM_COPYDATA, so this exercises a real transport
             // rejection without injecting into the user's Explorer.
             let session = std::mem::ManuallyDrop::new(test_session(hwnd, hwnd, 42));
@@ -979,7 +972,6 @@ mod update_tests {
             SetPropW(hwnd, UPDATE_RELEASED, 42usize as _);
             session.finish_update().unwrap();
             assert_eq!(session.update.get(), None);
-            DestroyWindow(hwnd);
         }
     }
 }
