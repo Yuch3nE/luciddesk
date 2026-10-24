@@ -1,13 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { validateRelease } from './update-repository.mjs';
-import { syncReleaseDocs, documents, correctReleaseNotes } from './sync-release-docs.mjs';
+import { syncReleaseDocs, documents, correctReleaseNotes, validateManualPair } from './sync-release-docs.mjs';
 import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { execFileSync } from 'node:child_process';
 const repo = {full_name:'Yuch3nE/luciddesk', stargazers_count:10};
+test('manual corrections require matching bilingual release versions and content', () => {
+  const valid = '<!-- manual-version: 0.23.0 -->\n# Manual\n## Start\nInstructions';
+  assert.equal(validateManualPair([valid, valid], '0.23.0'), true);
+  assert.equal(validateManualPair(['Legacy manual', 'Legacy manual'], '0.23.0'), false);
+  for (const pair of [[valid, 'Legacy manual'], [valid, valid.replace('0.23.0', '0.24.0')], [valid, '<!-- manual-version: 0.23.0 -->']]) {
+    assert.throws(() => validateManualPair(pair, '0.23.0'));
+  }
+});
 const fixture = () => ({tag_name:'v0.23.0', draft:false, prerelease:false, published_at:'2026-10-24',
   assets:['LucidDesk-0.23.0-windows-x64-setup.exe','LucidDesk-0.23.0-windows-x64-portable.zip','LucidDesk-0.23.0-3f8928e-windows-x64-20261024-010000.zip']
     .flatMap(name => [name, name+'.sha256']).map(name => ({name, size:123, state:'uploaded'}))});
@@ -78,6 +86,18 @@ test('import exact release documents and reject mismatched version or commit', a
         assert.doesNotMatch(bytes.toString(), /Future/);
         assert.doesNotMatch(await readFile(join(source, file), 'utf8'), /Corrected/);
       } else assert.deepEqual(bytes, await readFile(join(source, file)));
+    }
+    for (const file of ['docs/usage.md', 'docs/usage.en.md']) {
+      await writeFile(join(target, file), '<!-- manual-version: 0.23.0 -->\n# Manual\n## Start\nCorrected manual');
+    }
+    await syncReleaseDocs(source, target, 'v0.23.0', '', target);
+    const manualManifest = JSON.parse(await readFile(join(target, 'website/public/release.json'), 'utf8'));
+    assert.equal(manualManifest.manualCorrectionsCommit, updated.changelogCorrectionsCommit);
+    for (const file of ['docs/usage.md', 'docs/usage.en.md']) {
+      const bytes = await readFile(join(target, file));
+      assert.match(bytes.toString(), /Corrected manual/);
+      assert.equal(manualManifest.documents[file], createHash('sha256').update(bytes).digest('hex'));
+      assert.doesNotMatch(await readFile(join(source, file), 'utf8'), /Corrected manual/);
     }
     // An invalid translation must not partially overwrite build inputs.
     await writeFile(join(target, 'CHANGELOG.en.md'), '## 0.24.0\n\nWrong version\n');

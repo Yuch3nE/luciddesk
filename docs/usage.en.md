@@ -1,3 +1,5 @@
+<!-- manual-version: 0.23.0 -->
+
 # LucidDesk User Manual
 
 [简体中文](usage.md) · English
@@ -6,7 +8,7 @@ Start with your first panel, then find the task you need below.
 
 ## Start in five minutes
 
-For version 0.22.2. Features marked **Unreleased** are not yet included in the official release.
+For LucidDesk 0.23.0.
 
 1. Install and start LucidDesk. Find its tray icon near the Windows clock; expand hidden icons if needed.
 2. Right-click the tray icon and choose New panel.
@@ -31,7 +33,7 @@ Open the header's “…” menu or right-click empty panel space.
 
 **Collecting icons, removing them from a panel or closing a panel does not delete files.** File-menu commands such as delete, rename and cut affect real files, even when the panel is locked.
 
-### Icons only · Unreleased
+### Icons only
 
 Choose Icons only in View to hide filenames; hover to read the full name. Choose small, medium or large under Icon size. Each panel saves its own choice. Choose Icons with names to show filenames again.
 
@@ -56,7 +58,7 @@ Only ordinary desktop panels support tabs. Folder and search panels cannot merge
 
 1. Choose New folder panel from the tray and select a directory.
 2. Double-click a subfolder to enter it; press `Alt + Left` to return.
-3. Choose icons or list view from the panel menu. List headers let you sort and choose columns.
+3. Choose icons or list view from the panel menu. Icon view supports icons only and small, medium or large icons; list headers let you sort and choose columns.
 
 Changes refresh automatically; press `F5` to refresh manually. To open subfolders in File Explorer instead, change the opening behavior in Settings → Folder panels.
 
@@ -84,20 +86,18 @@ Choose a theme and solid, acrylic or mica background in Theme & material. Use Pa
 
 - **Solid color:** edit the color and opacity, or reset them to defaults.
 - **Acrylic and Mica:** adjust effect strength; the center is Default. Mica Alt uses a fixed effect.
-- **System rendering · Unreleased:** uses system corners and shadows. Choose custom rendering for adjustable corner sizes.
-- **Snap gap · Unreleased:** adjusts the space between panels after they snap together.
+- **System rendering:** uses system shadows with square, small-rounded or rounded corners. Choose custom rendering for an adjustable corner radius.
+- **Snap gap:** adjusts the space between panels after they snap together.
 
 ### Defaults and existing panels
 
 Settings tagged for new panels only do not change existing panels. Use a panel's own menu to adjust its view, arrangement or icon size.
 
-Icon-only and icon-size defaults are **Unreleased**. Overall scaling applies to icons with filenames and does not stack with icon-only sizes.
+Overall scaling applies to icons with filenames and does not stack with icon-only sizes.
 
 ### Fonts and language
 
-Search and choose a font in Fonts. Select an interface language in Settings → Language; it applies immediately.
-
-**Unreleased:** language selection has moved to General. Settings groups, font selection and light colors have also been updated.
+Search and choose a font in Fonts. Select an interface language in Settings → General → Language; it applies immediately.
 
 ### Common switches
 
@@ -120,7 +120,7 @@ Manage backups lets you restore, export or delete saved snapshots. Before moving
 
 **Restoring replaces current settings and layout; it does not merge them. Backups do not contain original files, plugins' own settings or external tools.**
 
-**Unreleased:** editing settings while a restore is being prepared cancels that restore. Stop editing and select the backup again. Export and failed-restore data protection have also been strengthened.
+Editing settings while a restore is being prepared cancels that restore. Stop editing and select the backup again. Choose a new export file to avoid overwriting active configuration or database files.
 
 <details>
 <summary>Where are backups saved? How do I export one?</summary>
@@ -139,7 +139,7 @@ Back up first, then exit the old app and install the update. For portable update
 
 To connect an agent, copy the Skill installation prompt from Settings → General → Agent & CLI and give it to your chosen agent. Copying the prompt does not install anything or change your desktop. Have the agent read the current layout and preview the changes you want before applying them.
 
-**Backup commands · Unreleased:** the CLI can create, export and restore backups. Exports do not overwrite existing files. Restoring replaces current configuration and first saves a pre-restore backup. See the [CLI guide](cli.md#english-quick-start). You can continue using the Backup & restore settings page without an agent or command line.
+**Backup commands:** the CLI can list, create, export and restore backups. Exports do not overwrite existing files. Restoring replaces current configuration and first saves a pre-restore backup. See the [CLI guide](cli.md#english-quick-start). You can continue using the Backup & restore settings page without an agent or command line.
 
 Your external agent may receive queried file names, paths and layout information. Choose its service according to your privacy needs. Disabling command-line control blocks subsequent connections but does not undo submitted operations.
 
