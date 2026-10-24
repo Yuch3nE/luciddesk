@@ -34,7 +34,7 @@ async function manualPage(source: typeof zhManual, english: boolean): Promise<He
     else if (target === 'usage.md' || target === 'usage.en.md') target = '/guide/';
     else if (target.startsWith('../CHANGELOG')) target = '/changelog/';
     else if (['installer.md', 'portable.md', 'package.md', 'msix.md'].includes(target)) target = '/installation/';
-    else if (target === 'cli.md') target = '/agent/';
+    else if (target === 'cli.md' || target.startsWith('cli.md#')) target = '/agent/';
     else if (!/^(https?:|mailto:|\/)/.test(target)) {
       const path = new URL(target, `https://github.com/Yuch3nE/luciddesk/blob/${ref}/docs/`);
       target = attribute === 'src'
