@@ -56,6 +56,9 @@ CloseApplications=no
 RestartApplications=no
 RestartIfNeededByRun=no
 WizardStyle=modern
+LanguageDetectionMethod=uilanguage
+ShowLanguageDialog=yes
+UsePreviousLanguage=yes
 Compression=lzma2/{#InstallerCompression}
 SolidCompression=yes
 SetupIconFile=..\app\assets\luciddesk.ico
@@ -67,7 +70,13 @@ VersionInfoProductVersion={#AppVersion}
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
-Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
+Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+
+Name: "chinesetraditional"; MessagesFile: "compiler:Languages\ChineseTraditional.isl"
+Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"
+Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
+Name: "german"; MessagesFile: "compiler:Languages\German.isl"
+Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -129,6 +138,86 @@ english.KeepUserData=Keep user settings
 chinesesimplified.KeepUserData=保留用户配置
 english.UserDataDeleteFailed=LucidDesk was uninstalled, but some user data could not be deleted. Check these folders:
 chinesesimplified.UserDataDeleteFailed=LucidDesk 已卸载，但部分用户配置未能删除。请检查以下目录：
+
+chinesetraditional.MsiInstalled=已安裝 MSI 版。請先解除安裝並保留設定，再切換至 EXE 版。
+chinesetraditional.NewerInstalled=已安裝較新版本的 LucidDesk，安裝已取消。
+chinesetraditional.PortableDirectory=此資料夾包含可攜式 LucidDesk。請選擇其他資料夾，以保留可攜模式。
+chinesetraditional.AppRunning=LucidDesk 仍在執行，請結束程式後再更新。
+chinesetraditional.AppRunningUninstall=LucidDesk 仍在執行，請結束程式後再解除安裝。
+chinesetraditional.CloseApp=LucidDesk 正在執行。是否自動結束並繼續安裝？設定與面板配置將會保留。
+chinesetraditional.CloseAppUninstall=LucidDesk 正在執行。是否自動結束並繼續解除安裝？
+chinesetraditional.CloseTimeout=LucidDesk 尚未結束，安裝已停止。請結束程式後重試。
+chinesetraditional.CloseTimeoutUninstall=LucidDesk 尚未結束，解除安裝已停止。請結束程式後重試。
+chinesetraditional.ComponentBusy=檔案總管仍載入桌面元件，程式檔案尚未替換。請結束 LucidDesk 並稍候；若仍未釋放，請重新啟動 Windows 檔案總管後重試安裝。
+chinesetraditional.ComponentInspectionFailed=無法確認檔案總管已釋放桌面元件，安裝已停止，程式檔案尚未替換。請重新啟動 Windows 檔案總管後重試。
+chinesetraditional.ComponentBusyUninstall=檔案總管仍載入桌面元件，程式檔案尚未刪除。請結束 LucidDesk 並稍候；若仍未釋放，請重新啟動 Windows 檔案總管後重試解除安裝。
+chinesetraditional.ComponentInspectionFailedUninstall=無法確認檔案總管已釋放桌面元件，程式檔案尚未刪除。請重新啟動 Windows 檔案總管後重試解除安裝。
+chinesetraditional.KeepUserData=保留使用者設定
+chinesetraditional.UserDataDeleteFailed=LucidDesk 已解除安裝，但部分使用者資料無法刪除。請檢查下列資料夾：
+
+japanese.MsiInstalled=MSI 版がインストールされています。EXE 版に切り替える前に、設定を保持して MSI 版をアンインストールしてください。
+japanese.NewerInstalled=新しいバージョンの LucidDesk が既にインストールされています。インストールをキャンセルしました。
+japanese.PortableDirectory=このフォルダーにはポータブル版の LucidDesk があります。ポータブルモードを維持するため、別のフォルダーを選択してください。
+japanese.AppRunning=LucidDesk はまだ実行中です。アプリを終了してから更新してください。
+japanese.AppRunningUninstall=LucidDesk はまだ実行中です。アプリを終了してからアンインストールしてください。
+japanese.CloseApp=LucidDesk は実行中です。自動的に終了してインストールを続行しますか？設定とパネルのレイアウトは保持されます。
+japanese.CloseAppUninstall=LucidDesk は実行中です。自動的に終了してアンインストールを続行しますか？
+japanese.CloseTimeout=LucidDesk が終了していないため、インストールを停止しました。アプリを終了してから再試行してください。
+japanese.CloseTimeoutUninstall=LucidDesk が終了していないため、アンインストールを停止しました。アプリを終了してから再試行してください。
+japanese.ComponentBusy=エクスプローラーにデスクトップコンポーネントがまだ読み込まれています。プログラムファイルは置き換えていません。LucidDesk を終了してしばらく待ち、解決しない場合は Windows エクスプローラーを再起動してからインストールを再試行してください。
+japanese.ComponentInspectionFailed=エクスプローラーがデスクトップコンポーネントを解放したことを確認できません。ファイルの置き換え前にインストールを停止しました。Windows エクスプローラーを再起動してから再試行してください。
+japanese.ComponentBusyUninstall=エクスプローラーにデスクトップコンポーネントがまだ読み込まれています。プログラムファイルは削除していません。LucidDesk を終了してしばらく待ち、解決しない場合は Windows エクスプローラーを再起動してからアンインストールを再試行してください。
+japanese.ComponentInspectionFailedUninstall=エクスプローラーがデスクトップコンポーネントを解放したことを確認できません。プログラムファイルは削除していません。Windows エクスプローラーを再起動してからアンインストールを再試行してください。
+japanese.KeepUserData=ユーザー設定を保持する
+japanese.UserDataDeleteFailed=LucidDesk はアンインストールされましたが、一部のユーザーデータを削除できませんでした。次のフォルダーを確認してください：
+
+korean.MsiInstalled=MSI 버전이 설치되어 있습니다. EXE 버전으로 전환하기 전에 설정을 유지한 채 MSI 버전을 제거하세요.
+korean.NewerInstalled=더 최신 버전의 LucidDesk가 이미 설치되어 있습니다. 설치가 취소되었습니다.
+korean.PortableDirectory=이 폴더에는 LucidDesk 포터블 버전이 있습니다. 포터블 모드를 유지하려면 다른 폴더를 선택하세요.
+korean.AppRunning=LucidDesk가 아직 실행 중입니다. 앱을 종료한 후 업데이트하세요.
+korean.AppRunningUninstall=LucidDesk가 아직 실행 중입니다. 앱을 종료한 후 제거하세요.
+korean.CloseApp=LucidDesk가 실행 중입니다. 자동으로 종료하고 설치를 계속할까요? 설정과 패널 배치는 유지됩니다.
+korean.CloseAppUninstall=LucidDesk가 실행 중입니다. 자동으로 종료하고 제거를 계속할까요?
+korean.CloseTimeout=LucidDesk가 종료되지 않아 설치가 중단되었습니다. 앱을 종료한 후 다시 시도하세요.
+korean.CloseTimeoutUninstall=LucidDesk가 종료되지 않아 제거가 중단되었습니다. 앱을 종료한 후 다시 시도하세요.
+korean.ComponentBusy=파일 탐색기에 데스크톱 구성 요소가 아직 로드되어 있습니다. 프로그램 파일은 교체되지 않았습니다. LucidDesk를 종료하고 잠시 기다리세요. 문제가 계속되면 Windows 탐색기를 다시 시작한 후 설치를 다시 시도하세요.
+korean.ComponentInspectionFailed=파일 탐색기가 데스크톱 구성 요소를 해제했는지 확인할 수 없습니다. 프로그램 파일을 교체하기 전에 설치가 중단되었습니다. Windows 탐색기를 다시 시작한 후 다시 시도하세요.
+korean.ComponentBusyUninstall=파일 탐색기에 데스크톱 구성 요소가 아직 로드되어 있습니다. 프로그램 파일은 삭제되지 않았습니다. LucidDesk를 종료하고 잠시 기다리세요. 문제가 계속되면 Windows 탐색기를 다시 시작한 후 제거를 다시 시도하세요.
+korean.ComponentInspectionFailedUninstall=파일 탐색기가 데스크톱 구성 요소를 해제했는지 확인할 수 없습니다. 프로그램 파일은 삭제되지 않았습니다. Windows 탐색기를 다시 시작한 후 제거를 다시 시도하세요.
+korean.KeepUserData=사용자 설정 유지
+korean.UserDataDeleteFailed=LucidDesk가 제거되었지만 일부 사용자 데이터를 삭제하지 못했습니다. 다음 폴더를 확인하세요:
+
+german.MsiInstalled=Die MSI-Version ist installiert. Deinstallieren Sie diese zuerst unter Beibehaltung Ihrer Einstellungen, bevor Sie zur EXE-Version wechseln.
+german.NewerInstalled=Eine neuere Version von LucidDesk ist bereits installiert. Die Installation wurde abgebrochen.
+german.PortableDirectory=Dieser Ordner enthält eine portable Version von LucidDesk. Wählen Sie einen anderen Ordner, um den portablen Modus beizubehalten.
+german.AppRunning=LucidDesk wird noch ausgeführt. Beenden Sie die Anwendung vor dem Aktualisieren.
+german.AppRunningUninstall=LucidDesk wird noch ausgeführt. Beenden Sie die Anwendung vor dem Deinstallieren.
+german.CloseApp=LucidDesk wird ausgeführt. Automatisch beenden und die Installation fortsetzen? Ihre Einstellungen und Panel-Anordnungen bleiben erhalten.
+german.CloseAppUninstall=LucidDesk wird ausgeführt. Automatisch beenden und die Deinstallation fortsetzen?
+german.CloseTimeout=LucidDesk wurde noch nicht beendet. Die Installation wurde gestoppt. Beenden Sie die Anwendung und versuchen Sie es erneut.
+german.CloseTimeoutUninstall=LucidDesk wurde noch nicht beendet. Die Deinstallation wurde gestoppt. Beenden Sie die Anwendung und versuchen Sie es erneut.
+german.ComponentBusy=Im Explorer ist noch eine Desktop-Komponente geladen. Die Programmdateien wurden nicht ersetzt. Beenden Sie LucidDesk und warten Sie kurz. Starten Sie bei anhaltenden Problemen den Windows-Explorer neu und wiederholen Sie die Installation.
+german.ComponentInspectionFailed=Es konnte nicht bestätigt werden, dass der Explorer die Desktop-Komponente freigegeben hat. Die Installation wurde vor dem Ersetzen der Programmdateien gestoppt. Starten Sie den Windows-Explorer neu und versuchen Sie es erneut.
+german.ComponentBusyUninstall=Im Explorer ist noch eine Desktop-Komponente geladen. Die Programmdateien wurden nicht gelöscht. Beenden Sie LucidDesk und warten Sie kurz. Starten Sie bei anhaltenden Problemen den Windows-Explorer neu und wiederholen Sie die Deinstallation.
+german.ComponentInspectionFailedUninstall=Es konnte nicht bestätigt werden, dass der Explorer die Desktop-Komponente freigegeben hat. Die Programmdateien wurden nicht gelöscht. Starten Sie den Windows-Explorer neu und wiederholen Sie die Deinstallation.
+german.KeepUserData=Benutzereinstellungen beibehalten
+german.UserDataDeleteFailed=LucidDesk wurde deinstalliert, aber einige Benutzerdaten konnten nicht gelöscht werden. Prüfen Sie diese Ordner:
+
+russian.MsiInstalled=Установлена MSI-версия. Перед переходом на EXE-версию удалите её, сохранив настройки.
+russian.NewerInstalled=Уже установлена более новая версия LucidDesk. Установка отменена.
+russian.PortableDirectory=В этой папке находится портативная версия LucidDesk. Выберите другую папку, чтобы сохранить портативный режим.
+russian.AppRunning=LucidDesk всё ещё работает. Закройте приложение перед обновлением.
+russian.AppRunningUninstall=LucidDesk всё ещё работает. Закройте приложение перед удалением.
+russian.CloseApp=LucidDesk работает. Закрыть приложение автоматически и продолжить установку? Настройки и расположение панелей будут сохранены.
+russian.CloseAppUninstall=LucidDesk работает. Закрыть приложение автоматически и продолжить удаление?
+russian.CloseTimeout=LucidDesk ещё не закрыт. Установка остановлена. Закройте приложение и повторите попытку.
+russian.CloseTimeoutUninstall=LucidDesk ещё не закрыт. Удаление остановлено. Закройте приложение и повторите попытку.
+russian.ComponentBusy=В Проводнике всё ещё загружен компонент рабочего стола. Файлы программы не заменены. Закройте LucidDesk и немного подождите. Если проблема не исчезнет, перезапустите Проводник Windows и повторите установку.
+russian.ComponentInspectionFailed=Не удалось подтвердить, что Проводник выгрузил компонент рабочего стола. Установка остановлена до замены файлов программы. Перезапустите Проводник Windows и повторите попытку.
+russian.ComponentBusyUninstall=В Проводнике всё ещё загружен компонент рабочего стола. Файлы программы не удалены. Закройте LucidDesk и немного подождите. Если проблема не исчезнет, перезапустите Проводник Windows и повторите удаление.
+russian.ComponentInspectionFailedUninstall=Не удалось подтвердить, что Проводник выгрузил компонент рабочего стола. Файлы программы не удалены. Перезапустите Проводник Windows и повторите удаление.
+russian.KeepUserData=Сохранить настройки пользователя
+russian.UserDataDeleteFailed=LucidDesk удалён, но некоторые пользовательские данные удалить не удалось. Проверьте следующие папки:
 
 [Code]
 var
