@@ -51,6 +51,26 @@ const ROW: f32 = 48.0;
 const FOOTER: f32 = 32.0;
 const ROW_INSET: f32 = 4.0;
 const VISIBLE: usize = 8;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Action { Clear, Retry, Launch }
+fn action_rect(action: Action, width: f32) -> Option<RectDip> {
+    let rect = match action {
+        Action::Clear => RectDip::from_bounds(width - 44.0, 10.0, 32.0, TOP - 20.0),
+        Action::Retry => RectDip::from_bounds(18.0, TOP + 60.0, 84.0, 28.0),
+        Action::Launch => RectDip::from_bounds((width - 146.0).max(112.0), TOP + 60.0, 128.0, 28.0),
+    };
+    (rect.x >= 0.0 && rect.x + rect.width <= width - 12.0).then_some(rect)
+}
+fn action_at(state: &Search, width: f32, has_input: bool, x: f32, y: f32) -> Option<Action> {
+    for action in [Action::Clear, Action::Retry, Action::Launch] {
+        let enabled = if action == Action::Clear { has_input } else { state.failed && state.entries.is_empty() };
+        if enabled && action_rect(action, width).is_some_and(|r|
+            x >= r.x && x < r.x+r.width && y >= r.y && y < r.y+r.height) { return Some(action); }
+    }
+    if state.failed && !state.entries.is_empty() && x >= 12.0 && x < width-12.0
+        && y >= state.height()-FOOTER && y < state.height() { return Some(Action::Retry); }
+    None
+}
 const EDIT_PROPERTY: windows_sys::core::PCWSTR = windows_sys::w!("LucidDesk.SearchInput");
 #[cfg(test)]
 fn wide(s: &str) -> Vec<u16> {
@@ -111,6 +131,7 @@ struct Search {
     refresh_entries: Vec<Entry>,
     failed: bool,
     hovered: Option<usize>,
+    hovered_action: Option<Action>,
 }
 impl Search {
     fn new() -> Self {
@@ -152,6 +173,7 @@ impl Search {
             refresh_entries: Vec::new(),
             failed: false,
             hovered: None,
+            hovered_action: None,
         }
     }
     fn change(&mut self, value: String) {
@@ -911,7 +933,10 @@ pub(super) fn create(
                         ScreenToClient(hwnd, &raw mut point);
                         SetCursor(LoadCursorW(
                             std::ptr::null_mut(),
-                            if point.y as f32 / scale(hwnd) < TOP
+                            if action_at(&state, client_width(hwnd), GetWindowTextLengthW(edit(hwnd)) > 0,
+                                point.x as f32 / scale(hwnd), point.y as f32 / scale(hwnd)).is_some() {
+                                IDC_HAND
+                            } else if point.y as f32 / scale(hwnd) < TOP
                                 && point.x as f32 / scale(hwnd) < client_width(hwnd) - 44.0
                             {
                                 IDC_IBEAM
@@ -1123,34 +1148,21 @@ pub(super) fn create(
                     let y = (lp >> 16) as u16 as i16 as f32 / scale(hwnd);
                     let x = lp as u16 as i16 as f32 / scale(hwnd);
                     let width = client_width(hwnd);
-                    if y < TOP
-                        && x >= width - 44.0
-                        && x < width - 8.0
-                        && unsafe { GetWindowTextLengthW(edit(hwnd)) } > 0
-                    {
+                    let hit_action = action_at(&state, width, unsafe { GetWindowTextLengthW(edit(hwnd)) } > 0, x, y);
+                    if hit_action == Some(Action::Clear) {
                         unsafe {
                             SetWindowTextW(edit(hwnd), windows_sys::w!(""));
                             SetFocus(edit(hwnd));
                         }
                         return Some(0);
                     }
-                    if state.failed
-                        && ((!state.entries.is_empty() && y >= state.height() - FOOTER)
-                            || (state.entries.is_empty()
-                                && (TOP + 60.0..TOP + 88.0).contains(&y)
-                                && (18.0..102.0).contains(&x)))
-                    {
+                    if hit_action == Some(Action::Retry) {
                         unsafe {
                             PostMessageW(hwnd, WM_COMMAND, REFRESH, 0);
                         }
                         return Some(0);
                     }
-                    if state.failed
-                        && state.entries.is_empty()
-                        && (TOP + 60.0..TOP + 88.0).contains(&y)
-                        && x >= (width - 146.0).max(112.0)
-                        && x < width - 18.0
-                    {
+                    if hit_action == Some(Action::Launch) {
                         let owner = hwnd as isize;
                         super::window::defer_action(move || {
                             if unsafe { IsWindow(owner as _) } == 0 {
@@ -1296,6 +1308,7 @@ pub(super) fn create(
                 }
                 WM_MOUSELEAVE => {
                     state.hovered = None;
+                    state.hovered_action = None;
                     error_tip = false;
                     if let Some(tip) = &mut tooltip {
                         tip.hide();
@@ -1304,6 +1317,9 @@ pub(super) fn create(
                 }
                 WM_MOUSEMOVE => {
                     let y = (lp >> 16) as u16 as i16 as f32 / scale(hwnd);
+                    let x = lp as u16 as i16 as f32 / scale(hwnd);
+                    let action = action_at(&state, client_width(hwnd), unsafe { GetWindowTextLengthW(edit(hwnd)) } > 0, x, y);
+                    if action != state.hovered_action { state.hovered_action = action; invalidate(hwnd); }
                     let hovered = state.row_at(y);
                     let show_error = state.failed
                         && state.entries.is_empty()

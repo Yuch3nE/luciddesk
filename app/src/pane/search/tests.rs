@@ -784,3 +784,22 @@ fn double_click_requires_same_file_within_interval() {
     let expired = (path.clone(), Instant::now() - Duration::from_secs(1));
     assert!(!same_click_target(Some(&expired), &path, interval));
 }
+
+#[test]
+fn action_hit_regions_exclude_hidden_controls_and_keep_clear_available_while_busy() {
+    let mut state = Search::new();
+    state.busy = true;
+    for width in [260.0, 420.0, 800.0] {
+        assert_eq!(action_at(&state, width, true, width-28.0, 28.0), Some(Action::Clear));
+        assert_eq!(action_at(&state, width, false, width-28.0, 28.0), None);
+        assert_eq!(action_at(&state, width, true, width-28.0, 4.0), None);
+        assert_eq!(action_at(&state, width, true, 40.0, TOP+72.0), None);
+    }
+    state.failed = true;
+    assert_eq!(action_at(&state, 260.0, false, 40.0, TOP+72.0), Some(Action::Retry));
+    assert_eq!(action_at(&state, 260.0, false, 160.0, TOP+72.0), Some(Action::Launch));
+    // Narrow windows must not expose a clickable area for an omitted button.
+    assert!(action_rect(Action::Launch, 220.0).is_none());
+    assert_eq!(action_at(&state, 220.0, false, 160.0, TOP+72.0), None);
+    assert_eq!(action_at(&state, 260.0, false, 106.0, TOP+72.0), None);
+}

@@ -35,7 +35,7 @@ mod tests {
 impl Drawing {
     pub(super) fn new(hwnd: HWND) -> Result<Self, String> {
         use windows_canvas::{ParagraphAlignment, TextFormat, WordWrapping};
-        let name = TextFormat::new(&crate::pane::fonts::family(), 13.0)
+        let name = TextFormat::new(&crate::pane::fonts::family(), 14.0)
             .map_err(|e| e.to_string())?
             .with_paragraph_alignment(ParagraphAlignment::Center)
             .with_word_wrapping(WordWrapping::NoWrap);
@@ -98,7 +98,7 @@ impl Drawing {
                     })
                     .map_err(|e| e.to_string())
             };
-            let name = make(13.0)?;
+            let name = make(14.0)?;
             let path = make(11.0)?;
             let placeholder = make(crate::pane::control_style::TEXT)?;
             crate::pane::canvas::ellipsis_delimiter(&name, '.' as u32)
@@ -149,7 +149,7 @@ impl Drawing {
                 canvas_result(self.brushes.get(context, &target, [
                     ColorF::new(base, base, base, if !native { 1.0 } else if model.options.text_protection { contrast.scrim } else { 0.0 }),
                     ColorF::new(ink, ink, ink, 1.0),
-                    ColorF::new(ink, ink, ink, 0.66),
+                    ColorF::new(ink, ink, ink, 0.58),
                     crate::pane::theme::panel_divider(model.dark, model.backdrop),
                     crate::pane::theme::panel_border(model.dark, model.backdrop),
                     ColorF::new(0.30, 0.58, 0.88, if model.dark { 0.24 } else { 0.13 }),
@@ -177,7 +177,7 @@ impl Drawing {
                 );
             }
             target.clipped_icon(
-                "\u{e721}",
+                if state.busy { "\u{e916}" } else { "\u{e721}" },
                 &self.icon,
                 &Rect::from_xywh(12.0, 0.0, 28.0, TOP),
                 dim,
@@ -191,12 +191,14 @@ impl Drawing {
                 );
             }
             if unsafe { GetWindowTextLengthW(edit(hwnd)) } > 0 {
-                target.clipped_icon(
-                    if state.busy { "\u{e916}" } else { "\u{e711}" },
-                    &self.icon,
-                    &Rect::from_xywh((w - 44.0).max(0.0), 10.0, 32.0, TOP - 20.0),
-                    dim,
-                );
+                if let Some(r) = action_rect(Action::Clear, w) {
+                    let rect = Rect::from_xywh(r.x, r.y, r.width, r.height);
+                    if state.hovered_action == Some(Action::Clear) {
+                        target.fill_rounded_rect(&RoundedRect { rect, radius_x: 6.0, radius_y: 6.0 }, hovered);
+                    }
+                    target.clipped_icon("\u{e711}", &self.icon, &rect,
+                        if state.hovered_action == Some(Action::Clear) { text } else { dim });
+                }
             }
             if !state.query.is_empty() {
                 target.fill_rect(&Rect::from_xywh(12.0, TOP, w - 24.0, 1.0), line);
@@ -228,21 +230,20 @@ impl Drawing {
                         dim,
                     );
                     if state.failed {
-                        for (x, width, label) in [
-                            (18.0, 84.0_f32.min((w - 36.0).max(0.0)), crate::i18n::text("ui-retry-f5")),
-                            ((w - 146.0).max(112.0), 128.0, crate::i18n::text("ui-start-everything")),
+                        for (action, label) in [
+                            (Action::Retry, crate::i18n::text("ui-retry-f5")),
+                            (Action::Launch, crate::i18n::text("ui-start-everything")),
                         ] {
-                            if x + width > w - 12.0 {
-                                continue;
-                            }
-                            let rect = Rect::from_xywh(x, TOP + 60.0, width, 28.0);
+                            let Some(r) = action_rect(action, w) else { continue; };
+                            let (x, width) = (r.x, r.width);
+                            let rect = Rect::from_xywh(r.x, r.y, r.width, r.height);
                             target.fill_rounded_rect(
                                 &RoundedRect {
                                     rect,
                                     radius_x: 5.0,
                                     radius_y: 5.0,
                                 },
-                                hovered,
+                                if state.hovered_action == Some(action) { selected } else { hovered },
                             );
                             target.clipped_text(
                                 label,
@@ -265,8 +266,8 @@ impl Drawing {
                         target.fill_rounded_rect(
                             &RoundedRect {
                                 rect: Rect::from_xywh(6.0, y, w - 12.0, ROW - 2.0),
-                                radius_x: 4.0,
-                                radius_y: 4.0,
+                                radius_x: 6.0,
+                                radius_y: 6.0,
                             },
                             if state.selection.contains(&row) {
                                 selected
@@ -301,22 +302,19 @@ impl Drawing {
                         .to_string_lossy();
                     let parent = entry.path.parent().unwrap_or(&entry.path).to_string_lossy();
                     let path = parent;
-                    target.clipped_icon(
-                        if entry.folder { "\u{e8b7}" } else { "\u{e8a5}" },
-                        &self.icon,
-                        &Rect::from_xywh(16.0, y, 20.0, ROW - 2.0),
-                        dim,
-                    );
+                    let slot = Rect::from_xywh(16.0, y + 10.0, 24.0, 24.0);
+                    target.clipped_icon(if entry.folder { "\u{e8b7}" } else { "\u{e8a5}" },
+                        &self.icon, &slot, dim);
                     target.clipped_text(
                         &name,
                         &self.name,
-                        &Rect::from_xywh(46.0, y + 2.0, (w - 64.0).max(0.0), 22.0),
+                        &Rect::from_xywh(50.0, y + 2.0, (w - 70.0).max(0.0), 22.0),
                         if state.replacing { dim } else { text },
                     );
                     target.clipped_text(
                         &path,
                         &self.path,
-                        &Rect::from_xywh(46.0, y + 24.0, (w - 64.0).max(0.0), 18.0),
+                        &Rect::from_xywh(50.0, y + 24.0, (w - 70.0).max(0.0), 18.0),
                         dim,
                     );
                 }
