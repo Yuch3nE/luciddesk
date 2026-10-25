@@ -1,6 +1,7 @@
 //! Compact search pane using the same composition backdrop as icon panes.
 #![allow(clippy::wildcard_imports, clippy::too_many_lines)]
 mod drawing;
+mod icons;
 pub(super) mod control;
 mod tooltip;
 use drawing::Drawing;
@@ -1077,6 +1078,7 @@ pub(super) fn create(
                 }
                 message if message == super::wake::READY || (message == WM_TIMER && wp == POLL) => {
                     state.wake.received();
+                    invalidate(hwnd);
                     unsafe {
                         KillTimer(hwnd, POLL);
                     }

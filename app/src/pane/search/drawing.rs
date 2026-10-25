@@ -2,7 +2,8 @@
 use super::*;
 
 pub(super) struct Drawing {
-    brushes: crate::pane::canvas::Brushes<8>,
+    brushes: crate::pane::canvas::Brushes<9>,
+    file_icons: icons::Icons,
     family: String,
     language: &'static str,
     pub(super) surface: crate::pane::composition::Surface,
@@ -47,6 +48,7 @@ impl Drawing {
         crate::pane::canvas::ellipsis_delimiter(&path, '\\' as u32).map_err(|e| e.to_string())?;
         Ok(Self {
             brushes: Default::default(),
+            file_icons: icons::Icons::new(hwnd),
             family: crate::pane::fonts::family(),
             language: crate::i18n::language(),
             surface: crate::pane::composition::Surface::new_pane(windows::Win32::Foundation::HWND(
@@ -134,6 +136,10 @@ impl Drawing {
         let native = self.surface.native;
         let w = r.right as f32 / s;
         let h = r.bottom as f32 / s;
+        let icon_size = (24.0*s).round() as i32;
+        let start = state.scroll.min(state.entries.len());
+        let end = (start+state.visible_rows).min(state.entries.len());
+        self.file_icons.refresh(&state.entries[start..end], icon_size);
         let context = &target;
         crate::pane::canvas::draw(&target, s, |target| {
             target.clear(ColorF::new(0.0, 0.0, 0.0, 0.0));
@@ -145,7 +151,7 @@ impl Drawing {
             );
             let ink = contrast.ink();
             let base = contrast.base();
-            let [background, text, dim, line, outline, selected, hovered, accent] =
+            let [background, text, dim, line, outline, selected, hovered, accent, folder_icon] =
                 canvas_result(self.brushes.get(context, &target, [
                     ColorF::new(base, base, base, if !native { 1.0 } else if model.options.text_protection { contrast.scrim } else { 0.0 }),
                     ColorF::new(ink, ink, ink, 1.0),
@@ -155,6 +161,7 @@ impl Drawing {
                     ColorF::new(0.30, 0.58, 0.88, if model.dark { 0.24 } else { 0.13 }),
                     ColorF::new(ink, ink, ink, 0.06),
                     if model.dark { ColorF::new(0.48, 0.74, 1.0, 1.0) } else { ColorF::new(0.0, 0.40, 0.76, 1.0) },
+                    ColorF::new(0.95, 0.66, 0.18, 1.0),
                 ]))?;
             let shape = RoundedRect {
                 rect: Rect::from_xywh(0.5, 0.5, w - 1.0, h - 1.0),
@@ -303,8 +310,13 @@ impl Drawing {
                     let parent = entry.path.parent().unwrap_or(&entry.path).to_string_lossy();
                     let path = parent;
                     let slot = Rect::from_xywh(16.0, y + 10.0, 24.0, 24.0);
-                    target.clipped_icon(if entry.folder { "\u{e8b7}" } else { "\u{e8a5}" },
-                        &self.icon, &slot, dim);
+                    if let Some(pixels) = self.file_icons.get(entry, icon_size) {
+                        let bitmap=canvas_result(target.create_bitmap(&pixels.data,pixels.width,pixels.height))?;
+                        target.draw_bitmap(&bitmap, &slot, 1.0);
+                    } else {
+                        target.clipped_icon(if entry.folder { "\u{e8b7}" } else { "\u{e8a5}" },
+                            &self.icon, &slot, if entry.folder {folder_icon} else {accent});
+                    }
                     target.clipped_text(
                         &name,
                         &self.name,
