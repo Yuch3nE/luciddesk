@@ -18,6 +18,36 @@ mod tests {
     use super::*;
 
     #[test]
+    fn icon_repaints_reuse_gpu_bitmap_and_clearing_releases_resources() {
+        let _sta=crate::pane::test_support::apartment();
+        let window=windows_window::Window::new("Search icon lifetime").size(320,220)
+            .style(WS_POPUP).ex_style(WS_EX_NOREDIRECTIONBITMAP)
+            .on_message(|_,msg,_,_|(msg==WM_DESTROY).then_some(0)).create().unwrap();
+        let hwnd=window.hwnd().cast();
+        let mut drawing=Drawing::new(hwnd).unwrap();
+        let model=crate::pane::tests::test_model("Search");
+        let mut state=Search::new();
+        assert_eq!(drawing.file_icons.resources(),(0,0,false));
+        for cycle in 1..=5 {
+            state.query="folder".into();
+            state.entries=vec![Entry {path:"C:/one.txt".into(),folder:false},Entry {path:"C:/two.txt".into(),folder:false}];
+            let deadline=Instant::now()+Duration::from_secs(5);
+            while drawing.file_icons.uploads<cycle {
+                drawing.paint(hwnd,&model,&state).unwrap();
+                assert!(Instant::now()<deadline,"icon worker did not finish");
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            for _ in 0..20 {drawing.paint(hwnd,&model,&state).unwrap();}
+            assert_eq!(drawing.file_icons.uploads,cycle,"shared type uploaded more than once");
+            assert_eq!(drawing.file_icons.resources(),(0,1,true),"CPU pixels should be released after upload");
+            state.query.clear();state.entries.clear();
+            drawing.clear_icons();
+            drawing.paint(hwnd,&model,&state).unwrap();
+            assert_eq!(drawing.file_icons.resources(),(0,0,false));
+        }
+    }
+
+    #[test]
     fn deferred_search_frame_keeps_pending_redraw_until_it_is_painted() {
         let _sta = crate::pane::test_support::apartment();
         let window = windows_window::Window::new("Search frame retry").size(320, 200)
@@ -34,6 +64,7 @@ mod tests {
     }
 }
 impl Drawing {
+    pub(super) fn clear_icons(&mut self) { self.file_icons.clear(); }
     pub(super) fn new(hwnd: HWND) -> Result<Self, String> {
         use windows_canvas::{ParagraphAlignment, TextFormat, WordWrapping};
         let name = TextFormat::new(&crate::pane::fonts::family(), 14.0)
@@ -310,9 +341,9 @@ impl Drawing {
                     let parent = entry.path.parent().unwrap_or(&entry.path).to_string_lossy();
                     let path = parent;
                     let slot = Rect::from_xywh(16.0, y + 10.0, 24.0, 24.0);
-                    if let Some(pixels) = self.file_icons.get(entry, icon_size) {
-                        let bitmap=canvas_result(target.create_bitmap(&pixels.data,pixels.width,pixels.height))?;
-                        target.draw_bitmap(&bitmap, &slot, 1.0);
+                    if let Some(bitmap) = self.file_icons.bitmap(entry, icon_size, |pixels|
+                        canvas_result(target.create_bitmap(&pixels.data, pixels.width, pixels.height)))? {
+                        target.draw_bitmap(bitmap, &slot, 1.0);
                     } else {
                         target.clipped_icon(if entry.folder { "\u{e8b7}" } else { "\u{e8a5}" },
                             &self.icon, &slot, if entry.folder {folder_icon} else {accent});

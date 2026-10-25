@@ -891,6 +891,9 @@ pub(super) fn create(
             if msg == WM_APP + 199 {
                 return Some(drawing.as_ref().map_or(-1, |d| (d.surface.current_opacity() * 1000.0) as isize));
             }
+            if msg == WM_DESTROY || (msg == WM_SHOWWINDOW && wp == 0) {
+                if let Some(drawing) = drawing.as_mut() {drawing.clear_icons();}
+            }
             if visibility.message(hwnd, msg, wp, lp, drawing.as_ref().map(|d| &d.surface), |opacity| {
                 if let Some(editor) = input.borrow_mut().as_mut() { editor.opacity(opacity); }
             }) { return Some(0); }
@@ -1059,6 +1062,9 @@ pub(super) fn create(
                 }
                 INPUT => {
                     let value = text(edit(hwnd));
+                    if value.trim().is_empty() {
+                        if let Some(drawing) = drawing.as_mut() {drawing.clear_icons();}
+                    }
                     invalidate(hwnd);
                     if value.trim() != state.query {
                         if let Some(tip) = &mut tooltip {

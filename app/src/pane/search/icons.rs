@@ -14,6 +14,7 @@ impl Key {
             folder: entry.folder, size: if size<=16 {16} else {32} }
     }
 }
+enum Cached { Pixels(Pixels), Bitmap(windows_canvas::Bitmap), Failed }
 struct Worker {
     wake: Wake,
     stopped: std::sync::Arc<std::sync::atomic::AtomicBool>,
@@ -51,22 +52,38 @@ impl Drop for Worker {
     }
 }
 pub(super) struct Icons {
-    worker: Worker,
-    cache: HashMap<Key, Option<Pixels>>,
+    hwnd: HWND,
+    worker: Option<Worker>,
+    cache: HashMap<Key, Cached>,
     pending: HashSet<Key>,
+    #[cfg(test)]
+    pub uploads: usize,
 }
 impl Icons {
+    #[cfg(test)]
+    pub fn resources(&self) -> (usize,usize,bool) {
+        (self.cache.values().filter_map(|v|if let Cached::Pixels(p)=v {Some(p.data.len())} else {None}).sum(),
+         self.cache.values().filter(|v|matches!(v,Cached::Bitmap(_))).count(), self.worker.is_some())
+    }
     pub fn new(hwnd: HWND) -> Self {
-        Self {worker:Worker::new(hwnd),cache:HashMap::new(),pending:HashSet::new()}
+        Self {hwnd,worker:None,cache:HashMap::new(),pending:HashSet::new(), #[cfg(test)] uploads:0}
+    }
+    pub fn clear(&mut self) {
+        // Dropping both channel endpoints also wakes a worker blocked on send.
+        // Never join a Shell call on the UI thread; its current call may finish later.
+        self.worker=None;
+        self.cache=HashMap::new();
+        self.pending=HashSet::new();
     }
     pub fn refresh(&mut self, entries: &[Entry], size: i32) {
-        let worker=&self.worker;
+        if entries.is_empty() {self.clear();return;}
+        let worker=self.worker.get_or_insert_with(||Worker::new(self.hwnd));
         worker.wake.received();
         let visible: HashSet<_>=entries.iter().take(CAPACITY).map(|e|Key::new(e,size)).collect();
         self.cache.retain(|key,_|visible.contains(key));
         for (key,pixels) in worker.receiver.try_iter() {
             self.pending.remove(&key);
-            if visible.contains(&key) {self.cache.insert(key,pixels);}
+            if visible.contains(&key) {self.cache.insert(key,pixels.map_or(Cached::Failed,Cached::Pixels));}
         }
         for key in visible {
             if !self.cache.contains_key(&key) && !self.pending.contains(&key)
@@ -74,11 +91,18 @@ impl Icons {
                 && worker.sender.try_send(key.clone()).is_ok() {self.pending.insert(key);}
         }
     }
-    pub fn get(&self, entry: &Entry, size: i32) -> Option<&Pixels> {
-        self.cache.get(&Key::new(entry,size)).and_then(Option::as_ref)
+    pub fn bitmap(&mut self, entry: &Entry, size: i32,
+        upload: impl FnOnce(&Pixels)->windows::core::Result<windows_canvas::Bitmap>,
+    ) -> windows::core::Result<Option<&windows_canvas::Bitmap>> {
+        let Some(cached)=self.cache.get_mut(&Key::new(entry,size)) else {return Ok(None)};
+        if let Cached::Pixels(pixels)=cached {
+            let bitmap=upload(pixels)?;
+            *cached=Cached::Bitmap(bitmap); // Releases the CPU pixels immediately.
+            #[cfg(test)] {self.uploads+=1;}
+        }
+        Ok(match cached {Cached::Bitmap(bitmap)=>Some(bitmap),_=>None})
     }
 }
-
 fn load(key: &Key) -> windows::core::Result<Pixels> {
     if key.path.is_some() {
         if let Ok(pixels)=query_icon(key,true) {return Ok(pixels);}
@@ -109,6 +133,32 @@ fn query_icon(key: &Key, specific: bool) -> windows::core::Result<Pixels> {
 mod tests {
     use super::*;
     fn entry(path:&str,folder:bool)->Entry {Entry {path:path.into(),folder}}
+    #[test]
+    fn cache_shares_types_prunes_offscreen_and_does_not_retry_failed_icons() {
+        let (sender,requests)=mpsc::sync_channel(8);
+        let (responses,receiver)=mpsc::channel();
+        let mut icons=Icons::new(std::ptr::null_mut());
+        icons.worker=Some(Worker {wake:Wake::default(),stopped:Default::default(),sender,receiver});
+        let entries=[entry("C:/one.TXT",false),entry("D:/two.txt",false)];
+        icons.refresh(&entries,32);
+        let key=requests.try_recv().unwrap();
+        assert!(requests.try_recv().is_err());
+        responses.send((key.clone(),None)).unwrap();
+        icons.refresh(&entries,32);
+        assert_eq!(icons.cache.len(),1);
+        assert!(requests.try_recv().is_err());
+        icons.refresh(&[],32);
+        assert!(icons.cache.is_empty());
+        assert!(icons.pending.is_empty());
+        assert_ne!(Key::new(&entry("C:/folder.one",true),32),Key::new(&entry("D:/folder.two",true),32));
+        assert_eq!(key,Key::new(&entries[0],48));
+        assert_ne!(key,Key::new(&entries[0],16));
+        assert!(icons.worker.is_none());
+        assert_eq!(icons.cache.capacity(),0);
+        assert_eq!(icons.pending.capacity(),0);
+        assert!(responses.send((key,None)).is_err());
+        assert!(matches!(requests.try_recv(),Err(mpsc::TryRecvError::Disconnected)));
+    }
     #[test]
     fn specific_icons_use_real_paths_and_fall_back_for_missing_files() {
         let _sta=crate::pane::test_support::apartment();
