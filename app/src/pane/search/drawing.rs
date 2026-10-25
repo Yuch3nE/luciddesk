@@ -2,7 +2,7 @@
 use super::*;
 
 pub(super) struct Drawing {
-    brushes: crate::pane::canvas::Brushes<9>,
+    brushes: crate::pane::canvas::Brushes<10>,
     file_icons: icons::Icons,
     family: String,
     language: &'static str,
@@ -10,6 +10,7 @@ pub(super) struct Drawing {
     name: windows_canvas::TextFormat,
     path: windows_canvas::TextFormat,
     icon: windows_canvas::TextFormat,
+    action_icon: windows_canvas::TextFormat,
     placeholder: windows_canvas::TextFormat,
 }
 
@@ -90,6 +91,11 @@ impl Drawing {
             path,
             placeholder: TextFormat::new(&crate::pane::fonts::family(), crate::pane::control_style::TEXT)
                 .map_err(|e| e.to_string())?
+                .with_paragraph_alignment(ParagraphAlignment::Center)
+                .with_word_wrapping(WordWrapping::NoWrap),
+            action_icon: TextFormat::new(crate::pane::fonts::icon_family(), 16.0)
+                .map_err(|e| e.to_string())?
+                .with_alignment(windows_canvas::TextAlignment::Center)
                 .with_paragraph_alignment(ParagraphAlignment::Center)
                 .with_word_wrapping(WordWrapping::NoWrap),
             icon: TextFormat::new(crate::pane::fonts::icon_family(), 20.0)
@@ -182,17 +188,18 @@ impl Drawing {
             );
             let ink = contrast.ink();
             let base = contrast.base();
-            let [background, text, dim, line, outline, selected, hovered, accent, folder_icon] =
+            let [background, text, dim, line, outline, selected, hovered, accent, folder_icon, action_hover] =
                 canvas_result(self.brushes.get(context, &target, [
                     ColorF::new(base, base, base, if !native { 1.0 } else if model.options.text_protection { contrast.scrim } else { 0.0 }),
                     ColorF::new(ink, ink, ink, 1.0),
                     ColorF::new(ink, ink, ink, 0.58),
                     crate::pane::theme::panel_divider(model.dark, model.backdrop),
                     crate::pane::theme::panel_border(model.dark, model.backdrop),
-                    ColorF::new(0.30, 0.58, 0.88, if model.dark { 0.24 } else { 0.13 }),
+                    ColorF::new(ink, ink, ink, if contrast.light_text { 0.14 } else { 0.10 }),
                     ColorF::new(ink, ink, ink, 0.06),
                     if model.dark { ColorF::new(0.48, 0.74, 1.0, 1.0) } else { ColorF::new(0.0, 0.40, 0.76, 1.0) },
                     ColorF::new(0.95, 0.66, 0.18, 1.0),
+                    ColorF::new(ink, ink, ink, if contrast.light_text { 0.12 } else { 0.08 }),
                 ]))?;
             let shape = RoundedRect {
                 rect: Rect::from_xywh(0.5, 0.5, w - 1.0, h - 1.0),
@@ -333,6 +340,16 @@ impl Drawing {
                             radius_y: crate::pane::control_style::RADIUS,
                         }, accent, crate::pane::control_style::FOCUS_STROKE);
                     }
+                    if !state.replacing && (state.hovered == Some(row) || state.focused == Some(row)) {
+                        for button in [RowAction::Location, RowAction::More] {
+                            let Some(r) = row_action_rect(button, w, y) else { continue; };
+                            let rect = Rect::from_xywh(r.x, r.y, r.width, r.height);
+                            let active = state.hovered_row_action == Some((row, button));
+                            if active { target.fill_rounded_rect(&RoundedRect { rect, radius_x: 5.0, radius_y: 5.0 }, action_hover); }
+                            target.clipped_icon(if button == RowAction::More { "\u{e712}" } else { "\u{e8b7}" },
+                                &self.action_icon, &rect, if active { text } else { dim });
+                        }
+                    }
                     let name = entry
                         .path
                         .file_name()
@@ -351,23 +368,31 @@ impl Drawing {
                     target.clipped_text(
                         &name,
                         &self.name,
-                        &Rect::from_xywh(50.0, y + 2.0, (w - 70.0).max(0.0), 22.0),
+                        &Rect::from_xywh(50.0, y + 2.0, (w - 50.0 - if w >= 400.0 { 82.0 } else { 48.0 }).max(0.0), 22.0),
                         if state.replacing { dim } else { text },
                     );
                     target.clipped_text(
                         &path,
                         &self.path,
-                        &Rect::from_xywh(50.0, y + 24.0, (w - 70.0).max(0.0), 18.0),
+                        &Rect::from_xywh(50.0, y + 24.0, (w - 50.0 - if w >= 400.0 { 82.0 } else { 48.0 }).max(0.0), 18.0),
                         dim,
                     );
                 }
                 if !state.entries.is_empty() {
                     let y = h - FOOTER;
                     target.fill_rect(&Rect::from_xywh(12.0, y, (w - 24.0).max(0.0), 1.0), line);
+                    let hint_width = if w >= 480.0 && !state.replacing && state.selection.len() == 1 { 210.0 } else { 0.0 };
+                    if hint_width > 0.0 {
+                        let preview = crate::pane::peek::settings();
+                        let hint = if preview.enabled {
+                            format!("Enter {} · {} {}", crate::i18n::text("ui-open"), crate::pane::peek::shortcut_label(&preview), crate::i18n::text("ui-preview"))
+                        } else { format!("Enter {}", crate::i18n::text("ui-open")) };
+                        target.clipped_text(&hint, &self.path, &Rect::from_xywh(w - hint_width - 16.0, y + 1.0, hint_width, FOOTER - 2.0), dim);
+                    }
                     target.clipped_text(
                         &state.footer(),
                         &self.path,
-                        &Rect::from_xywh(16.0, y + 1.0, (w - 32.0).max(0.0), FOOTER - 2.0),
+                        &Rect::from_xywh(16.0, y + 1.0, (w - 32.0 - hint_width).max(0.0), FOOTER - 2.0),
                         dim,
                     );
                 }

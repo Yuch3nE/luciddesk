@@ -1363,3 +1363,6 @@ font-clear-search = 検索をクリア
 font-list-hint = 現在の表示言語に対応するフォントのみ表示します。
 
 backup-restore-state-changed = 復元の準備中に設定が変更されたため、復元を中止しました。バックアップを再度選択してください。現在の設定は変更されていません。
+
+ui-search-copy-path = フルパスをコピー
+ui-search-more-actions = その他の操作

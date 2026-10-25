@@ -377,7 +377,7 @@ fn live_compact_query_and_clear() {
             0
         );
         assert_eq!(key, 0x202020);
-        assert_eq!(flags, LWA_COLORKEY);
+        assert_eq!(flags, LWA_COLORKEY | LWA_ALPHA);
         SetFocus(hwnd);
         let x = (80.0 * scale(hwnd)) as isize;
         let y = (28.0 * scale(hwnd)) as isize;
@@ -802,4 +802,42 @@ fn action_hit_regions_exclude_hidden_controls_and_keep_clear_available_while_bus
     assert!(action_rect(Action::Launch, 220.0).is_none());
     assert_eq!(action_at(&state, 220.0, false, 160.0, TOP+72.0), None);
     assert_eq!(action_at(&state, 260.0, false, 106.0, TOP+72.0), None);
+}
+
+#[test]
+fn result_actions_target_visible_rows_and_reject_replacing_results() {
+    use super::*;
+    let mut state = Search::new();
+    state.entries = (0..12).map(|i| Entry { path: format!("C:/result-{i}.txt").into(), folder: false }).collect();
+    state.scroll = 2;
+    for width in [280.0, 399.0, 400.0, 720.0] {
+        let y = TOP + ROW_INSET;
+        let more = row_action_rect(RowAction::More, width, y).unwrap();
+        assert_eq!(row_action_at(&state, width, more.x + 15.0, more.y + 16.0), Some((2, RowAction::More)));
+        assert_eq!(row_action_at(&state, width, more.x + more.width, more.y), None);
+        assert_eq!(row_action_rect(RowAction::Location, width, y).is_some(), width >= 400.0);
+        assert_eq!(row_action_at(&state, width, 20.0, y + 20.0), None);
+    }
+    state.selection.insert(2);
+    let captured = state.selected();
+    state.replacing = true;
+    assert!(state.selected().is_empty());
+    assert!(row_action_at(&state, 720.0, 690.0, TOP + 20.0).is_none());
+    state.entries.clear();
+    assert_eq!(path_text(&captured), "C:/result-2.txt");
+}
+
+#[test]
+fn result_menu_and_dispatch_agree_on_multiselection() {
+    use super::*;
+    for count in [0, 1, 3] {
+        let menu = result_menu(count);
+        for command in [OPEN, LOCATION, PEEK, COPY_PATH, COPY, CUT, DELETE] {
+            assert_eq!(menu.iter().any(|entry| entry.id == command as i32 && entry.enabled), action_enabled(command, count));
+        }
+        if count > 0 { assert_eq!(menu.iter().filter(|entry| entry.id == 0).count(), 3); }
+    }
+    let items = vec![identity("C:/测试/a file.txt".into()), identity("D:/b.txt".into())];
+    assert_eq!(path_text(&items), "C:/测试/a file.txt\r\nD:/b.txt");
+    assert_eq!(path_text(&[]), "");
 }

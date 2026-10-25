@@ -1363,3 +1363,6 @@ font-clear-search = Suche leeren
 font-list-hint = Nur Schriftarten für die aktuelle Oberflächensprache werden angezeigt.
 
 backup-restore-state-changed = Die Konfiguration wurde während der Vorbereitung geändert. Wiederherstellung abgebrochen; wählen Sie die Sicherung erneut. Die aktuelle Konfiguration bleibt unverändert.
+
+ui-search-copy-path = Vollständigen Pfad kopieren
+ui-search-more-actions = Weitere Aktionen

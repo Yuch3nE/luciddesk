@@ -1363,3 +1363,6 @@ font-clear-search = 검색 지우기
 font-list-hint = 현재 인터페이스 언어를 지원하는 글꼴만 표시합니다.
 
 backup-restore-state-changed = 복원 준비 중 설정이 변경되어 복원을 취소했습니다. 백업을 다시 선택하세요. 현재 설정은 유지됩니다.
+
+ui-search-copy-path = 전체 경로 복사
+ui-search-more-actions = 추가 작업

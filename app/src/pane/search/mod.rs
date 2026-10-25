@@ -35,6 +35,9 @@ const COPY: usize = 112;
 const CUT: usize = 113;
 const DELETE: usize = 114;
 const PEEK: usize = 115;
+const COPY_PATH: usize = 116;
+const COPIED: u32 = WM_APP + 131;
+const FEEDBACK: usize = 39;
 const REFRESH: usize = 107;
 
 pub(super) fn refresh(hwnd: HWND) {
@@ -71,6 +74,60 @@ fn action_at(state: &Search, width: f32, has_input: bool, x: f32, y: f32) -> Opt
     if state.failed && !state.entries.is_empty() && x >= 12.0 && x < width-12.0
         && y >= state.height()-FOOTER && y < state.height() { return Some(Action::Retry); }
     None
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RowAction { Location, More }
+fn row_action_rect(action: RowAction, width: f32, y: f32) -> Option<RectDip> {
+    if action == RowAction::Location && width < 400.0 { return None; }
+    Some(RectDip::from_bounds(width - if action == RowAction::More { 42.0 } else { 76.0 }, y + 7.0, 30.0, 32.0))
+}
+fn row_action_at(state: &Search, width: f32, x: f32, y: f32) -> Option<(usize, RowAction)> {
+    let row = state.row_at(y)?;
+    let top = TOP + ROW_INSET + (row - state.scroll) as f32 * ROW;
+    [RowAction::Location, RowAction::More].into_iter().find_map(|action| {
+        let r = row_action_rect(action, width, top)?;
+        (x >= r.x && x < r.x+r.width && y >= r.y && y < r.y+r.height).then_some((row, action))
+    })
+}
+fn action_enabled(command: usize, count: usize) -> bool {
+    count > 0 && (!matches!(command, OPEN | LOCATION | PEEK) || count == 1)
+}
+fn path_text(items: &[ShellIdentity]) -> String {
+    items.iter().filter_map(ShellIdentity::file_system_path)
+        .map(|p| p.to_string_lossy()).collect::<Vec<_>>().join("\r\n")
+}
+fn result_menu(count: usize) -> Vec<super::menu::Entry> {
+    let mut rows = Vec::new();
+    if count > 0 {
+        for (id, key, shortcut) in [
+            (OPEN, "ui-open", "Enter"), (LOCATION, "ui-open-file-location", "Ctrl+Enter"),
+            (0, "", ""), (PEEK, "ui-preview", ""), (COPY_PATH, "ui-search-copy-path", "Ctrl+Shift+C"),
+            (0, "", ""), (COPY, "ui-copy", "Ctrl+C"), (CUT, "ui-cut", "Ctrl+X"), (DELETE, "ui-delete-8907", "Del"),
+            (0, "", ""),
+        ] {
+            let mut entry = super::menu::entry(id as i32, if id == 0 { "" } else { crate::i18n::text(key) }, "", shortcut);
+            entry.enabled = action_enabled(id, count);
+            rows.push(entry);
+        }
+    }
+    rows.push(super::menu::entry(201, crate::i18n::text("ui-settings"), "", ""));
+    rows.push(super::menu::entry(202, crate::i18n::text("ui-close-search-panel"), "", ""));
+    rows
+}
+fn show_result_menu(hwnd: HWND, point: POINT, items: Vec<ShellIdentity>, model: &GroupModel,
+    event: Rc<RefCell<impl FnMut(Event) -> bool + 'static>>) {
+    let (theme, backdrop) = (model.theme, model.backdrop);
+    let owner = hwnd as isize;
+    super::window::defer_action(move || {
+        let hwnd = owner as HWND;
+        if unsafe { IsWindow(hwnd) } == 0 { return; }
+        let command = super::menu::show_entries(hwnd, point, false, theme, backdrop, result_menu(items.len()));
+        match command {
+            201 => { (event.borrow_mut())(Event::Settings); }
+            202 => unsafe { PostMessageW(hwnd, WM_CLOSE, 0, 0); },
+            _ => action(hwnd, command as usize, items),
+        }
+    });
 }
 const EDIT_PROPERTY: windows_sys::core::PCWSTR = windows_sys::w!("LucidDesk.SearchInput");
 #[cfg(test)]
@@ -133,6 +190,8 @@ struct Search {
     failed: bool,
     hovered: Option<usize>,
     hovered_action: Option<Action>,
+    hovered_row_action: Option<(usize, RowAction)>,
+    copied: bool,
 }
 impl Search {
     fn new() -> Self {
@@ -175,6 +234,8 @@ impl Search {
             failed: false,
             hovered: None,
             hovered_action: None,
+            hovered_row_action: None,
+            copied: false,
         }
     }
     fn change(&mut self, value: String) {
@@ -393,6 +454,7 @@ impl Search {
     }
 
     fn footer(&self) -> String {
+        if self.copied { return crate::i18n::text("ui-copied").into(); }
         if self.busy {
             return if self.replacing {
                 crate::i18n::text("ui-searching")
@@ -906,7 +968,20 @@ pub(super) fn create(
                     state.wake.unbind();
                     unsafe {
                         KillTimer(hwnd, POLL);
+                        KillTimer(hwnd, FEEDBACK);
                     }
+                    return Some(0);
+                }
+                COPIED => {
+                    state.copied = true;
+                    unsafe { SetTimer(hwnd, FEEDBACK, 1800, None); }
+                    invalidate(hwnd);
+                    return Some(0);
+                }
+                WM_TIMER if wp == FEEDBACK => {
+                    state.copied = false;
+                    unsafe { KillTimer(hwnd, FEEDBACK); }
+                    invalidate(hwnd);
                     return Some(0);
                 }
                 WM_CLOSE | super::visibility::CLOSED => {
@@ -938,7 +1013,8 @@ pub(super) fn create(
                         SetCursor(LoadCursorW(
                             std::ptr::null_mut(),
                             if action_at(&state, client_width(hwnd), GetWindowTextLengthW(edit(hwnd)) > 0,
-                                point.x as f32 / scale(hwnd), point.y as f32 / scale(hwnd)).is_some() {
+                                point.x as f32 / scale(hwnd), point.y as f32 / scale(hwnd)).is_some()
+                                || row_action_at(&state, client_width(hwnd), point.x as f32 / scale(hwnd), point.y as f32 / scale(hwnd)).is_some() {
                                 IDC_HAND
                             } else if point.y as f32 / scale(hwnd) < TOP
                                 && point.x as f32 / scale(hwnd) < client_width(hwnd) - 44.0
@@ -1186,6 +1262,22 @@ pub(super) fn create(
                         });
                         return Some(0);
                     }
+                    if let Some((row, button)) = row_action_at(&state, width, x, y) {
+                        last_click = None;
+                        if !state.selection.contains(&row) { state.select(row, false, false); }
+                        unsafe { SetFocus(hwnd); }
+                        (callback.borrow_mut())(Event::PaneItemFocus);
+                        if button == RowAction::Location {
+                            action(hwnd, LOCATION, vec![identity(state.entries[row].path.clone())]);
+                        } else {
+                            let mut point = POINT::default();
+                            unsafe { GetCursorPos(&raw mut point); }
+                            show_result_menu(hwnd, point, state.selected(), &model.borrow(), Rc::clone(&callback));
+                        }
+                        if let Some(tip) = &mut tooltip { tip.hide(); }
+                        invalidate(hwnd);
+                        return Some(0);
+                    }
                     if y < TOP {
                         let editor = edit(hwnd);
                         let mut point = POINT {
@@ -1287,16 +1379,15 @@ pub(super) fn create(
                             VK_RETURN => Some(if mods.ctrl { LOCATION } else { OPEN }),
                             VK_F5 => Some(REFRESH),
                             VK_DELETE if !mods.shift && !mods.ctrl && !mods.alt => Some(DELETE),
-                            0x43 if mods.ctrl => Some(COPY),
+                            0x43 if mods.ctrl => Some(if mods.shift { COPY_PATH } else { COPY }),
                             0x58 if mods.ctrl => Some(CUT),
                             _ => None,
                         }
                     };
                     if let Some(command) = command {
                         if lp & (1 << 30) == 0 {
-                            unsafe {
-                                PostMessageW(hwnd, WM_COMMAND, command, 0);
-                            }
+                            if command == REFRESH { unsafe { PostMessageW(hwnd, WM_COMMAND, command, 0); } }
+                            else { action(hwnd, command, state.selected()); }
                         }
                         return Some(0);
                     }
@@ -1317,6 +1408,7 @@ pub(super) fn create(
                 WM_MOUSELEAVE => {
                     state.hovered = None;
                     state.hovered_action = None;
+                    state.hovered_row_action = None;
                     error_tip = false;
                     if let Some(tip) = &mut tooltip {
                         tip.hide();
@@ -1328,18 +1420,24 @@ pub(super) fn create(
                     let x = lp as u16 as i16 as f32 / scale(hwnd);
                     let action = action_at(&state, client_width(hwnd), unsafe { GetWindowTextLengthW(edit(hwnd)) } > 0, x, y);
                     if action != state.hovered_action { state.hovered_action = action; invalidate(hwnd); }
+                    let row_action = row_action_at(&state, client_width(hwnd), x, y);
+                    let action_changed = row_action != state.hovered_row_action;
+                    if action_changed { state.hovered_row_action = row_action; invalidate(hwnd); }
                     let hovered = state.row_at(y);
                     let show_error = state.failed
                         && state.entries.is_empty()
                         && (TOP + 10.0..TOP + 56.0).contains(&y);
-                    if hovered != state.hovered || show_error != error_tip {
+                    if hovered != state.hovered || show_error != error_tip || action_changed {
                         state.hovered = hovered;
                         error_tip = show_error;
                         if tooltip.is_none() {
                             tooltip = tooltip::Tooltip::new(hwnd);
                         }
                         if let Some(tip) = &mut tooltip {
-                            if let Some(row) = hovered {
+                            if let Some((row, button)) = row_action {
+                                tip.show_for_row(hwnd, crate::i18n::text(if button == RowAction::Location { "ui-open-file-location" } else { "ui-search-more-actions" }),
+                                    TOP + ROW_INSET + (row - state.scroll) as f32 * ROW);
+                            } else if let Some(row) = hovered {
                                 tip.show_for_row(
                                     hwnd,
                                     &state.entries[row].path.to_string_lossy(),
@@ -1368,50 +1466,21 @@ pub(super) fn create(
                     }
                 }
                 WM_CONTEXTMENU => {
-                    let items = state.selected();
-                    let (theme, backdrop) = {
-                        let m = model.borrow();
-                        (m.theme, m.backdrop)
-                    };
-                    let event = Rc::clone(&callback);
-                    let owner = hwnd as isize;
-                    super::window::defer_action(move || {
-                        let hwnd = owner as HWND;
-                        if unsafe { IsWindow(hwnd) } == 0 {
-                            return;
-                        }
-                        let mut point = POINT::default();
-                        unsafe {
-                            GetCursorPos(&raw mut point);
-                        }
-                        let mut rows = Vec::new();
-                        if !items.is_empty() {
-                            for (id, label, shortcut) in [
-                                (OPEN, crate::i18n::text("ui-open"), "Enter"),
-                                (LOCATION, crate::i18n::text("ui-open-file-location"), ""),
-                                (COPY, crate::i18n::text("ui-copy"), "Ctrl+C"),
-                                (CUT, crate::i18n::text("ui-cut"), "Ctrl+X"),
-                                (DELETE, crate::i18n::text("ui-delete-8907"), "Del"),
-                                (PEEK, crate::i18n::text("ui-preview"), ""),
-                            ] {
-                                rows.push(super::menu::entry(id as i32, label, "", shortcut));
-                            }
-                            rows.push(super::menu::entry(0, "", "", ""));
-                        }
-                        rows.push(super::menu::entry(201, crate::i18n::text("ui-settings"), "", ""));
-                        rows.push(super::menu::entry(202, crate::i18n::text("ui-close-search-panel"), "", ""));
-                        let command =
-                            super::menu::show_entries(hwnd, point, false, theme, backdrop, rows);
-                        match command {
-                            201 => {
-                                (event.borrow_mut())(Event::Settings);
-                            }
-                            202 => unsafe {
-                                PostMessageW(hwnd, WM_CLOSE, 0, 0);
-                            },
-                            _ => action(hwnd, command as usize, items),
-                        }
-                    });
+                    let mut point = POINT { x: lp as u16 as i16 as i32, y: (lp >> 16) as u16 as i16 as i32 };
+                    if lp != -1 {
+                        let mut local = point;
+                        unsafe { ScreenToClient(hwnd, &raw mut local); }
+                        if let Some(row) = state.row_at(local.y as f32 / scale(hwnd)) {
+                            if !state.selection.contains(&row) { state.select(row, false, false); }
+                        } else { state.selection.clear(); }
+                    } else {
+                        point = POINT { x: (50.0 * scale(hwnd)) as i32,
+                            y: ((TOP + ROW_INSET + state.focused.unwrap_or(state.scroll).saturating_sub(state.scroll) as f32 * ROW) * scale(hwnd)) as i32 };
+                        unsafe { ClientToScreen(hwnd, &raw mut point); }
+                    }
+                    if let Some(tip) = &mut tooltip { tip.hide(); }
+                    invalidate(hwnd);
+                    show_result_menu(hwnd, point, state.selected(), &model.borrow(), Rc::clone(&callback));
                     return Some(0);
                 }
                 WM_PAINT => {
@@ -1480,7 +1549,7 @@ pub(super) fn create(
 #[cfg(test)]
 mod tests;
 fn action(hwnd: HWND, command: usize, items: Vec<ShellIdentity>) {
-    if items.is_empty() {
+    if !action_enabled(command, items.len()) {
         return;
     }
     let owner = hwnd as isize;
@@ -1492,6 +1561,7 @@ fn action(hwnd: HWND, command: usize, items: Vec<ShellIdentity>) {
             OPEN => luciddesk_shell::open_shell_identity(owner, &items[0]).map_err(|e| e.to_string()),
             LOCATION => show_location(&items[0]),
             PEEK => super::peek::open_path(&items[0]),
+            COPY_PATH => crate::clipboard::copy(owner, &path_text(&items)).map_err(|e| e.to_string()),
             COPY | CUT | DELETE => luciddesk_shell::invoke_file_commands(
                 windows::Win32::Foundation::HWND(owner as _),
                 &items,
@@ -1505,6 +1575,9 @@ fn action(hwnd: HWND, command: usize, items: Vec<ShellIdentity>) {
             .map_err(|e| e.to_string()),
             _ => Ok(()),
         };
+        if result.is_ok() && command == COPY_PATH {
+            unsafe { PostMessageW(owner as HWND, COPIED, 0, 0); }
+        }
         if let Err(error) = result {
             super::window::error_for(owner as _, &error);
         }
