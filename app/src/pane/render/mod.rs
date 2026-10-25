@@ -768,7 +768,15 @@ impl Renderer {
                     )?;
                 }
                 for (text, incoming, active, bounds) in super::tabs::merge_strip(model, w) {
-                    let rect = Rect::from_xywh(bounds.x, bounds.y, bounds.width, bounds.height);
+                    // Keep the preview aligned with real tabs; inset the one-pixel
+                    // outline so it remains crisp and inside the header at every DPI.
+                    let stroke = 1.0 / scale;
+                    let inset = stroke * 0.5;
+                    let rect = Rect::from_xywh(bounds.x + inset, bounds.y + inset,
+                        (bounds.width - stroke).max(1.0), (bounds.height - stroke).max(1.0));
+                    let radius = crate::pane::interface_flags::pane_corner_radius(model.options.corner_radius)
+                        .min(rect.height() * 0.5);
+                    let shape = RoundedRect { rect, radius_x: radius, radius_y: radius };
                     let fill = canvas_result(target.create_solid_brush(if incoming {
                         chrome.tab_incoming
                     } else if active {
@@ -776,54 +784,22 @@ impl Renderer {
                     } else {
                         chrome.tab_inactive
                     }))?;
-                    target.fill_rounded_rect(
-                        &RoundedRect {
-                            rect,
-                            radius_x: 5.0,
-                            radius_y: 5.0,
-                        },
-                        &fill,
-                    );
-                    if incoming {
-                        let edge = canvas_result(target.create_solid_brush(ColorF::new(
-                            ink,
-                            ink,
-                            ink,
-                            0.24 + chrome.border.a,
-                        )))?;
-                        // Short neutral dashes keep provisional tabs distinct without an accent color.
-                        let mut x = rect.left + 5.0;
-                        while x < rect.right - 5.0 {
-                            for y in [rect.top + 0.5, rect.bottom - 0.5] {
-                                target.draw_line(
-                                    Vector2::new(x, y),
-                                    Vector2::new((x + 4.0).min(rect.right - 5.0), y),
-                                    &edge,
-                                    1.0,
-                                );
-                            }
-                            x += 7.0;
-                        }
-                        let mut y = rect.top + 5.0;
-                        while y < rect.bottom - 5.0 {
-                            for x in [rect.left + 0.5, rect.right - 0.5] {
-                                target.draw_line(
-                                    Vector2::new(x, y),
-                                    Vector2::new(x, (y + 4.0).min(rect.bottom - 5.0)),
-                                    &edge,
-                                    1.0,
-                                );
-                            }
-                            y += 7.0;
-                        }
+                    target.fill_rounded_rect(&shape, &fill);
+                    if incoming || active {
+                        let edge = canvas_result(target.create_solid_brush(if incoming {
+                            ColorF::new(ink, ink, ink, 0.22)
+                        } else {
+                            chrome.card_border
+                        }))?;
+                        target.draw_rounded_rect(&shape, &edge, stroke);
                     }
                     target.clipped_color_text(
                         &text,
                         &self.tab_title,
                         &Rect::from_xywh(
-                            rect.left + 10.0,
-                            rect.top,
-                            (bounds.width - 20.0).max(1.0),
+                            bounds.x + 12.0,
+                            bounds.y,
+                            (bounds.width - 24.0).max(1.0),
                             bounds.height,
                         ),
                         if active || incoming { white } else { dim },
