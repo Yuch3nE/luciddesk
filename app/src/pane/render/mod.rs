@@ -65,6 +65,7 @@ struct TitleLayout {
 }
 
 pub struct Renderer {
+    frame_cache: std::cell::RefCell<canvas::FrameCache>,
     monitor: Option<super::monitor::Drawing>,
     family: String,
     language: &'static str,
@@ -144,17 +145,17 @@ impl Renderer {
         native: bool,
         dark: bool,
     ) -> Result<()> {
-        canvas::draw(target, scale, |target| {
+        canvas::draw_cached(target, scale, &self.frame_cache, |target| {
             let ink = if dark { 0.95 } else { 0.10 };
-            let text = canvas_result(target.create_solid_brush(ColorF::new(ink, ink, ink, 1.0)))?;
+            let text = canvas_result(target.cached_solid_brush(ColorF::new(ink, ink, ink, 1.0)))?;
             let disabled =
-                canvas_result(target.create_solid_brush(ColorF::new(ink, ink, ink, 0.4)))?;
+                canvas_result(target.cached_solid_brush(ColorF::new(ink, ink, ink, 0.4)))?;
             let subtle =
-                canvas_result(target.create_solid_brush(ColorF::new(ink, ink, ink, 0.13)))?;
+                canvas_result(target.cached_solid_brush(ColorF::new(ink, ink, ink, 0.13)))?;
             target.clear(ColorF::new(0.0, 0.0, 0.0, 0.0));
             let width = width as f32 / scale;
             if !native {
-                let background = canvas_result(target.create_solid_brush(ColorF::new(
+                let background = canvas_result(target.cached_solid_brush(ColorF::new(
                     if dark { 0.09 } else { 0.96 },
                     if dark { 0.10 } else { 0.96 },
                     if dark { 0.12 } else { 0.96 },
@@ -166,7 +167,7 @@ impl Renderer {
                         radius_x: super::menu::CORNER_RADIUS + 0.5,
                         radius_y: super::menu::CORNER_RADIUS + 0.5,
                     },
-                    &background,
+                    &*background,
                 );
             }
             target.draw_rounded_rect(
@@ -175,7 +176,7 @@ impl Renderer {
                     radius_x: super::menu::CORNER_RADIUS,
                     radius_y: super::menu::CORNER_RADIUS,
                 },
-                &subtle,
+                &*subtle,
                 1.0,
             );
             for (index, row) in rows.iter().enumerate() {
@@ -183,13 +184,13 @@ impl Renderer {
                 if row.id == 0 {
                     target.fill_rect(
                         &Rect::from_xywh(12.0, top + 4.0, width - 24.0, 1.0),
-                        &subtle,
+                        &*subtle,
                     );
                     continue;
                 }
                 let progress = highlights.get(index).copied().unwrap_or(0.0);
                 if progress > 0.0 {
-                    let hover = canvas_result(target.create_solid_brush(ColorF::new(
+                    let hover = canvas_result(target.cached_solid_brush(ColorF::new(
                         ink,
                         ink,
                         ink,
@@ -206,7 +207,7 @@ impl Renderer {
                             radius_x: 5.0,
                             radius_y: 5.0,
                         },
-                        &hover,
+                        &*hover,
                     );
                 }
                 let text = if row.enabled { &text } else { &disabled };
@@ -331,6 +332,7 @@ impl Renderer {
                 .with_paragraph_alignment(ParagraphAlignment::Center)
                 .with_word_wrapping(WordWrapping::NoWrap),
             target: None,
+            frame_cache: Default::default(),
             brushes: Default::default(),
             images: HashMap::new(),
             #[cfg(test)]
@@ -525,7 +527,7 @@ impl Renderer {
             let (_, _, _, target) = self.target.as_ref().unwrap();
             let context = target;
             let mut brushes = self.brushes.borrow_mut();
-            canvas::draw(target, scale, |target| {
+            canvas::draw_cached(target, scale, &self.frame_cache, |target| {
                 let (w, h) = (width as f32 / scale, height as f32 / scale);
                 let contrast = super::theme::panel_contrast(
                     model.backdrop,
@@ -648,7 +650,7 @@ impl Renderer {
                         let x = model.header_button_x(w, button);
                         let enabled = model.header_button_enabled(button);
                         let hovered = enabled && model.hovered_button == Some(button);
-                        let glyph = canvas_result(target.create_solid_brush(ColorF::new(
+                        let glyph = canvas_result(target.cached_solid_brush(ColorF::new(
                             ink,
                             ink,
                             ink,
@@ -662,7 +664,7 @@ impl Renderer {
                         )))?;
                         if hovered {
                             let fill = canvas_result(
-                                target.create_solid_brush(ColorF::new(ink, ink, ink, 0.07)),
+                                target.cached_solid_brush(ColorF::new(ink, ink, ink, 0.07)),
                             )?;
                             target.fill_rounded_rect(
                                 &RoundedRect {
@@ -670,7 +672,7 @@ impl Renderer {
                                     radius_x: 5.0,
                                     radius_y: 5.0,
                                 },
-                                &fill,
+                                &*fill,
                             );
                         }
                         let center = x + 14.0;
@@ -679,7 +681,7 @@ impl Renderer {
                                 if button == 2 { "\u{e72b}" } else { "\u{e80f}" },
                                 &self.navigation_icons,
                                 &Rect::from_xywh(x, top, 28.0, button_height),
-                                &glyph,
+                                &*glyph,
                             );
                         } else if button == 0 {
                             let amount = model.reveal.clamp(0.0, 1.0);
@@ -698,7 +700,7 @@ impl Renderer {
                                         x: center + (pair[1].0 - center) * 1.25,
                                         y: center_y + (pair[1].1 - 19.0) * 1.25,
                                     },
-                                    &glyph,
+                                    &*glyph,
                                     1.5,
                                 );
                             }
@@ -713,7 +715,7 @@ impl Renderer {
                                         radius_x: 1.1,
                                         radius_y: 1.1,
                                     },
-                                    &glyph,
+                                    &*glyph,
                                 );
                             }
                         }
@@ -737,7 +739,7 @@ impl Renderer {
                 {
                     let rect = Rect::from_xywh(bounds.x, bounds.y, bounds.width, bounds.height);
                     let fill =
-                        canvas_result(target.create_solid_brush(if id == model.active_tab {
+                        canvas_result(target.cached_solid_brush(if id == model.active_tab {
                             chrome.tab_active
                         } else if model.hovered_tab == Some(id) {
                             chrome.tab_hover
@@ -750,17 +752,17 @@ impl Renderer {
                             radius_x: crate::pane::interface_flags::pane_corner_radius(model.options.corner_radius),
                             radius_y: crate::pane::interface_flags::pane_corner_radius(model.options.corner_radius),
                         },
-                        &fill,
+                        &*fill,
                     );
                     if id == model.active_tab || model.hovered_tab == Some(id) {
-                        let edge = canvas_result(target.create_solid_brush(chrome.card_border))?;
+                        let edge = canvas_result(target.cached_solid_brush(chrome.card_border))?;
                         target.draw_rounded_rect(
                             &RoundedRect {
                                 rect,
                                 radius_x: crate::pane::interface_flags::pane_corner_radius(model.options.corner_radius),
                                 radius_y: crate::pane::interface_flags::pane_corner_radius(model.options.corner_radius),
                             },
-                            &edge,
+                            &*edge,
                             1.0,
                         );
                     }
@@ -791,21 +793,21 @@ impl Renderer {
                     let radius = crate::pane::interface_flags::pane_corner_radius(model.options.corner_radius)
                         .min(rect.height() * 0.5);
                     let shape = RoundedRect { rect, radius_x: radius, radius_y: radius };
-                    let fill = canvas_result(target.create_solid_brush(if incoming {
+                    let fill = canvas_result(target.cached_solid_brush(if incoming {
                         chrome.tab_incoming
                     } else if active {
                         chrome.tab_active
                     } else {
                         chrome.tab_inactive
                     }))?;
-                    target.fill_rounded_rect(&shape, &fill);
+                    target.fill_rounded_rect(&shape, &*fill);
                     if incoming || active {
-                        let edge = canvas_result(target.create_solid_brush(if incoming {
+                        let edge = canvas_result(target.cached_solid_brush(if incoming {
                             ColorF::new(ink, ink, ink, 0.22)
                         } else {
                             chrome.card_border
                         }))?;
-                        target.draw_rounded_rect(&shape, &edge, stroke);
+                        target.draw_rounded_rect(&shape, &*edge, stroke);
                     }
                     target.clipped_color_text(
                         &text,
@@ -823,7 +825,7 @@ impl Renderer {
                     && !model.collapsed
                     && h > model.content_header() + 1.0
                 {
-                    let divider = canvas_result(target.create_solid_brush(
+                    let divider = canvas_result(target.cached_solid_brush(
                         super::theme::panel_divider(model.dark, model.backdrop),
                     ))?;
                     let inset = super::layout::HEADER_INSET;
@@ -831,7 +833,7 @@ impl Renderer {
                         ((model.content_header() - inset + 4.0) * scale).round() / scale;
                     target.fill_rect(
                         &Rect::from_xywh(inset, divider_y, (w - inset * 2.0).max(0.0), 1.0 / scale),
-                        &divider,
+                        &*divider,
                     );
                 }
                 if let Some(options) = model
@@ -1199,7 +1201,7 @@ impl Renderer {
                         let center = bar.left + super::scrollbar::Bar::WIDTH / 2.0;
                         if expansion > 0.0 {
                             let track_width = 2.0 + 4.0 * expansion;
-                            let track = canvas_result(target.create_solid_brush(ColorF::new(
+                            let track = canvas_result(target.cached_solid_brush(ColorF::new(
                                 ink,
                                 ink,
                                 ink,
@@ -1219,11 +1221,11 @@ impl Renderer {
                                     radius_x: track_width / 2.0,
                                     radius_y: track_width / 2.0,
                                 },
-                                &track,
+                                &*track,
                             );
                         }
                         let width = 2.0 + 2.0 * expansion;
-                        let thumb = canvas_result(target.create_solid_brush(ColorF::new(
+                        let thumb = canvas_result(target.cached_solid_brush(ColorF::new(
                             ink,
                             ink,
                             ink,
@@ -1243,19 +1245,19 @@ impl Renderer {
                                 radius_x: width / 2.0,
                                 radius_y: width / 2.0,
                             },
-                            &thumb,
+                            &*thumb,
                         );
                     }
                 }
                 if let Some(rect) = self.marquee.filter(|_| !model.collapsed) {
                     let bounds = Rect::from_xywh(rect.x, rect.y, rect.width, rect.height);
                     let fill = canvas_result(
-                        target.create_solid_brush(ColorF::new(0.2, 0.55, 1.0, 0.18)),
+                        target.cached_solid_brush(ColorF::new(0.2, 0.55, 1.0, 0.18)),
                     )?;
                     let border =
-                        canvas_result(target.create_solid_brush(ColorF::new(0.3, 0.65, 1.0, 0.9)))?;
-                    target.fill_rect(&bounds, &fill);
-                    target.draw_rect(&bounds, &border, 1.0 / scale);
+                        canvas_result(target.cached_solid_brush(ColorF::new(0.3, 0.65, 1.0, 0.9)))?;
+                    target.fill_rect(&bounds, &*fill);
+                    target.draw_rect(&bounds, &*border, 1.0 / scale);
                 }
                 let result = target.finish();
                 // Retain only backgrounds used by this frame, including after resize,

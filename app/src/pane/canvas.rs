@@ -9,6 +9,8 @@ use windows_canvas as c;
 
 mod brushes;
 pub(super) use brushes::Brushes;
+mod cache;
+pub(super) use cache::FrameCache;
 
 /// Canvas does not expose ellipsis trimming; keep this native operation at the boundary.
 pub fn ellipsis(format: &c::TextFormat) -> Result<()> {
@@ -80,6 +82,8 @@ pub fn apply_fallback(format: &c::TextFormat) -> Result<()> {
 }
 
 pub struct DrawPass<'a> {
+    cache: Option<&'a std::cell::RefCell<FrameCache>>,
+    brush_slot: std::cell::Cell<usize>,
     session: c::DrawingSession<'a>,
     native: ID2D1DeviceContext,
     active: bool,
@@ -92,6 +96,25 @@ pub fn draw<T>(
     scale: f32,
     paint: impl FnOnce(DrawPass<'_>) -> Result<T>,
 ) -> Result<T> {
+    draw_inner(target, scale, None, paint)
+}
+
+pub(super) fn draw_cached<T>(
+    target: &c::ID2D1DeviceContext,
+    scale: f32,
+    cache: &std::cell::RefCell<FrameCache>,
+    paint: impl FnOnce(DrawPass<'_>) -> Result<T>,
+) -> Result<T> {
+    cache.borrow_mut().begin(target, scale);
+    draw_inner(target, scale, Some(cache), paint)
+}
+
+fn draw_inner<T>(
+    target: &c::ID2D1DeviceContext,
+    scale: f32,
+    cache: Option<&std::cell::RefCell<FrameCache>>,
+    paint: impl FnOnce(DrawPass<'_>) -> Result<T>,
+) -> Result<T> {
     let native: ID2D1DeviceContext = native_interface(target)?;
     unsafe {
         native.SetDpi(96.0 * scale, 96.0 * scale);
@@ -100,6 +123,8 @@ pub fn draw<T>(
     }
     let session = c::DrawingSession::from_borrowed_context(target, c::Matrix3x2::identity());
     paint(DrawPass {
+        cache,
+        brush_slot: std::cell::Cell::new(0),
         session,
         native,
         active: true,
@@ -116,6 +141,14 @@ impl<'a> std::ops::Deref for DrawPass<'a> {
 }
 
 impl DrawPass<'_> {
+    pub fn cached_solid_brush(&self, color: c::ColorF) -> canvas_core::Result<std::rc::Rc<c::Brush>> {
+        let slot = self.brush_slot.get();
+        self.brush_slot.set(slot + 1);
+        match self.cache {
+            Some(cache) => cache.borrow_mut().brush(&self.session, slot, color),
+            None => self.session.create_solid_brush(color).map(std::rc::Rc::new),
+        }
+    }
     pub fn plugin_context(&self) -> *mut std::ffi::c_void {
         use windows::core::Interface;
         self.native.as_raw()
@@ -312,16 +345,18 @@ impl DrawPass<'_> {
         bounds: &c::Rect,
         brush: &c::Brush,
     ) {
-        let Ok(layout) = c::TextLayout::new(
-            text,
-            format,
-            bounds.right - bounds.left,
-            bounds.bottom - bounds.top,
-        ) else {
+        let size = (bounds.right - bounds.left, bounds.bottom - bounds.top);
+        let result = match self.cache {
+            Some(cache) => cache.borrow_mut().icon(text, format, size),
+            None => c::TextLayout::new(text, format, size.0, size.1).map(|layout| {
+                let offset = text_ink_center_offset(&layout).unwrap_or(0.0);
+                (layout, offset)
+            }),
+        };
+        let Ok((layout, offset)) = result else {
             self.clipped_text(text, format, bounds, brush);
             return;
         };
-        let offset = text_ink_center_offset(&layout).unwrap_or(0.0);
         self.push_clip(bounds);
         self.session.draw_text_layout(
             c::Vector2::new(bounds.left, bounds.top + offset),

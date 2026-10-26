@@ -2,6 +2,7 @@
 use super::*;
 
 pub(super) struct Drawing {
+    frame_cache: std::cell::RefCell<crate::pane::canvas::FrameCache>,
     brushes: crate::pane::canvas::Brushes<10>,
     file_icons: icons::Icons,
     family: String,
@@ -79,6 +80,7 @@ impl Drawing {
         crate::pane::canvas::ellipsis_delimiter(&name, '.' as u32).map_err(|e| e.to_string())?;
         crate::pane::canvas::ellipsis_delimiter(&path, '\\' as u32).map_err(|e| e.to_string())?;
         Ok(Self {
+            frame_cache: Default::default(),
             brushes: Default::default(),
             file_icons: icons::Icons::new(hwnd),
             family: crate::pane::fonts::family(),
@@ -178,7 +180,7 @@ impl Drawing {
         let end = (start+state.visible_rows).min(state.entries.len());
         self.file_icons.refresh(&state.entries[start..end], icon_size);
         let context = &target;
-        crate::pane::canvas::draw(&target, s, |target| {
+        crate::pane::canvas::draw_cached(&target, s, &self.frame_cache, |target| {
             target.clear(ColorF::new(0.0, 0.0, 0.0, 0.0));
             let contrast = crate::pane::theme::panel_contrast(
                 model.backdrop,
