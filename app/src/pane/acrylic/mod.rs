@@ -38,6 +38,8 @@ pub(super) fn clear_thread_cache() {
 }
 
 pub struct Acrylic {
+    #[cfg(test)]
+    pub(super) fail_material_once: std::cell::Cell<bool>,
     hwnd: HWND,
     _power_notification: PowerNotification,
     ui_settings: Option<windows::UI::ViewManagement::UISettings>,
@@ -128,6 +130,8 @@ impl Acrylic {
             host_backdrop: RefCell::new(None),
             #[cfg(test)]
             unavailable_backdrops: std::cell::Cell::new((false, false)),
+            #[cfg(test)]
+            fail_material_once: std::cell::Cell::new(false),
             runtime,
             _target: target,
             root,

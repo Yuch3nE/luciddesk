@@ -19,6 +19,10 @@ const TRANSPARENT: Color = Color {
 
 impl Acrylic {
     pub fn material(&self, material: Backdrop, dark: bool) -> Result<()> {
+        #[cfg(test)]
+        if self.fail_material_once.replace(false) {
+            return Err(windows::Win32::Foundation::E_FAIL.into());
+        }
         if let Backdrop::Solid { color, opacity } = material {
             return self.solid(color, opacity);
         }

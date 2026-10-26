@@ -134,7 +134,7 @@ mod shutdown_tests {
                     super::super::composition::Surface::new_pane(hwnd)
                 }
                 .unwrap();
-                surface.material(hwnd, luciddesk_core::Backdrop::Acrylic);
+                surface.material(hwnd, luciddesk_core::Backdrop::Acrylic).unwrap();
                 surface.present(96, 64, &[255; 96 * 64 * 4]).unwrap();
             }
             assert!(DEVICE.with(|slot| slot.borrow().is_some()));

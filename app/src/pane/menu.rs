@@ -446,7 +446,7 @@ fn show_level(
                                 if fade_finished { 1.0 } else { 0.0 },
                             )?;
                             value.theme(windows::Win32::Foundation::HWND(hwnd), dark);
-                            value.material(windows::Win32::Foundation::HWND(hwnd), backdrop);
+                            value.material(windows::Win32::Foundation::HWND(hwnd), backdrop)?;
                             surface = Some(value);
                         }
                         let value = surface.as_mut().unwrap();

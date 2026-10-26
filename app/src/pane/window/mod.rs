@@ -777,7 +777,7 @@ where
                                 surface.material(
                                     windows::Win32::Foundation::HWND(hwnd),
                                     model.borrow().backdrop,
-                                );
+                                )?;
                             }
                             model.borrow_mut().native_material = surface.native;
                             let Some(target) =

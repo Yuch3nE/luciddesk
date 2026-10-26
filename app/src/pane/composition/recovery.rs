@@ -66,6 +66,46 @@ mod tests {
     use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
     #[test]
+    fn material_errors_release_surface_and_use_bounded_recovery() {
+        use super::super::Surface;
+        let _sta = crate::pane::test_support::apartment();
+        let window = windows_window::Window::new("Material recovery")
+            .size(96, 64).style(WS_POPUP).ex_style(WS_EX_NOREDIRECTIONBITMAP)
+            .create().unwrap();
+        let hwnd = windows::Win32::Foundation::HWND(window.hwnd().cast());
+        let material = luciddesk_core::Backdrop::Solid { color: 0x123456, opacity: 1.0 };
+        let mut recovery = PaintRecovery::default();
+        let mut surface = None;
+        for attempt in 0..4 {
+            recovery.retry_at = None;
+            recovery.paint(hwnd.0, &mut surface, "test.material", |slot| -> windows::core::Result<bool> {
+                *slot = Some(Surface::new_settings(hwnd)?);
+                let surface = slot.as_mut().unwrap();
+                surface.acrylic.as_ref().unwrap().fail_material_once.set(true);
+                surface.material(hwnd, material)?;
+                panic!("material failure must prevent a successful frame");
+            });
+            assert!(surface.is_none(), "failed composition resources must be dropped");
+            assert_eq!(unsafe { KillTimer(hwnd.0, RECOVERY_RETRY) } != 0, attempt < 3);
+        }
+        recovery.paint(hwnd.0, &mut surface, "test.material", |slot| -> windows::core::Result<bool> {
+            *slot = Some(Surface::new_settings(hwnd)?);
+            let surface = slot.as_mut().unwrap();
+            surface.material(hwnd, material)?;
+            let target = surface.begin_frame(96, 64)?;
+            crate::pane::canvas::draw(&target, 1.0, |pass| {
+                pass.clear(windows_canvas::ColorF::new(0.0, 0.0, 0.0, 0.0));
+                pass.finish()
+            })?;
+            surface.end_frame()?;
+            Ok(true)
+        });
+        assert!(surface.as_ref().unwrap().native);
+        assert_eq!(recovery.failures, 0);
+        assert!(recovery.retry_at.is_none());
+    }
+
+    #[test]
     fn failed_resources_are_dropped_and_retries_stop_until_external_redraw() {
         let _sta = crate::pane::test_support::apartment();
         let window = windows_window::Window::new("Recovery test").size(96, 64)

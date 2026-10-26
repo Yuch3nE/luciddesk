@@ -160,7 +160,7 @@ impl Drawing {
         self.surface
             .theme(windows::Win32::Foundation::HWND(hwnd), model.dark);
         self.surface
-            .material(windows::Win32::Foundation::HWND(hwnd), model.backdrop);
+            .material(windows::Win32::Foundation::HWND(hwnd), model.backdrop).map_err(|e| e.to_string())?;
         self.surface.pane_border = model.options.border;
         self.surface.pane_corner_radius = crate::pane::interface_flags::pane_corner_radius(model.options.corner_radius);
         let Some(target) = self

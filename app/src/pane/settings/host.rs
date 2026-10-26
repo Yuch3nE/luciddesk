@@ -660,7 +660,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                             }
                             let surface = surface.as_mut().unwrap();
                             surface.theme(windows::Win32::Foundation::HWND(hwnd), dark);
-                            surface.material(windows::Win32::Foundation::HWND(hwnd), settings_backdrop(appearance.1, dark));
+                            surface.material(windows::Win32::Foundation::HWND(hwnd), settings_backdrop(appearance.1, dark))?;
                             let Some(target) =
                                 surface.try_begin_frame(bounds.right as u32, bounds.bottom as u32)? else {
                                     return Ok(false);

@@ -256,12 +256,14 @@ impl Surface {
         }
     }
 
-    pub fn material(&mut self, hwnd: HWND, material: Backdrop) {
+    pub fn material(&mut self, hwnd: HWND, material: Backdrop) -> Result<()> {
         let effects_enabled = self.acrylic.as_ref().is_none_or(|acrylic| acrylic.effects_enabled());
         if self.material == Some(material) && self.effects_enabled == Some(effects_enabled) {
-            return;
+            return Ok(());
         }
-        self.effects_enabled = Some(effects_enabled);
+        // Cache only a completed application. Errors reach the window's bounded
+        // PaintRecovery path, which discards this composition tree before retrying.
+        self.material = None;
         let kind = DWMSBT_NONE;
         self.native = unsafe { set_attribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &kind).is_ok() }
             && kind != DWMSBT_NONE;
@@ -271,22 +273,17 @@ impl Surface {
         ) {
             if self.acrylic.is_none() {
                 self.acrylic =
-                    super::acrylic::Acrylic::new_with_opacity(hwnd, self.opacity.get()).ok();
+                    Some(super::acrylic::Acrylic::new_with_opacity(hwnd, self.opacity.get())?);
             }
-            self.native = self
-                .acrylic
-                .as_ref()
-                .is_some_and(|acrylic| acrylic.material(material, self.dark).is_ok());
-            if !self.native
-                && let Some(acrylic) = &self.acrylic
-            {
-                let _ = acrylic.visible(false);
-            }
+            self.acrylic.as_ref().unwrap().material(material, self.dark)?;
+            self.native = true;
         } else if let Some(acrylic) = &self.acrylic {
-            let _ = acrylic.visible(false);
+            acrylic.visible(false)?;
         }
+        self.effects_enabled = Some(effects_enabled);
         self.material = Some(material);
         crate::pane::render_debug::render_trace(format_args!("hwnd={hwnd:?} material={material:?} dark={} composition_material={}", self.dark, self.native));
+        Ok(())
     }
 
     fn resize(&mut self, width: u32, height: u32) -> Result<()> {
@@ -464,6 +461,28 @@ impl Drop for Surface {
 pub(super) mod animation_tests {
     use super::*;
     #[test]
+    fn failed_material_is_not_cached_and_same_request_can_recover() {
+        use windows_sys::Win32::UI::WindowsAndMessaging::*;
+        let _sta = crate::pane::test_support::apartment();
+        let window = windows_window::Window::new("Material failure")
+            .size(96, 64).style(WS_POPUP).ex_style(WS_EX_NOREDIRECTIONBITMAP)
+            .create().unwrap();
+        let hwnd = HWND(window.hwnd().cast());
+        let mut surface = Surface::new_settings(hwnd).unwrap();
+        let old = Backdrop::Solid { color: 0x123456, opacity: 1.0 };
+        let next = Backdrop::Solid { color: 0x654321, opacity: 1.0 };
+        surface.material(hwnd, old).unwrap();
+        surface.acrylic.as_ref().unwrap().fail_material_once.set(true);
+        assert_eq!(surface.material(hwnd, next).unwrap_err().code(), windows::Win32::Foundation::E_FAIL);
+        assert_eq!(surface.material, None);
+        assert!(!surface.native);
+        surface.material(hwnd, next).unwrap();
+        assert_eq!(surface.material, Some(next));
+        assert!(surface.native);
+        surface.acrylic.as_ref().unwrap().assert_solid_color(0x654321, 1.0);
+    }
+
+    #[test]
     fn system_policy_changes_invalidate_cached_material_and_restore_effects() {
         use windows_sys::Win32::UI::WindowsAndMessaging::*;
         let _sta = crate::pane::test_support::apartment();
@@ -476,14 +495,14 @@ pub(super) mod animation_tests {
             surface.theme(hwnd, dark);
             for material in [Backdrop::Acrylic, Backdrop::Mica, Backdrop::MicaAlt] {
                 surface.acrylic.as_ref().unwrap().set_effects_enabled_for_test(true);
-                surface.material(hwnd, material);
+                surface.material(hwnd, material).unwrap();
                 surface.acrylic.as_ref().unwrap().set_effects_enabled_for_test(false);
-                surface.material(hwnd, material);
+                surface.material(hwnd, material).unwrap();
                 let acrylic = surface.acrylic.as_ref().unwrap();
                 acrylic.assert_solid_color(if material == Backdrop::Acrylic { if dark { 0x2c2c2c } else { 0xf9f9f9 } } else if dark { 0x202020 } else { 0xf3f3f3 }, 1.0);
                 acrylic.assert_content_visible();
                 acrylic.set_effects_enabled_for_test(true);
-                surface.material(hwnd, material);
+                surface.material(hwnd, material).unwrap();
                 surface.acrylic.as_ref().unwrap().assert_material_effect();
                 assert_eq!(surface.material, Some(material), "policy must not change the requested material");
             }
@@ -500,7 +519,7 @@ pub(super) mod animation_tests {
             .ex_style(WS_EX_NOREDIRECTIONBITMAP).create().unwrap();
         let hwnd = HWND(window.hwnd().cast());
         let mut surface = Surface::new_pane(hwnd).unwrap();
-        surface.material(hwnd, Backdrop::Acrylic);
+        surface.material(hwnd, Backdrop::Acrylic).unwrap();
         surface.pane_corner_radius = 24.0;
         let store = luciddesk_storage::WorkspaceStore::open_in_memory().unwrap();
         use super::super::interface_flags::{self, SystemCorners};
@@ -552,13 +571,13 @@ pub(super) mod animation_tests {
                 for material in [Backdrop::Acrylic, Backdrop::Mica, Backdrop::MicaAlt] {
                     for strength in [0, 50, 100] {
                         let material = material.with_strength(strength);
-                        surface.material(hwnd, material);
+                        surface.material(hwnd, material).unwrap();
                         assert!(surface.native);
                         surface.acrylic.as_ref().unwrap().assert_material_colors(material, dark);
                     }
                 }
                 for opacity in [0.0, 0.5, 1.0] {
-                    surface.material(hwnd, Backdrop::Solid { color: 0x123456, opacity });
+                    surface.material(hwnd, Backdrop::Solid { color: 0x123456, opacity }).unwrap();
                     surface.acrylic.as_ref().unwrap().assert_solid_color(0x123456, opacity);
                 }
             }
@@ -581,7 +600,7 @@ pub(super) mod animation_tests {
         let hwnd = HWND(window.hwnd().cast());
         let mut surface = Surface::new_pane(hwnd).unwrap();
         assert_eq!(surface.layer.is_none(), crate::pane::render_debug::shared_pane_tree());
-        surface.material(hwnd, Backdrop::Acrylic);
+        surface.material(hwnd, Backdrop::Acrylic).unwrap();
         surface.present(240, 160, &[255; 240 * 160 * 4]).unwrap();
         assert!(surface.native);
         surface.opacity(0.75).unwrap();
@@ -602,7 +621,7 @@ pub(super) mod animation_tests {
         assert!(surface.layer.is_none());
         let scale = unsafe { windows_sys::Win32::UI::HiDpi::GetDpiForWindow(hwnd.0) } as f32 / 96.0;
         for material in [Backdrop::Acrylic, Backdrop::Mica, Backdrop::Solid { color: 0x123456, opacity: 0.5 }, Backdrop::Translucent { opacity: 0.8 }] {
-            surface.material(hwnd, material);
+            surface.material(hwnd, material).unwrap();
             surface.resize(240, 160).unwrap();
             let acrylic = surface.acrylic.as_ref().unwrap();
             acrylic.assert_content_visible();
@@ -649,7 +668,7 @@ pub(super) mod animation_tests {
                 Backdrop::Translucent { opacity: 0.8 },
                 Backdrop::Acrylic,
             ] {
-                surface.material(hwnd, material);
+                surface.material(hwnd, material).unwrap();
                 assert_eq!(
                     surface.native,
                     !matches!(material, Backdrop::Translucent { .. })
@@ -675,7 +694,7 @@ pub(super) mod animation_tests {
                 for material in [Backdrop::Acrylic, Backdrop::Mica, Backdrop::MicaAlt] {
                     for strength in [0, 25, 50, 75, 100] {
                         let tuned = material.with_strength(strength);
-                        surface.material(hwnd, tuned);
+                        surface.material(hwnd, tuned).unwrap();
                         surface.acrylic.as_ref().unwrap().assert_material_effect();
                         surface
                             .acrylic
@@ -767,7 +786,7 @@ pub(super) mod animation_tests {
         let hwnd = HWND(window.hwnd().cast());
         {
             let mut surface = Surface::new_with_opacity(hwnd, 0.0).unwrap();
-            surface.material(hwnd, Backdrop::Acrylic);
+            surface.material(hwnd, Backdrop::Acrylic).unwrap();
             assert!(surface.native);
             // Material attachment and the first content upload must not expose
             // an opaque frame before the fade gets its first sample.

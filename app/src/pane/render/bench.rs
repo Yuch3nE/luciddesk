@@ -80,7 +80,7 @@ fn multi_window_render_latency() {
         surface.material(
             windows::Win32::Foundation::HWND(window.hwnd().cast()),
             luciddesk_core::Backdrop::Acrylic,
-        );
+        ).unwrap();
         surfaces.push(surface);
         windows.push(window);
     }
