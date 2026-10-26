@@ -398,24 +398,38 @@ impl Renderer {
         self.target = Some((width, height, None, target.clone()));
         let height_dip = height as f32 / scale;
         let grid = model.grid(width as f32 / scale, height_dip);
-        // Keep the viewport plus one row for smooth scrolling, not every icon
-        // ever visited in a large mapped folder. Source identity still detects
-        // replaced icons without re-uploading unchanged visible textures.
-        let candidates = model.visible_indices(
-            grid,
-            HEADER - grid.cell_height,
-            height_dip + grid.cell_height,
-        );
-        let live: HashSet<_> = candidates
-            .map(|index| (index, &model.items[index]))
-            .filter(|(index, _)| {
-                let (_, y) = model.cell(grid, *index);
-                height_dip > HEADER + 1.0
-                    && y + grid.cell_height * 2.0 > HEADER
-                    && y < height_dip + grid.cell_height
-            })
-            .filter_map(|(_, item)| item.image.as_ref().map(|image| Arc::as_ptr(image) as usize))
-            .collect();
+        // Retain already-uploaded textures one cell beyond the viewport. Do not
+        // pre-upload hidden icons; cap the spare cache even for overlapping items
+        // in free layouts, while never evicting a currently visible texture.
+        const MAX_BUFFERED_IMAGES: usize = 64;
+        let width_dip = width as f32 / scale;
+        let mut live = HashSet::new();
+        let mut buffered = Vec::new();
+        for index in model.visible_indices(grid, HEADER - grid.cell_height, height_dip + grid.cell_height) {
+            let (x, y) = model.cell(grid, index);
+            if height_dip <= HEADER + 1.0
+                || y + grid.cell_height * 2.0 <= HEADER
+                || y >= height_dip + grid.cell_height
+                || x + grid.cell_width <= 6.0 - grid.cell_width
+                || x >= width_dip - 6.0 + grid.cell_width
+            {
+                continue;
+            }
+            let Some(image) = &model.items[index].image else { continue };
+            let key = Arc::as_ptr(image) as usize;
+            if x + grid.cell_width > 6.0 && x < width_dip - 6.0
+                && y + grid.cell_height > HEADER && y < height_dip
+            {
+                live.insert(key);
+            } else if self.images.contains_key(&key) {
+                buffered.push(key);
+            }
+        }
+        let mut retained = 0;
+        for key in buffered {
+            if retained == MAX_BUFFERED_IMAGES { break; }
+            if live.insert(key) { retained += 1; }
+        }
         self.images.retain(|key, _| live.contains(key));
         self.draw(width, height, scale, model, grid)
     }
@@ -928,6 +942,9 @@ impl Renderer {
                         if y + grid.cell_height <= { HEADER } || y >= h {
                             continue;
                         }
+                        if x + grid.cell_width <= 6.0 || x >= w - 6.0 {
+                            continue;
+                        }
                         if let Some(image) = &item.image {
                             let key = Arc::as_ptr(image) as usize;
                             let ratio =
@@ -969,9 +986,6 @@ impl Renderer {
                                     );
                                 }
                             }
-                        }
-                        if x + grid.cell_width <= 6.0 || x >= w - 6.0 {
-                            continue;
                         }
                         if model.selection.contains(&index) || model.hovered_item == Some(index) {
                             let bounds = model.selection_bounds(grid, index, scale);

@@ -699,7 +699,116 @@ fn scrolling_releases_offscreen_icon_textures() {
 }
 
 #[test]
-fn horizontal_scroll_keeps_preloaded_texture_and_reveals_its_pixels() {
+fn horizontal_buffer_reuses_edge_icons_and_releases_distant_ones() {
+    let _sta = crate::pane::test_support::apartment();
+    let device = windows_canvas::GpuDevice::new_warp().unwrap();
+    for free in [false, true] {
+        for scale in [1.0, 1.25, 1.5, 2.0] {
+            let mut model = sample_model();
+            model.fixed_grid = true;
+            model.free_layout = free;
+            model.items.truncate(1);
+            model.items[0].details.grid_position = Some(luciddesk_core::GridPosition::new(0, 0));
+            model.items[0].details.free_position = Some(luciddesk_core::PointDip::new(0.0, 0.0));
+            let mut tail = model.items[0].clone();
+            tail.image = None;
+            tail.details.grid_position = Some(luciddesk_core::GridPosition::new(20, 0));
+            tail.details.free_position = Some(luciddesk_core::PointDip::new(2000.0, 0.0));
+            model.items.push(tail);
+            let cell = model.grid(240.0, 240.0).cell_width;
+            let (width, height) = ((240.0 * scale) as u32, (240.0 * scale) as u32);
+            let bitmap = canvas::Offscreen::new(&device, width, height).unwrap();
+            let mut renderer = Renderer::new().unwrap();
+            for x in [0.0, cell + 12.0, 0.0, cell + 12.0, 0.0] {
+                model.scroll_x = x;
+                renderer.paint(&bitmap.target, width, height, scale, &model).unwrap();
+                assert_eq!(renderer.images.len(), 1);
+                assert_eq!(renderer.image_uploads, 1, "edge round trips must reuse the same upload");
+            }
+            model.scroll_x = cell * 3.0;
+            renderer.paint(&bitmap.target, width, height, scale, &model).unwrap();
+            assert!(renderer.images.is_empty(), "distant textures must be released");
+            model.scroll_x = 0.0;
+            renderer.paint(&bitmap.target, width, height, scale, &model).unwrap();
+            assert_eq!(renderer.image_uploads, 2);
+        }
+    }
+}
+
+#[test]
+fn overlapping_icons_cannot_exceed_spare_cache_limit() {
+    let _sta = crate::pane::test_support::apartment();
+    let device = windows_canvas::GpuDevice::new_warp().unwrap();
+    let mut model = sample_model();
+    model.fixed_grid = true;
+    model.free_layout = true;
+    let template = model.items[0].clone();
+    model.items = (0..200).map(|_| {
+        let mut item = template.clone();
+        item.image = template.image.as_ref().map(|image| Arc::new((**image).clone()));
+        item.details.free_position = Some(luciddesk_core::PointDip::new(0.0, 0.0));
+        item
+    }).collect();
+    let mut tail = template.clone();
+    tail.image = None;
+    tail.details.free_position = Some(luciddesk_core::PointDip::new(2000.0, 0.0));
+    model.items.push(tail);
+    let bitmap = canvas::Offscreen::new(&device, 240, 240).unwrap();
+    let mut renderer = Renderer::new().unwrap();
+    renderer.paint(&bitmap.target, 240, 240, 1.0, &model).unwrap();
+    assert_eq!(renderer.images.len(), 200, "visible icons must not evict each other");
+    model.scroll_x = model.grid(240.0, 240.0).cell_width + 12.0;
+    renderer.paint(&bitmap.target, 240, 240, 1.0, &model).unwrap();
+    assert_eq!(renderer.images.len(), 64);
+    assert_eq!(renderer.image_uploads, 200);
+    let retained: std::collections::HashSet<_> = renderer.images.keys().copied().collect();
+    renderer.paint(&bitmap.target, 240, 240, 1.0, &model).unwrap();
+    assert_eq!(retained, renderer.images.keys().copied().collect(), "buffer selection must remain stable");
+}
+
+#[test]
+fn horizontal_scroll_bounds_gpu_cache_for_wide_rows() {
+    let _sta = crate::pane::test_support::apartment();
+    let device = windows_canvas::GpuDevice::new_warp().unwrap();
+    for free in [false, true] {
+        let mut model = sample_model();
+        model.fixed_grid = true;
+        model.free_layout = free;
+        let template = model.items[0].clone();
+        model.items = (0..1000).map(|index| {
+            let mut item = template.clone();
+            item.identity = ShellIdentity::Namespace { parsing_name: format!("wide:{index}") };
+            item.image = template.image.as_ref().map(|image| Arc::new((**image).clone()));
+            item.details.grid_position = Some(luciddesk_core::GridPosition::new(index, 0));
+            item.details.free_position = Some(luciddesk_core::PointDip::new(index as f32 * 100.0, 0.0));
+            item
+        }).collect();
+        let bitmap = canvas::Offscreen::new(&device, 240, 240).unwrap();
+        let mut renderer = Renderer::new().unwrap();
+        for x in [0.0, 50.0, 1000.0, 5000.0, 0.0] {
+            model.scroll_x = x;
+            let previous: std::collections::HashSet<_> = renderer.images.keys().copied().collect();
+            let before = renderer.image_uploads;
+            renderer.paint(&bitmap.target, 240, 240, 1.0, &model).unwrap();
+            assert!(!renderer.images.is_empty());
+            assert!(renderer.images.len() <= 6, "viewport plus one column on each side stays cached");
+            assert!(renderer.image_uploads - before <= 4, "hidden columns must not upload");
+            let grid = model.grid(240.0, 240.0);
+            for (index, item) in model.items.iter().enumerate() {
+                let (x, _) = model.cell(grid, index);
+                let key = Arc::as_ptr(item.image.as_ref().unwrap()) as usize;
+                let visible = x + grid.cell_width > 6.0 && x < 234.0;
+                let buffered = previous.contains(&key) && x + grid.cell_width > 6.0 - grid.cell_width
+                    && x < 234.0 + grid.cell_width;
+                assert_eq!(renderer.images.contains_key(&key), visible || buffered,
+                    "retain only visible or previously uploaded neighboring icons");
+            }
+        }
+    }
+}
+
+#[test]
+fn horizontal_scroll_uploads_visible_textures_and_releases_hidden_ones() {
     let _sta = crate::pane::test_support::apartment();
     let device = windows_canvas::GpuDevice::new_warp().unwrap();
     for free in [false, true] {
@@ -717,9 +826,8 @@ fn horizontal_scroll_keeps_preloaded_texture_and_reveals_its_pixels() {
             let mut renderer = Renderer::new().unwrap();
             renderer.paint(&bitmap.target, width, height, scale, &model).unwrap();
             let hidden = bitmap.pixels().unwrap();
-            assert_eq!(renderer.images.len(), 1, "horizontal culling must preserve preloading");
-            assert!(renderer.images.contains_key(&key));
-            assert_eq!(renderer.image_uploads, 1);
+            assert!(renderer.images.is_empty(), "offscreen icons must not be uploaded");
+            assert_eq!(renderer.image_uploads, 0);
             let mut placeholder = model.clone();
             placeholder.items[0].image = None;
             let mut reference = Renderer::new().unwrap();
@@ -728,13 +836,17 @@ fn horizontal_scroll_keeps_preloaded_texture_and_reveals_its_pixels() {
             model.scroll_x = model.horizontal_max(240.0);
             renderer.paint(&bitmap.target, width, height, scale, &model).unwrap();
             let visible = bitmap.pixels().unwrap();
-            assert_eq!(renderer.image_uploads, 1, "scroll must reuse the uploaded texture");
+            assert_eq!(renderer.image_uploads, 1, "entering the viewport uploads once");
+            assert!(renderer.images.contains_key(&key));
+            renderer.paint(&bitmap.target, width, height, scale, &model).unwrap();
+            assert_eq!(renderer.image_uploads, 1, "unchanged visible frame reuses texture");
             placeholder.scroll_x = model.scroll_x;
             reference.paint(&bitmap.target, width, height, scale, &placeholder).unwrap();
             assert_ne!(visible, bitmap.pixels().unwrap(), "loaded icon must appear after scrolling");
             model.scroll_x = 0.0;
             renderer.paint(&bitmap.target, width, height, scale, &model).unwrap();
             assert_eq!(renderer.image_uploads, 1);
+            assert!(renderer.images.is_empty(), "leaving the viewport releases texture");
             assert_eq!(hidden, bitmap.pixels().unwrap(), "round-trip scrolling must restore the original frame");
         }
     }
