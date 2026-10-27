@@ -7,19 +7,52 @@ pub(super) struct Prepared {
     token: String,
     base: Context,
     expires: Instant,
-    next: Workspace,
     refs: HashMap<String, String>,
     diff: serde_json::Value,
+    action: PreparedAction,
+}
+
+enum PreparedAction {
+    Workspace(WorkspaceChange),
+    Settings {
+        updates: std::collections::BTreeMap<String, luciddesk_storage::SettingValue>,
+        changed: bool,
+    },
+    Runtime {
+        operation: Operation,
+        backup: Option<super::backups::Prepared>,
+    },
+    // Retain the token after commit, without retaining the preview payload.
+    Applied,
+}
+
+struct WorkspaceChange {
+    next: Workspace,
     membership: bool,
-    applied: bool,
-    settings: Option<std::collections::BTreeMap<String, luciddesk_storage::SettingValue>>,
-    settings_changed: bool,
     layout: Option<(String, Vec<(PanelId, RectDip)>)>,
     layout_observation: Option<super::geometry::LayoutObservation>,
     folders: Vec<(PanelId, luciddesk_storage::FolderPreferences)>,
     folders_changed: bool,
-    runtime_action: Option<Operation>,
-    backup: Option<super::backups::Prepared>,
+}
+
+impl PreparedAction {
+    fn changed(&self, workspace: &Workspace) -> bool {
+        match self {
+            Self::Workspace(change) => change.folders_changed || change.next != *workspace,
+            Self::Settings { changed, .. } => *changed,
+            Self::Runtime { .. } => true,
+            Self::Applied => false,
+        }
+    }
+
+    fn scope(&self) -> &'static str {
+        match self {
+            Self::Workspace(_) => "workspace",
+            Self::Settings { .. } => "settings",
+            Self::Runtime { .. } => "runtime",
+            Self::Applied => unreachable!("applied plans cannot be committed again"),
+        }
+    }
 }
 struct Receipt {
     desktop_membership: Option<Vec<String>>,
@@ -174,8 +207,8 @@ fn prepare(
         let action=super::transient::prepare(workspace,&plan.operations[0]).map_err(invalid)?;
         return Ok(Prepared {
             token:luciddesk_api::request_id(),base:plan.base.clone(),expires:Instant::now()+TTL,
-            next:workspace.clone(),refs:HashMap::new(),diff:json!({"runtime_action":action,"persistence":if matches!(action,Operation::StartupSet{..}){"operating_system"}else{"none"}}),membership:false,applied:false,
-            settings:None,settings_changed:false,layout:None,layout_observation:None,folders:Vec::new(),folders_changed:false,runtime_action:Some(action),backup:None,
+            refs:HashMap::new(),diff:json!({"runtime_action":action,"persistence":if matches!(action,Operation::StartupSet{..}){"operating_system"}else{"none"}}),
+            action: PreparedAction::Runtime { operation: action, backup: None },
         });
     }
     if plan.operations.iter().any(|op| matches!(op, Operation::SettingsUpdate { .. })) {
@@ -195,15 +228,9 @@ fn prepare(
         let (before, after) = super::settings::preview(store, &updates).map_err(invalid)?;
         return Ok(Prepared {
             token: luciddesk_api::request_id(), base: plan.base.clone(), expires: Instant::now() + TTL,
-            next: workspace.clone(), refs: HashMap::new(), membership: false, applied: false,
-            settings_changed: before != after,
+            refs: HashMap::new(),
+            action: PreparedAction::Settings { updates, changed: before != after },
             diff: json!({"before":super::settings::values(before),"after":super::settings::values(after)}),
-            settings: Some(updates),
-            layout: None,
-            layout_observation: None,
-            folders: Vec::new(),
-            folders_changed: false,
-            runtime_action: None, backup: None,
         });
     }
     let mut next = workspace.clone();
@@ -575,21 +602,19 @@ fn prepare(
         Some((topology,positions.into_iter().collect()))
     };
     Ok(Prepared {
-        layout_observation: layout.as_ref().map(|_| observed.clone()),
         token: luciddesk_api::request_id(),
         base: plan.base.clone(),
         expires: Instant::now() + TTL,
-        next,
         refs,
         diff,
-        membership,
-        applied: false,
-        settings: None,
-        settings_changed: false,
-        layout,
-        folders: folders.into_iter().collect(),
-        folders_changed,
-        runtime_action: None, backup: None,
+        action: PreparedAction::Workspace(WorkspaceChange {
+            next,
+            membership,
+            layout_observation: layout.as_ref().map(|_| observed.clone()),
+            layout,
+            folders: folders.into_iter().collect(),
+            folders_changed,
+        }),
     })
 }
 fn receipt_pending(receipt:&Receipt)->bool {receipt.response.data.as_ref().is_some_and(|data|data["presentation_status"]=="pending")}
@@ -680,16 +705,21 @@ impl Plans {
             match prepared {
                 Err((code, message)) => fail(&code, &message),
                 Ok(mut plan) => {
-                    if let Some(op) = plan.runtime_action.as_ref().filter(|op| super::backups::supported(op)) {
-                        match super::backups::prepare(state, op) {
-                            Ok(backup) => { plan.diff = backup.summary.clone(); plan.backup = Some(backup); }
-                            Err(error) => return fail("INVALID_REQUEST", &error),
+                    if let PreparedAction::Runtime { operation, backup } = &mut plan.action {
+                        if super::backups::supported(operation) {
+                            match super::backups::prepare(state, operation) {
+                                Ok(prepared) => {
+                                    plan.diff = prepared.summary.clone();
+                                    *backup = Some(prepared);
+                                }
+                                Err(error) => return fail("INVALID_REQUEST", &error),
+                            }
                         }
                     }
                     let response = Response::success(
                         &request.request_id,
                         json!(context),
-                        json!({"plan_token":plan.token,"expires_in_seconds":300,"changed":plan.runtime_action.is_some() || plan.settings_changed || plan.folders_changed || plan.next!=state.workspace,"diff":plan.diff,"provisional_refs":plan.refs}),
+                        json!({"plan_token":plan.token,"expires_in_seconds":300,"changed":plan.action.changed(&state.workspace),"diff":plan.diff,"provisional_refs":plan.refs}),
                     );
                     if serde_json::to_vec(&response)
                         .map_or(true, |bytes| bytes.len() > luciddesk_api::MAX_FRAME)
@@ -722,17 +752,20 @@ impl Plans {
                     "plan expired or belongs to another instance",
                 );
             };
-            if plan.applied {
+            if matches!(plan.action, PreparedAction::Applied) {
                 return fail("PLAN_ALREADY_APPLIED", "plan has already been committed");
             }
             if plan.base != *context {
                 return fail("CONFLICT", "workspace changed; preview again");
             }
-            if plan.layout_observation.as_ref().is_some_and(|before| *before != super::geometry::observe_layout(state)) {
-                return fail("CONFLICT", "visible panel bounds changed; preview again");
+            if let PreparedAction::Workspace(change) = &plan.action {
+                if change.layout_observation.as_ref().is_some_and(|before| *before != super::geometry::observe_layout(state)) {
+                    return fail("CONFLICT", "visible panel bounds changed; preview again");
+                }
             }
-            let changed = plan.runtime_action.is_some() || plan.settings_changed || plan.folders_changed || plan.next != state.workspace;
-            if changed && plan.membership && !state.session.as_ref().is_some_and(hybrid::is_alive) {
+            let changed = plan.action.changed(&state.workspace);
+            let membership = matches!(&plan.action, PreparedAction::Workspace(change) if change.membership);
+            if changed && membership && !state.session.as_ref().is_some_and(hybrid::is_alive) {
                 return fail(
                     "CAPABILITY_UNAVAILABLE",
                     "desktop integration must be connected for item operations",
@@ -741,36 +774,65 @@ impl Plans {
             if self.receipts.len() >= 1024 && self.receipts.iter().all(receipt_pending) {
                 return fail("BUSY", "all retained requests are still awaiting completion");
             }
-            if changed && plan.runtime_action.is_none() {
-                if let Some(updates) = &plan.settings {
-                    if let Err(error) = super::settings::save(&state.store, updates) {
-                        return fail("PERSISTENCE_ERROR", &error.to_string());
+            if changed {
+                match &mut plan.action {
+                    PreparedAction::Settings { updates, .. } => {
+                        if let Err(error) = super::settings::save(&state.store, updates) {
+                            return fail("PERSISTENCE_ERROR", &error);
+                        }
                     }
-                } else {
-                    if let Err(error) = state.store.save_workspace_with_folder_preferences(&plan.next, plan.layout.as_ref().map(|(key,entries)|(key.as_str(),entries.as_slice())), &plan.folders) {
-                        return fail("PERSISTENCE_ERROR", &error.to_string());
+                    PreparedAction::Workspace(change) => {
+                        if let Err(error) = state.store.save_workspace_with_folder_preferences(
+                            &change.next,
+                            change.layout.as_ref().map(|(key, entries)| (key.as_str(), entries.as_slice())),
+                            &change.folders,
+                        ) {
+                            return fail("PERSISTENCE_ERROR", &error.to_string());
+                        }
+                        state.workspace = std::mem::take(&mut change.next);
+                        if let Some(runtime) = &mut state.runtime {
+                            runtime.layouts.positions.retain(|id, _| state.workspace.panel(*id).is_some());
+                            if let Some((_, entries)) = &change.layout {
+                                runtime.layouts.positions.extend(entries.iter().copied());
+                            }
+                        }
                     }
-                    state.workspace = std::mem::take(&mut plan.next);
-                    if let Some(runtime) = &mut state.runtime {
-                        runtime.layouts.positions.retain(|id,_|state.workspace.panel(*id).is_some());
-                    }
-                    if let (Some(runtime), Some((_,entries))) = (&mut state.runtime, &plan.layout) {
-                        runtime.layouts.positions.extend(entries.iter().copied());
-                    }
+                    PreparedAction::Runtime { .. } => {}
+                    PreparedAction::Applied => unreachable!("checked before committing"),
                 }
             }
-            plan.applied = true;
+            let commit_status = match &plan.action {
+                PreparedAction::Runtime { .. } => "not_persisted",
+                _ if changed => "committed",
+                _ => "unchanged",
+            };
+            let presentation_status = if changed || matches!(plan.action, PreparedAction::Settings { .. }) {
+                "pending"
+            } else {
+                "applied"
+            };
             let response = Response::success(
                 &request.request_id,
                 json!(context),
-                json!({"changed":changed,"commit_status":if plan.runtime_action.is_some(){"not_persisted"}else if changed{"committed"}else{"unchanged"},"presentation_status":if changed || plan.settings.is_some(){"pending"}else{"applied"},"refs":plan.refs,"scope":if plan.runtime_action.is_some(){"runtime"}else if plan.settings.is_some(){"settings"}else{"workspace"}}),
+                json!({
+                    "changed": changed,
+                    "commit_status": commit_status,
+                    "presentation_status": presentation_status,
+                    "refs": plan.refs,
+                    "scope": plan.action.scope(),
+                }),
             );
             if self.receipts.len() >= 1024 {
                 if let Some(index)=self.receipts.iter().position(|receipt|!receipt_pending(receipt)) {self.receipts.remove(index);}
             }
+            let (runtime_action, backup) = match std::mem::replace(&mut plan.action, PreparedAction::Applied) {
+                PreparedAction::Runtime { operation, backup } => (Some(operation), backup),
+                _ => (None, None),
+            };
             self.receipts.push_back(Receipt {
-                desktop_membership: (plan.membership && changed).then(||hybrid::desired_membership(state)),
-                runtime_action:plan.runtime_action.take(),backup:plan.backup.take(),
+                desktop_membership: (membership && changed).then(||hybrid::desired_membership(state)),
+                runtime_action,
+                backup,
                 id: request.request_id.clone(),
                 signature,
                 response: response.clone(),
@@ -778,13 +840,8 @@ impl Plans {
             });
             // Only the token is needed to reject a second commit. Receipts own
             // retry responses; committed workspace and preview data can be dropped.
-            plan.next = Workspace::new();
             plan.refs = HashMap::new();
             plan.diff = serde_json::Value::Null;
-            plan.settings = None;
-            plan.layout = None;
-            plan.layout_observation = None;
-            plan.folders = Vec::new();
             response
         }
     }
@@ -804,7 +861,7 @@ mod tests {
             {"op":"pane.create","ref":"new","title":"Free"}
         ]));
         assert!(response.ok, "{response:?}");
-        assert!(snapshot.plans.pending.back().unwrap().next.panels().last().unwrap().free_layout());
+        assert!(snapshot.plans.pending.back().unwrap().workspace().next.panels().last().unwrap().free_layout());
         assert_eq!(state.workspace, original);
         assert_eq!(state.store.change_count(), writes);
         let next_id = (state.workspace.panels().iter().map(|p| p.id().get()).max().unwrap() + 1).to_string();
@@ -813,7 +870,7 @@ mod tests {
             {"op":"pane.update","pane_id":next_id,"auto_compact":true}
         ]));
         assert!(response.ok, "{response:?}");
-        let panel = snapshot.plans.pending.back().unwrap().next.panels().last().unwrap();
+        let panel = snapshot.plans.pending.back().unwrap().workspace().next.panels().last().unwrap();
         assert!(!panel.fixed_grid());
         assert!(!panel.free_layout());
     }
@@ -833,7 +890,7 @@ mod tests {
         assert!(p.ok, "{p:?}");
         assert_eq!(state.workspace, original);
         assert_eq!(state.store.change_count(), writes);
-        let next = snapshot.plans.pending.back().unwrap().next.clone();
+        let next = snapshot.plans.pending.back().unwrap().workspace().next.clone();
         assert_eq!(next.desktop_item(&item).unwrap().placement(), &DesktopPlacement::Pane { pane_id: PanelId::new(1), position: GridPosition::new(8, 7) });
         state.workspace = next;
         state.store.save_workspace(&state.workspace).unwrap();
@@ -849,7 +906,7 @@ mod tests {
             {"op":"item.position","pane_id":"1","item_id":token,"x":350.5,"y":90.25}
         ]));
         assert!(free.ok, "{free:?}");
-        let next = &snapshot.plans.pending.back().unwrap().next;
+        let next = &snapshot.plans.pending.back().unwrap().workspace().next;
         assert_eq!(next.desktop_item(&item).unwrap().pane_position(), Some(luciddesk_core::PointDip::new(350.5,90.25)));
         for invalid in [
             json!({"op":"pane.update","pane_id":"1","auto_compact":true,"align_icons_to_grid":false}),
@@ -888,7 +945,7 @@ mod tests {
             assert!(Instant::now() < deadline);
             std::thread::sleep(Duration::from_millis(5));
         }
-        let next = &snapshot.plans.pending.back().unwrap().next;
+        let next = &snapshot.plans.pending.back().unwrap().workspace().next;
         assert_eq!(ordered_desktop_items(next, PanelId::new(1)).iter().map(|i|i.display_name()).collect::<Vec<_>>(), ["Small.txt","Medium.txt","Large.lnk"]);
         assert_eq!(state.workspace, original);
         assert_eq!(state.store.change_count(), writes);
@@ -911,7 +968,7 @@ mod tests {
                 let prepared = prepare(&state.workspace, &state.store, &plan, &snapshot.item_ids,
                     &luciddesk_window::enumerate_monitors(), &super::content_layout::snapshots(&state),
                     &super::geometry::observe_layout(&state), Some(&metadata)).unwrap();
-                let actual: Vec<_> = ordered_desktop_items(&prepared.next, PanelId::new(1)).iter().map(|i| i.display_name().to_owned()).collect();
+                let actual: Vec<_> = ordered_desktop_items(&prepared.workspace().next, PanelId::new(1)).iter().map(|i| i.display_name().to_owned()).collect();
                 assert_eq!(actual, if descending { ["A","C","B"] } else { ["B","C","A"] }, "{column}, descending={descending}");
             }
         }
@@ -1097,7 +1154,7 @@ mod tests {
         let monitors = luciddesk_window::enumerate_monitors();
         // Inject a foreign-key failure after workspace rows have been updated inside
         // the real SQLite transaction. No production fault-injection API is needed.
-        snapshot.plans.pending.back_mut().unwrap().layout = Some((
+        snapshot.plans.pending.back_mut().unwrap().workspace_mut().layout = Some((
             "fault-test".into(), vec![(PanelId::new(999), RectDip::default())],
         ));
         let failed = snapshot.plans.handle(&mut state, &base, &snapshot.item_ids, &req, &monitors);
@@ -1106,8 +1163,8 @@ mod tests {
         assert_eq!(state.store.load_workspace().unwrap(), original);
         assert_eq!(state.store.change_count(), count);
         assert!(snapshot.plans.receipts.is_empty());
-        assert!(!snapshot.plans.pending.back().unwrap().applied);
-        snapshot.plans.pending.back_mut().unwrap().layout = None;
+        assert!(!matches!(snapshot.plans.pending.back().unwrap().action, PreparedAction::Applied));
+        snapshot.plans.pending.back_mut().unwrap().workspace_mut().layout = None;
         let recovered = snapshot.plans.handle(&mut state, &base, &snapshot.item_ids, &req, &monitors);
         assert!(recovered.ok, "{recovered:?}");
         assert_eq!(state.store.load_workspace().unwrap(), state.workspace);
@@ -1338,7 +1395,7 @@ mod tests {
         let p = preview(&mut snapshot, &mut state, json!([{"op":"pane.sort","pane_id":"1"}]));
         assert!(p.ok, "{p:?}");
         assert_eq!(state.workspace, original);
-        let sorted = snapshot.plans.pending.back().unwrap().next.clone();
+        let sorted = snapshot.plans.pending.back().unwrap().workspace().next.clone();
         assert_eq!(ordered(&sorted, PanelId::new(1)), ordered(&original, PanelId::new(1)).into_iter().rev().collect::<Vec<_>>());
         assert_eq!(ordered(&sorted, PanelId::new(2)), ordered(&original, PanelId::new(2)));
         state.workspace = sorted;
@@ -1350,7 +1407,7 @@ mod tests {
         assert_eq!(state.store.change_count(), count);
         let reversed = preview(&mut snapshot, &mut state, json!([{"op":"pane.sort","pane_id":"1","descending":true}]));
         assert!(reversed.ok);
-        assert_eq!(ordered(&snapshot.plans.pending.back().unwrap().next, PanelId::new(1)), ordered(&original, PanelId::new(1)));
+        assert_eq!(ordered(&snapshot.plans.pending.back().unwrap().workspace().next, PanelId::new(1)), ordered(&original, PanelId::new(1)));
         state.workspace.panel_mut(PanelId::new(1)).unwrap().set_locked(true);
         assert_eq!(preview(&mut snapshot, &mut state, json!([{"op":"pane.sort","pane_id":"1"}])).error.unwrap().code, "PANE_LOCKED");
         state.workspace.panel_mut(PanelId::new(1)).unwrap().set_locked(false);
@@ -1427,15 +1484,11 @@ mod tests {
         }
         assert_eq!(snapshot.plans.pending.len(), 32);
         for plan in &snapshot.plans.pending {
-            assert!(plan.applied);
-            assert_eq!(plan.next, Workspace::new());
+            assert!(matches!(plan.action, PreparedAction::Applied));
             assert!(plan.refs.is_empty());
             assert!(plan.diff.is_null());
-            assert!(plan.settings.is_none());
-            assert!(plan.layout.is_none());
-            assert!(plan.layout_observation.is_none());
-            assert!(plan.folders.is_empty());
-            assert!(plan.runtime_action.is_none());
+            // Applied has no payload: workspace, settings, layout and runtime data
+            // cannot remain attached to a committed token.
         }
         assert_eq!(state.workspace.desktop_items().len(), 512);
         let saved = state.store.load_workspace().unwrap();
@@ -1494,7 +1547,7 @@ mod tests {
             json!([{"op":"pane.remove","pane_id":"1","release_items":true}]),
         );
         assert!(prepared.ok);
-        let next = &snapshot.plans.pending.back().unwrap().next;
+        let next = &snapshot.plans.pending.back().unwrap().workspace().next;
         assert!(next.panel(PanelId::new(1)).is_none());
         assert!(
             next.desktop_items()
@@ -1699,7 +1752,7 @@ mod tests {
         let plan:Plan=serde_json::from_value(json!({"protocol_version":1,"base":data.context,"operations":[{"op":"pane.create","ref":"new","title":"new"},{"op":"item.assign","pane_ref":"new","item_ids":[items[0]["id"]]}]})).unwrap();
         let prepared = prepare(&state.workspace, &state.store, &plan, &snapshot.item_ids, &luciddesk_window::enumerate_monitors(), &super::content_layout::snapshots(&state), &super::geometry::observe_layout(&state), None).unwrap();
         assert_eq!(
-            prepared.next.desktop_items()[2],
+            prepared.workspace().next.desktop_items()[2],
             original.desktop_items()[2]
         );
         assert_eq!(state.workspace, original);
@@ -1728,12 +1781,12 @@ mod tests {
         let released = snapshot.item_ids[&entries[1]].clone();
         let p=preview(&mut snapshot,&mut state,json!([{"op":"item.release","item_ids":[released]}]));
         assert!(p.ok,"{p:?}");
-        let next=snapshot.plans.pending.back().unwrap().next.clone();
+        let next=snapshot.plans.pending.back().unwrap().workspace().next.clone();
         assert!(matches!(next.desktop_items().iter().find(|i|i.identity().persistent_key()==entries[0]).unwrap().placement(),DesktopPlacement::Pane{position,..} if *position==GridPosition::new(1,4)));
         state.workspace=next;
         let p=preview(&mut snapshot,&mut state,json!([{"op":"item.assign","pane_id":"1","item_ids":[released]}]));
         assert!(p.ok,"{p:?}");
-        let next=&snapshot.plans.pending.back().unwrap().next;
+        let next=&snapshot.plans.pending.back().unwrap().workspace().next;
         assert!(matches!(next.desktop_items().iter().find(|i|i.identity().persistent_key()==entries[0]).unwrap().placement(),DesktopPlacement::Pane{position,..} if *position==GridPosition::new(1,4)));
     }
 
@@ -1751,4 +1804,21 @@ mod tests {
         assert_eq!(state.store.load_workspace().unwrap().desktop_items()[0].pane_position(),state.workspace.desktop_items()[0].pane_position());
     }
 
+}
+
+#[cfg(test)]
+impl Prepared {
+    fn workspace(&self) -> &WorkspaceChange {
+        let PreparedAction::Workspace(change) = &self.action else {
+            panic!("expected a workspace plan");
+        };
+        change
+    }
+
+    fn workspace_mut(&mut self) -> &mut WorkspaceChange {
+        let PreparedAction::Workspace(change) = &mut self.action else {
+            panic!("expected a workspace plan");
+        };
+        change
+    }
 }

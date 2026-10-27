@@ -26,6 +26,7 @@ use windows_window::Window;
 mod shape;
 mod context_menu;
 mod input;
+mod interaction;
 mod scheduling;
 #[cfg(test)]
 mod error_tests;
@@ -281,17 +282,14 @@ where
     let mut renderer = Renderer::new().map_err(|e| e.to_string())?;
     let mut surface: Option<Surface> = None;
     let mut visibility = super::visibility::Transition::default();
-    let mut drag: Option<(usize, POINT, bool)> = None;
+    let mut item_drag = interaction::ItemDrag::default();
     let mut item_tooltip = ItemTooltip::default();
-    let mut drag_offset = luciddesk_core::PointDip::default();
     let mut marquee: Option<super::marquee::Marquee> = None;
     let mut column_drag: Option<ColumnDrag> = None;
     let mut scrollbar_drag: Option<(bool, f32)> = None;
     let mut scrollbar_motion = super::animation::Motion::settled(0.0, std::time::Instant::now());
     let mut scrollbar_timer = false;
     let mut scrollbar_animated = super::scrollbar::animations_enabled();
-    let mut drag_identity = None;
-    let mut drag_image: Option<super::drag_drop::image::DragImage> = None;
     let mut fold: Option<super::animation::Fold> = None;
     let mut pane_moved = false;
     let mut drag_clipped = shape::WindowShape::default();
@@ -325,7 +323,7 @@ where
                 item_tooltip.hide();
             }
             if message == WM_DESTROY { item_tooltip = ItemTooltip::default(); }
-            if message == WM_PAINT && drag.is_none() {
+            if message == WM_PAINT && item_drag.press.is_none() {
                 item_tooltip.refresh(hwnd, &model.borrow());
             }
             #[cfg(test)]
@@ -355,7 +353,7 @@ where
                     (m.auto_hide, m.collapsed)
                 };
                 let suspended = menu_active.get() || super::rename::active(hwnd)
-                    || drag.is_some()
+                    || item_drag.press.is_some()
                     || unsafe { windows_sys::Win32::UI::Input::KeyboardAndMouse::GetCapture() } == hwnd;
                 let mut cursor = POINT::default();
                 let hovered = unsafe { GetCursorPos(&raw mut cursor) != 0 && WindowFromPoint(cursor) == hwnd };
@@ -388,8 +386,7 @@ where
                     tab_press = None;
                     marquee = None;
                     renderer.marquee = None;
-                    drag = None;
-                    drag_image = None;
+                    item_drag.finish_preview();
                     column_drag = None;
                     scrollbar_drag = None;
                     // The native window and its transient fold are shared by all tabs.
@@ -1014,18 +1011,18 @@ where
                         if selected.is_some() || box_select {
                             event(Event::PaneItemFocus);
                         }
-                        drag = selected
+                        item_drag.press = selected
                             .filter(|_| !modifiers.ctrl && !modifiers.shift)
                             .map(|index| (index, p, false));
                         if let Some(index) = selected {
                             let m = model.borrow(); let (x,y) = m.cell(grid(hwnd, &m), index);
-                            drag_offset = luciddesk_core::PointDip::new(p.x as f32 / s - x, p.y as f32 / s - y);
+                            item_drag.offset = luciddesk_core::PointDip::new(p.x as f32 / s - x, p.y as f32 / s - y);
                         }
-                        drag_identity =
+                        item_drag.identity =
                             selected.map(|index| model.borrow().items[index].identity.clone());
                         unsafe {
                             SetFocus(hwnd);
-                            if drag.is_some() || box_select {
+                            if item_drag.press.is_some() || box_select {
                                 SetCapture(hwnd);
                             }
                         }
@@ -1090,11 +1087,11 @@ where
                     }
                     update_pointer(hwnd, &model, Some(point(lparam)));
                     track_client_leave(hwnd);
-                    if drag.is_none() {
+                    if item_drag.press.is_none() {
                         item_tooltip.update(hwnd, &model.borrow());
                     }
-                    if let Some((index, start, moved)) = drag.as_mut() {
-                        let current = drag_identity.as_ref().and_then(|identity| {
+                    if let Some((index, start, moved)) = item_drag.press.as_mut() {
+                        let current = item_drag.identity.as_ref().and_then(|identity| {
                             model
                                 .borrow()
                                 .items
@@ -1129,16 +1126,14 @@ where
                                 // Group drags normally change membership or ordering.
                                 // Explorer needs an OLE data object while the button is
                                 // still down, rather than our internal mouse-up event.
-                                drag = None;
-                                drag_identity = None;
-                                drag_image = None;
+                                item_drag.cancel();
                                 unsafe {
                                     ReleaseCapture();
                                 }
                                 event(Event::FileDrag(preview));
                                 return Some(0);
                             }
-                            if drag_image.is_none() {
+                            if item_drag.image.is_none() {
                                 if let Some((pixels, origin)) =
                                     drag_preview(hwnd, &model.borrow(), *index)
                                 {
@@ -1150,12 +1145,12 @@ where
                                         cx: pixels.width as i32,
                                         cy: pixels.height as i32,
                                     };
-                                    drag_image = super::drag_drop::image::DragImage::new(
+                                    item_drag.image = super::drag_drop::image::DragImage::new(
                                         hwnd, &pixels, screen, hotspot, size,
                                     );
                                 }
                             }
-                            if let Some(image) = &drag_image {
+                            if let Some(image) = &item_drag.image {
                                 image.move_to(screen);
                             }
                         }
@@ -1240,32 +1235,19 @@ where
                         }
                         return Some(0);
                     }
-                    let old = drag.take();
-                    drag_image = None;
+                    let old = item_drag.finish_preview();
                     unsafe {
                         ReleaseCapture();
                     }
                     if let Some((_, _, false)) = old {
-                        let index = drag_identity.take().and_then(|identity| {
-                            model
-                                .borrow()
-                                .items
-                                .iter()
-                                .position(|item| item.identity == identity)
-                        });
+                        let index = item_drag.take_target(&model);
                         if let Some(index) = index {
                             model.borrow_mut().select_item(index, false, false);
                         }
                         invalidate(hwnd);
                     }
                     if let Some((_, _, true)) = old {
-                        let index = drag_identity.take().and_then(|identity| {
-                            model
-                                .borrow()
-                                .items
-                                .iter()
-                                .position(|item| item.identity == identity)
-                        });
+                        let index = item_drag.take_target(&model);
                         let Some(index) = index else {
                             return Some(0);
                         };
@@ -1273,7 +1255,7 @@ where
                         unsafe {
                             ClientToScreen(hwnd, &raw mut p);
                         }
-                        event(Event::Drop { index, point: p, offset: drag_offset });
+                        event(Event::Drop { index, point: p, offset: item_drag.offset });
                     }
                     Some(0)
                 }
@@ -1301,8 +1283,7 @@ where
                         }
                     }
                     invalidate(hwnd);
-                    drag = None;
-                    drag_image = None;
+                    item_drag.finish_preview();
                     unsafe { PostMessageW(hwnd, SYNC_POINTER, 0, 0); }
                     Some(0)
                 }
@@ -1395,9 +1376,8 @@ where
                                 selection.restore(&mut model.borrow_mut());
                                 renderer.marquee = None;
                                 unsafe { ReleaseCapture(); }
-                            } else if drag.take().is_some() {
-                                drag_identity = None;
-                                drag_image = None;
+                            } else if item_drag.press.take().is_some() {
+                                item_drag.cancel();
                                 unsafe {
                                     ReleaseCapture();
                                 }

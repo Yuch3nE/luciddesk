@@ -1,7 +1,18 @@
 //! Pane geometry shared by rendering, hit testing, dragging and resizing.
 use super::*;
 
-type GeometryKey = (usize, usize, u32, u32, bool, u64, u64, &'static str, bool);
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct GeometryKey {
+    items_address: usize,
+    item_count: usize,
+    icon_size_bits: u32,
+    grid_scale_bits: u32,
+    free_layout: bool,
+    font_revision: u64,
+    asset_font_revision: u64,
+    default_font: &'static str,
+    icon_only: bool,
+}
 #[derive(Clone, Default)]
 pub(super) struct GeometryCache {
     key: Option<GeometryKey>,
@@ -9,6 +20,13 @@ pub(super) struct GeometryCache {
     height: f32,
     columns: usize,
     heights: Vec<f32>,
+}
+
+/// UI gestures retain horizontal position; loaded settings reset both axes.
+#[derive(Clone, Copy)]
+pub(super) enum GridScroll {
+    PreserveHorizontal,
+    ResetBoth,
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -62,6 +80,22 @@ pub struct GroupModel {
 }
 
 impl GroupModel {
+    pub(super) fn apply_options(
+        &mut self,
+        options: luciddesk_core::PaneOptions,
+        previous: luciddesk_core::PaneOptions,
+        scroll: GridScroll,
+    ) {
+        self.options = options;
+        if !self.is_list() && options.grid_scale != previous.grid_scale {
+            if matches!(scroll, GridScroll::ResetBoth) {
+                self.scroll_x = 0.0;
+            }
+            self.scroll = 0;
+            self.hovered_item = None;
+        }
+    }
+
     pub(super) fn content_header(&self) -> f32 { layout::HEADER }
     pub(super) fn header_button_x(&self, width: f32, button: usize) -> f32 {
         if self.tabs.len() > 1 && button >= 2 {
@@ -167,7 +201,7 @@ impl GroupModel {
             old.label == new.label && old.details.grid_position == new.details.grid_position && old.details.free_position == new.details.free_position);
         let cache = self.geometry_cache.get_mut();
         if same_geometry {
-            if let Some(key) = &mut cache.key { key.0 = items.as_ptr() as usize; }
+            if let Some(key) = &mut cache.key { key.items_address = items.as_ptr() as usize; }
         } else { cache.key = None; }
         self.items = items;
         self.selected =
@@ -189,8 +223,17 @@ impl GroupModel {
     }
 
     fn geometry(&self) -> std::cell::Ref<'_, GeometryCache> {
-        let key = (self.items.as_ptr() as usize, self.items.len(), self.icon_size.to_bits(),
-            self.options.grid_scale.to_bits(), self.free_layout, fonts::revision(), assets::font_revision(), crate::i18n::default_font(), self.icon_display.icon_only);
+        let key = GeometryKey {
+            items_address: self.items.as_ptr() as usize,
+            item_count: self.items.len(),
+            icon_size_bits: self.icon_size.to_bits(),
+            grid_scale_bits: self.options.grid_scale.to_bits(),
+            free_layout: self.free_layout,
+            font_revision: fonts::revision(),
+            asset_font_revision: assets::font_revision(),
+            default_font: crate::i18n::default_font(),
+            icon_only: self.icon_display.icon_only,
+        };
         if self.geometry_cache.borrow().key != Some(key) {
             let grid = self.icon_grid(0.0, 0.0);
             let mut cached = GeometryCache { key: Some(key), columns: 1, ..Default::default() };
@@ -477,6 +520,37 @@ impl GroupModel {
         }
         grid.hit(x, y, self.scroll, self.items.len())
             .filter(|&index| contains(index))
+    }
+}
+
+#[cfg(test)]
+mod options_tests {
+    use super::*;
+
+    #[test]
+    fn option_updates_preserve_entry_point_scroll_policy_and_list_state() {
+        let state = crate::pane::tests::test_state();
+        for list_view in [false, true] {
+            for grid_changed in [false, true] {
+                for policy in [GridScroll::PreserveHorizontal, GridScroll::ResetBoth] {
+                    let mut model = create_model(&state, PanelId::new(1)).unwrap();
+                    model.list_view = list_view;
+                    model.scroll = 7;
+                    model.scroll_x = 42.0;
+                    model.hovered_item = Some(0);
+                    let old = model.options;
+                    let mut next = old;
+                    next.border = !old.border;
+                    if grid_changed { next.grid_scale = old.grid_scale + 1.0; }
+                    model.apply_options(next, old, policy);
+                    assert_eq!(model.options, next);
+                    let reset = grid_changed && !list_view;
+                    assert_eq!(model.scroll, if reset { 0 } else { 7 });
+                    assert_eq!(model.hovered_item, if reset { None } else { Some(0) });
+                    assert_eq!(model.scroll_x, if reset && matches!(policy, GridScroll::ResetBoth) { 0.0 } else { 42.0 });
+                }
+            }
+        }
     }
 }
 

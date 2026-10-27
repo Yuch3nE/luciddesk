@@ -103,15 +103,10 @@ pub(super) fn present(state: &Rc<RefCell<PaneApp>>) -> Result<(), String> {
         for view in &s.views {
             if let Some(panel) = s.workspace.panel(view.id) {
                 let mut model = view.model.borrow_mut();
-                model.options = options;
+                model.apply_options(options, old_options, model::GridScroll::ResetBoth);
                 model.theme = panel.theme();
                 model.dark = theme::is_dark(panel.theme());
                 model.backdrop = panel.backdrop();
-                if !model.is_list() && (options.grid_scale != old_options.grid_scale) {
-                    model.scroll_x = 0.0;
-                    model.scroll = 0;
-                    model.hovered_item = None;
-                }
             }
             unsafe {
                 windows_sys::Win32::Graphics::Gdi::InvalidateRect(

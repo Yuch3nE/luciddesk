@@ -8,7 +8,8 @@ pub(in crate::pane) fn preview_grid(state: &mut PaneApp, value: f32) {
     }
     let range = luciddesk_core::PaneOptions::GRID_SCALE_RANGE;
     let value = value.clamp(range.0, range.1);
-    let mut options = state.workspace.pane_options();
+    let old = state.workspace.pane_options();
+    let mut options = old;
     options.grid_scale = value;
     if options == state.workspace.pane_options() {
         return;
@@ -16,11 +17,7 @@ pub(in crate::pane) fn preview_grid(state: &mut PaneApp, value: f32) {
     state.workspace.set_pane_options(options);
     for view in &state.views {
         let mut model = view.model.borrow_mut();
-        model.options = options;
-        if !model.is_list() {
-            model.scroll = 0;
-            model.hovered_item = None;
-        }
+        model.apply_options(options, old, model::GridScroll::PreserveHorizontal);
         drop(model);
         unsafe {
             InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0);
@@ -150,11 +147,7 @@ pub(super) fn options(state: &Rc<RefCell<PaneApp>>, event: Event) -> Result<bool
     }
     for view in &s.views {
         let mut model = view.model.borrow_mut();
-        model.options = options;
-        if !model.is_list() && (options.grid_scale != old.grid_scale) {
-            model.scroll = 0;
-            model.hovered_item = None;
-        }
+        model.apply_options(options, old, model::GridScroll::PreserveHorizontal);
         drop(model);
         unsafe {
             InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0);
