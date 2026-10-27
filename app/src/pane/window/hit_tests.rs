@@ -176,6 +176,24 @@ fn desktop_panes_raise_among_peers_without_covering_apps() {
                 "repeated interaction must not reset z-order"
             );
         }
+        // A revealed peer above an app must not pull a lower pane across it.
+        super::super::quick_reveal::show(second);
+        SetWindowPos(app, second, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+        assert!(above(second, app) && above(app, first));
+        for interaction in [WM_MOUSEACTIVATE, WM_LBUTTONDOWN, WM_NCLBUTTONDOWN, WM_ENTERSIZEMOVE] {
+            SendMessageW(first, interaction, 0, 0);
+            assert!(above(app, first), "interaction {interaction:#x} must not cross an intervening app");
+        }
+        SetWindowPos(first, HWND_TOP, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER);
+        assert!(above(app, first), "activation must respect the same application boundary");
+        super::super::quick_reveal::show(first);
+        assert!(above(first, app), "explicit reveal must still lift a pane above apps");
+        assert_eq!(GetWindowLongW(first, GWL_EXSTYLE) as u32 & WS_EX_TOPMOST, 0);
+        SetWindowPos(app, HWND_TOP, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+        assert!(above(app, first), "an ordinary app must still cover a revealed pane");
         // With no visible peer the pane still cannot go below its owner.
         // Repeated HWND_BOTTOM requests must not be mistaken for useful raises.
         ShowWindow(second, SW_HIDE);

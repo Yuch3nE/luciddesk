@@ -85,6 +85,22 @@ fn desktop_insert_after(hwnd: HWND) -> Option<HWND> {
         while !peer.is_null() {
             if peer != hwnd && !GetPropW(peer, DESKTOP_LAYER).is_null()
                 && GetPropW(peer, CLOSING_PANE).is_null() && IsWindowVisible(peer) != 0 {
+                // Peers can straddle an application after a one-shot reveal or
+                // external activation. Never cross that application on a click.
+                // Owned editors/menus belong to the pane band, not an app boundary.
+                let mut above = GetWindow(hwnd, GW_HWNDPREV);
+                let mut boundary = None;
+                while !above.is_null() && above != peer {
+                    if boundary.is_none() && IsWindowVisible(above) != 0 {
+                        let mut owner = above;
+                        while !owner.is_null() && !is_desktop_layer(owner) {
+                            owner = GetWindow(owner, GW_OWNER);
+                        }
+                        if owner.is_null() { boundary = Some(above); }
+                    }
+                    above = GetWindow(above, GW_HWNDPREV);
+                }
+                if above == peer && boundary.is_some() { return boundary; }
                 let mut previous = GetWindow(peer, GW_HWNDPREV);
                 if previous == hwnd { previous = GetWindow(hwnd, GW_HWNDPREV); }
                 // HWND_TOP preserves the non-topmost band; inserting after a topmost HWND would not.
