@@ -1,5 +1,140 @@
 use super::*;
 
+/// Keep a foreign UI thread responsive to native window-position messages.
+struct OtherThreadPane {
+    hwnd: HWND,
+    stop: std::sync::mpsc::Sender<()>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl OtherThreadPane {
+    fn new() -> Self {
+        let (ready, window) = std::sync::mpsc::channel();
+        let (stop, stopped) = std::sync::mpsc::channel();
+        let thread = std::thread::spawn(move || {
+            let pane = Window::new("Foreign UI thread pane")
+                .size(100, 100)
+                .style(WS_POPUP)
+                .ex_style(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE)
+                .create()
+                .unwrap();
+            let hwnd = pane.hwnd().cast();
+            unsafe {
+                assert_ne!(SetPropW(hwnd, DESKTOP_LAYER, 1usize as _), 0);
+                ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+            }
+            ready.send(hwnd as usize).unwrap();
+            while stopped.recv_timeout(std::time::Duration::from_millis(5))
+                == Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+            {
+                unsafe {
+                    let mut message = MSG::default();
+                    while PeekMessageW(&raw mut message, std::ptr::null_mut(), 0, 0, PM_REMOVE) != 0
+                    {
+                        TranslateMessage(&message);
+                        DispatchMessageW(&message);
+                    }
+                }
+            }
+        });
+        Self {
+            hwnd: window.recv().unwrap() as HWND,
+            stop,
+            thread: Some(thread),
+        }
+    }
+}
+
+impl Drop for OtherThreadPane {
+    fn drop(&mut self) {
+        let _ = self.stop.send(());
+        let _ = self.thread.take().unwrap().join();
+    }
+}
+
+#[test]
+fn foreign_ui_thread_panes_are_not_peers_and_remain_application_boundaries() {
+    let foreign = OtherThreadPane::new();
+    let make = || {
+        let pane = Window::new("Local UI thread pane")
+            .size(100, 100)
+            .style(WS_POPUP)
+            .ex_style(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE)
+            .create()
+            .unwrap();
+        unsafe {
+            assert_ne!(
+                windows_sys::Win32::UI::Shell::SetWindowSubclass(
+                    pane.hwnd().cast(),
+                    Some(borderless_proc),
+                    1,
+                    0,
+                ),
+                0
+            );
+            ShowWindow(pane.hwnd().cast(), SW_SHOWNOACTIVATE);
+        }
+        set_layer(pane.hwnd().cast(), false);
+        pane
+    };
+    let first = make();
+    let hwnd = first.hwnd().cast();
+    assert!(
+        desktop_insert_after(hwnd).is_none(),
+        "a foreign marker is not a local peer"
+    );
+    unsafe {
+        let mut activation = WINDOWPOS {
+            hwnd,
+            hwndInsertAfter: HWND_TOP,
+            flags: SWP_NOMOVE | SWP_NOSIZE,
+            ..Default::default()
+        };
+        SendMessageW(
+            hwnd,
+            WM_WINDOWPOSCHANGING,
+            0,
+            (&raw mut activation) as isize,
+        );
+        assert_ne!(activation.flags & SWP_NOZORDER, 0);
+    }
+    let second = make();
+    raise_once(second.hwnd().cast());
+    unsafe {
+        assert_ne!(
+            SetWindowPos(
+                foreign.hwnd,
+                second.hwnd().cast(),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER
+            ),
+            0
+        );
+        // Establish a deterministic adjacent band even when desktop apps are open.
+        RemovePropW(hwnd, DESKTOP_LAYER);
+        assert_ne!(
+            SetWindowPos(
+                hwnd,
+                foreign.hwnd,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER
+            ),
+            0
+        );
+        SetPropW(hwnd, DESKTOP_LAYER, 1usize as _);
+        assert_eq!(GetWindow(hwnd, GW_HWNDPREV), foreign.hwnd);
+        assert_eq!(desktop_insert_after(hwnd), Some(foreign.hwnd));
+        raise_among_peers(hwnd);
+        assert_eq!(GetWindow(hwnd, GW_HWNDPREV), foreign.hwnd);
+    }
+}
+
 #[test]
 fn desktop_panes_raise_among_peers_without_covering_apps() {
     unsafe extern "system" fn count_positions(

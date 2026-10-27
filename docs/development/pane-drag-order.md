@@ -27,7 +27,7 @@
 
 ## 桌面面板之间的抬升
 
-`DESKTOP_LAYER` 是用于识别未置顶面板的窗口属性，不是 Windows 提供的独立桌面窗口层。`desktop_insert_after` 从当前 Z 顺序寻找可见、未关闭且带该属性的同类面板，计算插入位置。
+`DESKTOP_LAYER` 是用于识别未置顶面板的窗口属性，不是 Windows 提供的独立桌面窗口层。`desktop_insert_after` 从当前 Z 顺序寻找与目标窗口属于同一 UI 线程、可见、未关闭且带该属性的同类面板，计算插入位置。属性名不能区分实例，其他进程或 UI 线程的同名窗口不能作为同伴；它们及其拥有的窗口仍属于不可随普通点击越过的应用边界。
 
 - 位置已正确时跳过 `SetWindowPos`，避免重复点击产生无意义重排。
 - 没有其他面板时，普通抬升不改变位置；`set_layer` 初始化或切回非置顶时才允许以 `HWND_BOTTOM` 为后备位置。
@@ -77,6 +77,10 @@ cargo test -p luciddesk --bin luciddesk editor_click_raises_search_among_panes_b
 ```
 
 第一项覆盖共享 owner、重复点击、点击与拖动、菜单及两级子菜单、普通应用约束和置顶切换；第二项覆盖实际搜索窗口与 EDIT 的点击、托盘激活和 topmost 同步。命令过滤后应确认目标测试确实执行，不能把零测试视为通过。
+
+`foreign_ui_thread_panes_are_not_peers_and_remain_application_boundaries` 在另一个 UI 线程创建带同名属性的窗口，验证单面板判断与跨线程应用边界，不依赖桌面是否已有另一个 LucidDesk 实例。标签分离后的窗口顺序由 `tabs_share_one_window_keep_selection_and_release_only_closed_membership` 覆盖。
+
+这些原生测试需要允许跨进程窗口排序的桌面权限。受限沙箱中，`SetWindowPos` 使用其他进程 HWND 作为插入参照可能返回错误 5（拒绝访问），Shell owner 设置也可能受限。出现层级断言失败时先核对原生返回值，再在获准的沙箱外会话中独立复验；不要通过放宽断言或强行前置面板绕过权限失败。
 
 手动验收按以下场景进行：
 

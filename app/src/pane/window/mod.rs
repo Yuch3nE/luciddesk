@@ -82,9 +82,13 @@ pub(super) fn prepare_close(hwnd: HWND) {
 /// Raise within the desktop-pane band, without jumping above ordinary application windows.
 fn desktop_insert_after(hwnd: HWND) -> Option<HWND> {
     unsafe {
+        // A property name is desktop-wide: another instance (or another UI
+        // thread) may use it too. Only our window's UI thread owns its peers.
+        let thread = GetWindowThreadProcessId(hwnd, std::ptr::null_mut());
         let mut peer = GetTopWindow(std::ptr::null_mut());
         while !peer.is_null() {
-            if peer != hwnd && !GetPropW(peer, DESKTOP_LAYER).is_null()
+            if peer != hwnd && GetWindowThreadProcessId(peer, std::ptr::null_mut()) == thread
+                && !GetPropW(peer, DESKTOP_LAYER).is_null()
                 && GetPropW(peer, CLOSING_PANE).is_null() && IsWindowVisible(peer) != 0 {
                 // Peers can straddle an application after a one-shot reveal or
                 // external activation. Never cross that application on a click.
@@ -94,7 +98,8 @@ fn desktop_insert_after(hwnd: HWND) -> Option<HWND> {
                 while !above.is_null() && above != peer {
                     if boundary.is_none() && IsWindowVisible(above) != 0 {
                         let mut owner = above;
-                        while !owner.is_null() && !is_desktop_layer(owner) {
+                        while !owner.is_null() && !(is_desktop_layer(owner)
+                            && GetWindowThreadProcessId(owner, std::ptr::null_mut()) == thread) {
                             owner = GetWindow(owner, GW_OWNER);
                         }
                         if owner.is_null() { boundary = Some(above); }
