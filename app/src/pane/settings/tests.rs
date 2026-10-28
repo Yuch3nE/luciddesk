@@ -1038,7 +1038,7 @@ fn settings_layout_and_rendering_at_multiple_scales() {
                                     overlay[3], 0,
                                     "the native material must remain visible beneath the sidebar"
                                 );
-                                let card_at = (((190.0 * scale) as u32 * width
+                                let card_at = ((((TITLE_HEIGHT + 158.0) * scale) as u32 * width
                                     + (270.0 * scale) as u32)
                                     * 4) as usize;
                                 assert!(

@@ -16,7 +16,7 @@ pub(super) fn toggle_thumb(bounds: Rect, progress: f32) -> Ellipse {
     }
 }
 
-pub(super) const TITLE_HEIGHT: f32 = 32.0;
+pub(super) const TITLE_HEIGHT: f32 = 40.0;
 pub(super) fn frame_hit(x: f32, y: f32, width: f32, height: f32, maximized: bool) -> u32 {
     if !maximized {
         let (left, right, top, bottom) = (x < 6.0, x >= width - 6.0, y < 6.0, y >= height - 6.0);
@@ -63,10 +63,12 @@ pub(super) fn with_titlebar(mut scene: Scene, width: f32, maximized: bool) -> Sc
         c.bounds.top += TITLE_HEIGHT;
         c.bounds.bottom += TITLE_HEIGHT;
     }
+    scene.caption_icon = Some(Rect::from_xywh(28.0, (TITLE_HEIGHT - 18.0) * 0.5, 18.0, 18.0));
     scene.text(
-        Rect::from_xywh(16.0, 0.0, 220.0, TITLE_HEIGHT),
+        // Align with the sidebar brand and keep localized titles clear of caption buttons.
+        Rect::from_xywh(56.0, 0.0, (width - 56.0 - 138.0 - 16.0).max(1.0), TITLE_HEIGHT),
         crate::i18n::text("ui-luciddesk-settings"),
-        0,
+        Tokens::CAPTION_TEXT,
     );
     for (i, (glyph, command)) in [
         (crate::i18n::text("ui-minimize"), SC_MINIMIZE),

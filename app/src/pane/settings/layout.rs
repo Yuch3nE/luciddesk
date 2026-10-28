@@ -320,6 +320,7 @@ fn scene_with_mica(
         controls: vec![],
         previews: vec![],
         app_icon: None,
+        caption_icon: None,
     };
     s.text(Rect::from_xywh(28.0, 26.0, 172.0, 32.0), "LucidDesk", 2);
     let entries = navigation();

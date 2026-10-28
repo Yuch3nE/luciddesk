@@ -137,6 +137,7 @@ struct Scene {
     controls: Vec<Control>,
     previews: Vec<(Rect, Backdrop)>,
     app_icon: Option<Rect>,
+    caption_icon: Option<Rect>,
 }
 
 fn contains(r: &Rect, x: f32, y: f32) -> bool {

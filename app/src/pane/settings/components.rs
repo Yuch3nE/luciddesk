@@ -22,6 +22,8 @@ impl Tokens {
     pub const STATUS_GOOD: usize = 10;
     pub const STATUS_ERROR: usize = 11;
     pub const TITLE_BADGE: usize = 12;
+    pub const CAPTION_TEXT: usize = 13;
+    pub const CAPTION_ICON: usize = 14;
 }
 
 pub(super) struct Palette {

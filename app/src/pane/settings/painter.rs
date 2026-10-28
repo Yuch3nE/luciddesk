@@ -41,12 +41,14 @@ impl Painter {
             14.0,
             14.0,
             11.0,
+            13.0,
+            12.0,
         ]
         .iter()
         .enumerate()
         {
             let format = canvas_result(TextFormat::with_weight(
-                if matches!(i, 4 | 5) {
+                if matches!(i, 4 | 5 | Tokens::CAPTION_ICON) {
                     super::super::fonts::icon_family()
                 } else {
                     &family
@@ -60,7 +62,7 @@ impl Painter {
             } else {
                 WordWrapping::NoWrap
             });
-            let format = if matches!(i, 4 | 5) {
+            let format = if matches!(i, 4 | 5 | Tokens::CAPTION_ICON) {
                 format.with_alignment(windows_canvas::TextAlignment::Center)
             } else if i == Tokens::VALUE_TEXT {
                 format.with_alignment(windows_canvas::TextAlignment::Trailing)
@@ -115,7 +117,7 @@ impl Painter {
     ) -> windows::core::Result<()> {
         {
             let context = t;
-            if s.app_icon.is_none() {
+            if s.app_icon.is_none() && s.caption_icon.is_none() {
                 self.icon_bitmap.borrow_mut().take();
             }
             if s.previews.is_empty() {
@@ -217,12 +219,13 @@ impl Painter {
                     let _clip = ContentClip::new(&t, s, r.left >= Tokens::content_x() && !s.fixed_list());
                     t.fill_rect(r, if dark { border } else { card_border });
                 }
-                if let Some(bounds) = &s.app_icon {
-                    let _clip = ContentClip::new(&t, s, true);
+                for (bounds, content) in s.app_icon.iter().map(|r| (r, true))
+                    .chain(s.caption_icon.iter().map(|r| (r, false))) {
+                    let _clip = ContentClip::new(&t, s, content);
                     let mut cached = self.icon_bitmap.borrow_mut();
                     if cached.as_ref().is_none_or(|(old, _)| old != context) {
                         *cached = None;
-                        // Decode only when About needs a texture; the GPU owns
+                        // Share the caption/About texture; the GPU owns
                         // its copy after upload, so no CPU buffer is retained.
                         let icon = crate::app_icon::load(256, 256).map_err(|message| {
                             windows::core::Error::new(windows::Win32::Foundation::E_FAIL, message)
@@ -767,7 +770,7 @@ impl Painter {
                                 SC_CLOSE => "\u{e8bb}",
                                 _ => "",
                             };
-                            t.clipped_icon(glyph, &self.formats[4], &c.bounds, brush);
+                            t.clipped_icon(glyph, &self.formats[Tokens::CAPTION_ICON], &c.bounds, brush);
                         }
                     } else {
                         let mut bounds = c.bounds;
