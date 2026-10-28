@@ -47,6 +47,8 @@ To clear the desktop temporarily, enable Double-click to hide desktop in General
 
 Keep related panels in one window and switch between tabs.
 
+Under Settings → Panel layout → Tab alignment, choose Fill or Left aligned. Fill is the default. Left aligned sizes tabs to their titles and leaves unused space on the right. Tabs shrink when space is limited, and the active tab stays visible.
+
 - **Create:** use the panel menu or press `Ctrl + T`.
 - **Merge:** drag one panel onto another's header and release when the merge preview appears.
 - **Detach:** right-click a tab and choose Detach as separate panel.

@@ -855,6 +855,10 @@ ui-edge-snapping = { "가장자리에 맞춤" }
 ui-snap-to-nearby-panels-and-screen-edges-when-moving = { "이동 시 인접 패널과 화면 가장자리에 맞춥니다." }
 
 # 标题分隔线
+ui-tab-alignment = { "탭 정렬" }
+ui-tab-alignment-description = { "머리글을 채우거나 제목 너비에 맞춰 왼쪽으로 정렬합니다." }
+ui-tab-alignment-fill = { "채우기" }
+ui-tab-alignment-left = { "왼쪽 정렬" }
 ui-header-divider = { "제목 구분선" }
 
 # 在标题栏和内容之间显示细分隔线。

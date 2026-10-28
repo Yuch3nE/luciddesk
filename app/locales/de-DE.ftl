@@ -855,6 +855,10 @@ ui-edge-snapping = { "An Kanten ausrichten" }
 ui-snap-to-nearby-panels-and-screen-edges-when-moving = { "Beim Verschieben an Panels und Bildschirmkanten ausrichten." }
 
 # 标题分隔线
+ui-tab-alignment = { "Tab-Ausrichtung" }
+ui-tab-alignment-description = { "Die Kopfzeile ausfüllen oder Tabs entsprechend ihrer Titelbreite links ausrichten." }
+ui-tab-alignment-fill = { "Ausfüllen" }
+ui-tab-alignment-left = { "Linksbündig" }
 ui-header-divider = { "Titel-Trennlinie" }
 
 # 在标题栏和内容之间显示细分隔线。

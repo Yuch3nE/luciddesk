@@ -312,7 +312,9 @@ unsafe fn resize(edit: HWND, pointer: *mut Editor) {
             GetTextMetricsW(dc, &raw mut metrics);
             SelectObject(dc, old);
             ReleaseDC(edit, dc);
-            let padding = (if model.tabs.len() > 1 { 10.0 } else { 6.0 } * scale).round() as i32;
+            let padding = if model.tabs.len() > 1 {
+                (8.0 * scale).min(width as f32 * 0.15).round() as i32
+            } else { (6.0 * scale).round() as i32 };
             let bounds = RECT {
                 left: padding,
                 top: ((height - metrics.tmHeight) / 2).max(1),
@@ -980,7 +982,7 @@ mod tests {
             assert_eq!(bounds.left, (expected.x * dpi).round() as i32);
             assert_eq!(bounds.right - bounds.left, (expected.width * dpi).round() as i32);
             SendMessageW(edit, EM_GETRECT, 0, (&raw mut format) as isize);
-            assert_eq!(format.left, (10.0 * dpi).round() as i32);
+            assert_eq!(format.left, (8.0 * dpi).min((bounds.right - bounds.left) as f32 * 0.15).round() as i32);
             assert_ne!(GetWindowLongW(edit, GWL_STYLE) as u32 & ES_CENTER as u32, 0);
             SendMessageW(GetPropW(owner, PROPERTY), FINISH, 0, 0);
             assert!(!active(owner));

@@ -53,6 +53,7 @@ pub(super) fn runtime(state: &PaneApp) -> serde_json::Value {
         "desktop_hidden":desktop_toggle::hidden(),
         "compact_menu":interface_flags::COMPACT_MENU.get(),
         "header_divider":interface_flags::HEADER_DIVIDER.get(),
+        "tab_left_aligned":interface_flags::TAB_LEFT_ALIGNED.get(),
         "icon_only":interface_flags::ICON_ONLY.get(),
         "icon_size":interface_flags::icon_size().name(),
         "panel_shadow":interface_flags::PANEL_SHADOW.get(),
@@ -95,6 +96,7 @@ pub(super) fn present(state: &Rc<RefCell<PaneApp>>) -> Result<(), String> {
         interface_flags::TITLE_EMOJI.load(&s.store)?;
         interface_flags::COMPACT_MENU.load(&s.store)?;
         interface_flags::HEADER_DIVIDER.load(&s.store)?;
+        interface_flags::TAB_LEFT_ALIGNED.load(&s.store)?;
         interface_flags::ICON_ONLY.load(&s.store)?;
         interface_flags::load_icon_size(&s.store)?;
         interface_flags::PANEL_SHADOW.load(&s.store)?;

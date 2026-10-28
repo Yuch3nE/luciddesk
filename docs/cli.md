@@ -280,6 +280,7 @@ $retryArgs = [string[]]$result.data.recovery.retry_args
 | `interface.title_emoji_color` | 布尔，标题彩色表情 |
 | `interface.compact_menu` | 布尔，紧凑菜单 |
 | `interface.header_divider` | 布尔，标题分隔线 |
+| `interface.tab_left_aligned` | 布尔，标签栏左对齐；默认 `false`（铺满） |
 | `interface.panel_shadow` | 布尔，系统渲染（圆角与阴影），默认关闭 |
 | `interface.system_corners` | `square` / `round` / `small`，系统圆角样式，默认 `round` |
 | `interface.snap_gap` | 整数，吸附后的间距 0–64 个物理像素，默认 5，0 表示无间隙 |

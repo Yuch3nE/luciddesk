@@ -6,6 +6,7 @@ pub(super) static TITLE_EMOJI: Flag = Flag::new("pane_title_emoji_color", true);
 pub(super) static COMPACT_MENU: Flag = Flag::new("pane_compact_menu", true);
 // Defaults for newly created panels; rendering reads each panel's IconDisplay.
 pub(super) static ICON_ONLY: Flag = Flag::new("pane_icon_only", false);
+pub(super) static TAB_LEFT_ALIGNED: Flag = Flag::new("pane_tab_left_aligned", false);
 pub(super) static HEADER_DIVIDER: Flag = Flag::new("pane_header_divider", true);
 
 pub(super) static PANEL_SHADOW: Flag = Flag::new("pane_shadow", false);
@@ -67,6 +68,7 @@ pub(super) struct DisplayPreferences {
     title_emoji: bool,
     compact_menu: bool,
     header_divider: bool,
+    tab_left_aligned: bool,
     panel_shadow: bool,
     icon_only: bool,
     icon_size: IconSize,
@@ -77,6 +79,7 @@ pub(super) fn display_preferences() -> DisplayPreferences {
         title_emoji: TITLE_EMOJI.get(),
         compact_menu: COMPACT_MENU.get(),
         header_divider: HEADER_DIVIDER.get(),
+        tab_left_aligned: TAB_LEFT_ALIGNED.get(),
         panel_shadow: PANEL_SHADOW.get(),
         icon_only: ICON_ONLY.get(),
         icon_size: icon_size(),
@@ -449,7 +452,7 @@ mod display_cache_tests {
     #[test]
     fn settings_snapshot_tracks_each_display_preference() {
         let baseline = display_preferences();
-        for flag in [&TITLE_EMOJI, &COMPACT_MENU, &HEADER_DIVIDER, &PANEL_SHADOW, &ICON_ONLY] {
+        for flag in [&TITLE_EMOJI, &COMPACT_MENU, &HEADER_DIVIDER, &PANEL_SHADOW, &ICON_ONLY, &TAB_LEFT_ALIGNED] {
             let original = flag.get();
             flag.value.store(!original, Ordering::Relaxed);
             let changed = display_preferences();
@@ -524,5 +527,116 @@ mod panel_icon_defaults_tests {
         assert_eq!(state.borrow().workspace.panel(first).unwrap().icon_display(), custom);
         assert_eq!(state.borrow().workspace.panel(second).unwrap().icon_display(), original);
         assert_eq!(state.borrow().workspace.panel(third).unwrap().icon_display(), IconDisplay { icon_only: true, size: IconSize::Medium });
+    }
+}
+
+#[cfg(test)]
+mod tab_alignment_tests {
+    use super::*;
+    use crate::pane::{Event, PanelId, create_model, events, tabs, tests::test_state};
+    use std::{cell::RefCell, rc::Rc};
+
+    #[test]
+    fn tab_alignment_persists_renders_and_resets_without_changing_selection() {
+        let _sta = crate::pane::test_support::apartment();
+        struct Restore(bool);
+        impl Drop for Restore {
+            fn drop(&mut self) { TAB_LEFT_ALIGNED.value.store(self.0, Ordering::Relaxed); }
+        }
+        let _restore = Restore(TAB_LEFT_ALIGNED.get());
+        let state = Rc::new(RefCell::new(test_state()));
+        TAB_LEFT_ALIGNED.load(&state.borrow().store).unwrap();
+        assert!(!TAB_LEFT_ALIGNED.get());
+        let mut model = create_model(&state.borrow(), PanelId::new(1)).unwrap();
+        model.tabs = vec![(PanelId::new(1), "工作".into()), (PanelId::new(2), "Notes".into())];
+        model.active_tab = PanelId::new(1);
+        model.select_item(0, false, false);
+        let selection = model.selection.clone();
+        let mut renderer = crate::pane::render::Renderer::new().unwrap();
+        let filled = renderer.pixels(600, 240, 1.0, &model).unwrap();
+        let filled_geometry = tabs::strip(&model, 600.0);
+        for button in 0..2 {
+            let x = model.header_button_x(600.0, button) + 14.0;
+            assert!(!model.header_button_enabled(button));
+            assert_eq!(model.header_button(600.0, x, 15.0), None);
+        }
+        events::handle(&state, PanelId::new(1), Event::SetTabLeftAligned(true)).unwrap();
+        assert!(TAB_LEFT_ALIGNED.get());
+        assert_eq!(state.borrow().store.preference("pane_tab_left_aligned").unwrap().as_deref(), Some("true"));
+        TAB_LEFT_ALIGNED.value.store(false, Ordering::Relaxed);
+        TAB_LEFT_ALIGNED.load(&state.borrow().store).unwrap();
+        assert!(TAB_LEFT_ALIGNED.get());
+        let left = renderer.pixels(600, 240, 1.0, &model).unwrap();
+        assert_ne!(filled, left);
+        for collapsed in [false, true] {
+            model.collapsed = collapsed;
+            for width in [90.0, 260.0, 600.0] {
+                for button in 0..2 {
+                    let x = model.header_button_x(width, button) + 14.0;
+                    assert!(model.header_button_enabled(button));
+                    assert_eq!(model.header_button(width, x, 15.0), Some(button));
+                    assert_eq!(tabs::hit(&model, width, x, 15.0), None);
+                }
+                for (_, bounds) in tabs::strip(&model, width) {
+                    assert!(bounds.x + bounds.width <= model.header_button_x(width, 0));
+                }
+            }
+        }
+        model.collapsed = false;
+        let geometry = tabs::strip(&model, 600.0);
+        let last = geometry.last().unwrap().1;
+        assert!(last.x + last.width < 400.0);
+        assert_eq!(tabs::hit(&model, 600.0, 500.0, 15.0), None);
+        for (id, bounds) in geometry {
+            assert_eq!(tabs::hit(&model, 600.0, bounds.x + bounds.width / 2.0, 15.0), Some(id));
+        }
+        assert_eq!(model.selection, selection);
+        assert_eq!(model.active_tab, PanelId::new(1));
+        model.tabs.extend([(PanelId::new(3), "网络与远程".into()), (PanelId::new(4), "其他工具".into())]);
+        for width in [260.0, 340.0, 600.0] {
+            let tabs = tabs::strip(&model, width);
+            assert_eq!(tabs.len(), 4);
+            for (id, bounds) in tabs {
+                let x = bounds.x + bounds.width / 2.0;
+                assert_eq!(tabs::hit(&model, width, x, 15.0), Some(id));
+                assert_eq!(model.header_button(width, x, 15.0), None);
+                assert!(bounds.x + bounds.width <= model.header_button_x(width, 0));
+            }
+        }
+        let four_tabs = renderer.pixels(510, 360, 1.5, &model).unwrap();
+        model.hovered_tab = Some(PanelId::new(3));
+        let hovered = renderer.pixels(510, 360, 1.5, &model).unwrap();
+        assert_ne!(four_tabs, hovered);
+        model.dark = false;
+        let light = renderer.pixels(510, 360, 1.5, &model).unwrap();
+        model.tabs.truncate(2);
+        if let Some(directory) = std::env::var_os("LUCIDDESK_TAB_SNAPSHOT_DIR") {
+            let directory = std::path::PathBuf::from(directory);
+            std::fs::create_dir_all(&directory).unwrap();
+            std::fs::write(directory.join("tabs-fill.bgra"), filled).unwrap();
+            std::fs::write(directory.join("tabs-left.bgra"), left).unwrap();
+            std::fs::write(directory.join("tabs-four.bgra"), four_tabs).unwrap();
+            std::fs::write(directory.join("tabs-hover.bgra"), hovered).unwrap();
+            std::fs::write(directory.join("tabs-light.bgra"), light).unwrap();
+            model.tabs.extend([(PanelId::new(3), "网络与远程".into()), (PanelId::new(4), "其他工具".into())]);
+            for dark in [false, true] {
+                model.dark = dark;
+                for (name, material) in [
+                    ("acrylic", luciddesk_core::Backdrop::Acrylic),
+                    ("mica", luciddesk_core::Backdrop::Mica),
+                    ("mica-alt", luciddesk_core::Backdrop::MicaAlt),
+                    ("solid", luciddesk_core::Backdrop::solid_default(dark)),
+                    ("translucent", luciddesk_core::Backdrop::Translucent { opacity: 0.86 }),
+                ] {
+                    model.backdrop = material;
+                    let pixels = renderer.pixels(510, 360, 1.5, &model).unwrap();
+                    std::fs::write(directory.join(format!("{name}-{dark}.bgra")), pixels).unwrap();
+                }
+            }
+            model.tabs.truncate(2);
+        }
+        events::handle(&state, PanelId::new(1), Event::ResetPaneOptions).unwrap();
+        assert!(!TAB_LEFT_ALIGNED.get());
+        assert_eq!(tabs::strip(&model, 600.0), filled_geometry);
     }
 }

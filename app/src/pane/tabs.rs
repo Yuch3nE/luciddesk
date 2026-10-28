@@ -708,39 +708,33 @@ pub(super) fn merge_strip(model: &GroupModel, width: f32) -> Vec<(String, bool, 
         };
         labels.push((text, true, false));
     }
-    let gap = 6.0;
-    let size = ((available - gap * (labels.len() - 1) as f32) / labels.len() as f32).max(1.0);
-    labels
-        .into_iter()
-        .enumerate()
-        .map(|(index, (title, incoming, active))| {
-            (
-                title,
-                incoming,
-                active,
-                RectDip {
-                    x: inset + index as f32 * (size + gap),
-                    y: inset,
-                    width: size,
-                    height: layout::HEADER - 2.0 * inset,
-                },
-            )
-        })
+    let bounds = tab_rects(
+        labels.iter().map(|(title, _, _)| title.as_str()),
+        available,
+        interface_flags::TAB_LEFT_ALIGNED.get(),
+    );
+    labels.into_iter().zip(bounds)
+        .map(|((title, incoming, active), bounds)| (title, incoming, active, bounds))
         .collect()
 }
 
 /// Shared geometry for painting and pointer input; keep the active tab visible.
 pub(super) fn strip(model: &GroupModel, width: f32) -> Vec<(PanelId, RectDip)> {
+    strip_with_alignment(model, width, interface_flags::TAB_LEFT_ALIGNED.get())
+}
+
+fn strip_with_alignment(model: &GroupModel, width: f32, left_aligned: bool) -> Vec<(PanelId, RectDip)> {
     if model.tabs.len() < 2 {
         return Vec::new();
     }
-    let right_buttons = if model.folder.is_some() { 70.0 } else { 0.0 };
+    let right_buttons = layout::HEADER_BUTTONS_WIDTH
+        * (usize::from(model.folder.is_some()) + usize::from(left_aligned)) as f32;
     // Use one inset for the top, left and right edges.
     let inset = layout::HEADER_INSET;
-    let available = (width - right_buttons - inset * 2.0).max(72.0);
-    let count = ((available / 72.0).floor() as usize)
+    let available = (width - right_buttons - inset * 2.0).max(if left_aligned { 1.0 } else { 72.0 });
+    let count = if left_aligned { model.tabs.len() } else { ((available / 72.0).floor() as usize)
         .max(1)
-        .min(model.tabs.len());
+        .min(model.tabs.len()) };
     let active = model
         .tabs
         .iter()
@@ -749,26 +743,73 @@ pub(super) fn strip(model: &GroupModel, width: f32) -> Vec<(PanelId, RectDip)> {
     let start = active
         .saturating_sub(count / 2)
         .min(model.tabs.len() - count);
-    let gap = 6.0;
-    let size = (available - gap * (count - 1) as f32) / count as f32;
-    model
-        .tabs
-        .iter()
-        .skip(start)
-        .take(count)
-        .enumerate()
-        .map(|(at, (id, _))| {
-            (
-                *id,
-                RectDip {
-                    x: inset + at as f32 * (size + gap),
-                    y: inset,
-                    width: size,
-                    height: layout::HEADER - inset * 2.0,
-                },
-            )
-        })
-        .collect()
+    let visible = &model.tabs[start..start + count];
+    let bounds = tab_rects(visible.iter().map(|(_, title)| title.as_str()), available, left_aligned);
+    visible.iter().zip(bounds).map(|((id, _), bounds)| (*id, bounds)).collect()
+}
+
+// Match the renderer's 12-DIP tab titles and eight-DIP horizontal padding.
+// Cache only measured widths, never COM objects, and bound user-provided titles.
+thread_local! {
+    static TITLE_WIDTHS: RefCell<HashMap<(String, String, &'static str), f32>> = RefCell::new(HashMap::new());
+}
+fn title_width(title: &str) -> f32 {
+    let family = fonts::family();
+    let key = (title.to_owned(), family.clone(), crate::i18n::default_font());
+    if let Some(width) = TITLE_WIDTHS.with(|cache| cache.borrow().get(&key).copied()) {
+        return width;
+    }
+    let measured = (|| {
+        let format = windows_canvas::TextFormat::new(&family, 12.0).ok()?
+            .with_word_wrapping(windows_canvas::WordWrapping::NoWrap);
+        canvas::apply_fallback(&format).ok()?;
+        let text = windows_canvas::TextLayout::new(title, &format, 10000.0, 100.0).ok()?;
+        Some(text.metrics().width)
+    })();
+    // Do not cache a transient DirectWrite failure; a later paint can retry.
+    let Some(width) = measured.filter(|width| width.is_finite()) else { return 120.0; };
+    let width = (width.ceil() + 16.0).clamp(56.0, 200.0);
+    TITLE_WIDTHS.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if cache.len() >= 512 { cache.clear(); }
+        cache.insert(key, width);
+    });
+    width
+}
+
+fn tab_rects<'a>(titles: impl Iterator<Item = &'a str>, available: f32, left_aligned: bool) -> Vec<RectDip> {
+    let mut widths: Vec<_> = titles.map(|title| if left_aligned { title_width(title) } else { 0.0 }).collect();
+    if widths.is_empty() { return Vec::new(); }
+    let count = widths.len() as f32;
+    let gap = if left_aligned { 4.0_f32.min(available / (count * 4.0)) } else { 6.0 };
+    let budget = if left_aligned { available - gap * (count - 1.0) }
+        else { (available - gap * (count - 1.0)).max(count) };
+    let equal = budget / count;
+    if !left_aligned {
+        widths.fill(equal);
+    } else {
+        let total: f32 = widths.iter().sum();
+        if total > budget {
+            // Cap long titles first so short titles keep their natural width.
+            let (mut low, mut high) = (0.0, widths.iter().copied().fold(0.0_f32, f32::max));
+            for _ in 0..24 {
+                let cap = (low + high) * 0.5;
+                if widths.iter().map(|width| width.min(cap)).sum::<f32>() > budget {
+                    high = cap;
+                } else {
+                    low = cap;
+                }
+            }
+            for width in &mut widths { *width = width.min(low); }
+        }
+    }
+    let inset = layout::HEADER_INSET;
+    let mut x = inset;
+    widths.into_iter().map(|width| {
+        let rect = RectDip { x, y: inset, width, height: layout::HEADER - 2.0 * inset };
+        x += width + gap;
+        rect
+    }).collect()
 }
 
 pub(super) fn hit(model: &GroupModel, width: f32, x: f32, y: f32) -> Option<PanelId> {
@@ -1098,6 +1139,39 @@ mod tests {
                 POINT { x: -300, y: 500 },
             ] {
                 assert!(!header_contains(bounds, dpi, point));
+            }
+        }
+    }
+
+    #[test]
+    fn left_aligned_tabs_measure_titles_and_shrink_without_hiding_active_tabs() {
+        let _sta = crate::pane::test_support::apartment();
+        let state = super::super::tests::test_state();
+        let mut model = create_model(&state, PanelId::new(1)).unwrap();
+        model.tabs = vec![(PanelId::new(1), "A".into()), (PanelId::new(2), "Project documentation".into())];
+        let short = strip_with_alignment(&model, 800.0, true);
+        assert!(short[1].1.width > short[0].1.width);
+        assert_eq!(short[0].1.x, layout::HEADER_INSET);
+        assert!(short[1].1.x + short[1].1.width < 800.0 - layout::HEADER_INSET);
+        model.tabs[0].1 = "A much longer renamed title".into();
+        assert!(strip_with_alignment(&model, 800.0, true)[0].1.width > short[0].1.width);
+        model.tabs = (1..=12).map(|id| (PanelId::new(id), format!("项目 {id} — long title 🗂️"))).collect();
+        for mode in [false, true] {
+            for active in 1..=12 {
+                model.active_tab = PanelId::new(active);
+                for width in [90.0, 260.0, 420.0, 800.0] {
+                    let tabs = strip_with_alignment(&model, width, mode);
+                    if mode { assert_eq!(tabs.len(), model.tabs.len()); }
+                    assert!(tabs.iter().any(|(id, _)| *id == model.active_tab));
+                    for pair in tabs.windows(2) {
+                        assert!(pair[0].1.x + pair[0].1.width < pair[1].1.x);
+                    }
+                    for (_, bounds) in tabs {
+                        assert!(bounds.width > 0.0);
+                        assert!(bounds.x + bounds.width <= width - layout::HEADER_INSET + 0.01);
+                        assert!(bounds.y + bounds.height <= layout::HEADER);
+                    }
+                }
             }
         }
     }

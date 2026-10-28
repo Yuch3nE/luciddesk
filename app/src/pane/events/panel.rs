@@ -16,6 +16,7 @@ pub(super) fn apply(
         | Event::SetSystemRendering(_)
         | Event::SetSystemCorners(_)
         | Event::ToggleHeaderDivider
+        | Event::SetTabLeftAligned(_)
         | Event::SetPanelIconDisplay(..)
         | Event::ToggleIconOnly
         | Event::SetIconSize(_)

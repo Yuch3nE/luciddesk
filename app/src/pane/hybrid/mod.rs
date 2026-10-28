@@ -129,6 +129,7 @@ pub fn run(path: &Path, title: Option<String>) -> Result<(), String> {
     super::peek::load(&store)?;
     fonts::load(&store)?;
     interface_flags::HEADER_DIVIDER.load(&store)?;
+    interface_flags::TAB_LEFT_ALIGNED.load(&store)?;
     interface_flags::ICON_ONLY.load(&store)?;
     interface_flags::load_icon_size(&store)?;
     interface_flags::PANEL_SHADOW.load(&store)?;

@@ -75,7 +75,7 @@ impl Backdrop {
 
     pub const fn solid_default(dark: bool) -> Self {
         Self::Solid {
-            color: if dark { 0x202020 } else { 0xf3f3f3 },
+            color: if dark { 0x202020 } else { 0xe9edf2 },
             opacity: 0.85,
         }
     }

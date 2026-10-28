@@ -855,6 +855,10 @@ ui-edge-snapping = { "Edge snapping" }
 ui-snap-to-nearby-panels-and-screen-edges-when-moving = { "Snap to nearby panels and screen edges when moving." }
 
 # 标题分隔线
+ui-tab-alignment = { "Tab alignment" }
+ui-tab-alignment-description = { "Fill the header, or align tabs to the left using their title widths." }
+ui-tab-alignment-fill = { "Fill" }
+ui-tab-alignment-left = { "Left aligned" }
 ui-header-divider = { "Header divider" }
 
 # 在标题栏和内容之间显示细分隔线。

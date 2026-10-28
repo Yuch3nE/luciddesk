@@ -94,6 +94,7 @@ pub(super) fn handle(
                 ("pane_title_emoji_color", "true"),
                 ("pane_compact_menu", "true"),
                 ("pane_header_divider", "true"),
+                ("pane_tab_left_aligned", "false"),
                 ("pane_icon_only", "false"),
                 ("pane_icon_size", "large"),
                 ("pane_system_corners", "round"),
@@ -104,6 +105,7 @@ pub(super) fn handle(
         interface_flags::TITLE_EMOJI.load(&s.store)?;
         interface_flags::COMPACT_MENU.load(&s.store)?;
         interface_flags::HEADER_DIVIDER.load(&s.store)?;
+        interface_flags::TAB_LEFT_ALIGNED.load(&s.store)?;
         interface_flags::ICON_ONLY.load(&s.store)?;
         interface_flags::load_icon_size(&s.store)?;
         interface_flags::PANEL_SHADOW.load(&s.store)?;
@@ -164,6 +166,15 @@ pub(super) fn handle(
         let mut defaults = s.workspace.icon_defaults();
         defaults.icon_only = interface_flags::ICON_ONLY.get();
         s.workspace.set_icon_defaults(defaults);
+        return Ok(false);
+    }
+    if let Event::SetTabLeftAligned(enabled) = event {
+        let s = state.borrow();
+        interface_flags::TAB_LEFT_ALIGNED.save(&s.store, enabled)?;
+        for view in &s.views {
+            view.model.borrow_mut().hovered_tab = None;
+            unsafe { InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0); }
+        }
         return Ok(false);
     }
     if matches!(event, Event::ToggleHeaderDivider) {

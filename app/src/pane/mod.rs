@@ -178,6 +178,7 @@ enum Event {
     FinishPaneMove(bool),
     PreviewPaneMove,
     ToggleHeaderDivider,
+    SetTabLeftAligned(bool),
     ToggleIconOnly,
     SetPanelIconDisplay(PanelId, luciddesk_core::IconDisplay),
     SetIconSize(interface_flags::IconSize),

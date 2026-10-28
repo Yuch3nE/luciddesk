@@ -97,21 +97,25 @@ impl GroupModel {
     }
 
     pub(super) fn content_header(&self) -> f32 { layout::HEADER }
+    pub(super) fn show_header_actions(&self) -> bool {
+        self.tabs.len() < 2 || interface_flags::TAB_LEFT_ALIGNED.get()
+    }
     pub(super) fn header_button_x(&self, width: f32, button: usize) -> f32 {
         if self.tabs.len() > 1 && button >= 2 {
-            width - 70.0 + (button - 2) as f32 * 32.0
+            width - layout::HEADER_BUTTONS_WIDTH * if self.show_header_actions() { 2.0 } else { 1.0 }
+                + (button - 2) as f32 * 32.0
         } else { layout::header_button_x(width, button) }
     }
     pub(super) fn header_button_enabled(&self, button: usize) -> bool {
         match button {
-            0 | 1 if self.tabs.len() > 1 => false,
+            0 | 1 => self.show_header_actions(),
             2 | 3 => self.folder.is_some() && self.folder_navigation[button - 2],
             _ => true,
         }
     }
 
     pub(super) fn header_button(&self, width: f32, x: f32, y: f32) -> Option<usize> {
-        layout::header_button(width, x, y).filter(|_| self.tabs.len() < 2).or_else(|| {
+        layout::header_button(width, x, y).filter(|_| self.show_header_actions()).or_else(|| {
             if self.folder.is_none() || !(layout::HEADER_INSET..layout::HEADER - layout::HEADER_INSET).contains(&y) { return None; }
             (2..4).find(|&button| {
                 let left = self.header_button_x(width, button);

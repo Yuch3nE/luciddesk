@@ -644,7 +644,7 @@ impl Renderer {
                         let top = super::layout::HEADER_INSET;
                         let button_height = HEADER - top * 2.0;
                         let center_y = HEADER / 2.0;
-                        if model.tabs.len() > 1 && button < 2 {
+                        if !model.show_header_actions() && button < 2 {
                             continue;
                         }
                         let x = model.header_button_x(w, button);
@@ -721,63 +721,36 @@ impl Renderer {
                         }
                     }
                 }
-                let mut chrome = super::theme::material_chrome(model.backdrop, model.dark);
-                if !matches!(
-                    model.backdrop.base(),
-                    luciddesk_core::Backdrop::Acrylic
-                        | luciddesk_core::Backdrop::Mica
-                        | luciddesk_core::Backdrop::MicaAlt
-                ) {
-                    chrome.tab_active = ColorF::new(ink, ink, ink, 0.14);
-                    chrome.tab_inactive = ColorF::new(ink, ink, ink, 0.04);
-                    chrome.tab_hover = ColorF::new(ink, ink, ink, 0.09);
-                    chrome.tab_incoming = ColorF::new(ink, ink, ink, 0.09);
-                }
+                let chrome = super::theme::material_chrome(model.backdrop, model.dark);
                 for (id, bounds) in super::tabs::strip(model, w)
                     .into_iter()
                     .filter(|_| model.merge_preview.is_empty())
                 {
                     let rect = Rect::from_xywh(bounds.x, bounds.y, bounds.width, bounds.height);
-                    let fill =
-                        canvas_result(target.cached_solid_brush(if id == model.active_tab {
+                    let active = id == model.active_tab;
+                    let hovered = model.hovered_tab == Some(id);
+                    let radius = crate::pane::interface_flags::pane_corner_radius(model.options.corner_radius)
+                        .min(6.0).min(bounds.width * 0.5);
+                    let shape = RoundedRect { rect, radius_x: radius, radius_y: radius };
+                    if active || hovered {
+                        let fill = canvas_result(target.cached_solid_brush(if active {
                             chrome.tab_active
-                        } else if model.hovered_tab == Some(id) {
-                            chrome.tab_hover
-                        } else {
-                            chrome.tab_inactive
-                        }))?;
-                    target.fill_rounded_rect(
-                        &RoundedRect {
-                            rect,
-                            radius_x: crate::pane::interface_flags::pane_corner_radius(model.options.corner_radius),
-                            radius_y: crate::pane::interface_flags::pane_corner_radius(model.options.corner_radius),
-                        },
-                        &*fill,
-                    );
-                    if id == model.active_tab || model.hovered_tab == Some(id) {
-                        let edge = canvas_result(target.cached_solid_brush(chrome.card_border))?;
-                        target.draw_rounded_rect(
-                            &RoundedRect {
-                                rect,
-                                radius_x: crate::pane::interface_flags::pane_corner_radius(model.options.corner_radius),
-                                radius_y: crate::pane::interface_flags::pane_corner_radius(model.options.corner_radius),
-                            },
-                            &*edge,
-                            1.0,
-                        );
+                        } else { chrome.tab_hover }))?;
+                        target.fill_rounded_rect(&shape, &*fill);
                     }
                     let text = model
                         .tabs
                         .iter()
                         .find(|(tab, _)| *tab == id)
                         .map_or("", |(_, title)| title.as_str());
+                    let padding = 8.0_f32.min(bounds.width * 0.15);
                     target.clipped_color_text(
                         text,
                         &self.tab_title,
                         &Rect::from_xywh(
-                            rect.left + 10.0,
+                            rect.left + padding,
                             rect.top,
-                            (bounds.width - 20.0).max(1.0),
+                            bounds.width - padding * 2.0,
                             bounds.height,
                         ),
                         if id == model.active_tab { white } else { dim },
@@ -801,12 +774,9 @@ impl Renderer {
                         chrome.tab_inactive
                     }))?;
                     target.fill_rounded_rect(&shape, &*fill);
-                    if incoming || active {
-                        let edge = canvas_result(target.cached_solid_brush(if incoming {
-                            ColorF::new(ink, ink, ink, 0.22)
-                        } else {
-                            chrome.card_border
-                        }))?;
+                    if incoming {
+                        let edge = canvas_result(target.cached_solid_brush(
+                            ColorF::new(ink, ink, ink, 0.22)))?;
                         target.draw_rounded_rect(&shape, &*edge, stroke);
                     }
                     target.clipped_color_text(

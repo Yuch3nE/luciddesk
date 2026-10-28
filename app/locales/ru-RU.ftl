@@ -855,6 +855,10 @@ ui-edge-snapping = { "Привязка к краям" }
 ui-snap-to-nearby-panels-and-screen-edges-when-moving = { "Привязка к соседним панелям и краям экрана при перемещении." }
 
 # 标题分隔线
+ui-tab-alignment = { "Выравнивание вкладок" }
+ui-tab-alignment-description = { "Заполнить заголовок или выровнять вкладки по левому краю с учётом ширины названий." }
+ui-tab-alignment-fill = { "По ширине" }
+ui-tab-alignment-left = { "По левому краю" }
 ui-header-divider = { "Разделитель заголовка" }
 
 # 在标题栏和内容之间显示细分隔线。

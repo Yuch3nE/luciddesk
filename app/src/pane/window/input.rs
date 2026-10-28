@@ -384,7 +384,20 @@ impl ItemTooltip {
         if self.current.is_some() { self.update(hwnd, model); }
     }
     pub(super) fn update(&mut self, hwnd: HWND, model: &GroupModel) {
-        let next = if model.icon_display.icon_only
+        let next = if model.hovered_tab.is_some() && model.renaming.is_none() && model.merge_preview.is_empty() {
+            model.hovered_tab.and_then(|id| {
+                let viewport = Viewport::read(hwnd);
+                let (_, bounds) = crate::pane::tabs::strip(model, viewport.width).into_iter().find(|(tab, _)| *tab == id)?;
+                let (_, title) = model.tabs.iter().find(|(tab, _)| *tab == id)?;
+                let s = viewport.scale;
+                Some((title.clone(), [
+                    (bounds.x * s).floor() as i32,
+                    (bounds.y * s).floor() as i32,
+                    ((bounds.x + bounds.width) * s).ceil() as i32,
+                    ((bounds.y + bounds.height) * s).ceil() as i32,
+                ]))
+            })
+        } else if model.icon_display.icon_only
             && !model.is_list() && !model.collapsed && model.renaming.is_none()
         {
             model.hovered_item.and_then(|index| {
@@ -415,6 +428,29 @@ impl ItemTooltip {
 #[cfg(test)]
 mod icon_only_tooltip_tests {
     use super::*;
+
+    #[test]
+    fn tab_tooltip_tracks_full_titles_and_hides_when_leaving() {
+        let _sta = crate::pane::test_support::apartment();
+        let state = crate::pane::tests::test_state();
+        let id = luciddesk_core::PanelId::new(1);
+        let mut model = crate::pane::create_model(&state, id).unwrap();
+        model.tabs = vec![(id, "完整标签标题 — 网络与远程".into()), (luciddesk_core::PanelId::new(2), "其他".into())];
+        let window = Window::new("Tab tooltip test").size(340, 240)
+            .on_message(|_, message, _, _| if message == WM_DESTROY { Some(0) } else { None })
+            .create().unwrap();
+        let hwnd = window.hwnd().cast();
+        let mut tooltip = ItemTooltip::default();
+        model.hovered_tab = Some(id);
+        tooltip.update(hwnd, &model);
+        assert_eq!(tooltip.current.as_ref().unwrap().0, model.tabs[0].1);
+        model.tabs[0].1 = "已重命名的标签".into();
+        tooltip.refresh(hwnd, &model);
+        assert_eq!(tooltip.current.as_ref().unwrap().0, model.tabs[0].1);
+        model.hovered_tab = None;
+        tooltip.update(hwnd, &model);
+        assert!(tooltip.current.is_none());
+    }
 
     #[test]
     fn icon_only_tooltip_tracks_names_and_hides_during_rename_or_list_view() {

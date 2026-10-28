@@ -855,6 +855,10 @@ ui-edge-snapping = { "端にスナップ" }
 ui-snap-to-nearby-panels-and-screen-edges-when-moving = { "移動時に近くのパネルや画面端に合わせます。" }
 
 # 标题分隔线
+ui-tab-alignment = { "タブの配置" }
+ui-tab-alignment-description = { "見出し全体に広げるか、タイトルの幅に合わせて左に揃えます。" }
+ui-tab-alignment-fill = { "均等に配置" }
+ui-tab-alignment-left = { "左揃え" }
 ui-header-divider = { "タイトルの区切り線" }
 
 # 在标题栏和内容之间显示细分隔线。

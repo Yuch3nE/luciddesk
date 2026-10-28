@@ -30,35 +30,11 @@ pub(super) fn material_chrome(backdrop: luciddesk_core::Backdrop, dark: bool) ->
             reference + (1.0 - reference) * (strength - 0.5) * 0.5
         }
     };
-    let (active, card, edge) = match backdrop.base() {
-        Backdrop::Acrylic => (
-            if dark { 0.18 } else { 0.42 },
-            if dark { 0.22 } else { 0.44 },
-            if dark { 0.18 } else { 0.16 },
-        ),
-        Backdrop::Mica => (
-            if dark {
-                0x4c as f32 / 255.0
-            } else {
-                0x80 as f32 / 255.0
-            },
-            if dark { 0.30 } else { 0.50 },
-            if dark { 0.10 } else { 0.10 },
-        ),
-        Backdrop::MicaAlt => (
-            if dark {
-                0x73 as f32 / 255.0
-            } else {
-                0xb3 as f32 / 255.0
-            },
-            if dark { 0.45 } else { 0.70 },
-            if dark { 0.13 } else { 0.12 },
-        ),
-        _ => (
-            0.14,
-            if dark { 0.65 } else { 0.72 },
-            if dark { 0.14 } else { 0.16 },
-        ),
+    let (card, edge) = match backdrop.base() {
+        Backdrop::Acrylic => (if dark { 0.22 } else { 0.44 }, if dark { 0.18 } else { 0.16 }),
+        Backdrop::Mica => (if dark { 0.30 } else { 0.50 }, 0.10),
+        Backdrop::MicaAlt => (if dark { 0.45 } else { 0.70 }, if dark { 0.13 } else { 0.12 }),
+        _ => (if dark { 0.65 } else { 0.72 }, if dark { 0.14 } else { 0.16 }),
     };
     let channel = if dark { 58.0 / 255.0 } else { 1.0 };
     let fill = |alpha| ColorF::new(channel, channel, channel, alpha);
@@ -69,11 +45,38 @@ pub(super) fn material_chrome(backdrop: luciddesk_core::Backdrop, dark: bool) ->
         _ => strength * 2.0,
     };
     let edge_channel = if dark { 0.6 } else { 0.0 };
+    // Use one subtle selection baseline with small material-specific corrections.
+    // Material strength changes the cue gently; transparent panels still retain it.
+    let tab_dark = if let Backdrop::Solid { color, .. } = backdrop {
+        luminance([
+            (color >> 16 & 255) as f32 / 255.0,
+            (color >> 8 & 255) as f32 / 255.0,
+            (color & 255) as f32 / 255.0,
+        ]) < 0.179
+    } else { dark };
+    let tab_base = if tab_dark { 0.10 } else { 0.09 };
+    let material_weight = match backdrop.base() {
+        Backdrop::Acrylic => 1.08,
+        Backdrop::Mica => 1.0,
+        Backdrop::MicaAlt => 1.04,
+        Backdrop::Translucent { .. } => 1.12,
+        _ => 0.96,
+    };
+    let strength_weight = match backdrop {
+        Backdrop::Solid { opacity, .. } | Backdrop::Translucent { opacity } => {
+            0.9 + opacity.clamp(0.0, 1.0) * 0.1
+        }
+        _ if backdrop.strength().is_some() => 0.9 + strength * 0.2,
+        _ => 1.0,
+    };
+    let tab_alpha = tab_base * material_weight * strength_weight;
+    let tab_channel = if tab_dark { 1.0 } else { 0.0 };
+    let tab_fill = |alpha| ColorF::new(tab_channel, tab_channel, tab_channel, alpha);
     MaterialChrome {
-        tab_active: fill(surface(active)),
-        tab_hover: fill(surface(active) * 0.5),
-        tab_inactive: fill(surface(active) * 0.18),
-        tab_incoming: fill(surface(active) * 0.65),
+        tab_active: tab_fill(tab_alpha),
+        tab_hover: tab_fill(tab_alpha * 0.4),
+        tab_inactive: tab_fill(tab_alpha * 0.12),
+        tab_incoming: tab_fill(tab_alpha * 0.65),
         border: panel_border(dark, backdrop),
         card: fill(surface(card)),
         card_border: ColorF::new(
@@ -286,6 +289,69 @@ pub fn selection(width: u32, height: u32, dpi: u32, state: i32) -> Option<Pixels
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn solid_tab_fill_follows_color_instead_of_application_theme() {
+        use luciddesk_core::Backdrop;
+        for (color, light_fill) in [(0x000000, true), (0x202020, true),
+            (0x24364b, true), (0x0000ff, true), (0xffffff, false),
+            (0xe9edf2, false), (0xffff00, false), (0x808080, false)] {
+            for opacity in [0.0, 0.5, 0.85, 1.0] {
+                let material = Backdrop::Solid { color, opacity };
+                let light = material_chrome(material, false);
+                let dark = material_chrome(material, true);
+                for (a, b) in [(light.tab_active, dark.tab_active), (light.tab_hover, dark.tab_hover),
+                    (light.tab_incoming, dark.tab_incoming)] {
+                    assert_eq!([a.r, a.g, a.b, a.a], [b.r, b.g, b.b, b.a]);
+                    assert_eq!(a.r, if light_fill { 1.0 } else { 0.0 });
+                }
+                assert!(light.tab_active.a > light.tab_hover.a);
+            }
+        }
+    }
+
+    #[test]
+    fn tab_material_changes_keep_selection_weight_consistent() {
+        use luciddesk_core::Backdrop;
+        for dark in [false, true] {
+            for strength in [0, 50, 100] {
+                let alphas: Vec<_> = [Backdrop::Acrylic, Backdrop::Mica,
+                    Backdrop::MicaAlt, Backdrop::solid_default(dark)]
+                    .into_iter().map(|material| material_chrome(material.with_strength(strength), dark).tab_active.a)
+                    .collect();
+                let low = alphas.iter().copied().fold(f32::INFINITY, f32::min);
+                let high = alphas.iter().copied().fold(0.0_f32, f32::max);
+                assert!(high / low < 1.3, "switching materials should not change selection weight abruptly");
+            }
+            for opacity in [0.0, 0.25, 0.5, 0.85, 1.0] {
+                let selected = material_chrome(Backdrop::Solid {
+                    color: if dark { 0x202020 } else { 0xe9edf2 }, opacity,
+                }, dark).tab_active;
+                assert!(selected.a >= if dark { 0.085 } else { 0.077 });
+                assert!(selected.a <= if dark { 0.10 } else { 0.09 });
+            }
+        }
+    }
+
+    #[test]
+    fn tab_selection_contrasts_with_light_and_dark_materials() {
+        use luciddesk_core::Backdrop;
+        for dark in [false, true] {
+            for material in [Backdrop::Acrylic, Backdrop::Mica, Backdrop::MicaAlt,
+                Backdrop::solid_default(dark), Backdrop::Translucent { opacity: 0.86 }] {
+                for strength in [0, 50, 100] {
+                    let chrome = material_chrome(material.with_strength(strength), dark);
+                    let background = if dark { 0.14 } else { 0.94 };
+                    let composite = |color: windows_canvas::ColorF| color.r * color.a + background * (1.0 - color.a);
+                    let selected = composite(chrome.tab_active);
+                    let hovered = composite(chrome.tab_hover);
+                    assert!((selected - background).abs() > 0.05);
+                    assert!((selected - hovered).abs() > 0.03);
+                    assert_eq!(selected > background, dark);
+                }
+            }
+        }
+    }
 
     #[test]
     fn chrome_keeps_selection_visible_and_adapts_to_material_strength() {

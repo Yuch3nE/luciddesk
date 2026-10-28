@@ -550,6 +550,14 @@ fn scene_with_mica(
                     Action::Change(Event::ToggleBorder),
                 );
             }
+            form.dropdown(
+                crate::i18n::text("ui-tab-alignment"),
+                crate::i18n::text("ui-tab-alignment-description"),
+                vec![
+                    (crate::i18n::text("ui-tab-alignment-fill"), Action::Change(Event::SetTabLeftAligned(false)), !interface_flags::TAB_LEFT_ALIGNED.get()),
+                    (crate::i18n::text("ui-tab-alignment-left"), Action::Change(Event::SetTabLeftAligned(true)), interface_flags::TAB_LEFT_ALIGNED.get()),
+                ],
+            );
             form.toggle(
                 crate::i18n::text("ui-header-divider"),
                 crate::i18n::text("ui-show-a-thin-line-between-the-header-and-content"),

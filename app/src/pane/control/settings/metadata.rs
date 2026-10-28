@@ -1,11 +1,12 @@
 //! Typed workspace preferences. Conversion is pure; saving is one metadata transaction.
 use super::*;
 use SettingValue::{Boolean, Number, Text};
-const FLAGS: [(&str, &str, bool); 5] = [
+const FLAGS: [(&str, &str, bool); 6] = [
     ("interface.title_emoji_color", "pane_title_emoji_color", true),
     ("interface.compact_menu", "pane_compact_menu", true),
     ("panel_defaults.icon_only", "pane_icon_only", false),
     ("interface.header_divider", "pane_header_divider", true),
+    ("interface.tab_left_aligned", "pane_tab_left_aligned", false),
     ("interface.panel_shadow", "pane_shadow", false),
 ];
 pub(super) fn contains(key: &str) -> bool {
@@ -171,6 +172,16 @@ pub(super) fn encode_changes(
 mod tests {
     use super::*;
     #[test]
+    fn tab_alignment_metadata_is_boolean_and_round_trips() {
+        let store = WorkspaceStore::open_in_memory().unwrap();
+        let updates = BTreeMap::from([("interface.tab_left_aligned".into(), Boolean(true))]);
+        super::super::save(&store, &updates).unwrap();
+        assert_eq!(read(&store).unwrap()["interface.tab_left_aligned"], Boolean(true));
+        let invalid = BTreeMap::from([("interface.tab_left_aligned".into(), Text("left".into()))]);
+        assert!(super::super::save(&store, &invalid).is_err());
+        assert_eq!(read(&store).unwrap()["interface.tab_left_aligned"], Boolean(true));
+    }
+    #[test]
     fn metadata_settings_are_typed_atomic_and_noop_aware() {
         let mut store = WorkspaceStore::open_in_memory().unwrap();
         let notifications = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -179,6 +190,7 @@ mod tests {
             observed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         });
         let before = read(&store).unwrap();
+        assert_eq!(before["interface.tab_left_aligned"], Boolean(false));
         assert_eq!(before["interface.panel_shadow"], Boolean(false));
         assert_eq!(before["interface.system_corners"], Text("round".into()));
         assert_eq!(before["interface.snap_gap"], Number(5.0));

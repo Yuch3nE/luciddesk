@@ -23,7 +23,7 @@ fn initial_solid_color_is_unselected_and_explicit_colors_are_preserved() {
     drop(store);
     let reopened = WorkspaceStore::open(&dir.path().join("workspace.db")).unwrap();
     assert_eq!(reopened.preference("solid_style").unwrap().as_deref(), Some("2373195|0.85"));
-    for (theme, color) in [("dark", 0x202020), ("light", 0xf3f3f3)] {
+    for (theme, color) in [("dark", 0x202020), ("light", 0xe9edf2)] {
         let doc = format!("config_version=1\n[appearance]\ntheme='{theme}'\nmaterial='solid'\n").parse().unwrap();
         assert_eq!(config::decode(&doc).unwrap()["solid_style"], format!("{color}|0.85"));
     }

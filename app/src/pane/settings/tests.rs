@@ -331,7 +331,7 @@ fn desktop_layout_defaults_show_both_toggles_and_their_linked_actions() {
 fn solid_defaults_follow_theme_until_a_color_is_saved() {
     let dir = tempfile::tempdir().unwrap();
     let store = luciddesk_storage::WorkspaceStore::open(&dir.path().join("workspace.db")).unwrap();
-    for (dark, color) in [(true, 0x202020), (false, 0xf3f3f3)] {
+    for (dark, color) in [(true, 0x202020), (false, 0xe9edf2)] {
         assert_eq!(
             solid_style(&store, dark),
             Backdrop::Solid {
@@ -340,15 +340,11 @@ fn solid_defaults_follow_theme_until_a_color_is_saved() {
             }
         );
     }
-    store.save_preference("solid_style", "1193046|0.5").unwrap();
-    for dark in [false, true] {
-        assert_eq!(
-            solid_style(&store, dark),
-            Backdrop::Solid {
-                color: 0x123456,
-                opacity: 0.5
-            }
-        );
+    for color in [0x123456, 0xf3f3f3] {
+        store.save_preference("solid_style", &format!("{color}|0.5")).unwrap();
+        for dark in [false, true] {
+            assert_eq!(solid_style(&store, dark), Backdrop::Solid { color, opacity: 0.5 });
+        }
     }
 }
 
@@ -2627,5 +2623,21 @@ fn general_language_dropdown_preserves_selected_preference_and_native_names() {
             assert_eq!(label, if code == "system" { crate::i18n::text("language-system") } else { name });
         }
         assert!(!body.controls.iter().any(|c| matches!(c.action, Action::Page(12))));
+    }
+}
+
+#[test]
+fn tab_alignment_dropdown_exposes_both_modes_and_current_selection() {
+    let body = scene(800.0, 600.0, 1, false, (PanelTheme::Light, Backdrop::Mica), Default::default());
+    let options = body.controls.iter().find_map(|control| {
+        let Action::Dropdown(options) = &control.action else { return None; };
+        options.iter().any(|(_, action, _)| matches!(action, Action::Change(Event::SetTabLeftAligned(_))))
+            .then_some(options)
+    }).expect("tab alignment dropdown");
+    assert_eq!(options.len(), 2);
+    for (index, (_, action, selected)) in options.iter().enumerate() {
+        let Action::Change(Event::SetTabLeftAligned(left)) = action else { panic!("alignment action"); };
+        assert_eq!(*left, index == 1);
+        assert_eq!(*selected, *left == interface_flags::TAB_LEFT_ALIGNED.get());
     }
 }

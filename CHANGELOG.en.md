@@ -6,6 +6,12 @@ Current version: **0.23.0**. Features and fixes by release.
 
 Exit the app before upgrading a portable installation and preserve its `data` folder. See the [portable guide](docs/portable.md) (Chinese).
 
+## Unreleased
+
+- Use a softer pale gray (`#E9EDF2`) for the default light solid material while preserving saved colors.
+
+- Add a left-aligned tab bar mode that sizes tabs to their titles and leaves unused space on the right. Choose it under Settings → Panel layout → Tab alignment; Fill remains the default.
+
 ## 0.23.0 · 2026-10-24
 
 ### Panels and appearance

@@ -855,6 +855,10 @@ ui-edge-snapping = { "边缘吸附" }
 ui-snap-to-nearby-panels-and-screen-edges-when-moving = { "移动面板时，自动对齐附近的面板和屏幕边缘。" }
 
 # 标题分隔线
+ui-tab-alignment = { "标签栏对齐" }
+ui-tab-alignment-description = { "铺满标题栏，或按标题宽度靠左排列。" }
+ui-tab-alignment-fill = { "铺满" }
+ui-tab-alignment-left = { "左对齐" }
 ui-header-divider = { "标题分隔线" }
 
 # 在标题栏和内容之间显示细分隔线。
