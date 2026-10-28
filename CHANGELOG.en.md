@@ -6,6 +6,15 @@ Current version: **0.24.0**. Features and fixes by release.
 
 Exit the app before upgrading a portable installation and preserve its `data` folder. See the [portable guide](docs/portable.md) (Chinese).
 
+## Unreleased
+
+- Parse JSON text once for strict validation and typed decoding. Negotiate bounded pipe reuse for multi-stage CLI operations, preserving legacy clients, idle release and no automatic replay after timeouts.
+
+- Reuse events for sequential IPC operations and compare structured server state directly, reducing handle creation and string allocation while retaining live state checks and conflict protection.
+
+- Use lightweight context queries for CLI mutation shortcuts. Write IPC frame headers and payloads together and avoid waiting for I/O that has already completed.
+- Update the Agent Skill to review previews by default, batch related operations, and avoid redundant queries and tight polling loops.
+
 ## 0.24.0 · 2026-10-29
 
 ### Tabs and appearance

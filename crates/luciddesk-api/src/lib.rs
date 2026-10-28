@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 mod plan;
 mod strict_json;
-pub use strict_json::validate_json;
+pub use strict_json::{validate_json, parse_json, decode_json};
 pub mod transport;
 pub use plan::{IconSize, SnapSide, SnapAlign, Context, Operation, Plan, SettingValue, FolderColumn};
 pub const VERSION: u32 = 1;

@@ -70,11 +70,16 @@ pub(super) fn search_snapshot(
         .ok_or("search panel is not open; enable search in settings")?;
     search::control::snapshot(view.window.hwnd().cast(), entries)
 }
-pub(super) fn fingerprint(s: &PaneApp) -> String {
+#[derive(Debug, PartialEq)]
+pub(super) struct Fingerprint {
+    folders: Vec<(u64, String, u64, usize, bool, Option<String>)>,
+    searches: Vec<(u64, Option<serde_json::Value>)>,
+}
+pub(super) fn fingerprint(s: &PaneApp) -> Fingerprint {
     let mut folders: Vec<_> = s
         .folders
         .iter()
-        .map(|(id, source)| (id.get(), source.navigation_context(), source.content_revision, source.items.len(), source.loading, &source.status))
+        .map(|(id, source)| (id.get(), source.navigation_context(), source.content_revision, source.items.len(), source.loading, source.status.clone()))
         .collect();
     folders.sort();
     let searches: Vec<_> = s
@@ -84,7 +89,7 @@ pub(super) fn fingerprint(s: &PaneApp) -> String {
         .filter(|p| p.is_search())
         .map(|p| (p.id().get(), search_snapshot(s, p.id(), false).ok()))
         .collect();
-    format!("{folders:?}:{searches:?}")
+    Fingerprint { folders, searches }
 }
 pub(super) fn execute(
     state: &Rc<RefCell<PaneApp>>,

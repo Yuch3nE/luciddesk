@@ -250,6 +250,7 @@
         "error"
       ],
       "properties": {
+        "connection_reuse": {"type": "boolean", "description": "Optional pipe transport hint; omitted from CLI output. ACK 2 permits bounded sequential reuse; ACK 1 closes the connection."},
         "protocol_version": {
           "const": 1
         },

@@ -104,7 +104,8 @@ fn parse(args: Vec<OsString>) -> Result<Options, String> {
             fields,
             payload,
         )?;
-        request.command = "workspace.get".into();
+        // Status carries the same concurrency context without the full inventory.
+        request.command = "status".into();
         Some(operation)
     } else {
         if dry_run || !fields.is_empty() {
@@ -115,7 +116,7 @@ fn parse(args: Vec<OsString>) -> Result<Options, String> {
                 return Err("--input is only valid for plan preview or shortcut commands".into());
             }
             request.plan =
-                Some(serde_json::from_slice(&read_input(&input)?).map_err(|e| e.to_string())?);
+                Some(luciddesk_api::decode_json(&read_input(&input)?).map_err(|e| e.to_string())?);
         }
         None
     };
@@ -144,11 +145,14 @@ fn read_input(path: &str) -> Result<Vec<u8>, String> {
     if bytes.len() > luciddesk_api::MAX_FRAME {
         return Err("input exceeds 4 MiB".into());
     }
-    luciddesk_api::validate_json(&bytes).map_err(|e| e.to_string())?;
     Ok(bytes)
 }
-fn call(request: &Request, timeout: Duration) -> Response {
-    luciddesk_api::transport::call(request, timeout).unwrap_or_else(|e| {
+fn call(client: &mut Option<luciddesk_api::transport::Client>, request: &Request, timeout: Duration) -> Response {
+    let result = (|| {
+        if client.is_none() { *client = Some(luciddesk_api::transport::Client::new()?); }
+        client.as_mut().unwrap().call(request, timeout)
+    })();
+    result.unwrap_or_else(|e: std::io::Error| {
         let code = match e.kind() {
             std::io::ErrorKind::NotFound => "APP_NOT_RUNNING",
             std::io::ErrorKind::PermissionDenied => "ACCESS_DENIED",
@@ -213,7 +217,8 @@ fn main() {
     let (response, json) = match parse(args) {
         Err(error) => (next_step::invalid_input(format!("{error}. Run 'luciddesk-cli help' or 'luciddesk-cli help RESOURCE COMMAND' for usage.")), wants_json),
         Ok(options) => {
-            let response = shortcuts::run(&options, call);
+            let mut client = None;
+            let response = shortcuts::run(&options, |request, timeout| call(&mut client, request, timeout));
             (response, options.json)
         }
     };

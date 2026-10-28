@@ -1115,6 +1115,25 @@ mod tests {
     }
 
     #[test]
+    fn status_context_can_preview_without_workspace_payload() {
+        let mut state = super::super::super::tests::test_state();
+        let mut snapshot = Snapshot::new();
+        let status = snapshot.respond(&mut state, &request("status"));
+        let workspace = snapshot.respond(&mut state, &request("workspace.get"));
+        assert_eq!(status.context, workspace.context);
+        assert!(status.data.as_ref().unwrap().get("panels").is_none());
+        let before = state.store.change_count();
+        let mut preview = request("plan.preview");
+        preview.plan = Some(serde_json::from_value(json!({
+            "protocol_version": 1, "base": status.context.unwrap(),
+            "operations": [{"op":"pane.update","pane_id":"1","title":"status preview"}]
+        })).unwrap());
+        let result = snapshot.respond(&mut state, &preview);
+        assert!(result.ok, "{result:?}");
+        assert_eq!(state.store.change_count(), before);
+    }
+
+    #[test]
     fn auto_hide_interactions_preserve_preview_context_and_do_not_write() {
         let _sta = crate::pane::test_support::apartment();
         let state = Rc::new(RefCell::new(super::super::super::tests::test_state()));

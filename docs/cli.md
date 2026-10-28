@@ -138,6 +138,8 @@ luciddesk-cli pane update --id 1 --list-view false --icon-only true --icon-size 
 
 `--dry-run` 仅预览；确认后按返回的 `next_step.args` 提交。新建面板默认值仍由 `settings update` 中的 `panel_defaults.icon_only` / `panel_defaults.icon_size` 修改，不影响已有面板。需要适配大小时，可在同一计划中先更新显示方式，再执行 `pane.fit` 或 `folder.fit`。
 
+Agent 默认使用 `--dry-run --json` 检查差异，再执行返回的 `next_step.args`；已有明确授权时无需重复询问用户。快捷命令内部会用轻量 `status` 获取新上下文，无需额外查询完整工作区来为它准备版本。目标不明确时仍应先查询；批量整理优先使用一次工作区快照和有序计划，完成后按目标资源验证，避免逐个图标反复查询和提交。
+
 ## 整理计划：查询 → 预览 → 应用
 
 `pane.create` 继承“设置 → 面板布局”中的新建普通面板排列默认值。已有面板不受默认值变化影响；需要固定行为的 Agent 应在计划中显式设置 `auto_compact`／`align_icons_to_grid`，覆盖创建时继承的默认值。

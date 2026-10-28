@@ -35,7 +35,7 @@ Some manual actions omit `args`. In PowerShell, invoke a supplied array with `$n
 
 Direct and shortcut submissions provide `data.recovery`. Retain the entire object: `query_args` finds the original receipt; `retry_args` replays the exact apply. Both preserve token, request ID, directory assertion, protocol and timeout. If absent, use retained original arguments.
 
-On timeout or transport failure after submission, query first. Exact replay is only for recovery after inspecting the result; rerunning a shortcut creates a new plan and can repeat effects. Same ID with a different request produces `REQUEST_ID_REUSED`. A timeout does not cancel submitted work.
+On timeout or transport failure after submission, query first. Exact replay is only for recovery after inspecting the result; rerunning a shortcut creates a new plan and can repeat effects. Same ID with a different request produces `REQUEST_ID_REUSED`. A timeout does not cancel submitted work. The CLI may reuse a negotiated pipe within one invocation; this never retries a failed mutation automatically and does not change receipt recovery.
 
 - `pending`: completion unresolved. Stop polling at the deadline and report the original ID; do not resubmit with a new ID.
 - Presentation `failed`: a committed save is not rolled back. Inspect error and current resource state before another plan.
@@ -53,5 +53,7 @@ On timeout or transport failure after submission, query first. Exact replay is o
 | `SORT_METADATA_PENDING` | Pure preview is still reading file properties; nothing was saved. The CLI polls within its timeout and preserves the last pending response when the budget is exhausted. If still pending, use the returned `pending_preview` with the same preview request ID; do not query an apply receipt or claim a commit. |
 | `NOT_FOUND`, `PANE_LOCKED` | Re-query targets or resolve lock within task scope. |
 | `PERSISTENCE_ERROR` | Report failure and inspect state before another plan. |
+
+For receipt polling, start with a short delay (for example 250 ms), increase up to 2 seconds while unchanged, and stop at a bounded task deadline. Query the receipt, not the full workspace. Terminal success needs one targeted postcondition check, not more polling.
 
 Prefer `error.code` over parsing messages. Stop polling terminal results; queries and previews do not save.

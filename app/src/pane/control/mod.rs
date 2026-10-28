@@ -38,7 +38,7 @@ struct Snapshot {
     instance: String,
     item_ids: HashMap<String, String>,
     next_item: u64,
-    seen: Option<(Workspace, u64, String, String)>,
+    seen: Option<(Workspace, u64, Vec<luciddesk_window::MonitorDescriptor>, transient::Fingerprint)>,
     version: u64,
     plans: plans::Plans,
     fonts: font_catalog::Catalog,
@@ -85,15 +85,14 @@ impl Snapshot {
         if let Some((id,data)) = self.startup.poll() {self.plans.system_result(&id,data);}
         let monitors = luciddesk_window::enumerate_monitors();
         let changes = state.store.change_count();
-        let topology = format!("{monitors:?}");
         let runtime = transient::fingerprint(state);
-        let unchanged = self.seen.as_ref().is_some_and(|(workspace, count, monitors, fingerprint)| {
+        let unchanged = self.seen.as_ref().is_some_and(|(workspace, count, previous_monitors, fingerprint)| {
             workspace == &state.workspace && *count == changes
-                && monitors == &topology && fingerprint == &runtime
+                && previous_monitors == &monitors && fingerprint == &runtime
         });
         if !unchanged {
             self.version += 1;
-            self.seen = Some((state.workspace.clone(), changes, topology, runtime));
+            self.seen = Some((state.workspace.clone(), changes, monitors.clone(), runtime));
         }
         let version = self.version.to_string();
         let base = luciddesk_api::Context {
@@ -364,6 +363,27 @@ fn start_at(
 mod tests {
     use super::*;
     #[test]
+    #[ignore = "manual control timing with isolated workspace"]
+    fn control_timing_probe() {
+        fn measure(label: &str, mut action: impl FnMut()) {
+            for _ in 0..30 { action(); }
+            let mut samples = Vec::new();
+            for _ in 0..500 {
+                let start = Instant::now(); action(); samples.push(start.elapsed().as_nanos());
+            }
+            samples.sort_unstable();
+            println!("{label}: median={}ns p95={}ns", samples[250], samples[475]);
+        }
+        let mut state = super::super::tests::test_state();
+        let mut snapshot = Snapshot::new();
+        let request: Request = serde_json::from_value(json!({
+            "protocol_version":1, "request_id":"timing", "command":"status"
+        })).unwrap();
+        measure("enumerate_monitors", || { std::hint::black_box(luciddesk_window::enumerate_monitors()); });
+        measure("runtime_fingerprint", || { std::hint::black_box(transient::fingerprint(&state)); });
+        measure("status_handler", || { assert!(snapshot.respond(&mut state, &request).ok); });
+    }
+    #[test]
     fn disabled_cli_rejects_all_requests_without_reading_or_mutating_workspace() {
         let mut state = super::super::tests::test_state();
         let mut snapshot = Snapshot::new();
@@ -541,12 +561,11 @@ mod integration_tests {
                 plan: None,
                 token: None,
             };
-            tx.send(luciddesk_api::transport::call_at(
-                &name,
-                &request,
-                Duration::from_secs(3),
-            ))
-            .unwrap();
+            let mut client = luciddesk_api::transport::Client::at(&name);
+            for _ in 0..2 {
+                assert!(client.call(&request, Duration::from_secs(3)).unwrap().ok);
+            }
+            tx.send(client.call(&request, Duration::from_secs(3))).unwrap();
         });
         let deadline = Instant::now() + Duration::from_secs(4);
         let response = loop {

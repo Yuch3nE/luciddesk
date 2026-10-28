@@ -92,7 +92,7 @@ pub(super) fn operation(
 ) -> Result<Operation, String> {
     let mut object = serde_json::Map::new();
     if let Some(input) = input {
-        let value: Value = serde_json::from_slice(&input).map_err(|e| e.to_string())?;
+        let value: Value = luciddesk_api::parse_json(&input).map_err(|e| e.to_string())?;
         if command == "settings.update" {
             object.insert("values".into(), value);
         } else if command == "item.reorder" && value.is_array() {
@@ -160,7 +160,7 @@ fn execute(
             return Response::failure(
                 &options.request.request_id,
                 "PROTOCOL_MISMATCH",
-                "Workspace response omitted a valid context",
+                "Status response omitted a valid context",
             );
         }
     };
@@ -372,6 +372,12 @@ mod tests {
         assert!(value("--descending", "yes").is_err());
     }
     #[test]
+    fn shortcut_input_rejects_nested_and_escaped_duplicate_keys() {
+        for input in [br#"{"values":{"search.enabled":true,"search.enabled":false}}"#.as_slice(), br#"{"title":"a","ti\u0074le":"b"}"#] {
+            assert!(operation("pane.create", None, None, BTreeMap::new(), Some(input.to_vec())).is_err());
+        }
+    }
+    #[test]
     fn direct_and_shortcut_recovery_reconstruct_exact_request_with_directory() {
         let directory = std::fs::canonicalize(std::env::current_dir().unwrap()).unwrap();
         for shortcut in [false, true] {
@@ -421,7 +427,7 @@ mod tests {
             let response = run(&options, |request, _| {
                 commands.push(request.command.clone());
                 match request.command.as_str() {
-                    "workspace.get" => {
+                    "status" => {
                         Response::success(&request.request_id, context.clone(), json!({}))
                     }
                     "plan.preview" => {
@@ -441,13 +447,13 @@ mod tests {
                 }
             });
             if dry_run {
-                assert_eq!(commands, vec!["workspace.get", "plan.preview"]);
+                assert_eq!(commands, vec!["status", "plan.preview"]);
                 assert!(response.ok);
                 assert_eq!(response.data.as_ref().unwrap()["next_step"]["action"], "review_then_apply");
             } else {
                 assert_eq!(
                     commands,
-                    vec!["workspace.get", "plan.preview", "plan.apply"]
+                    vec!["status", "plan.preview", "plan.apply"]
                 );
                 assert_eq!(response.exit_code(), 8);
                 assert_eq!(response.data.as_ref().unwrap()["next_step"]["action"], "query_receipt");
