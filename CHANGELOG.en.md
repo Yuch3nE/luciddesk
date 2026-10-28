@@ -2,15 +2,30 @@
 
 [简体中文](CHANGELOG.md) · English
 
-Current version: **0.23.0**. Features and fixes by release.
+Current version: **0.24.0**. Features and fixes by release.
 
 Exit the app before upgrading a portable installation and preserve its `data` folder. See the [portable guide](docs/portable.md) (Chinese).
 
-## Unreleased
+## 0.24.0 · 2026-10-29
 
-- Use a softer pale gray (`#E9EDF2`) for the default light solid material while preserving saved colors.
+### Tabs and appearance
 
-- Add a left-aligned tab bar mode that sizes tabs to their titles and leaves unused space on the right. Choose it under Settings → Panel layout → Tab alignment; Fill remains the default.
+- Add Left aligned under Settings → Panel layout → Tab alignment; Fill remains the default. Left aligned sizes tabs to their titles and keeps the collapse and menu buttons visible. All tabs shrink when space is limited, preventing tabs from disappearing completely.
+- Use a borderless background for selected tabs and show full titles on hover. Refine tab spacing, inline renaming and panel merge previews.
+- Tune tab backgrounds for each material and theme; solid backgrounds use the selected color's luminance to choose tab contrast. Change the default light solid color to a softer pale gray (`#E9EDF2`) while preserving saved colors.
+- Add the app icon to the settings title bar and align the title and window controls, with refined font sizes, icon sizes and spacing.
+
+### Search and installation
+
+- Load colorful file icons asynchronously in search results and refine result rows, action buttons and interaction feedback. Reuse icon caches and release idle loading resources.
+- Complete all seven installer languages and add translation validation.
+
+### Reliability and performance
+
+- Fix ordinary desktop panels appearing above application windows. Isolate panel ordering by UI thread to prevent interference from other instances.
+- Fix recovery retries after material application failures and invalidate desktop filtering sessions after request timeouts.
+- Reduce position reads during stable desktop redraws, reuse drawing brushes and icon layouts, and limit horizontal icon uploads while retaining a bounded scrolling cache.
+- Simplify panel state synchronization, control plans and drag state management, with additional window ordering, rendering and desktop filtering regression coverage.
 
 ## 0.23.0 · 2026-10-24
 

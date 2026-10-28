@@ -1,4 +1,4 @@
-<!-- manual-version: 0.23.0 -->
+<!-- manual-version: 0.24.0 -->
 
 # LucidDesk User Manual
 
@@ -8,7 +8,7 @@ Start with your first panel, then find the task you need below.
 
 ## Start in five minutes
 
-For LucidDesk 0.23.0.
+For LucidDesk 0.24.0.
 
 1. Install and start LucidDesk. Find its tray icon near the Windows clock; expand hidden icons if needed.
 2. Right-click the tray icon and choose New panel.
@@ -47,7 +47,7 @@ To clear the desktop temporarily, enable Double-click to hide desktop in General
 
 Keep related panels in one window and switch between tabs.
 
-Under Settings → Panel layout → Tab alignment, choose Fill or Left aligned. Fill is the default. Left aligned sizes tabs to their titles and leaves unused space on the right. Tabs shrink when space is limited, and the active tab stays visible.
+Under Settings → Panel layout → Tab alignment, choose Fill or Left aligned. Fill is the default. Left aligned sizes tabs to their titles and leaves unused space on the right. Left aligned keeps the collapse and menu buttons visible and shrinks all tabs when space is limited. Long titles are truncated; hover to see the full title. Fill keeps the active tab visible when tabs overflow; use the context menu or keyboard shortcuts to switch to other tabs.
 
 - **Create:** use the panel menu or press `Ctrl + T`.
 - **Merge:** drag one panel onto another's header and release when the merge preview appears.
@@ -55,6 +55,8 @@ Under Settings → Panel layout → Tab alignment, choose Fill or Left aligned. 
 - **Switch or close:** `Ctrl + Tab` switches tabs; `Ctrl + W` closes the current tab.
 
 Only ordinary desktop panels support tabs. Folder and search panels cannot merge. Closing a tab does not delete files; closing the window closes all its tabs.
+
+Selected tabs use a borderless background. With a solid material, tab contrast follows the selected background color; other materials follow the light or dark theme. The default light solid color is `#E9EDF2`; upgrading preserves saved colors.
 
 ## Folder panels
 
