@@ -8,6 +8,12 @@ Exit the app before upgrading a portable installation and preserve its `data` fo
 
 ## Unreleased
 
+- Align CLI text errors with structured next-step guidance and request IDs. Add opt-in stderr JSONL diagnostics for IPC commands, timing and error codes without logging payloads or changing JSON result output.
+
+- Return structured BUSY states when backup previews encounter pending workspace saves or an active backup task, with read-only polling and fresh-preview guidance. Add multi-client pipe contention and waiting-timeout isolation tests.
+
+- Refine CLI timeout and failure guidance after live desktop validation, clarify instance discovery and backup prerequisites in the Agent Skill, and expand live layout and backup/restore checks.
+
 - Parse JSON text once for strict validation and typed decoding. Negotiate bounded pipe reuse for multi-stage CLI operations, preserving legacy clients, idle release and no automatic replay after timeouts.
 
 - Reuse events for sequential IPC operations and compare structured server state directly, reducing handle creation and string allocation while retaining live state checks and conflict protection.

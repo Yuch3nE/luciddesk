@@ -1,3 +1,4 @@
+mod diagnostics;
 mod help;
 mod next_step;
 mod skill;
@@ -148,11 +149,12 @@ fn read_input(path: &str) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 fn call(client: &mut Option<luciddesk_api::transport::Client>, request: &Request, timeout: Duration) -> Response {
+    let started = std::time::Instant::now();
     let result = (|| {
         if client.is_none() { *client = Some(luciddesk_api::transport::Client::new()?); }
         client.as_mut().unwrap().call(request, timeout)
     })();
-    result.unwrap_or_else(|e: std::io::Error| {
+    let response = result.unwrap_or_else(|e: std::io::Error| {
         let code = match e.kind() {
             std::io::ErrorKind::NotFound => "APP_NOT_RUNNING",
             std::io::ErrorKind::PermissionDenied => "ACCESS_DENIED",
@@ -160,7 +162,9 @@ fn call(client: &mut Option<luciddesk_api::transport::Client>, request: &Request
             _ => "TRANSPORT_ERROR",
         };
         Response::failure(&request.request_id, code, e.to_string())
-    })
+    });
+    diagnostics::trace(request, &response, started.elapsed());
+    response
 }
 fn offline_output(args: &[OsString]) -> Option<String> {
     let json_count = args.iter().filter(|arg| *arg == "--json").count();
@@ -195,7 +199,7 @@ fn main() {
                 if args.iter().any(|a| a == "--json") {
                     println!("{}", serde_json::to_string(&response).unwrap());
                 } else {
-                    eprintln!("{}", response.error.as_ref().unwrap().message);
+                    eprint!("{}", diagnostics::error_text(&response));
                 }
                 std::process::exit(response.exit_code());
             }
@@ -228,21 +232,8 @@ fn main() {
             "{}",
             serde_json::to_string(&response).expect("response serialization")
         );
-    } else if let Some(error) = &response.error {
-        eprintln!("{}: {}", error.code, error.message);
-        match error.code.as_str() {
-            "ACCESS_DENIED" => eprintln!("Check local access permissions and enable CLI control in LucidDesk Settings > General > Agent & CLI."),
-            "APP_NOT_RUNNING" => eprintln!("Start the matching LucidDesk GUI in this Windows session, then run status --json."),
-            "CONFLICT" => eprintln!("Query workspace get again, then preview a new plan."),
-            "TIMEOUT" | "RESULT_UNKNOWN" => eprintln!("Check request get --id ORIGINAL_ID and current state before retrying a change."),
-            _ => {}
-        }
-        if let Some(recovery) = response.data.as_ref().and_then(|data| data.get("recovery")) {
-            eprintln!(
-                "Recovery: {}",
-                serde_json::to_string(recovery).expect("recovery serialization")
-            );
-        }
+    } else if response.error.is_some() {
+        eprint!("{}", diagnostics::error_text(&response));
     } else {
         println!(
             "{}",

@@ -551,6 +551,55 @@ mod tests {
         assert!(client.connection.is_none());
     }
     #[test]
+    fn competing_legacy_and_reused_clients_keep_responses_isolated() {
+        use std::sync::{Arc, Barrier, Mutex};
+        let name = format!("{}-competition-{}", endpoint().unwrap(), crate::request_id());
+        let received = Arc::new(Mutex::new(std::collections::HashSet::new()));
+        let observed = received.clone();
+        let _server = Server::start_at(&name, move |r| {
+            assert!(observed.lock().unwrap().insert(r.request_id.clone()), "duplicate dispatch");
+            Response::success(&r.request_id, serde_json::json!({}), serde_json::json!({"echo":r.request_id}))
+        }).unwrap();
+        let barrier = Arc::new(Barrier::new(4));
+        let workers: Vec<_> = (0..4).map(|worker| {
+            let name = name.clone();
+            let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                let mut client = Client::at(&name);
+                barrier.wait();
+                for index in 0..24 {
+                    let id = format!("worker-{worker}-{index}");
+                    let request: Request = serde_json::from_value(serde_json::json!({"protocol_version":1,"request_id":id,"command":"status"})).unwrap();
+                    let response = if worker % 2 == 0 { client.call(&request, Duration::from_secs(5)) }
+                        else { call_at(&name, &request, Duration::from_secs(5)) }.unwrap();
+                    assert_eq!(response.request_id, id);
+                    assert_eq!(response.data.unwrap()["echo"], id);
+                }
+            })
+        }).collect();
+        for worker in workers { worker.join().unwrap(); }
+        assert_eq!(received.lock().unwrap().len(), 96);
+    }
+    #[test]
+    fn waiting_client_timeout_does_not_dispatch_or_poison_next_request() {
+        let name = format!("{}-waiting-{}", endpoint().unwrap(), crate::request_id());
+        let received = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let observed = received.clone();
+        let _server = Server::start_at(&name, move |r| {
+            observed.lock().unwrap().push(r.request_id.clone());
+            Response::success(&r.request_id, serde_json::json!({}), serde_json::json!({}))
+        }).unwrap();
+        let request = |id: &str| serde_json::from_value::<Request>(serde_json::json!({"protocol_version":1,"request_id":id,"command":"status"})).unwrap();
+        let mut owner = Client::at(&name);
+        owner.call(&request("owner"), Duration::from_secs(2)).unwrap();
+        let mut waiting = Client::at(&name);
+        assert_eq!(waiting.call(&request("expired"), Duration::from_millis(30)).unwrap_err().kind(), io::ErrorKind::TimedOut);
+        assert!(waiting.connection.is_none());
+        drop(owner);
+        assert!(waiting.call(&request("next"), Duration::from_secs(2)).unwrap().ok);
+        assert_eq!(*received.lock().unwrap(), vec!["owner", "next"]);
+    }
+    #[test]
     fn encoded_frames_preserve_wire_format_and_limit() {
         for text in ["中文", "", &"x".repeat(MAX_FRAME - 2)] {
             let frame = encode_frame(&text).unwrap();

@@ -84,7 +84,7 @@ fn document(topic: &str) -> Result<Value, String> {
         "availability": if topic.is_empty() { "mixed; see command help" } else if offline { "offline" } else { "online" },
         "behavior": if mutation { "Preview then apply; add --dry-run to preview only." } else if topic == "plan.apply" { "Applies changes using a previously previewed token." } else if topic == "plan.preview" { "Preview only; does not save changes." } else if group { "Use help RESOURCE COMMAND for parameters and behavior." } else { "Read-only; does not change the workspace." },
         "commands": children,
-        "options": ["--json: machine-readable output", "--data-dir PATH: assert the running app's directory", "--timeout-ms 1..60000: default 10000", "--protocol-version N: protocol compatibility", "--request-id ID: retain for recovery", "help [RESOURCE [COMMAND]], -h, --help: offline help", "--version: CLI and protocol version"],
+        "options": ["--json: machine-readable output", "--data-dir PATH: assert the running app's directory", "--timeout-ms 1..60000: default 10000", "--protocol-version N: protocol compatibility", "--request-id ID: retain for recovery", "help [RESOURCE [COMMAND]], -h, --help: offline help", "--version: CLI and protocol version", "LUCIDDESK_CLI_TRACE=1: opt-in IPC timing/error JSONL on stderr; use --json for separate machine-readable stdout"],
         "notes": []
     });
     doc["command_details"] = json!(children.iter().map(|name| json!({
@@ -107,13 +107,17 @@ fn document(topic: &str) -> Result<Value, String> {
     } else {
         vec!["Online commands require the same-version GUI with CLI control enabled in Settings > General > Agent & CLI.",
             "Get IDs from live queries; example IDs and paths are placeholders. The CLI never opens the database.",
-            "After a timeout, query request get with the original request ID before retrying; do not repeat an uncertain change with a new ID."]
+            if mutation { "With --dry-run, no change is submitted: retain the preview plan and follow next_step within a deadline. Without --dry-run, an uncertain submission requires querying request get with its original request ID before retrying; never use a new ID to repeat it." }
+            else if topic == "plan.apply" { "After a timeout, query request get with the original request ID before retrying; do not repeat an uncertain change with a new ID." }
+            else if topic == "plan.preview" { "Preview creates no apply receipt. On timeout, retain the plan and preview request ID; follow next_step or retry the pure preview within a deadline. Refresh context on conflict." }
+            else if group { "Recovery depends on the command: reads can be retried within a deadline; previews create no apply receipt; uncertain submissions require querying the original receipt. Read the command help." }
+            else { "Read-only timeouts can be retried within a deadline. A read request creates no apply receipt. For request get, keep querying the original operation ID, not the lookup request ID." }]
     });
     if offline {
         doc["options"] = json!(["--json: machine-readable output", "help, -h, --help: offline help"]);
     }
     let detail = match topic {
-        "backup.create" | "backup.export" | "backup.restore" => Some("Single-operation plan. Apply returns an asynchronous receipt: poll request get until operation_status is terminal. Export never overwrites files. Restore preview validates and freezes the source (maximum 64 MiB); apply saves a rollback backup and rejects concurrent configuration changes. Retain rollback_path; rolled_back means restore failed. Never rerun an uncertain restore with a new request ID."),
+        "backup.create" | "backup.export" | "backup.restore" => Some("Single-operation plan. BUSY during preview includes operation_submitted:false and wait_for_idle instructions for pending workspace saves or an active backup; query the suggested status within a deadline, then refresh context and preview again. Apply returns an asynchronous receipt: poll request get until operation_status is terminal. Export never overwrites files. Restore preview validates and freezes the source (maximum 64 MiB); apply saves a rollback backup and rejects concurrent configuration changes. Retain rollback_path; rolled_back means restore failed. Never rerun an uncertain restore with a new request ID."),
         "pane.sort" => Some("One-time sort; defaults to name ascending. Specify --descending true for newest-first modified dates. Keeps arrangement mode; repacks using visible columns. Metadata reads run off the UI thread; previews wait up to --timeout-ms and apply the measured order without rereading files."),
         "pane.update" => Some("list_view, icon_only and icon_size (small/medium/large) affect only the named desktop or folder pane, including inactive tabs; list views retain these preferences without changing their appearance. They do not modify defaults for new panes. Desktop panes: auto_compact=true enables aligned compact packing; align_icons_to_grid=false disables compact packing and preserves free positions. Conflicting true/false is rejected. These two fields affect only the named pane, including in a tab group."),
         "item.position" => Some("Requires an existing member of an unlocked desktop pane with auto_compact=false. Aligned mode: column/row (0..10000), occupied cells rejected. Free mode: x/y (0..1000000), relative to pane content in DIP, overlap allowed. Do not mix coordinate types. Use item.assign first for another pane; other icons stay in place."),
@@ -376,6 +380,15 @@ mod tests {
         let group = document("folder").unwrap();
         let example = group["examples"][0].as_str().unwrap().strip_prefix("luciddesk-cli ").unwrap();
         assert!(output(&args(example)).unwrap().is_ok());
+    }
+    #[test]
+    fn recovery_notes_distinguish_reads_previews_and_submissions() {
+        let notes = |topic| document(topic).unwrap()["notes"].to_string();
+        assert!(notes("status").contains("Read-only timeouts"));
+        assert!(notes("plan.preview").contains("Preview creates no apply receipt"));
+        assert!(!notes("plan.preview").contains("query request get"));
+        assert!(notes("plan.apply").contains("query request get"));
+        assert!(notes("pane.create").contains("With --dry-run, no change is submitted"));
     }
     #[test]
     fn agent_metadata_distinguishes_discovery_preview_and_apply() {

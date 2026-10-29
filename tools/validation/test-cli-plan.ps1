@@ -19,10 +19,21 @@ function Invoke-Cli([string[]]$Command) {
     $raw = & $cli @Command --data-dir $root --json
     $code = $LASTEXITCODE
     $result = $raw | ConvertFrom-Json
+    @{command=$Command;exit=$code;ok=$result.ok;error=$result.error;request_id=$result.request_id} | ConvertTo-Json -Depth 10 -Compress | Add-Content -LiteralPath ($root + '.commands.jsonl') -Encoding utf8
     if ($code -ne 0 -or -not $result.ok) { throw ($raw -join "`n") }
     return $result
 }
+function Receipt-Core($Response) {
+    $node = [System.Text.Json.Nodes.JsonNode]::Parse(($Response | ConvertTo-Json -Depth 30 -Compress))
+    # CLI continuation metadata is not part of the server's retained receipt.
+    if ($node['data']) {
+        $null = $node['data'].AsObject().Remove('recovery')
+        $null = $node['data'].AsObject().Remove('next_step')
+    }
+    return ,$node
+}
 function Invoke-Plan([object[]]$Operations) {
+    @{operations=$Operations} | ConvertTo-Json -Depth 30 -Compress | Add-Content -LiteralPath ($root + '.commands.jsonl') -Encoding utf8
     $snapshot = Invoke-Cli @('workspace','get')
     $inputPath = Join-Path $root 'plan.json'
     [IO.File]::WriteAllText($inputPath, (@{protocol_version=1;base=$snapshot.context;operations=$Operations} | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
@@ -39,7 +50,7 @@ function Invoke-Plan([object[]]$Operations) {
         }
     }
     $retry = Invoke-Cli $command
-    if (-not [System.Text.Json.Nodes.JsonNode]::DeepEquals([System.Text.Json.Nodes.JsonNode]::Parse(($applied | ConvertTo-Json -Depth 30 -Compress)), [System.Text.Json.Nodes.JsonNode]::Parse(($retry | ConvertTo-Json -Depth 30 -Compress)))) { throw ('Retry changed the receipt: ' + ($applied | ConvertTo-Json -Depth 30 -Compress) + ' vs ' + ($retry | ConvertTo-Json -Depth 30 -Compress)) }
+    if (-not [System.Text.Json.Nodes.JsonNode]::DeepEquals((Receipt-Core $applied), (Receipt-Core $retry))) { throw ('Retry changed the receipt: ' + ($applied | ConvertTo-Json -Depth 30 -Compress) + ' vs ' + ($retry | ConvertTo-Json -Depth 30 -Compress)) }
     $receipt = Invoke-Cli @('request','get','--id',$requestId)
     if ($receipt.data.result.request_id -ne $requestId) { throw 'Receipt mismatch' }
     return $applied
@@ -145,6 +156,8 @@ try {
         if ($listing.data.error -or [DateTime]::UtcNow -gt $deadline) { throw ($listing | ConvertTo-Json -Depth 20) }
         Start-Sleep -Milliseconds 100
     } while ($true)
+    $null = Invoke-Plan @(@{op='folder.fit';pane_id=$folderId;max_rows=4})
+    $null = Invoke-Plan @(@{op='folder.refresh';pane_id=$folderId})
     $child = Join-Path $fixture 'nested'
     [IO.Directory]::CreateDirectory($child) | Out-Null
     $metadataSettings = @{'interface.title_emoji_color'=$false;'interface.compact_menu'=$false;'interface.header_divider'=$false;'folder_defaults.list_view'=$false;'folder_defaults.show_type'=$false;'folder_defaults.entry_mode'='explorer';'backup.interval_minutes'=30;'backup.keep'=20;'font.family'=''}
@@ -295,6 +308,7 @@ try {
         $null = Invoke-Plan @(@{op='pane.remove';pane_id=$restartPane})
         @{result='passed';old_instance=$oldContext.instance_id;new_instance=$restarted.context.instance_id;receipt_unknown=$true;token_expired=$true} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $root 'restart-result.json')
     }
+    & (Join-Path $PSScriptRoot 'support/cli-backup.ps1')
     if ($IdleSeconds -gt 0) { & (Join-Path $PSScriptRoot 'support/cli-idle.ps1') }
     @{result='passed';data_dir=$root;instance=$status.context.instance_id;created_and_removed_id=$id;desktop_connected=$status.data.desktop_connected} | ConvertTo-Json
 } finally {

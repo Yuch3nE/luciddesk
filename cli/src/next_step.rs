@@ -45,9 +45,28 @@ pub(super) fn attach(response: &mut Response, request: &Request, timeout: Durati
         .and_then(|result| result["request_id"].as_str())
         .unwrap_or(&response.request_id);
     let query = || args(request, timeout, &["request", "get", "--id", receipt_id]);
-    let inspect = || args(request, timeout, &["workspace", "get"]);
+    let inspect = || args(request, timeout, match data.and_then(|d| d["scope"].as_str()) {
+        Some("settings") => &["settings", "get"],
+        Some("system") => &["startup", "get"],
+        _ => &["workspace", "get"],
+    });
     let step = if let Some(error) = error {
         match error {
+            "BUSY" if data.is_some_and(|d| d.pointer("/busy/phase").and_then(Value::as_str) == Some("preview") && d["operation_submitted"] == false) => {
+                let reason = data.and_then(|d| d.pointer("/busy/reason")).and_then(Value::as_str);
+                let target = match reason {
+                    Some("workspace_save_pending") => Some((&["status"][..], "workspace_save_pending")),
+                    Some("backup_task_running") => Some((&["backup", "list"][..], "busy")),
+                    _ => None,
+                };
+                match target {
+                    Some((words, field)) => json!({"action":"wait_for_idle","automatic_retry":false,
+                        "args":args(request, timeout, words),"retry_after_ms":250,
+                        "until":{"path":format!("data.{field}"),"equals":false},
+                        "note":"No operation was submitted. Poll this read-only status within a deadline; once idle, fetch fresh context and preview again. Do not apply an old token."}),
+                    None => json!({"action":"inspect_error","automatic_retry":false}),
+                }
+            }
             "SORT_METADATA_PENDING" => json!({"action":"wait_and_preview", "automatic_retry":false,
                 "args":args(request, timeout, &["plan","preview","--input","-","--request-id",&response.request_id]),
                 "stdin_json":data.and_then(|d|d.pointer("/pending_preview/plan")),
@@ -168,6 +187,39 @@ mod tests {
         }
     }
 
+    #[test]
+    fn failed_effects_inspect_their_resource_for_direct_and_retained_receipts() {
+        let options = options("request get --id original");
+        for (scope, resource) in [("settings", "settings"), ("system", "startup"), ("workspace", "workspace"), ("runtime", "workspace")] {
+            for wrapped in [false, true] {
+                let original = Response::success("original", json!({}), json!({"scope":scope,"commit_status":"committed","presentation_status":"failed"}));
+                let mut response = if wrapped { Response::success("lookup", json!({}), json!({"result":original})) } else { original };
+                attach(&mut response, &options.request, options.timeout);
+                assert_eq!(response.data.unwrap()["next_step"]["args"][0], resource);
+            }
+        }
+    }
+    #[test]
+    fn busy_preview_provides_read_only_wait_instructions_without_submission() {
+        let options = options("backup create --dry-run");
+        for (reason, command, path) in [("workspace_save_pending", "status", "data.workspace_save_pending"), ("backup_task_running", "backup", "data.busy")] {
+            let mut response = Response::failure("preview", "BUSY", "localized message");
+            response.data = Some(json!({"busy":{"reason":reason,"phase":"preview","retry_after_ms":250},"operation_submitted":false}));
+            attach(&mut response, &options.request, options.timeout);
+            assert_eq!(response.exit_code(), 6);
+            assert!(response.error.as_ref().unwrap().retryable);
+            let data = response.data.unwrap();
+            let step = &data["next_step"];
+            assert_eq!(step["action"], "wait_for_idle");
+            assert_eq!(step["args"][0], command);
+            assert_eq!(step["until"]["path"], path);
+            assert_eq!(step["automatic_retry"], false);
+            assert_eq!(data["operation_submitted"], false);
+        }
+        let mut response = Response::failure("apply", "BUSY", "queue full");
+        attach(&mut response, &options.request, options.timeout);
+        assert_eq!(response.data.unwrap()["next_step"]["action"], "inspect_error");
+    }
     #[test]
     fn uncertain_apply_is_queried_not_repeated() {
         let options = options("plan apply --token token --request-id fixed");

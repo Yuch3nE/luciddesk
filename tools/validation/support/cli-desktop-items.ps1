@@ -6,6 +6,7 @@ $desktop = [IO.Path]::GetFullPath([Environment]::GetFolderPath('DesktopDirectory
 $fixtureTag = 'LucidDesk-CLI-test-' + [guid]::NewGuid().ToString('N')
 $fixtures = @{}
 $ownedPane = $null
+$layoutPane = $null
 function Native-Items {
     $raw = & $probe
     if ($LASTEXITCODE -ne 0) { throw 'Independent Explorer snapshot failed' }
@@ -65,6 +66,22 @@ try {
     $null = Invoke-Plan @(@{op='pane.update';pane_id=$ownedPane;title='concurrent preserved'})
     Expect-Failure @('plan','apply','--token',$stale.data.plan_token,'--request-id',([guid]::NewGuid().ToString())) 'CONFLICT'
     if ((Invoke-Cli @('pane','get','--id',$ownedPane)).data.title -ne 'concurrent preserved') { throw 'Stale plan overwrote current title' }
+    $null = Invoke-Plan @(@{op='pane.update';pane_id=$ownedPane;auto_compact=$false;align_icons_to_grid=$true},@{op='item.position';pane_id=$ownedPane;item_id=$ids[0];column=0;row=1})
+    $positioned = (Invoke-Cli @('item','list','--pane',$ownedPane)).data.items | Where-Object id -eq $ids[0]
+    if ($positioned.placement.row -ne 1 -or $positioned.placement.column -ne 0) { throw 'Manual item position did not apply' }
+    $null = Invoke-Plan @(@{op='pane.update';pane_id=$ownedPane;auto_compact=$true})
+    foreach ($sort in @('name','size','modified','type')) {
+        $null = Invoke-Plan @(@{op='pane.sort';pane_id=$ownedPane;sort_column=$sort;descending=$false})
+    }
+    $null = Invoke-Plan @(@{op='pane.fit';pane_id=$ownedPane;icon_columns=3})
+    $layoutCreated = Invoke-Plan @(@{op='pane.create';ref='layout';title=($fixtureTag+' layout')})
+    $layoutPane = [string]$layoutCreated.data.refs.layout
+    $monitor = (Invoke-Cli @('monitor','list')).data.monitors | Select-Object -First 1
+    $columns = [object[]]@(, @($ownedPane,$layoutPane))
+    $null = Invoke-Plan @(@{op='pane.arrange';monitor_id=$monitor.id;columns=$columns;icon_columns=3})
+    $null = Invoke-Plan @(@{op='pane.snap';pane_id=$layoutPane;target_pane_id=$ownedPane;side='bottom';align='start'})
+    $null = Invoke-Plan @(@{op='pane.remove';pane_id=$layoutPane})
+    $layoutPane = $null
     $released = Invoke-Plan @(@{op='item.release';item_ids=@($ids[0])})
     if ($released.data.presentation_status -ne 'applied') { throw 'Release was not confirmed' }
     if (-not (@(Native-Items) | Where-Object { Same-Path $_.path $items[0].path })) { throw 'Released item absent from native desktop' }
@@ -81,6 +98,10 @@ try {
     }
     @{result='passed';fixtures=2;native_visibility_verified=$true;positions_restored=$true;conflict_preserved=$true} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $root 'desktop-items-result.json')
 } finally {
+    if ($layoutPane) {
+        try { $null = Invoke-Plan @(@{op='pane.remove';pane_id=$layoutPane}) }
+        catch { Write-Warning "Could not remove layout fixture before GUI exit: $_" }
+    }
     if ($ownedPane) {
         try { $null = Invoke-Plan @(@{op='pane.update';pane_id=$ownedPane;locked=$false},@{op='pane.remove';pane_id=$ownedPane;release_items=$true}) }
         catch { Write-Warning "Could not release fixture panel before GUI exit: $_" }

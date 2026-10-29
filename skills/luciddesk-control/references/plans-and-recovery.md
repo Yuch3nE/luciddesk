@@ -19,6 +19,7 @@ Shortcut input differs from a plan: operation fields omit `op`; `settings update
 
 | Action | Decision |
 | --- | --- |
+| `wait_for_idle` | No operation was submitted. Wait at least `retry_after_ms`, execute the read-only `args`, and test `until` against that response. Stop at a task deadline; once idle, query fresh context and preview again. Never apply an old token. |
 | `review_then_apply` | Review diff, then apply within existing authorization. |
 | `wait_and_preview` | Pure preview is pending; pass `stdin_json` to the returned `args`, keeping the preview request ID and a bounded deadline. No apply occurred. |
 | `query_receipt` | Query original receipt; poll pending status within a deadline. |
@@ -49,7 +50,7 @@ On timeout or transport failure after submission, query first. Exact replay is o
 | `PROTOCOL_MISMATCH`, `DATA_DIR_MISMATCH` | Select matching CLI/GUI or intended workspace; do not silently switch instances. |
 | `INVALID_REQUEST` | Fix input using command help/schema. |
 | `CAPABILITY_UNAVAILABLE` | Inspect relevant loading/backend state; folders/search may work without desktop integration. |
-| `BUSY` | Bounded delay/deadline; retain mutation identity. |
+| `BUSY` | For `busy.phase:preview` with `operation_submitted:false`, follow `wait_for_idle` using `busy.reason`; otherwise inspect the actual busy condition. Retain mutation identity if a submission may have occurred. |
 | `SORT_METADATA_PENDING` | Pure preview is still reading file properties; nothing was saved. The CLI polls within its timeout and preserves the last pending response when the budget is exhausted. If still pending, use the returned `pending_preview` with the same preview request ID; do not query an apply receipt or claim a commit. |
 | `NOT_FOUND`, `PANE_LOCKED` | Re-query targets or resolve lock within task scope. |
 | `PERSISTENCE_ERROR` | Report failure and inspect state before another plan. |

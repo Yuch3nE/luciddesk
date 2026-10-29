@@ -90,13 +90,37 @@ fn stage(state: &PaneApp, raw: &str) -> Result<(tempfile::TempDir, usize), Strin
     let count = WorkspaceStore::inspect_backup(&staged).map_err(|e| e.to_string())?;
     Ok((temporary, count))
 }
-pub(super) fn prepare(state: &PaneApp, op: &Operation) -> Result<Prepared, String> {
+#[derive(Debug)]
+pub(super) enum PrepareError {
+    WorkspaceSavePending,
+    BackupTaskRunning,
+    Invalid(String),
+}
+impl From<String> for PrepareError {
+    fn from(message: String) -> Self { Self::Invalid(message) }
+}
+impl From<&str> for PrepareError {
+    fn from(message: &str) -> Self { Self::Invalid(message.into()) }
+}
+impl PrepareError {
+    pub(super) fn response(self, request_id: &str) -> Response {
+        let (reason, message) = match self {
+            Self::WorkspaceSavePending => ("workspace_save_pending", "wait for pending workspace saves before backing up or restoring"),
+            Self::BackupTaskRunning => ("backup_task_running", "a backup task is running"),
+            Self::Invalid(message) => return Response::failure(request_id, "INVALID_REQUEST", message),
+        };
+        let mut response = Response::failure(request_id, "BUSY", message);
+        response.data = Some(json!({"busy":{"reason":reason,"phase":"preview","retry_after_ms":250},"operation_submitted":false}));
+        response
+    }
+}
+pub(super) fn prepare(state: &PaneApp, op: &Operation) -> Result<Prepared, PrepareError> {
     if recovery::view(state).busy {
-        return Err("a backup task is running".into());
+        return Err(PrepareError::BackupTaskRunning);
     }
     recovery::directory(state)?;
     if hybrid::workspace_save_pending(state) {
-        return Err("wait for pending workspace saves before backing up or restoring".into());
+        return Err(PrepareError::WorkspaceSavePending);
     }
     let mut prepared = Prepared {
         summary: json!({"operation":op,"includes":["settings","panel_layout"],"includes_user_files":false}),
@@ -369,6 +393,20 @@ mod tests {
         state.borrow().store.export_backup(path).unwrap();
     }
     #[test]
+    fn pending_save_response_is_retryable_without_a_token_or_submission() {
+        let response = PrepareError::WorkspaceSavePending.response("preview-id");
+        assert_eq!(response.request_id, "preview-id");
+        assert_eq!(response.exit_code(), 6);
+        assert_eq!(response.error.as_ref().unwrap().code, "BUSY");
+        assert!(response.error.unwrap().retryable);
+        let data = response.data.unwrap();
+        assert_eq!(data["busy"]["reason"], "workspace_save_pending");
+        assert_eq!(data["busy"]["phase"], "preview");
+        assert_eq!(data["operation_submitted"], false);
+        assert!(data.get("plan_token").is_none());
+        assert_eq!(PrepareError::Invalid("invalid path".into()).response("bad").exit_code(), 2);
+    }
+    #[test]
     fn preview_rejects_corrupt_live_and_existing_files_and_freezes_source() {
         let root = tempfile::tempdir().unwrap();
         let s = state(root.path());
@@ -435,7 +473,20 @@ mod tests {
             "pending"
         );
         assert!(recovery::view(&s.borrow()).busy);
-        assert!(prepare(&s.borrow(), &Operation::BackupCreate {}).is_err());
+        let blocked = prepare(&s.borrow(), &Operation::BackupCreate {}).err().unwrap().response("blocked");
+        assert_eq!(blocked.exit_code(), 6);
+        assert_eq!(blocked.data.unwrap()["busy"]["reason"], "backup_task_running");
+        let mut snapshot = Snapshot::new();
+        let query: Request = serde_json::from_value(json!({"protocol_version":1,"request_id":"context","command":"status"})).unwrap();
+        let base = snapshot.respond(&mut s.borrow_mut(), &query).context.unwrap();
+        let preview: Request = serde_json::from_value(json!({"protocol_version":1,"request_id":"busy-preview","command":"plan.preview",
+            "plan":{"protocol_version":1,"base":base,"operations":[{"op":"backup.create"}]}})).unwrap();
+        let before = s.borrow().store.change_count();
+        let blocked = snapshot.respond(&mut s.borrow_mut(), &preview);
+        assert_eq!(blocked.error.unwrap().code, "BUSY");
+        assert_eq!(blocked.data.as_ref().unwrap()["operation_submitted"], false);
+        assert!(blocked.data.as_ref().unwrap().get("plan_token").is_none());
+        assert_eq!(s.borrow().store.change_count(), before);
         let done = finish(&mut c, &s, reload);
         assert_eq!(done["operation_status"], "completed");
         let source = done["path"].as_str().unwrap();

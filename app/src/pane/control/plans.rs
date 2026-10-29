@@ -712,7 +712,7 @@ impl Plans {
                                     plan.diff = prepared.summary.clone();
                                     *backup = Some(prepared);
                                 }
-                                Err(error) => return fail("INVALID_REQUEST", &error),
+                                Err(error) => return error.response(&request.request_id),
                             }
                         }
                     }

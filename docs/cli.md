@@ -20,6 +20,25 @@
 
 无法连接时，先启动主程序，并确认“设置 → 通用 → Agent 与 CLI”中的控制开关已开启。安装器不会把 CLI 加入 PATH；在其他目录运行时使用完整路径。
 
+## 诊断日志
+
+默认不写 CLI 日志文件。`--json` 的 stdout 只返回结果 JSON；普通文本错误写入 stderr，包含请求 ID 和与 JSON 一致的 `next_step`、忙碌状态及恢复信息，不再使用占位请求 ID 或统一的超时恢复提示。
+
+排查 IPC 阶段与耗时时，可临时启用诊断：
+
+```powershell
+$env:LUCIDDESK_CLI_TRACE = '1'
+try {
+    .\luciddesk-cli.exe status --json 2> cli-trace.jsonl
+} finally {
+    Remove-Item Env:LUCIDDESK_CLI_TRACE
+}
+```
+
+每次 IPC 调用完成后，stderr 输出一条 JSON 日志，含 `event`、`command`、`request_id`、`elapsed_us`、`ok`、`exit_code`、`error_code`。耗时包含连接等待和请求响应；快捷修改可出现 status、preview、apply 多条记录，预览轮询也逐次记录。该时间不能直接当作服务端执行耗时。离线帮助、Schema、Skill 命令不产生 IPC 日志。
+
+诊断日志不记录计划令牌、参数、路径、查询内容或完整响应；请求 ID 会保留用于关联，请勿在自定义 ID 中放入敏感内容。需纯 JSONL 日志时配合 `--json` 使用；普通文本模式的错误说明也写入 stderr。仅环境变量值为 `1` 时启用，日志写入失败不改变操作结果，也不触发重试。
+
 ## 预览一次修改
 
 下面以重命名面板为例，把 `1` 换成 `pane list` 返回的面板 ID：
@@ -100,6 +119,7 @@ CLI 主要面向 Agent。调用时应始终显式传 `--json`，按 JSON 字段�
 
 | `action` | 含义 |
 | --- | --- |
+| `wait_for_idle` | 预览未提交操作；按 `args` 只读查询，等待 `until` 条件满足后重新查询上下文并预览，不应用旧 token |
 | `review_then_apply` | 预览未执行；核对 diff 后，可使用 `args` 提交 |
 | `query_receipt` | 提交结果不确定或仍等待生效；使用 `args` 查询原请求回执 |
 | `refresh_and_preview` | 工作区冲突或计划过期；先按 `args` 读取工作区，再重新生成计划 |
@@ -436,6 +456,8 @@ luciddesk-cli item position --pane 1 --item-id ITEM_A --x 180.5 --y 90 --dry-run
 - `backup create --dry-run --json`：预览创建手动备份，保存到应用备份目录。
 - `backup export --path C:\Backups\export.db --dry-run --json`：导出当前设置与布局；可用 `--source` 指定已有备份。
 - `backup restore --path C:\Backups\saved.db --dry-run --json`：校验并预览恢复所选备份。
+
+备份预览遇到待保存工作区或正在运行的备份任务时，返回 `BUSY`（退出码 6、`retryable:true`），而非参数错误。`data.busy.reason` 为 `workspace_save_pending` 或 `backup_task_running`，`phase` 为 `preview`，`data.operation_submitted:false` 表明没有提交。`next_step.action:wait_for_idle` 提供 `status` 或 `backup list` 的参数数组、250 ms 建议间隔及 `until` 条件。按任务期限等待，空闲后读取新上下文再预览；不要复用旧 token 或无限重试。其他原因的 `BUSY` 不应套用此流程。
 
 这些操作各自使用单独计划。查看预览后提交返回的 `next_step.args`，保留请求 ID，通过 `request get` 等待原结果 `operation_status` 结束。成功创建/导出返回 `path`，恢复返回 `rollback_path`。备份不包含用户文件或插件独立设置。
 
