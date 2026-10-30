@@ -574,6 +574,7 @@ pub(super) fn supervisor(state: &Rc<RefCell<PaneApp>>) -> Result<windows_window:
         })
         .create()
         .map_err(|e| e.to_string())?;
+    super::wake::protect_dispatch(window.hwnd() as isize)?;
     wake.bind(window.hwnd() as isize);
     Ok(window)
 }

@@ -4,6 +4,55 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_APP};
 
 pub(super) const READY: u32 = WM_APP + 0x4c2;
 
+/// windows-window detaches its callback during dispatch. COM may pump a READY
+/// message in that interval; replay it only after the outer callback is restored.
+pub(super) fn protect_dispatch(hwnd: isize) -> Result<(), String> {
+    use std::{cell::Cell, rc::Rc};
+    use windows_sys::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
+    use windows_sys::Win32::UI::WindowsAndMessaging::WM_NCDESTROY;
+
+    #[derive(Default)]
+    struct Dispatch {
+        active: Cell<bool>,
+        deferred: Cell<bool>,
+        destroyed: Cell<bool>,
+    }
+    unsafe extern "system" fn dispatch(
+        hwnd: windows_sys::Win32::Foundation::HWND, msg: u32, wp: usize, lp: isize,
+        id: usize, data: usize,
+    ) -> isize {
+        // A nested WM_NCDESTROY can release the subclass's ownership while the
+        // outer call is still running. Keep a reference for each invocation.
+        let pointer = data as *const Dispatch;
+        let state = unsafe { Rc::increment_strong_count(pointer); Rc::from_raw(pointer) };
+        if msg == WM_NCDESTROY {
+            state.destroyed.set(true);
+            unsafe { RemoveWindowSubclass(hwnd, Some(dispatch), id); drop(Rc::from_raw(pointer)); }
+        }
+        if state.active.get() {
+            if msg == READY {
+                state.deferred.set(true);
+                return 0;
+            }
+            return unsafe { DefSubclassProc(hwnd, msg, wp, lp) };
+        }
+        state.active.set(true);
+        let result = unsafe { DefSubclassProc(hwnd, msg, wp, lp) };
+        state.active.set(false);
+        if state.deferred.replace(false) && !state.destroyed.get() {
+            // Repost directly: Wake still marks the swallowed message queued.
+            unsafe { PostMessageW(hwnd, READY, 0, 0); }
+        }
+        result
+    }
+    let pointer = Rc::into_raw(Rc::new(Dispatch::default()));
+    if unsafe { SetWindowSubclass(hwnd as _, Some(dispatch), READY as usize, pointer as usize) } == 0 {
+        unsafe { drop(Rc::from_raw(pointer)); }
+        return Err(std::io::Error::last_os_error().to_string());
+    }
+    Ok(())
+}
+
 #[derive(Clone, Default)]
 pub(super) struct Wake(Arc<Mutex<(isize, bool, bool)>>);
 
@@ -88,6 +137,48 @@ unsafe extern "system" fn window_event(
 mod tests {
     use super::*;
     use windows_sys::Win32::UI::WindowsAndMessaging::*;
+
+    #[test]
+    fn nested_dispatch_preserves_worker_wake_and_future_notifications() {
+        let wake = Wake::default();
+        let handler_wake = wake.clone();
+        let count = std::rc::Rc::new(std::cell::Cell::new(0));
+        let observed = count.clone();
+        let window = windows_window::Window::new("Nested wake regression")
+            .style(WS_POPUP)
+            .on_message(move |hwnd, msg, _, _| {
+                if msg == WM_DESTROY { return Some(0); }
+                if msg != READY { return None; }
+                handler_wake.received();
+                observed.set(observed.get() + 1);
+                if observed.get() == 1 {
+                    handler_wake.notify();
+                    // Model a COM call pumping the next worker completion while
+                    // windows-window has temporarily detached this callback.
+                    unsafe {
+                        let mut message = MSG::default();
+                        assert_ne!(PeekMessageW(&raw mut message, hwnd, READY, READY, PM_REMOVE), 0);
+                        DispatchMessageW(&message);
+                    }
+                }
+                Some(0)
+            }).create().unwrap();
+        let hwnd = window.hwnd().cast();
+        protect_dispatch(hwnd as isize).unwrap();
+        wake.bind(hwnd as isize);
+        let pump = || unsafe {
+            let mut message = MSG::default();
+            while PeekMessageW(&raw mut message, hwnd, READY, READY, PM_REMOVE) != 0 {
+                DispatchMessageW(&message);
+            }
+        };
+        pump();
+        assert_eq!(count.get(), 2, "nested worker completion must be delivered after the callback returns");
+        wake.notify();
+        pump();
+        assert_eq!(count.get(), 3, "coalescing must not remain stuck after nested dispatch");
+        wake.unbind();
+    }
 
     #[test]
     fn worker_exit_wakes_after_disconnect_even_during_unwinding() {

@@ -3,6 +3,15 @@
 这里保留历次验证记录，包括当时的行为和后来已替换的方案。它们不是当前实现规范，也不表示当前构建已重新通过。执行入口见[验证指南](validation.md)，当前桌面切换规则见[Hook 验证](hook-validation.md)。日志中的 `target/` 路径是本地证据，不随仓库分发。
 
 
+## 2026-10-31 桌面同步唤醒丢失修复
+
+- 安装版 0.25.1 实机基线：两个自建图标已在 Explorer 可见，但应用清单在 20 秒内未更新，`test-hook-membership.ps1` 报 `Inventory incomplete`。临时文件已清理。
+- 新增 `nested_dispatch_preserves_worker_wake_and_future_notifications`，模拟窗口回调内 COM 泵送第二个 READY。修复前回调计数为 1，预期为 2；修复后嵌套通知会在外层回调恢复后重投递，后续通知也能送达。
+- 完整应用回归最终为 545 通过、39 显式忽略。首轮文件夹场景曾出现预览后状态变化的 CONFLICT；单项复查和随后完整回归均通过，没有修改计划冲突规则。
+- 使用真实工作区副本、两枚临时图标和临时面板完成 3 轮收纳/释放，提交至呈现确认约 241～253ms，包含脚本 200ms 轮询及 CLI 开销，并非鼠标松开至像素完成的精确测量。原生图标坐标、既有面板状态及临时文件清理检查通过。
+- 恢复安装版本后核对面板、标签、项目归属、相对顺序和设置一致；重启将一个面板排序编号的空缺压缩，不改变相对顺序。安装二进制未替换。
+- 本地证据：`target/drag-wake-before.log`、`target/drag-wake-final-tests.log`、`target/drag-fixed-session-20261031-024013/e2e.log` 和同目录 `verification.json`。
+
 ## 2026-10-30 Cargo 依赖升级回归
 
 在待发布的 0.25.0 上更新主工作区 14 个依赖版本：rusqlite 0.40.2 → 0.41.1、sysinfo 0.39.6 → 0.40.0，以及 libsqlite3-sys、cc、equivalent、find-msvc-tools、rustix、smallvec、syn、tinystr、unicode-ident、zerovec、rsqlite-vfs、sqlite-wasm-rs。独立 Windows 绑定生成器的 unicode-ident 同步更新；锁文件中的目标平台依赖不代表全部用于 Windows 运行时。

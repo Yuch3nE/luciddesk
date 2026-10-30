@@ -24,8 +24,9 @@ function Invoke-HookCli([string[]]$Command) {
  return $value
 }
 function Wait-Check([scriptblock]$Check,[string]$Failure) {
+ $watch=[Diagnostics.Stopwatch]::StartNew()
  $limit=[DateTime]::UtcNow.AddSeconds(20)
- do {if(& $Check){return};Start-Sleep -Milliseconds 200}while([DateTime]::UtcNow -lt $limit)
+ do {if(& $Check){Write-Host "PASS: $Failure check completed in $($watch.ElapsedMilliseconds) ms";return};Start-Sleep -Milliseconds 200}while([DateTime]::UtcNow -lt $limit)
  throw $Failure
 }
 function Plan([object[]]$Ops) {
@@ -34,11 +35,13 @@ function Plan([object[]]$Ops) {
  @{protocol_version=1;base=$context;operations=$Ops}|ConvertTo-Json -Depth 15|Set-Content $path -Encoding utf8
  $preview=Invoke-HookCli @('plan','preview','--input',$path)
  $rid=[guid]::NewGuid().ToString()
+ $watch=[Diagnostics.Stopwatch]::StartNew()
  $result=Invoke-HookCli @('plan','apply','--token',$preview.data.plan_token,'--request-id',$rid)
  Wait-Check { $receipt=(Invoke-HookCli @('request','get','--id',$rid)).data.result
   if($receipt.data.presentation_status -eq 'failed'){throw 'Presentation failed'}
   $receipt.data.presentation_status -eq 'applied'
  } 'Presentation timeout'
+ Write-Host "Apply through presentation: $(($Ops | ForEach-Object op) -join ',') $($watch.ElapsedMilliseconds) ms"
  return $result
 }
 function Snapshot {
