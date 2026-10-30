@@ -53,6 +53,24 @@ python tools/validation/check-locales.py
 
 当前 Build CI 的检查是本地验收的子集：包含框选纯逻辑、拖动图像透明度及 WARP 彩色 emoji 与 Canvas 离屏测试；框选窗口消息和其他依赖交互桌面的场景仍需本地验收。CI 不自动生成 MSIX。判断某次 CI 的覆盖范围应核对对应提交的工作流和日志。
 
+### 异步通知与线程退出回归
+
+在可交互 Windows 会话中串行运行以下筛选，确认每条命令实际命中测试：
+
+```powershell
+cargo test -p luciddesk --bin luciddesk pane::wake::tests --locked --offline -- --test-threads=1
+cargo test -p luciddesk --bin luciddesk disconnected_worker --locked --offline -- --test-threads=1
+cargo test -p luciddesk --bin luciddesk worker_exit_after_delivering_page --locked --offline -- --test-threads=1
+cargo test -p luciddesk --bin luciddesk worker_disconnect --locked --offline -- --test-threads=1
+cargo test -p luciddesk --bin luciddesk disconnected_folder_worker --locked --offline -- --test-threads=1
+cargo test -p luciddesk --bin luciddesk interrupted_initial_batch --locked --offline -- --test-threads=1
+cargo test -p luciddesk --bin luciddesk controller_retries_commands --locked --offline -- --test-threads=1
+```
+
+覆盖嵌套通知合并、后续通知仍可送达、重复安装与窗口销毁、通道断开后唤醒、加载状态结束、已有结果保留，以及跨窗口借用释放后的命令消费。实机验收另覆盖桌面收纳/释放、搜索、文件夹、CLI 回执与监控子进程；使用临时项目和隔离数据，完成后恢复原实例并核对数据。
+
+CLI 提交至呈现确认的脚本耗时包含进程调用与轮询开销，不能等同于鼠标松开至像素更新的耗时。Shell/COM 长时间阻塞也不属于通知保护能取消的范围。最近结果见[验证历史](validation-history.md)。
+
 ### 面板性能优化回归
 
 CI 的 `tools/validation/test-control-ci.py` 将排列默认值、固定网格、自由排列、控制布局、延迟任务、排序、行测量和文字缓存测试逐例放入独立进程执行，限制单例 60 秒，避免原生 UI 状态相互影响。每个筛选组必须命中测试，忽略或零用例不能视为通过；筛选逻辑另有 Python 单元测试。可用 `python tools/validation/test-control-ci.py --offline` 在本地复现，添加 `--release` 使用 Release 测试配置。

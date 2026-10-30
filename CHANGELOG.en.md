@@ -2,9 +2,18 @@
 
 [简体中文](CHANGELOG.md) · English
 
-Current version: **0.25.1**. Features and fixes by release.
+Current version: **0.25.2**. Features and fixes by release.
 
 Exit the app before upgrading a portable installation and preserve its `data` folder. See the [portable guide](docs/portable.md) (Chinese).
+
+## 0.25.2 · 2026-10-31
+
+### fix · Fixes
+
+- Fix icon updates that could take seconds or tens of seconds after dragging into a desktop panel or back to the desktop. Preserve worker completion notifications during nested window message dispatch.
+- Extend notification protection to search, search icons, monitoring and the CLI queue so queued results are processed promptly.
+- End search and folder loading states when a worker exits unexpectedly and clear pending icon records. Interrupted desktop icon batches can retry within existing limits.
+- Fix state access conflicts when monitor notifications arrive while another window holds application state. Keep pending commands queued and process them after the conflict clears.
 
 ## 0.25.1 · 2026-10-31
 

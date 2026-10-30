@@ -1,4 +1,4 @@
-<!-- release-doc-version: 0.25.1 -->
+<!-- release-doc-version: 0.25.2 -->
 
 # CLI 使用
 
@@ -6,7 +6,7 @@
 
 使用安装目录中的 `luciddesk-cli.exe` 控制正在运行的 LucidDesk。无需安装 Rust，也无需编译。主程序、CLI 和 Skill 应来自同一套发布包；命令不会替你启动主程序。
 
-适用于 LucidDesk 0.25.1。面板独立图标设置和备份、导出、恢复命令已包含在此版本中；使用前可通过 `capabilities --json` 确认正在运行的程序支持哪些操作。
+适用于 LucidDesk 0.25.2。面板独立图标设置和备份、导出、恢复命令已包含在此版本中；使用前可通过 `capabilities --json` 确认正在运行的程序支持哪些操作。
 
 ## 先确认连接
 
@@ -74,7 +74,7 @@ Use the `luciddesk-cli.exe` shipped with your running LucidDesk installation. No
 
 Use `--dry-run --json` on a mutation, review its diff, then execute the returned `data.next_step.args` array to apply that exact preview. Without `--dry-run`, mutation shortcuts preview and submit immediately. Keep the returned request ID and use `request get --id ID --json` to check pending or uncertain results before retrying.
 
-LucidDesk 0.25.1 includes per-pane icon controls and `backup list/create/export/restore`; check the running app’s capabilities before use. Backup exports require a new absolute destination path. Restore replaces settings and layout, validates and freezes the selected backup at preview, and saves a pre-restore copy. It does not restore your original files. Keep `rollback_path` if recovery fails; do not repeatedly submit a restore. See the [online Agent guide](https://luciddesk.bbkingdom365.com/agent/) for general setup; the detailed command reference below is in Chinese.
+LucidDesk 0.25.2 includes per-pane icon controls and `backup list/create/export/restore`; check the running app’s capabilities before use. Backup exports require a new absolute destination path. Restore replaces settings and layout, validates and freezes the selected backup at preview, and saves a pre-restore copy. It does not restore your original files. Keep `rollback_path` if recovery fails; do not repeatedly submit a restore. See the [online Agent guide](https://luciddesk.bbkingdom365.com/agent/) for general setup; the detailed command reference below is in Chinese.
 
 ## 帮助与命令发现
 
@@ -148,7 +148,7 @@ CLI 只连接本机当前用户会话中的应用。查询不会修改工作区�
 
 ## 面板显示
 
-以下选项适用于 LucidDesk 0.25.1。先查询 `capabilities --json`，确认 `pane_display` 支持对应字段。
+以下选项适用于 LucidDesk 0.25.2。先查询 `capabilities --json`，确认 `pane_display` 支持对应字段。
 
 ```powershell
 luciddesk-cli pane update --id 1 --list-view false --icon-only true --icon-size medium --dry-run --json
@@ -289,7 +289,7 @@ $retryArgs = [string[]]$result.data.recovery.retry_args
 
 `search get --id ID --json` 返回 `query`、`generation`、`busy`、`failed`、`replacing`、`total`、`loaded_count`、`has_more` 和已加载 `entries`。执行成功只说明输入/分页请求已经处理，不能据此认定异步查询完成。以返回的代次查询，等待 `busy:false`，再检查 `failed`；加载替换期间旧结果仍可能存在。Everything 必须可用，关闭的搜索面板需先通过设置启用。查询最长 32767 UTF-16 单元，不接受 NUL。
 
-应用的并发上下文包含当前文件夹导航历史与搜索代次/加载状态；GUI 的并发操作可能使旧计划冲突，此时重新查询和预览。重试必须沿用原 request ID，避免返回/刷新/分页重复执行。`runtime_result` 是操作处理后的即时状态，最新结果仍通过查询取得。
+应用的并发上下文包含当前文件夹导航历史与搜索代次/加载状态；GUI 操作、后台目录扫描或搜索完成都可能在读取上下文后使预览或应用返回明确的 `CONFLICT`。此时重新查询并检查新预览；快捷命令不会自动重试冲突。提交超时或 `RESULT_UNKNOWN` 则应先核对原请求与实际状态，不能当作冲突直接重新提交。重试必须沿用原 request ID，避免返回/刷新/分页重复执行。`runtime_result` 是操作处理后的即时状态，最新结果仍通过查询取得。
 
 
 ### 数据库设置

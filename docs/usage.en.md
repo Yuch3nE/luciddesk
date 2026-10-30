@@ -1,4 +1,4 @@
-<!-- manual-version: 0.25.1 -->
+<!-- manual-version: 0.25.2 -->
 
 # LucidDesk User Manual
 
@@ -8,7 +8,7 @@ Start with your first panel, then find the task you need below.
 
 ## Start in five minutes
 
-For LucidDesk 0.25.1.
+For LucidDesk 0.25.2.
 
 1. Install and start LucidDesk. Find its tray icon near the Windows clock; expand hidden icons if needed.
 2. Right-click the tray icon and choose New panel.
@@ -178,9 +178,13 @@ Click the panel you want to use first.
 | --- | --- |
 | Missing panels | Expand hidden tray icons and click LucidDesk to show panels |
 | Cannot collect desktop icons | Check connection status in About and reconnect; avoid running multiple desktop organizers |
+| Icons update late after dragging into a panel or back to the desktop | Use 0.25.2 or later; check connection status in About and record the drag direction, panel type and delay |
+| Search or a folder reports that its worker stopped | Reopen the panel as prompted; if it persists, copy diagnostics rather than repeatedly dropping files |
 | Search or preview unavailable | Check that the tool is installed, its path is correct and the feature is enabled |
 | Files do not open after moving computers | Check that original files were transferred and drive letters or folder paths still match |
 | Restore fails | Keep your current data and backup; read the error instead of deleting configuration files |
+
+Collecting or releasing icons in a regular desktop panel only changes their membership. Dropping files into a folder panel copies them to the current directory, so file size and disk speed also affect the wait. Version 0.25.2 fixes delayed updates caused by lost notifications; it does not make all file operations instantaneous.
 
 Still stuck? Copy diagnostics from About and [report an issue](https://github.com/Yuch3nE/luciddesk/issues). Hide private paths and filenames before sharing.
 
