@@ -299,6 +299,8 @@ fn open(state: &Rc<RefCell<PaneApp>>, config: Config) -> Result<(), String> {
     let (sender, replies) = mpsc::channel();
     let wake = state.borrow().wake.clone();
     let reader = std::thread::spawn(move || {
+        let _exit = wake.on_drop();
+        let sender = sender;
         for line in BufReader::new(output).lines() {
             let reply = line
                 .map_err(|e| e.to_string())
@@ -316,8 +318,6 @@ fn open(state: &Rc<RefCell<PaneApp>>, config: Config) -> Result<(), String> {
             }
             wake.notify();
         }
-        drop(sender);
-        wake.notify();
     });
     let mut process = Process {
         child: Some(child),
@@ -548,23 +548,34 @@ fn create_controller(
     commands: mpsc::Receiver<Result<Update, String>>,
 ) -> Result<windows_window::Window, String> {
     let weak = Rc::downgrade(state);
-    windows_window::Window::new("LucidDesk monitor controller")
+    let window = windows_window::Window::new("LucidDesk monitor controller")
         .size(1, 1)
         .style(WS_POPUP)
         .ex_style(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE)
-        .on_message(move |_, msg, _, lp| {
+        .on_message(move |raw, msg, wp, lp| {
             if unsafe { crate::window_visibility::defer_show(msg, lp, false) } {
                 return Some(0);
             }
             if msg == WM_DESTROY {
                 return Some(0);
             }
-            if msg != wake::READY {
+            if msg != wake::READY && !(msg == WM_TIMER && wp == 1) {
                 return None;
             }
             let Some(state) = weak.upgrade() else {
                 return Some(0);
             };
+            unsafe {
+                KillTimer(raw.cast(), 1);
+            }
+            if state.try_borrow_mut().is_err() {
+                // A different child window can pump messages while it owns the
+                // model. Keep commands queued and retry after that borrow ends.
+                unsafe {
+                    SetTimer(raw.cast(), 1, 25, None);
+                }
+                return Some(0);
+            }
             state.borrow().wake.received();
             loop {
                 match commands.try_recv() {
@@ -589,7 +600,9 @@ fn create_controller(
             Some(0)
         })
         .create()
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    wake::protect_dispatch(window.hwnd() as isize)?;
+    Ok(window)
 }
 
 pub(crate) fn run() -> Result<(), String> {
@@ -631,6 +644,8 @@ fn run_inner() -> Result<(), String> {
     let wake = state.borrow().wake.clone();
     wake.bind(controller.hwnd() as isize);
     std::thread::spawn(move || {
+        let _exit = wake.on_drop();
+        let sender = sender;
         for line in input.lines() {
             let config = line
                 .map_err(|e| e.to_string())
@@ -640,8 +655,6 @@ fn run_inner() -> Result<(), String> {
             }
             wake.notify();
         }
-        drop(sender);
-        wake.notify();
     });
     emit(Reply::Ready(
         state

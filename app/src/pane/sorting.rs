@@ -126,13 +126,28 @@ fn start(state: &mut PaneApp, id: PanelId, order: (u8, bool)) -> Result<(), Stri
     let cancel = Arc::clone(&cancelled);
     let wake = state.wake.clone();
     let (sender, receiver) = mpsc::channel();
-    std::thread::Builder::new().name("pane-sort".into()).spawn(move || {
-        let _sta = luciddesk_shell::ShellApartment::initialize_sta().ok();
-        let Some(items) = read_items(&inventory, &cancel, file_details) else { return; };
-        let _ = sender.send(items);
-        wake.notify();
-    }).map_err(|e| e.to_string())?;
-    state.sorting.pending.insert(id, Pending { before, panel, receiver, order, cancelled });
+    std::thread::Builder::new()
+        .name("pane-sort".into())
+        .spawn(move || {
+            let _exit = wake.on_drop();
+            let sender = sender;
+            let _sta = luciddesk_shell::ShellApartment::initialize_sta().ok();
+            let Some(items) = read_items(&inventory, &cancel, file_details) else {
+                return;
+            };
+            let _ = sender.send(items);
+        })
+        .map_err(|e| e.to_string())?;
+    state.sorting.pending.insert(
+        id,
+        Pending {
+            before,
+            panel,
+            receiver,
+            order,
+            cancelled,
+        },
+    );
     Ok(())
 }
 

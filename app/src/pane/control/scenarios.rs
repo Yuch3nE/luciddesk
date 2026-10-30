@@ -19,11 +19,26 @@ impl Client {
         result
     }
     fn preview(&self, operations: Value) -> Response {
-        let context = self.query("workspace.get", json!({})).context.unwrap();
-        self.query(
-            "plan.preview",
-            json!({"plan":{"protocol_version":1,"base":context,"operations":operations}}),
-        )
+        // Folder scans can also finish between reading the base and previewing.
+        // Preview has no side effects; refresh only an explicit stale-base conflict.
+        for _ in 0..5 {
+            let context = self.query("workspace.get", json!({})).context.unwrap();
+            let result = self.send(
+                "plan.preview",
+                json!({"plan":{"protocol_version":1,"base":context,"operations":operations}}),
+            );
+            if result
+                .error
+                .as_ref()
+                .is_some_and(|error| error.code == "CONFLICT")
+            {
+                std::thread::sleep(Duration::from_millis(20));
+                continue;
+            }
+            assert!(result.ok, "{result:?}");
+            return result;
+        }
+        panic!("workspace did not settle after five preview attempts");
     }
     fn try_apply(&self, preview: &Response) -> Response {
         let args = json!({"token":preview.data.as_ref().unwrap()["plan_token"],"request_id":luciddesk_api::request_id()});

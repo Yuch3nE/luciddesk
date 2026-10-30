@@ -1,6 +1,24 @@
 use super::*;
 
 #[test]
+fn disconnected_folder_worker_stops_loading_and_preserves_last_items() {
+    let root = tempfile::tempdir().unwrap();
+    let mut source = Source::start(root.path().into(), wake::Wake::default()).unwrap();
+    let (sender, receiver) = mpsc::channel();
+    source.updates = receiver;
+    drop(sender);
+    source.items = items_for(&super::super::tests::test_state(), PanelId::new(1));
+    let count = source.items.len();
+    assert!(source.poll_scan());
+    assert!(!source.loading);
+    assert!(source.status.is_some());
+    assert_eq!(source.items.len(), count);
+    let revision = source.content_revision;
+    assert!(!source.poll_scan());
+    assert_eq!(source.content_revision, revision);
+}
+
+#[test]
 fn new_item_is_selected_after_scan_and_stale_navigation_is_ignored() {
     let _sta = crate::pane::test_support::apartment();
     let root = tempfile::tempdir().unwrap();

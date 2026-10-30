@@ -33,10 +33,48 @@ pub(super) struct Source {
     pub content_revision: u64,
     pub status: Option<String>,
     pub loading: bool,
+    worker_stopped: bool,
     pending_rename: Option<PathBuf>,
 }
 
 impl Source {
+    fn poll_scan(&mut self) -> bool {
+        if self.worker_stopped {
+            return false;
+        }
+        let mut latest = None;
+        loop {
+            match self.updates.try_recv() {
+                Ok(result) => latest = Some(result),
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    self.worker_stopped = true;
+                    self.request
+                        .images_pending
+                        .store(false, std::sync::atomic::Ordering::Release);
+                    break;
+                }
+            }
+        }
+        let changed = latest.is_some() || self.worker_stopped;
+        if let Some(result) = latest {
+            self.apply_scan(result);
+        }
+        if self.worker_stopped {
+            self.loading = false;
+            if self.status.is_none() {
+                self.apply_scan(Err(crate::i18n::format(
+                    "ui-cannot-read-folder-check-the-path-and-permissions-n",
+                    &[(
+                        "error",
+                        "Folder worker disconnected; reopen the panel".into(),
+                    )],
+                )));
+            }
+        }
+        changed
+    }
+
     fn apply_scan(&mut self, result: Result<Vec<Item>, String>) {
         self.content_revision = next_content_revision();
         self.loading = false;
@@ -190,6 +228,9 @@ impl Source {
         std::thread::Builder::new()
             .name("folder-pane".into())
             .spawn(move || {
+                let _exit = wake.on_drop();
+                let sender = sender;
+                let image_sender = image_sender;
                 let _apartment = match ShellApartment::initialize_sta() {
                     Ok(value) => value,
                     Err(error) => {
@@ -302,6 +343,7 @@ impl Source {
             content_revision: next_content_revision(),
             status: None,
             loading: true,
+            worker_stopped: false,
             pending_rename: None,
         })
     }
@@ -343,16 +385,9 @@ pub(super) fn ensure(state: &mut PaneApp, id: PanelId) -> Result<(), String> {
 pub(super) fn poll(state: &mut PaneApp) -> Vec<(PanelId, ShellIdentity)> {
     let mut changed = false;
     for source in state.folders.values_mut() {
-        let mut latest = None;
-        while let Ok(result) = source.updates.try_recv() {
-            latest = Some(result);
-        }
         // Each update is a complete snapshot. Sort and publish only the newest
         // one when the UI was busy while several scans completed.
-        if let Some(result) = latest {
-            source.apply_scan(result);
-            changed = true;
-        }
+        changed |= source.poll_scan();
         let mut patches = HashMap::new();
         while let Ok(batch) = source.images.try_recv() {
             for item in batch { patches.insert(item.identity.clone(), item); }

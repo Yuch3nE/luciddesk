@@ -355,6 +355,7 @@ fn start_at(
         })
         .create()
         .map_err(|e| e.to_string())?;
+    super::wake::protect_message_dispatch(window.hwnd() as isize, READY)?;
     *endpoint.lock().unwrap() = window.hwnd() as isize;
     Ok(window)
 }

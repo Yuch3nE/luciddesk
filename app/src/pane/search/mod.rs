@@ -200,6 +200,8 @@ impl Search {
         let (sender, requests) = mpsc::channel::<Request>();
         let (responses, receiver) = mpsc::channel();
         std::thread::spawn(move || {
+            let _exit = ready.on_drop();
+            let responses = responses;
             while let Ok(mut request) = requests.recv() {
                 for next in requests.try_iter() {
                     request = next;
@@ -375,8 +377,24 @@ impl Search {
             self.request(0);
             changed = true;
         }
-        while let Ok((generation, result)) = self.receiver.try_recv() {
-            changed |= self.accept(generation, result);
+        loop {
+            match self.receiver.try_recv() {
+                Ok((generation, result)) => changed |= self.accept(generation, result),
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    if self.busy {
+                        self.due = None;
+                        changed |= self.accept(
+                            self.generation,
+                            Err(
+                                crate::i18n::text("ui-search-thread-stopped-reopen-the-panel")
+                                    .into(),
+                            ),
+                        );
+                    }
+                    break;
+                }
+            }
         }
         changed
     }
@@ -1512,6 +1530,7 @@ pub(super) fn create(
         .create()
         .map_err(|e| e.to_string())?;
     let hwnd = window.hwnd().cast();
+    super::wake::protect_dispatch(hwnd as isize)?;
     unsafe {
         crate::window_visibility::prepare_canvas(hwnd);
         SetWindowSubclass(hwnd, Some(super::window::borderless_proc), 1, 0);

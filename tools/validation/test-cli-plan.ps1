@@ -15,12 +15,14 @@ function Get-SharedHash([string]$Path) {
     $stream = [IO.FileStream]::new($Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
     try { return [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($stream)) } finally { $stream.Dispose() }
 }
-function Invoke-Cli([string[]]$Command) {
+function Invoke-Cli([string[]]$Command, [switch]$AllowConflict) {
     $raw = & $cli @Command --data-dir $root --json
     $code = $LASTEXITCODE
     $result = $raw | ConvertFrom-Json
     @{command=$Command;exit=$code;ok=$result.ok;error=$result.error;request_id=$result.request_id} | ConvertTo-Json -Depth 10 -Compress | Add-Content -LiteralPath ($root + '.commands.jsonl') -Encoding utf8
-    if ($code -ne 0 -or -not $result.ok) { throw ($raw -join "`n") }
+    if ($code -ne 0 -or -not $result.ok) {
+        if (-not ($AllowConflict -and $code -eq 5 -and $result.error.code -eq 'CONFLICT')) { throw ($raw -join "`n") }
+    }
     return $result
 }
 function Receipt-Core($Response) {
@@ -34,10 +36,17 @@ function Receipt-Core($Response) {
 }
 function Invoke-Plan([object[]]$Operations) {
     @{operations=$Operations} | ConvertTo-Json -Depth 30 -Compress | Add-Content -LiteralPath ($root + '.commands.jsonl') -Encoding utf8
-    $snapshot = Invoke-Cli @('workspace','get')
     $inputPath = Join-Path $root 'plan.json'
-    [IO.File]::WriteAllText($inputPath, (@{protocol_version=1;base=$snapshot.context;operations=$Operations} | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
-    $preview = Invoke-Cli @('plan','preview','--input',$inputPath)
+    # Background scans can invalidate the base before preview. Only this read-only
+    # stage retries an explicit conflict; never replay an uncertain submission.
+    for ($attempt = 0; $attempt -lt 5; $attempt++) {
+        $snapshot = Invoke-Cli @('workspace','get')
+        [IO.File]::WriteAllText($inputPath, (@{protocol_version=1;base=$snapshot.context;operations=$Operations} | ConvertTo-Json -Depth 30), [Text.UTF8Encoding]::new($false))
+        $preview = Invoke-Cli -Command @('plan','preview','--input',$inputPath) -AllowConflict
+        if ($preview.ok) { break }
+        Start-Sleep -Milliseconds 20
+    }
+    if (-not $preview.ok) { throw 'Workspace did not settle after five preview attempts' }
     $requestId = [guid]::NewGuid().ToString()
     $command = @('plan','apply','--token',$preview.data.plan_token,'--request-id',$requestId)
     $applied = Invoke-Cli $command

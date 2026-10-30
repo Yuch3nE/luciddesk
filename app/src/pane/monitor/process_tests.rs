@@ -6,6 +6,39 @@ use windows_sys::Win32::{
 };
 
 #[test]
+fn controller_retries_commands_after_another_window_releases_app_state() {
+    let _sta = crate::pane::test_support::apartment();
+    let state = Rc::new(RefCell::new(crate::pane::tests::test_state()));
+    let (sender, commands) = mpsc::channel();
+    let controller = create_controller(&state, commands).unwrap();
+    let hwnd = controller.hwnd().cast();
+    let previous = desktop_toggle::hidden();
+    sender
+        .send(Ok(Update::DesktopVisibility(!previous)))
+        .unwrap();
+    let borrowed = state.borrow_mut();
+    unsafe {
+        SendMessageW(hwnd, wake::READY, 0, 0);
+    }
+    assert_eq!(
+        desktop_toggle::hidden(),
+        previous,
+        "borrowed state must defer the queued command"
+    );
+    drop(borrowed);
+    unsafe {
+        SendMessageW(hwnd, WM_TIMER, 1, 0);
+    }
+    assert_eq!(desktop_toggle::hidden(), !previous);
+    assert_eq!(
+        unsafe { KillTimer(hwnd, 1) },
+        0,
+        "successful drain must remove the retry timer"
+    );
+    apply_update(&state, Update::DesktopVisibility(previous)).unwrap();
+}
+
+#[test]
 fn visibility_only_update_does_not_apply_settings_or_start_a_monitor() {
     let state = Rc::new(RefCell::new(crate::pane::tests::test_state()));
     let id = PanelId::new(999);

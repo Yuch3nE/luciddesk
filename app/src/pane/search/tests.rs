@@ -1,4 +1,51 @@
 #[test]
+fn disconnected_worker_finishes_pending_search_without_polling_forever() {
+    use super::*;
+    let mut state = Search::new();
+    state.change("example".into());
+    let (sender, receiver) = mpsc::channel();
+    state.receiver = receiver;
+    drop(sender);
+    assert!(state.tick());
+    assert!(!state.busy);
+    assert!(!state.replacing);
+    assert!(state.failed);
+    assert!(state.due.is_none());
+    assert!(state.status.is_some());
+    assert!(
+        !state.tick(),
+        "disconnection must not keep invalidating the UI"
+    );
+}
+
+#[test]
+fn worker_exit_after_delivering_page_preserves_successful_results() {
+    use super::*;
+    let mut state = Search::new();
+    state.change("example".into());
+    state.due = None;
+    let (sender, receiver) = mpsc::channel();
+    state.receiver = receiver;
+    sender
+        .send((
+            state.generation,
+            Ok(Page {
+                offset: 0,
+                total: 0,
+                entries: Vec::new(),
+            }),
+        ))
+        .unwrap();
+    drop(sender);
+    assert!(state.tick());
+    assert!(!state.busy);
+    assert!(
+        !state.failed,
+        "a completed request must not be rewritten as a failure"
+    );
+}
+
+#[test]
 #[ignore = "Activates real windows; run alone in an interactive desktop session"]
 fn editor_click_raises_search_among_panes_but_tray_activation_stays_on_desktop() {
     use super::*;

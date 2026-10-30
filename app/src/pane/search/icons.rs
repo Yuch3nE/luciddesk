@@ -30,6 +30,8 @@ impl Worker {
         let (sender, requests)=mpsc::sync_channel::<Key>(CAPACITY);
         let (responses, receiver)=mpsc::sync_channel(CAPACITY);
         std::thread::spawn(move || {
+            let _exit = ready.on_drop();
+            let responses = responses;
             use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED};
             let initialized=unsafe {CoInitializeEx(None, COINIT_MULTITHREADED)}.is_ok();
             while let Ok(key)=requests.recv() {
@@ -79,11 +81,30 @@ impl Icons {
         if entries.is_empty() {self.clear();return;}
         let worker=self.worker.get_or_insert_with(||Worker::new(self.hwnd));
         worker.wake.received();
-        let visible: HashSet<_>=entries.iter().take(CAPACITY).map(|e|Key::new(e,size)).collect();
-        self.cache.retain(|key,_|visible.contains(key));
-        for (key,pixels) in worker.receiver.try_iter() {
-            self.pending.remove(&key);
-            if visible.contains(&key) {self.cache.insert(key,pixels.map_or(Cached::Failed,Cached::Pixels));}
+        let visible: HashSet<_> = entries
+            .iter()
+            .take(CAPACITY)
+            .map(|e| Key::new(e, size))
+            .collect();
+        self.cache.retain(|key, _| visible.contains(key));
+        loop {
+            match worker.receiver.try_recv() {
+                Ok((key, pixels)) => {
+                    self.pending.remove(&key);
+                    if visible.contains(&key) {
+                        self.cache
+                            .insert(key, pixels.map_or(Cached::Failed, Cached::Pixels));
+                    }
+                }
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    self.pending.clear();
+                    for key in visible {
+                        self.cache.entry(key).or_insert(Cached::Failed);
+                    }
+                    return;
+                }
+            }
         }
         for key in visible {
             if !self.cache.contains_key(&key) && !self.pending.contains(&key)
@@ -132,6 +153,31 @@ fn query_icon(key: &Key, specific: bool) -> windows::core::Result<Pixels> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn worker_disconnect_clears_pending_icons_without_resubmitting() {
+        let (sender, requests) = mpsc::sync_channel(8);
+        let (responses, receiver) = mpsc::channel();
+        let mut icons = Icons::new(std::ptr::null_mut());
+        icons.worker = Some(Worker {
+            wake: Wake::default(),
+            stopped: Default::default(),
+            sender,
+            receiver,
+        });
+        let entries = [entry("C:/example.txt", false)];
+        icons.refresh(&entries, 32);
+        let key = requests.recv().unwrap();
+        assert!(icons.pending.contains(&key));
+        drop(responses);
+        icons.refresh(&entries, 32);
+        assert!(icons.pending.is_empty());
+        assert!(matches!(icons.cache.get(&key), Some(Cached::Failed)));
+        icons.refresh(&entries, 32);
+        assert!(matches!(
+            requests.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
+    }
     fn entry(path:&str,folder:bool)->Entry {Entry {path:path.into(),folder}}
     #[test]
     fn cache_shares_types_prunes_offscreen_and_does_not_retry_failed_icons() {

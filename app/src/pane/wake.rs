@@ -7,8 +7,16 @@ pub(super) const READY: u32 = WM_APP + 0x4c2;
 /// windows-window detaches its callback during dispatch. COM may pump a READY
 /// message in that interval; replay it only after the outer callback is restored.
 pub(super) fn protect_dispatch(hwnd: isize) -> Result<(), String> {
+    protect_message_dispatch(hwnd, READY)
+}
+
+/// Only for payload-free queue notifications, never pointer-bearing messages or
+/// user commands: multiple notifications may safely collapse into one drain.
+pub(super) fn protect_message_dispatch(hwnd: isize, message: u32) -> Result<(), String> {
     use std::{cell::Cell, rc::Rc};
-    use windows_sys::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
+    use windows_sys::Win32::UI::Shell::{
+        DefSubclassProc, GetWindowSubclass, RemoveWindowSubclass, SetWindowSubclass,
+    };
     use windows_sys::Win32::UI::WindowsAndMessaging::WM_NCDESTROY;
 
     #[derive(Default)]
@@ -30,7 +38,7 @@ pub(super) fn protect_dispatch(hwnd: isize) -> Result<(), String> {
             unsafe { RemoveWindowSubclass(hwnd, Some(dispatch), id); drop(Rc::from_raw(pointer)); }
         }
         if state.active.get() {
-            if msg == READY {
+            if msg == id as u32 && wp == 0 && lp == 0 {
                 state.deferred.set(true);
                 return 0;
             }
@@ -41,13 +49,30 @@ pub(super) fn protect_dispatch(hwnd: isize) -> Result<(), String> {
         state.active.set(false);
         if state.deferred.replace(false) && !state.destroyed.get() {
             // Repost directly: Wake still marks the swallowed message queued.
-            unsafe { PostMessageW(hwnd, READY, 0, 0); }
+            unsafe {
+                PostMessageW(hwnd, id as u32, 0, 0);
+            }
         }
         result
     }
+    let mut existing = 0;
+    if unsafe { GetWindowSubclass(hwnd as _, Some(dispatch), message as usize, &mut existing) } != 0
+    {
+        return Ok(());
+    }
     let pointer = Rc::into_raw(Rc::new(Dispatch::default()));
-    if unsafe { SetWindowSubclass(hwnd as _, Some(dispatch), READY as usize, pointer as usize) } == 0 {
-        unsafe { drop(Rc::from_raw(pointer)); }
+    if unsafe {
+        SetWindowSubclass(
+            hwnd as _,
+            Some(dispatch),
+            message as usize,
+            pointer as usize,
+        )
+    } == 0
+    {
+        unsafe {
+            drop(Rc::from_raw(pointer));
+        }
         return Err(std::io::Error::last_os_error().to_string());
     }
     Ok(())
@@ -137,6 +162,95 @@ unsafe extern "system" fn window_event(
 mod tests {
     use super::*;
     use windows_sys::Win32::UI::WindowsAndMessaging::*;
+
+    #[test]
+    fn custom_queue_notifications_coalesce_and_duplicate_install_is_safe() {
+        let trigger = WM_APP + 20;
+        let ready = WM_APP + 21;
+        let count = std::rc::Rc::new(std::cell::Cell::new(0));
+        let observed = count.clone();
+        let window = windows_window::Window::new("Custom queue wake regression")
+            .style(WS_POPUP)
+            .on_message(move |hwnd, msg, _, _| {
+                if msg == WM_DESTROY {
+                    return Some(0);
+                }
+                if msg == ready {
+                    observed.set(observed.get() + 1);
+                    return Some(0);
+                }
+                if msg == trigger {
+                    for _ in 0..5 {
+                        unsafe {
+                            SendMessageW(hwnd, ready, 0, 0);
+                        }
+                    }
+                    assert_eq!(observed.get(), 0, "never reenter a queue drain");
+                    return Some(0);
+                }
+                None
+            })
+            .create()
+            .unwrap();
+        let hwnd = window.hwnd().cast();
+        protect_message_dispatch(hwnd as isize, ready).unwrap();
+        protect_message_dispatch(hwnd as isize, ready).unwrap();
+        unsafe {
+            SendMessageW(hwnd, trigger, 0, 0);
+            let mut message = MSG::default();
+            assert_ne!(
+                PeekMessageW(&raw mut message, hwnd, ready, ready, PM_REMOVE),
+                0
+            );
+            DispatchMessageW(&message);
+            assert_eq!(
+                PeekMessageW(&raw mut message, hwnd, ready, ready, PM_REMOVE),
+                0
+            );
+        }
+        assert_eq!(count.get(), 1);
+    }
+
+    #[test]
+    fn nested_window_destruction_does_not_replay_a_deferred_wake() {
+        let window = windows_window::Window::new("Destroyed wake regression")
+            .style(WS_POPUP)
+            .on_message(move |hwnd, msg, _, _| {
+                if msg == WM_DESTROY {
+                    return Some(0);
+                }
+                if msg == WM_APP + 20 {
+                    unsafe {
+                        SendMessageW(hwnd, READY, 0, 0);
+                        DestroyWindow(hwnd);
+                    }
+                    return Some(0);
+                }
+                None
+            })
+            .create()
+            .unwrap();
+        let hwnd = window.hwnd().cast();
+        protect_dispatch(hwnd as isize).unwrap();
+        unsafe {
+            SendMessageW(hwnd, WM_APP + 20, 0, 0);
+            assert_eq!(IsWindow(hwnd), 0);
+            let mut message = MSG::default();
+            while PeekMessageW(
+                &raw mut message,
+                std::ptr::null_mut(),
+                READY,
+                READY,
+                PM_REMOVE,
+            ) != 0
+            {
+                // windows-window's detached callback falls through on the nested
+                // destroy. WM_QUIT bypasses PeekMessage's range filter; consume
+                // this test-owned quit without mistaking it for a replay.
+                assert_eq!(message.message, WM_QUIT);
+            }
+        }
+    }
 
     #[test]
     fn nested_dispatch_preserves_worker_wake_and_future_notifications() {

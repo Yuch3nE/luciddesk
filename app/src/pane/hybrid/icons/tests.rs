@@ -3,6 +3,28 @@ use crate::pane::assets::RECYCLE_BIN_PARSING_NAME;
 use luciddesk_core::{DesktopItem, GridPosition, PanelId};
 
 #[test]
+fn interrupted_initial_batch_reports_all_requested_keys_for_retry() {
+    let (sender, receiver) = mpsc::channel();
+    let result = std::panic::catch_unwind(|| {
+        let _completion = InitialCompletion {
+            sender,
+            wake: Default::default(),
+            requested: vec!["one".into(), "two".into()],
+            images: Vec::new(),
+        };
+        panic!("simulated icon worker failure");
+    });
+    assert!(result.is_err());
+    let loaded = receiver.try_recv().unwrap();
+    assert_eq!(loaded.requested, ["one", "two"]);
+    assert!(loaded.images.is_empty());
+    assert!(matches!(
+        receiver.try_recv(),
+        Err(mpsc::TryRecvError::Disconnected)
+    ));
+}
+
+#[test]
 fn refresh_retries_only_failed_icons_and_preserves_new_notifications() {
     let identities: Vec<_> = ["test:a", "test:b"]
         .into_iter()

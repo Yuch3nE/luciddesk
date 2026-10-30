@@ -168,6 +168,24 @@ fn retry_refresh(h: &mut super::Session, pending: icon_changes::Pending) {
 
 const INITIAL_MAX_ATTEMPTS: u32 = 5;
 
+// Every scheduled batch must complete its bookkeeping, even if a Shell loader
+// unwinds. Otherwise initial_batches/requested would block all later icon work.
+struct InitialCompletion {
+    sender: mpsc::Sender<Loaded>,
+    wake: crate::pane::wake::Wake,
+    requested: Vec<String>,
+    images: Vec<(String, assets::Pixels)>,
+}
+impl Drop for InitialCompletion {
+    fn drop(&mut self) {
+        let _ = self.sender.send(Loaded {
+            requested: std::mem::take(&mut self.requested),
+            images: std::mem::take(&mut self.images),
+        });
+        self.wake.notify();
+    }
+}
+
 // Retry transient Shell failures promptly without spinning on broken providers.
 // Initial loading stops after five attempts; refresh work keeps a 32-second cap.
 fn icon_retry_delay(failures: u32) -> Duration {
@@ -318,17 +336,20 @@ pub(super) fn queue_pane_icons(s: &mut PaneApp, force: bool) {
     std::thread::spawn(move || {
         let count = requests.len();
         let started = Instant::now();
-        let requested = requests.iter().map(ShellIdentity::persistent_key).collect();
-        let images = load_icon_batch(requests, size);
+        let mut completion = InitialCompletion {
+            sender,
+            wake,
+            requested: requests.iter().map(ShellIdentity::persistent_key).collect(),
+            images: Vec::new(),
+        };
+        completion.images = load_icon_batch(requests, size);
         if luciddesk_diagnostics::enabled(luciddesk_diagnostics::Level::Trace) {
             luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Trace, "pane.icons",
                 "startup-icon-batch requested={count} loaded={} elapsed_ms={}",
-                images.len(),
+                completion.images.len(),
                 started.elapsed().as_millis()
             );
         }
-        let _ = sender.send(Loaded { requested, images });
-        wake.notify();
     });
 }
 
