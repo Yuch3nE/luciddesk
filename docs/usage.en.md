@@ -1,4 +1,4 @@
-<!-- manual-version: 0.25.0 -->
+<!-- manual-version: 0.25.1 -->
 
 # LucidDesk User Manual
 
@@ -8,7 +8,7 @@ Start with your first panel, then find the task you need below.
 
 ## Start in five minutes
 
-For LucidDesk 0.25.0.
+For LucidDesk 0.25.1.
 
 1. Install and start LucidDesk. Find its tray icon near the Windows clock; expand hidden icons if needed.
 2. Right-click the tray icon and choose New panel.

@@ -1,4 +1,4 @@
-<!-- release-doc-version: 0.25.0 -->
+<!-- release-doc-version: 0.25.1 -->
 
 # LucidDesk 便携版
 

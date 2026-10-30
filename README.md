@@ -12,7 +12,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-2EA44F?style=flat-square&labelColor=374151)](LICENSE)
 [![CI status](https://img.shields.io/github/actions/workflow/status/Yuch3nE/luciddesk/build.yml?style=flat-square&label=CI&labelColor=374151)](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml)
-[![Version: 0.25.0](https://img.shields.io/badge/Version-0.25.0-8250DF?style=flat-square&labelColor=374151)](CHANGELOG.md)
+[![Version: 0.25.1](https://img.shields.io/badge/Version-0.25.1-8250DF?style=flat-square&labelColor=374151)](CHANGELOG.md)
 [![Windows: 10 / 11](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D4?style=flat-square&labelColor=374151)](#系统与兼容性)
 [![Arch: x64](https://img.shields.io/badge/Arch-x64-64748B?style=flat-square&labelColor=374151)](docs/portable.md)
 
@@ -141,6 +141,13 @@ CLI 支持 JSON 结果与可选诊断日志，适合 Agent 或脚本使用。Luc
 <a id="常见问题"></a>
 
 ## 💬 常见问题
+
+<details>
+<summary>登录后面板迟迟没有出现</summary>
+
+LucidDesk 会在后台检测桌面接口，确认就绪后再连接；Explorer 重启后也会自动重试。若程序已经运行但面板未恢复，可在“设置 → 关于”查看连接状态并复制诊断信息。若托盘图标也迟迟未出现，请先在任务管理器中确认程序是否已启动：Windows 可能延后执行开机启动项，0.25.1 的接口检测改进不会消除这段系统调度等待。
+
+</details>
 
 <details>
 <summary>图标和面板不见了？</summary>

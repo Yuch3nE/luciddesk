@@ -2,9 +2,17 @@
 
 [简体中文](CHANGELOG.md) · English
 
-Current version: **0.25.0**. Features and fixes by release.
+Current version: **0.25.1**. Features and fixes by release.
 
 Exit the app before upgrading a portable installation and preserve its `data` folder. See the [portable guide](docs/portable.md) (Chinese).
+
+## 0.25.1 · 2026-10-31
+
+### fix · Fixes
+
+- Probe desktop interfaces in a background read-only worker before startup connections and reconnections, keeping readiness checks off the UI thread. Connect the desktop component only after matching the desktop window, process and Shell view.
+- Retry unavailable desktop interfaces with backoff from 250 milliseconds to 2 seconds. Suppress warnings for ordinary readiness failures during the first 30 seconds after startup or disconnection, while retaining the existing component-connection backoff.
+- Add readiness outcome and timing logs, with coverage for single-flight probes, stale windows, retries and connection ordering during a real app launch. Windows startup registration is unchanged.
 
 ## 0.25.0 · 2026-10-30
 
