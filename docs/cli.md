@@ -379,7 +379,7 @@ Agent 可以先使用 `--dry-run --json` 查看差异，再按既有用户授权
 
 开发验收命令：先构建 `cargo build -p luciddesk-shell --example desktop_snapshot --locked --offline --target-dir target/cli-plan-build`，再运行 `tools/validation/test-cli-plan.ps1 -LiveDesktopItems -RestartRecovery`。它要求没有其他主程序运行，使用独立数据目录，并只创建/整理/清理唯一命名的桌面测试文件；测试包含独立 Explorer 可见性及位置探针。
 
-持续查询验证可使用 `tools/validation/test-cli-plan.ps1 -IdleSeconds 30`：先等待之前修改触发的自动备份完成，再比较整个测试数据目录的文件哈希、大小及写入时间，并记录 GUI CPU/内存。保持默认 error 日志，不禁用自动备份。正常自动备份是预期写入，不应误归因于只读查询。
+持续查询验证可使用 `tools/validation/test-cli-plan.ps1 -IdleSeconds 30`：先查询保存与备份忙碌状态，并等待整个数据目录连续 12 秒稳定（最多等待 60 秒），再采集基线、比较整个测试数据目录的文件哈希、大小及写入时间，并记录 GUI CPU/内存。保持默认 error 日志，不禁用自动备份。正常自动备份是预期写入，不应误归因于只读查询。准备阶段观察保存在数据目录外的 `.idle-settle.jsonl`；正式测量仍检查所有文件，包括备份文件。
 
 
 启动 Debug 前确认同一输出目录包含 `luciddesk.exe`、`luciddesk-cli.exe` 和 `luciddesk_explorer.dll`。仅构建主程序和 CLI 不会生成独立桌面组件 DLL；缺失时桌面收纳不可用。

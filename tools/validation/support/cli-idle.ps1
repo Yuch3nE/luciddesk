@@ -1,11 +1,6 @@
 ﻿# Run through test-cli-plan.ps1 -IdleSeconds N; measures the owned GUI and data directory.
 $ErrorActionPreference = 'Stop'
-# Prior mutation tests may schedule the first automatic backup after 10 quiet seconds.
-# Let that legitimate write finish before measuring stable idle; do not disable backups.
-Start-Sleep -Seconds 12
-$base = (Invoke-Cli @('workspace','get')).context
-$idleInput = Join-Path $root 'idle-preview.json'
-[IO.File]::WriteAllText($idleInput,(@{protocol_version=1;base=$base;operations=@(@{op='settings.update';values=@{'diagnostics.level'='error'}})} | ConvertTo-Json -Depth 20),[Text.UTF8Encoding]::new($false))
+. (Join-Path $PSScriptRoot 'cli-idle-state.ps1')
 function Disk-Snapshot {
     $snapshot = [ordered]@{}
     foreach ($file in (Get-ChildItem -LiteralPath $root -Recurse -File | Sort-Object FullName)) {
@@ -13,7 +8,25 @@ function Disk-Snapshot {
     }
     return ($snapshot | ConvertTo-Json -Depth 5 -Compress)
 }
+# The 10-second automatic-backup debounce starts at the last observed save,
+# not when restore returns. Restart the quiet window after every change/busy state.
+$null = Wait-CliIdleSnapshot -ReadState {
+    $status = Invoke-Cli @('status')
+    $backup = Invoke-Cli @('backup','list')
+    if ($status.data.workspace_save_pending -isnot [bool] -or $backup.data.busy -isnot [bool]) {
+        throw 'Idle status omitted save/backup busy flags'
+    }
+    @{snapshot=(Disk-Snapshot);busy=($status.data.workspace_save_pending -or $backup.data.busy)}
+} -RecordState {
+    param($state, $seconds)
+    @{seconds=$seconds;busy=$state.busy;snapshot=($state.snapshot | ConvertFrom-Json -AsHashtable)} |
+        ConvertTo-Json -Depth 8 -Compress | Add-Content -LiteralPath ($root + '.idle-settle.jsonl') -Encoding utf8
+}
+$base = (Invoke-Cli @('workspace','get')).context
+$idleInput = Join-Path $root 'idle-preview.json'
+[IO.File]::WriteAllText($idleInput,(@{protocol_version=1;base=$base;operations=@(@{op='settings.update';values=@{'diagnostics.level'='error'}})} | ConvertTo-Json -Depth 20),[Text.UTF8Encoding]::new($false))
 $before = Disk-Snapshot
+[IO.File]::WriteAllText(($root + '.idle-before.json'), $before)
 $app.Refresh()
 $cpuBefore = $app.TotalProcessorTime.TotalMilliseconds
 $privateBefore = $app.PrivateMemorySize64
@@ -42,7 +55,15 @@ $app.Refresh()
 $elapsed = $timer.Elapsed.TotalSeconds
 $cpu = $app.TotalProcessorTime.TotalMilliseconds - $cpuBefore
 $after = Disk-Snapshot
-if ($before -cne $after) { throw ('Idle queries/previews changed files: before=' + $before + ' after=' + $after) }
+[IO.File]::WriteAllText(($root + '.idle-after.json'), $after)
+if ($before -cne $after) {
+    $old = $before | ConvertFrom-Json -AsHashtable
+    $new = $after | ConvertFrom-Json -AsHashtable
+    $changed = @(@($old.Keys) + @($new.Keys) | Sort-Object -Unique | Where-Object {
+        ($old[$_] | ConvertTo-Json -Compress) -cne ($new[$_] | ConvertTo-Json -Compress)
+    })
+    throw ("Idle queries/previews changed files: " + ($changed -join ', ') + "; snapshots: $root.idle-before.json / $root.idle-after.json")
+}
 [ordered]@{
     result='passed';seconds=[Math]::Round($elapsed,2);queries=$queries;previews=$previews
     files_unchanged=$true;gui_cpu_milliseconds=$cpu

@@ -45,6 +45,8 @@ cargo test -p luciddesk --bin luciddesk --locked --offline -- --test-threads=1
 cargo test -p luciddesk --test canvas_compat --locked --offline
 cargo test -p luciddesk-shell --doc --locked --offline
 python tools/validation/check-locales.py
+./tools/validation/test-cli-backup-wait.ps1
+./tools/validation/test-cli-idle.ps1
 ```
 
 这些命令不包含默认忽略的交互测试。图形、托盘和 Shell 探针的专用命令见各专题文档。受限桌面、文件占用或工具链缺失造成的失败应记录具体错误，不直接归类为代码回归，也不能视为通过。

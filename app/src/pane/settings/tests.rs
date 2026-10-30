@@ -1524,6 +1524,14 @@ fn control_position(
     }
 }
 
+pub(in crate::pane) fn dark_theme_control_position(
+    state: &Rc<RefCell<PaneApp>>,
+    hwnd: windows_sys::Win32::Foundation::HWND,
+) -> isize {
+    control_position(state, hwnd, 0,
+        |action| matches!(action, Action::Change(Event::Theme(PanelTheme::Dark))), 0.5)
+}
+
 // Called by the isolated native-window scenario so composition stays on one STA.
 pub(in crate::pane) fn preference_pages_survive_reentry(
     state: &Rc<RefCell<PaneApp>>,

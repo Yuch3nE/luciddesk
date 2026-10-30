@@ -3,6 +3,49 @@
 这里保留历次验证记录，包括当时的行为和后来已替换的方案。它们不是当前实现规范，也不表示当前构建已重新通过。执行入口见[验证指南](validation.md)，当前桌面切换规则见[Hook 验证](hook-validation.md)。日志中的 `target/` 路径是本地证据，不随仓库分发。
 
 
+## 2026-10-29 首次只读快照差异定位与修复
+
+从原始线程的完整命令输出找回首次 before/after 快照，保存为 `target/first-idle-difference.json`。逐项比较确认唯一变化为新增 `backups/auto-20261029-164336-281.db`；所有既有文件（包括 workspace.db、config.toml 和诊断日志）的哈希、大小、写入时间完全一致。此前“未解释”观察项现已定位。
+
+本地时间线：备份恢复验收结果在 16:43:23.376 写出，workspace.db 的最后保存为 16:43:26.271，旧脚本在 16:43:35.436 生成测量用预览，自动备份在 16:43:36.286 完成。自动备份等待的是最后一次存储变化后 10 秒；脚本仅从恢复返回时固定睡眠 12 秒，未包含后续异步保存。因此正常自动备份落入只读测量区间，不能据此判定 CLI 读取写库。
+
+修复位于验收脚本：新增 `support/cli-idle-state.ps1`，在采集基线前查询保存与备份忙碌状态，要求文件快照持续稳定 12 秒；发现变化或忙碌即重新计时，60 秒仍不稳定则失败。自动备份保持开启。稳定后重新获取上下文生成预览；测量期间仍对全部文件严格比较，不忽略备份文件、不在变化后重新采集基线。准备阶段的观察记录写入数据目录外 `.idle-settle.jsonl`，不计入只读阶段的 CPU 和调用次数。
+
+验证：
+
+- `test-cli-idle.ps1` 的 8 个确定性场景通过：普通空闲、恢复后第 3 秒保存/第 13 秒自动备份（须等到第 25 秒）、忙碌后重新计时、持续写入/忙碌超时、采样本身超时、缺失状态拒绝，以及测量快照仍检测新增备份文件。
+- `test-cli-backup-wait.ps1` 的 5 个场景通过。
+- 完整隔离实机验收通过（桌面项目、备份创建/导出/恢复与回执重放、重启恢复）。准备记录实际观测到约第 0.37 秒的 workspace.db 变化、第 10.26 秒的自动备份新增，随后按忙碌状态继续等待；只读阶段 336 次调用、80 次预览，耗时 17.67 秒，文件哈希、大小、写入时间全部不变。
+- 正式安装实例已恢复；工作区、设置及项目数据与运行前一致（排除实例内临时项目 ID）。未更改产品运行逻辑或关闭自动备份。
+
+证据：`target/idle-fix-unit.log`、`target/cli-live-session-20261029-182900`（含 `verification.json`）；测试数据 `target/cli-e2e-8cd29ded1cd84807a97724f6a0947847` 及同级 `.idle-settle.jsonl`、`.idle-before.json`、`.idle-after.json`。
+
+## 2026-10-29 最终全量与实机复验
+
+基于 `716d26f`，Windows 11 Build 26300，x64 Debug，同次构建主程序、CLI、Explorer DLL 与桌面快照探针。以下结果包含本轮测试修正；没有更新安装目录或提交/推送这些修正。
+
+发现与处理：
+
+- 完整应用测试发现设置窗口用例按旧的固定坐标点击，未触发深色主题保存，读取尚未保存的面板时失败。改为按当前布局中的主题 Action 定位控件，保留真实鼠标消息、持久化和窗口关闭断言。单例及完整应用回归均通过；生产 UI 代码未修改。
+- 实机备份脚本暴露“先确认保存完成、随后预览又遇到待保存”的竞争窗口。现在仅对明确 `operation_submitted:false` 的预览 BUSY 执行 `wait_for_idle` 只读指引，等待完成后获取新上下文重新预览；未知错误或不确定提交不重试。新增 `tools/validation/test-cli-backup-wait.ps1`，使用脚本化 CLI 响应验证两种忙碌原因、持续忙碌轮询、新令牌使用及不确定提交/无效输入拒绝，共 5 个场景通过。
+- 首次实机只读文件快照比较失败，原始错误输出过长且没有独立快照，未能确认具体变化原因。新增数据目录外的 before/after JSON 快照及精简变化文件列表。后续两轮完整实机验收均通过，不能据此声称首次差异已定位或所有间歇性写入已排除。当时保留为未解释的观察项，后续定位见本页“首次只读快照差异定位与修复”。
+
+验证结果：
+
+- `cargo check --workspace --all-targets --locked --offline` 通过。
+- 修复后应用 539 项、Canvas 兼容 4 项、其他 crate 及文档测试 287 项通过，合计 830 项。默认集显式忽略 48 项，未计为通过。初始完整运行的设置测试失败记录仍保留。
+- Python 工具测试 19 项通过；首次沙箱临时目录权限失败后在正常权限下复跑。7 种语言的 552 条消息校验及 31 种操作的 109 项 Schema 夹具通过。
+- `test-plugins.ps1 -TargetDirectory target -Offline` 通过，包含真实 DLL 的正常加载、配置失败、重复插件释放及缺失插件场景。
+- `test-desktop-sync.ps1 -Repeat 3 -LiveDesktop` 通过：3 轮目录监听和 2 项默认忽略的只读 Explorer 探针均实际执行。
+- 最终两轮 `test-cli-plan.ps1 -LiveDesktopItems -RestartRecovery -IdleSeconds 5` 通过，覆盖桌面项目收纳/释放与位置恢复、布局、文件夹、Everything 搜索、设置、备份创建/导出/恢复/回执重放、重启后旧令牌与回执失效。startup.set 仍只在系统允许时验证原状态的 no-op，不修改真实启动项。
+- 两轮只读检查各包含 336 次调用和 80 次无变化预览，分别耗时 17.56 / 17.42 秒，数据目录文件哈希、大小、写入时间保持一致。GUI 平均 CPU 为 0.1255 / 0.1309 核，仅为本机 Debug 观测，不作为性能阈值。
+- 本次构建的 CLI 在 TRACE 未设置、0、1 三种状态下 stdout JSON 与 stderr 日志分流正确；离线帮助、Schema、Skill 和无效输入不产生 IPC 日志；内嵌 Skill 的 6 个文件与源码一致。
+- 每次实机运行后恢复原安装实例；最终前后工作区、设置及 90 个项目一致（排除进程内临时项目 ID），桌面测试文件清理完毕。
+
+主要证据：`target/final-workspace-tests.log`（初始失败）、`target/final-app-retest.log`、`target/final-other-tests.log`、`target/final-check.log`、`target/final-python-tests.log`、`target/final-plugins.log`、`target/final-desktop-sync.log`。实机证据目录：`target/cli-live-session-20261029-164303`（首次快照差异）、`target/cli-live-session-20261029-164446`（备份预览 BUSY）、`target/cli-live-session-20261029-164617` 与 `target/cli-live-session-20261029-164746`（通过并恢复）。最后一轮数据目录为 `target/cli-e2e-4d4be6e744a944f483e063f3210c4107`，逐文件快照位于同级 `.idle-before.json` / `.idle-after.json`。
+
+范围限制：未重新执行 MSI/MSIX 安装升级卸载、跨 Windows 会话、多显示器混合 DPI、真实设备丢失或全部显式忽略的交互/耗时探针；默认自动化与本机实机通过不替代这些验收。已有 COM 宏 raw-reference 等编译警告仍保留。
+
 ## 2026-10-29 CLI 诊断输出回归
 
 CLI 单元测试 31 项通过（`target/cli-diagnostics-tests.log`）。新增测试验证日志只含调用元数据、不泄漏令牌/目录/错误详情/响应载荷，以及普通文本错误复用 next_step 并转义控制字符。

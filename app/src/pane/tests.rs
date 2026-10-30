@@ -2007,12 +2007,9 @@ fn settings_window_applies_clicks_and_closes_without_exiting() {
             SendMessageW(hwnd, WM_PAINT, 0, 0);
         }
         settings::tests::preference_pages_survive_reentry(&state, hwnd);
-        let scale = GetDpiForWindow(hwnd).max(96) as f32 / 96.0;
-        let mut bounds = RECT::default();
-        GetClientRect(hwnd, &raw mut bounds);
-        let x = bounds.right - (80.0 * scale) as i32;
-        let y = (228.0 * scale) as i32;
-        let point = ((y as isize) << 16) | (x as isize & 0xffff);
+        // Locate the theme control after titlebar/layout changes instead of using
+        // a stale pixel offset that may click an unrelated setting or empty space.
+        let point = settings::tests::dark_theme_control_position(&state, hwnd);
         SendMessageW(hwnd, WM_LBUTTONDOWN, 1, point);
         SendMessageW(hwnd, WM_LBUTTONUP, 0, point);
         assert_eq!(
