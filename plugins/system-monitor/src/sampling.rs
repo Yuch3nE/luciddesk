@@ -206,7 +206,8 @@ impl Drop for WorkerAlive {
 }
 
 fn run(requests: mpsc::Receiver<Request>, data: Arc<Mutex<Arc<Snapshot>>>) {
-    let mut sampler = Sampler::new();
+    // WorkerAlive marks the service unavailable if native initialization fails.
+    let Ok(mut sampler) = Sampler::new() else { return };
     let mut clients: HashMap<u64, Preferences> = HashMap::new();
     let mut last: Option<Instant> = None;
     let mut history = VecDeque::new();
@@ -316,11 +317,11 @@ struct Sampler {
     inventory: Instant,
 }
 impl Sampler {
-    fn new() -> Self {
-        Self {
-            system: System::new(),
-            networks: Networks::new(),
-            disks: Disks::new(),
+    fn new() -> Result<Self, sysinfo::Error> {
+        Ok(Self {
+            system: System::new()?,
+            networks: Networks::new()?,
+            disks: Disks::new()?,
             counters: None,
             counter_retry: Instant::now(),
             adapters: Vec::new(),
@@ -328,7 +329,7 @@ impl Sampler {
             network_bytes: HashMap::new(),
             disk_bytes: HashMap::new(),
             inventory: Instant::now() - Duration::from_secs(30),
-        }
+        })
     }
     fn sample(&mut self, metrics: &[Metric], reset: bool) -> Frame {
         if reset {
@@ -392,6 +393,7 @@ impl Sampler {
             }
             self.networks.refresh(inventory);
             for (name, net) in &self.networks {
+                let name = name.to_string_lossy().into_owned();
                 if net.operational_state() != InterfaceOperationalState::Up {
                     continue;
                 }
@@ -417,11 +419,11 @@ impl Sampler {
             if !self.previous.contains(&Metric::Disk) {
                 self.disk_bytes.clear();
             }
-            if inventory || self.disks.list().is_empty() {
+            if inventory || self.disks.is_empty() {
                 self.disks
                     .refresh_specifics(true, DiskRefreshKind::everything());
             } else {
-                for disk in self.disks.list_mut() {
+                for disk in &mut self.disks {
                     disk.refresh_specifics(DiskRefreshKind::nothing().with_io_usage());
                 }
             }
@@ -787,7 +789,7 @@ mod tests {
     }
     #[test]
     fn sampling_never_populates_process_inventory_and_resumes_with_empty_baselines() {
-        let mut sampler = Sampler::new();
+        let mut sampler = Sampler::new().unwrap();
         let first = sampler.sample(&[Metric::Cpu, Metric::Memory, Metric::Network], true);
         assert!(first.cpu.is_none());
         assert!(first.networks.iter().all(|d| d.rate.is_none()));
@@ -798,7 +800,7 @@ mod tests {
     }
     #[test]
     fn native_sampling_produces_real_cpu_memory_and_device_rates() {
-        let mut sampler = Sampler::new();
+        let mut sampler = Sampler::new().unwrap();
         let metrics = Preferences::default().metrics;
         sampler.sample(&metrics, true);
         std::thread::sleep(Duration::from_millis(1200));
@@ -818,7 +820,7 @@ mod tests {
     }
     #[test]
     fn native_metric_switch_closes_query_and_restarts_cpu_baseline() {
-        let mut sampler = Sampler::new();
+        let mut sampler = Sampler::new().unwrap();
         sampler.sample(&[Metric::Cpu], true);
         assert!(sampler.counters.as_ref().unwrap().complete());
         std::thread::sleep(Duration::from_millis(1100));

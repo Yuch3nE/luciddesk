@@ -1,4 +1,4 @@
-<!-- manual-version: 0.24.0 -->
+<!-- manual-version: 0.25.0 -->
 
 # LucidDesk 使用手册
 
@@ -8,7 +8,7 @@
 
 ## 五分钟开始使用
 
-适用于 LucidDesk 0.24.0。
+适用于 LucidDesk 0.25.0。
 
 <a id="启动"></a>
 

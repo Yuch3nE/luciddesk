@@ -246,7 +246,7 @@ impl WorkspaceStore {
         let staging = tempfile::NamedTempFile::new_in(path.parent().unwrap())
             .map_err(|e| StoreError::InvalidData(e.to_string()))?;
         self.connection
-            .backup(rusqlite::MAIN_DB, staging.path(), None)?;
+            .backup(rusqlite::MAIN_DB, staging.path(), None::<fn(rusqlite::backup::Progress)>)?;
         if let Some(config) = &self.config {
             let config = config.borrow();
             config.check_disk()?;

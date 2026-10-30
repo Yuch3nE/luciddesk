@@ -3,6 +3,19 @@
 这里保留历次验证记录，包括当时的行为和后来已替换的方案。它们不是当前实现规范，也不表示当前构建已重新通过。执行入口见[验证指南](validation.md)，当前桌面切换规则见[Hook 验证](hook-validation.md)。日志中的 `target/` 路径是本地证据，不随仓库分发。
 
 
+## 2026-10-30 Cargo 依赖升级回归
+
+在待发布的 0.25.0 上更新主工作区 14 个依赖版本：rusqlite 0.40.2 → 0.41.1、sysinfo 0.39.6 → 0.40.0，以及 libsqlite3-sys、cc、equivalent、find-msvc-tools、rustix、smallvec、syn、tinystr、unicode-ident、zerovec、rsqlite-vfs、sqlite-wasm-rs。独立 Windows 绑定生成器的 unicode-ident 同步更新；锁文件中的目标平台依赖不代表全部用于 Windows 运行时。
+
+按新 API 显式指定 SQLite 备份的空进度回调类型，保留 bundled/backup/fallible_uint；监控插件适配可失败的初始化、OsString 网卡名称及磁盘迭代，初始化失败沿用服务不可用状态，不新增 panic。Windows 0.62 与 Canvas/生成绑定 0.100 的类型边界保持不变，没有机械升级 windows-core、windows-collections 和 windows-numerics。
+
+- 主工作区全部目标编译检查通过；独立绑定生成器编译检查通过。
+- 完整工作区回归 830 项通过、48 项显式忽略，含存储备份恢复、整数边界、CLI/IPC、原生监控采样及 UI 测试。
+- 真实插件 DLL 验证通过，含实际加载、配置失败与重复插件引用释放；应用侧正常插件 11 项、缺失插件 10 项通过，各有 3 项既有显式忽略。
+- 发布版本/双语说明检查 6 项通过；最终 cargo update --dry-run 显示当前约束内 0 项待升级。
+
+日志：`target/dependency-upgrade-check.log`、`target/dependency-bindings-check.log`、`target/dependency-upgrade-tests.log`、`target/dependency-upgrade-plugins.log`、`target/dependency-upgrade-final.log`。现有 COM 宏警告仍保留。本轮未替换安装程序、未重新运行完整 CLI 实机验收或安装包生命周期测试。
+
 ## 2026-10-29 首次只读快照差异定位与修复
 
 从原始线程的完整命令输出找回首次 before/after 快照，保存为 `target/first-idle-difference.json`。逐项比较确认唯一变化为新增 `backups/auto-20261029-164336-281.db`；所有既有文件（包括 workspace.db、config.toml 和诊断日志）的哈希、大小、写入时间完全一致。此前“未解释”观察项现已定位。

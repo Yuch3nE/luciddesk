@@ -12,7 +12,7 @@ Desktop panels · Folder panels · Everything search · Spacebar preview · Agen
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-2EA44F?style=flat-square&labelColor=374151)](LICENSE)
 [![CI status](https://img.shields.io/github/actions/workflow/status/Yuch3nE/luciddesk/build.yml?style=flat-square&label=CI&labelColor=374151)](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml)
-[![Version: 0.24.0](https://img.shields.io/badge/Version-0.24.0-8250DF?style=flat-square&labelColor=374151)](CHANGELOG.en.md)
+[![Version: 0.25.0](https://img.shields.io/badge/Version-0.25.0-8250DF?style=flat-square&labelColor=374151)](CHANGELOG.en.md)
 [![Windows: 10 / 11](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D4?style=flat-square&labelColor=374151)](#compatibility)
 [![Arch: x64](https://img.shields.io/badge/Arch-x64-64748B?style=flat-square&labelColor=374151)](docs/portable.md)
 
@@ -54,7 +54,7 @@ See the [user manual](docs/usage.en.md) for everyday tasks and the [online insta
 
 | Feature | What you can do |
 | --- | --- |
-| Desktop panels and tabs | Group icons by project, merge panels into tabs, switch between them or detach them |
+| Desktop panels and tabs | Group icons by project, merge or detach tabs, and choose a filled or left-aligned tab bar |
 | Flexible arrangement | Arrange automatically, align to a grid or position freely; sort by name, type, date or size |
 | Per-panel display | Choose icon or list view, icon-only mode, and small, medium or large icons for each desktop or folder panel |
 | Folder panels | Browse directories and subfolders, with automatic refresh when files change |
@@ -82,13 +82,22 @@ These tools are not bundled with LucidDesk.
 
 Copy the Skill installation prompt from **Settings → General → Agent & CLI** and give it to your agent. The app, CLI and Skill should come from the same release package. Copying the prompt does not install anything.
 
-Start with a read-only query in the application directory:
+Enable CLI control in Settings, then run read-only queries from the application directory:
 
 ```powershell
 .\luciddesk-cli.exe status --json
+.\luciddesk-cli.exe pane list --json
 ```
 
-Review changes before applying them; use `--dry-run` to preview CLI mutations. See the [CLI quick start](docs/cli.md#english-quick-start) and [online Agent guide](https://luciddesk.bbkingdom365.com/agent/). External agents may send filenames and paths to their service providers; see the [privacy policy](PRIVACY.en.md).
+Use three steps: query existing panels and items, preview changes, then apply after review. This command previews a new panel without saving it:
+
+```powershell
+.\luciddesk-cli.exe pane create --title "Work" --dry-run --json
+```
+
+Review the returned changes and follow `data.next_step`. **Mutation commands without `--dry-run` preview and submit immediately.** If a submission times out, query its original receipt before retrying; rerunning the mutation may duplicate it. For busy backups, follow the returned wait condition and preview again once idle.
+
+JSON results and optional diagnostic logs support agents and scripts. LucidDesk does not include a language model or require a model API key. See the [CLI guide](docs/cli.md#english-quick-start) for commands and recovery, or the [bundled Skill](skills/luciddesk-control/SKILL.md) for agent integration. External agents may send filenames and paths to their providers; see the [privacy policy](PRIVACY.en.md).
 
 <a id="screenshots"></a>
 

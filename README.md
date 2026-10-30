@@ -12,7 +12,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-2EA44F?style=flat-square&labelColor=374151)](LICENSE)
 [![CI status](https://img.shields.io/github/actions/workflow/status/Yuch3nE/luciddesk/build.yml?style=flat-square&label=CI&labelColor=374151)](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml)
-[![Version: 0.24.0](https://img.shields.io/badge/Version-0.24.0-8250DF?style=flat-square&labelColor=374151)](CHANGELOG.md)
+[![Version: 0.25.0](https://img.shields.io/badge/Version-0.25.0-8250DF?style=flat-square&labelColor=374151)](CHANGELOG.md)
 [![Windows: 10 / 11](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D4?style=flat-square&labelColor=374151)](#系统与兼容性)
 [![Arch: x64](https://img.shields.io/badge/Arch-x64-64748B?style=flat-square&labelColor=374151)](docs/portable.md)
 
@@ -54,7 +54,7 @@ LucidDesk 是一款免费、开源的 Windows 桌面整理工具。用面板收�
 
 | 功能 | 你可以做什么 |
 | --- | --- |
-| 桌面面板与标签 | 按项目收纳图标，合并多个面板为标签页，按需切换或分离 |
+| 桌面面板与标签 | 按项目收纳图标，合并或分离标签页；标签栏支持铺满和左对齐 |
 | 灵活排列 | 自动排列、网格对齐或自由摆放，按名称、类型、时间或大小排序 |
 | 独立显示设置 | 每个普通或文件夹面板分别选择图标／列表视图、纯图标模式及大中小图标 |
 | 文件夹面板 | 直接浏览常用目录，进入子文件夹，文件变化后自动刷新 |
@@ -82,13 +82,22 @@ LucidDesk 是一款免费、开源的 Windows 桌面整理工具。用面板收�
 
 在“设置 → 通用 → Agent 与 CLI”中复制 Skill 安装提示词，交给你的 Agent。主程序、CLI 和 Skill 应来自同一发布包；复制提示词本身不会执行安装。
 
-使用程序目录内的 CLI，可先做一次只读查询：
+先在设置中启用 CLI 控制，再在程序目录执行只读查询：
 
 ```powershell
 .\luciddesk-cli.exe status --json
+.\luciddesk-cli.exe pane list --json
 ```
 
-修改前先查看预览，确认后再应用；命令行修改使用 `--dry-run` 只预览。完整操作见 [CLI 指南](docs/cli.md)和[官网 Agent 指南](https://luciddesk.bbkingdom365.com/agent/)。使用外部 Agent 时，文件名、路径等信息可能发送给其服务商，详见[隐私说明](PRIVACY.md)。
+整理流程分为三步：查询现有面板和项目 → 预览修改 → 确认后应用。例如，下面的命令只预览一个新面板，不会保存：
+
+```powershell
+.\luciddesk-cli.exe pane create --title "工作" --dry-run --json
+```
+
+检查返回的改动后，按 `data.next_step` 指引继续。**修改命令不带 `--dry-run` 时会直接预览并提交。** 若提交超时，先查原请求回执，避免重新运行修改命令造成重复操作；备份忙碌时按返回的条件等待，再重新预览。
+
+CLI 支持 JSON 结果与可选诊断日志，适合 Agent 或脚本使用。LucidDesk 本身不内置大模型，也不需要配置模型 API 密钥。完整命令与恢复流程见 [CLI 指南](docs/cli.md)，Agent 接入见[配套 Skill](skills/luciddesk-control/SKILL.md)。外部 Agent 可能将文件名、路径等信息发送给其服务商，详见[隐私说明](PRIVACY.md)。
 
 <a id="界面截图"></a>
 

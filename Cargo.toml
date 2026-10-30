@@ -22,7 +22,7 @@ lto = "thin"
 codegen-units = 1
 
 [workspace.package]
-version = "0.24.0"
+version = "0.25.0"
 edition = "2024"
 rust-version = "1.99"
 license = "MIT"
@@ -35,8 +35,8 @@ luciddesk-shell = { path = "crates/luciddesk-shell" }
 luciddesk-storage = { path = "crates/luciddesk-storage" }
 luciddesk-window = { path = "crates/luciddesk-window" }
 luciddesk-explorer = { path = "crates/luciddesk-explorer" }
-# Panel IDs use u64; preserve checked INTEGER conversions in rusqlite 0.40.
-rusqlite = { version = "0.40.2", features = ["bundled", "backup", "fallible_uint"] }
+# Panel IDs use u64; preserve checked INTEGER conversions with fallible_uint.
+rusqlite = { version = "0.41.1", features = ["bundled", "backup", "fallible_uint"] }
 windows-window = "0.100.0"
 windows-numerics = "0.3.1"
 windows-sys = "0.61.2"

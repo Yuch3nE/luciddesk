@@ -2,24 +2,29 @@
 
 [简体中文](CHANGELOG.md) · English
 
-Current version: **0.24.0**. Features and fixes by release.
+Current version: **0.25.0**. Features and fixes by release.
 
 Exit the app before upgrading a portable installation and preserve its `data` folder. See the [portable guide](docs/portable.md) (Chinese).
 
-## Unreleased
+## 0.25.0 · 2026-10-30
 
-- Align CLI text errors with structured next-step guidance and request IDs. Add opt-in stderr JSONL diagnostics for IPC commands, timing and error codes without logging payloads or changing JSON result output.
+### feat · Features
 
-- Return structured BUSY states when backup previews encounter pending workspace saves or an active backup task, with read-only polling and fresh-preview guidance. Add multi-client pipe contention and waiting-timeout isolation tests.
+- Backup previews return structured busy states for pending workspace saves and active backup tasks, with read-only queries, wait conditions and fresh-preview guidance.
+- Add optional CLI diagnostics: `LUCIDDESK_CLI_TRACE=1` writes IPC commands, request IDs, timings and error codes to stderr, keeping stdout JSON separate and excluding plan tokens and request payloads. See the [CLI guide](docs/cli.md).
 
-- Refine CLI timeout and failure guidance after live desktop validation, clarify instance discovery and backup prerequisites in the Agent Skill, and expand live layout and backup/restore checks.
+### perf · Performance
 
-- Parse JSON text once for strict validation and typed decoding. Negotiate bounded pipe reuse for multi-stage CLI operations, preserving legacy clients, idle release and no automatic replay after timeouts.
+- Upgrade rusqlite to 0.41.1, sysinfo to 0.40.0 and compatible transitive dependencies. Adapt backup callbacks and monitor sampling while preserving the existing Windows binding version boundaries.
 
-- Reuse events for sequential IPC operations and compare structured server state directly, reducing handle creation and string allocation while retaining live state checks and conflict protection.
+- Negotiate pipe connection reuse across CLI stages, reuse I/O event handles and combine frame writes to reduce connection, handle and wait overhead. Retain legacy-client compatibility, idle release and no automatic replay after timeouts.
+- Parse JSON once for strict validation and typed decoding. Use lightweight context queries for shortcuts and compare structured server state directly to reduce transfers and string allocation.
 
-- Use lightweight context queries for CLI mutation shortcuts. Write IPC frame headers and payloads together and avoid waiting for I/O that has already completed.
-- Update the Agent Skill to review previews by default, batch related operations, and avoid redundant queries and tight polling loops.
+### fix · Fixes
+
+- Distinguish timeout recovery for reads, previews and submissions. Text errors show the actual request ID and match JSON next-step guidance; settings and startup failures point to their respective status queries.
+- Update the Agent Skill to rediscover capabilities after instance changes, review previews, batch related operations and follow busy-state guidance without tight polling or duplicate submissions.
+- Fix backup validation wait races, read-only snapshot false alarms from delayed automatic backups, and stale click coordinates in settings tests. Expand multi-client contention, waiting-timeout isolation and live recovery coverage.
 
 ## 0.24.0 · 2026-10-29
 
