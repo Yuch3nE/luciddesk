@@ -14,6 +14,9 @@ pub(super) struct State {
     pub(super) last_attempt: Instant,
     pub(super) reconnect_failures: u8,
     pub(super) reconnecting: bool,
+    readiness: Option<desktop_ready::Probe>,
+    waiting_for_desktop: bool,
+    readiness_since: Instant,
     last_maintenance: Instant,
     pub layouts: display_layout::Layouts,
     pub backup: recovery::Manager,
@@ -29,6 +32,9 @@ impl State {
             last_attempt: Instant::now(),
             reconnect_failures: 0,
             reconnecting: false,
+            readiness: None,
+            waiting_for_desktop: true,
+            readiness_since: Instant::now(),
             last_maintenance: Instant::now(),
             layouts: Default::default(),
             backup: recovery::Manager::default(),
@@ -115,6 +121,7 @@ pub(super) fn status(s: &PaneApp) -> String {
 }
 
 pub(super) fn reconnect(state: &Rc<RefCell<PaneApp>>) {
+    let wake = state.borrow().wake.clone();
     let path = {
         let mut s = state.borrow_mut();
         if s.session.is_some() {
@@ -124,6 +131,32 @@ pub(super) fn reconnect(state: &Rc<RefCell<PaneApp>>) {
             return;
         };
         if runtime.reconnecting { return; }
+        let ready = if let Some(probe) = &runtime.readiness {
+            let Some(result) = probe.poll() else { return; };
+            runtime.readiness = None;
+            result
+        } else {
+            match desktop_ready::Probe::start(wake) {
+                Ok(probe) => {
+                    runtime.readiness = Some(probe);
+                    return;
+                }
+                Err(error) => Err(error),
+            }
+        };
+        if let Err(error) = ready.and_then(desktop_ready::Desktop::validate) {
+            runtime.waiting_for_desktop = true;
+            runtime.last_attempt = Instant::now();
+            runtime.reconnect_failures = runtime.reconnect_failures.saturating_add(1);
+            runtime.desktop_error = Some(error);
+            // Ordinary login races should not open a modal warning. Persistent
+            // failures retain the existing connection warning and retry path.
+            let notify = runtime.readiness_since.elapsed() >= Duration::from_secs(30);
+            drop(s);
+            if notify { notify_connection(state); }
+            return;
+        }
+        runtime.waiting_for_desktop = false;
         runtime.reconnecting = true;
         runtime.last_attempt = Instant::now();
         runtime.path.clone()
@@ -162,6 +195,8 @@ fn suspend(state: &Rc<RefCell<PaneApp>>) {
         if let Some(runtime) = &mut s.runtime {
             runtime.desktop_error = Some(crate::i18n::text("ui-explorer-disconnected-waiting-to-reconnect").into());
             runtime.reconnect_failures = 0;
+            runtime.waiting_for_desktop = true;
+            runtime.readiness_since = Instant::now();
             runtime.last_attempt = Instant::now() - reconnect_delay(0);
         }
         let mut removed = Vec::new();
@@ -214,7 +249,7 @@ pub(super) fn maintain(state: &Rc<RefCell<PaneApp>>, force: bool) -> Result<(), 
         .borrow()
         .runtime
         .as_ref()
-        .is_some_and(|r| !r.reconnecting && r.last_attempt.elapsed() >= reconnect_delay(r.reconnect_failures));
+        .is_some_and(|r| !r.reconnecting && (r.readiness.is_some() || r.last_attempt.elapsed() >= r.retry_delay()));
     if force || due {
         reconnect(state);
     }
@@ -268,14 +303,22 @@ fn reconnect_delay(failures: u8) -> Duration {
     Duration::from_millis((250u64 << failures.saturating_sub(1).min(6)).min(10_000))
 }
 
+impl State {
+    fn retry_delay(&self) -> Duration {
+        let delay = reconnect_delay(self.reconnect_failures);
+        if self.waiting_for_desktop { delay.min(Duration::from_secs(2)) } else { delay }
+    }
+}
+
 fn next_work(s: &PaneApp, reveal: &show_hotkey::Registration) -> Option<u32> {
     let now = Instant::now();
     let runtime = s.runtime.as_ref();
     // Slow safety check for missed window lifecycle notifications or a failed
     // view creation; ordinary work is driven by notifications and deadlines.
     let maintenance = runtime.map(|r| r.last_maintenance + Duration::from_secs(30));
-    let reconnect = runtime.filter(|r| s.session.is_none() && !r.reconnecting)
-        .map(|r| r.last_attempt + reconnect_delay(r.reconnect_failures));
+    // A pending worker wakes the supervisor itself; never spin on an expired deadline.
+    let reconnect = runtime.filter(|r| s.session.is_none() && !r.reconnecting && r.readiness.is_none())
+        .map(|r| r.last_attempt + r.retry_delay());
     hybrid::next_work(s).map(u64::from).map(Duration::from_millis)
         .map(|delay| now + delay).into_iter()
         .chain(maintenance)
@@ -618,6 +661,47 @@ mod tests {
         assert_eq!(delays, [250, 500, 1000, 2000, 4000, 8000, 10000, 10000, 10000]);
         assert_eq!(reconnect_delay(u8::MAX), Duration::from_secs(10));
         assert_eq!(reconnect_delay(0), Duration::from_millis(250));
+    }
+
+    #[test]
+    fn readiness_retries_are_fast_without_changing_hook_failure_backoff() {
+        let mut runtime = State::new("unused.db".into());
+        for (failures, milliseconds) in [(1, 250), (2, 500), (3, 1000), (4, 2000), (255, 2000)] {
+            runtime.reconnect_failures = failures;
+            assert_eq!(runtime.retry_delay(), Duration::from_millis(milliseconds));
+        }
+        runtime.waiting_for_desktop = false;
+        assert_eq!(runtime.retry_delay(), Duration::from_secs(10));
+    }
+
+    #[test]
+    fn pending_readiness_is_single_flight_and_failure_never_attaches() {
+        let mut app = super::super::tests::test_state();
+        let mut runtime = State::new("unused.db".into());
+        let (probe, sender) = desktop_ready::Probe::pending();
+        runtime.readiness = Some(probe);
+        let attempt = runtime.last_attempt;
+        app.runtime = Some(runtime);
+        let state = Rc::new(RefCell::new(app));
+        for _ in 0..3 { reconnect(&state); }
+        {
+            let s = state.borrow();
+            let runtime = s.runtime.as_ref().unwrap();
+            assert!(runtime.readiness.is_some());
+            assert_eq!(runtime.last_attempt, attempt);
+            assert_eq!(runtime.reconnect_failures, 0);
+            assert!(s.session.is_none());
+        }
+        sender.send(Err("Shell not ready".into())).unwrap();
+        reconnect(&state);
+        let s = state.borrow();
+        let runtime = s.runtime.as_ref().unwrap();
+        assert!(runtime.readiness.is_none());
+        assert!(runtime.waiting_for_desktop);
+        assert_eq!(runtime.reconnect_failures, 1);
+        assert_eq!(runtime.desktop_error.as_deref(), Some("Shell not ready"));
+        assert!(!runtime.notice.unavailable, "transient startup errors must not open a warning");
+        assert!(s.session.is_none());
     }
 
     #[test]

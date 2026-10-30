@@ -7,6 +7,7 @@
 // Application state and native desktop integration.
 mod control;
 mod diagnostics;
+mod desktop_ready;
 mod display_layout;
 mod events;
 mod hybrid;

@@ -87,6 +87,14 @@ pub struct NativeDesktopRevision {
     item_ids: Vec<Vec<u8>>,
 }
 
+impl NativeDesktopRevision {
+    /// Shell view window used for this revision (the parent of the desktop ListView).
+    #[must_use]
+    pub fn view_window(&self) -> isize {
+        self.view
+    }
+}
+
 /// Read-only capture of Explorer's visible items and icon metrics. Never changes folder flags.
 #[derive(Clone, Debug)]
 pub struct NativeDesktopSnapshot {

@@ -76,7 +76,11 @@ def main():
                                          f"stderr={stderr_path.read_text(encoding='utf-8', errors='replace')}")
                 windows = owned_windows(process.pid)
                 assert not any(kind == "#32770" for _, _, kind in windows), "Startup displayed an error dialog"
-                if any(title == "LucidDesk Tray" for _, title, _ in windows) and time.monotonic() - started >= 3:
+                log = data / "logs" / "diagnostic.log"
+                text = log.read_text(encoding="utf-8") if log.exists() else ""
+                if (any(title == "LucidDesk Tray" for _, title, _ in windows)
+                        and 'component="desktop.hook.attach"' in text
+                        and 'component="desktop.audit.start_worker"' in text):
                     break
                 assert time.monotonic() - started < 15, "App never reached its tray/message loop"
                 time.sleep(.05)
@@ -84,6 +88,11 @@ def main():
             for operation in ("desktop.hook.attach", "desktop.audit.start_worker"):
                 assert any(f'component="{operation}"' in line and "outcome=ok" in line
                            for line in text.splitlines()), f"Operation did not complete: {operation}"
+            ready = next((index for index, line in enumerate(text.splitlines())
+                          if 'component="desktop.readiness"' in line and "outcome=ready" in line), None)
+            attached = next(index for index, line in enumerate(text.splitlines())
+                            if 'component="desktop.hook.attach"' in line and "outcome=ok" in line)
+            assert ready is not None and ready < attached, "Hook attached before desktop readiness"
             assert 'component="app.startup"' not in text, "Startup logged a failure"
             if args.expect_local_time:
                 records = [line for line in text.splitlines() if not line.startswith("#") and line]
