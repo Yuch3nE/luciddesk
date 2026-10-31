@@ -14,9 +14,13 @@ Exit the app before upgrading a portable installation and preserve its `data` fo
 - Synchronize the Recycle Bin namespace after app-initiated deletions, including partial completion followed by cancellation or failure, to reduce mismatched empty/full icons.
 - Apply the 30-second warning grace period consistently to desktop readiness, component connection and synchronization failures during startup and reconnection. Keep background retries and diagnostic logs while avoiding premature warnings during transient disconnections.
 
+### feat · CLI and Agent workflows
+
+- Add `diff_summary` to previews with up to 50 changes, explicit truncation and additional sections to inspect. Preserve full diffs, apply tokens and receipt semantics. Summaries reduce irrelevant review content, not the size of the full response.
+- Direct argument errors to command-specific help, falling back to the known resource group for unknown subcommands. Update the Agent Skill guidance for summary review and error recovery.
+
 ### perf · Performance
 
-- Direct CLI argument errors to command-specific help and add bounded preview change summaries, retaining full diffs and apply semantics. Update the Agent Skill review guidance.
 - Parse Everything IPC replies directly to reduce temporary allocations per result page. Bound the completed-result queue to prevent accumulation while the UI is busy, preserving pagination, selection and refresh behavior.
 
 ## 0.25.2 · 2026-10-31

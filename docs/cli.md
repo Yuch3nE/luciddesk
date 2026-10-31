@@ -77,6 +77,8 @@ Use the `luciddesk-cli.exe` shipped with your running LucidDesk installation. No
 
 Use `--dry-run --json` on a mutation, review its diff, then execute the returned `data.next_step.args` array to apply that exact preview. Without `--dry-run`, mutation shortcuts preview and submit immediately. Keep the returned request ID and use `request get --id ID --json` to check pending or uncertain results before retrying.
 
+In 0.25.3, `data.diff_summary` helps locate preview changes before inspecting the relevant full diff sections. It lists up to 50 changes: check `truncated` and `additional_sections`, and fall back to `data.diff` when older CLIs omit the summary. A zero change count does not rule out runtime or geometry effects. Argument errors now provide targeted help through `data.next_step.args`.
+
 LucidDesk 0.25.3 includes per-pane icon controls and `backup list/create/export/restore`; check the running app’s capabilities before use. Backup exports require a new absolute destination path. Restore replaces settings and layout, validates and freezes the selected backup at preview, and saves a pre-restore copy. It does not restore your original files. Keep `rollback_path` if recovery fails; do not repeatedly submit a restore. See the [online Agent guide](https://luciddesk.bbkingdom365.com/agent/) for general setup; the detailed command reference below is in Chinese.
 
 ## 帮助与命令发现

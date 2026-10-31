@@ -28,7 +28,7 @@ LucidDesk is a free, open-source Windows desktop organizer. Group files and shor
 
 [Get started](#getting-started) · [Features](#features) · [Screenshots](#screenshots) · [Upgrading](#upgrading-and-backups) · [FAQ](#troubleshooting)
 
-**New in 0.25.3:** fixes icon-state synchronization and premature startup connection warnings, and reduces temporary memory allocations and queued results in Everything search. See the [changelog](CHANGELOG.en.md#0253--2026-10-31).
+**New in 0.25.3:** fixes icon-state synchronization and premature startup connection warnings, and reduces temporary memory allocations and queued results in Everything search. CLI previews now include change summaries, with command-specific error help and updated Agent guidance. See the [changelog](CHANGELOG.en.md#0253--2026-10-31).
 
 <a id="getting-started"></a>
 
