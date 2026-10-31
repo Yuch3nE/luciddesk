@@ -8,7 +8,7 @@ Start with your first panel, then find the task you need below.
 
 ## Start in five minutes
 
-For LucidDesk 0.25.3.
+For LucidDesk 0.25.3. Requires **Windows 10 1809 (build 17763), x64, or later**. Mica requires Windows 11.
 
 1. Install and start LucidDesk. Find its tray icon near the Windows clock; expand hidden icons if needed.
 2. Right-click the tray icon and choose New panel.
@@ -82,7 +82,7 @@ Use `ext:pdf` to find PDFs or `folder:` to find folders. If results are missing,
 2. Select the program in Settings → File preview and enable preview.
 3. Select a file and press Space.
 
-Everything and preview tools are not bundled with LucidDesk. Search and preview are off by default. Third-party tools have their own OS requirements: current [PowerToys](https://learn.microsoft.com/windows/powertoys/install) requires Windows 10 2004 (build 19041) or later, so LucidDesk’s 1809 minimum does not imply Peek support on 1809.
+Everything and preview tools are not bundled with LucidDesk. Search and preview are off by default. Third-party tools have their own OS requirements: check the installation requirements for [PowerToys](https://learn.microsoft.com/windows/powertoys/install) or your chosen tool. LucidDesk’s 1809 minimum does not mean every preview tool supports that version.
 
 ## Theme, materials and appearance
 
@@ -104,6 +104,8 @@ Overall scaling applies to icons with filenames and does not stack with icon-onl
 Search and choose a font in Fonts. Select an interface language in Settings → General → Language; it applies immediately.
 
 ### Common switches
+
+After sign-in, LucidDesk waits for the Windows desktop to be ready and retries connections automatically. Connection warnings are deferred for the first 30 seconds; this is not a deadline for connecting. You do not need to launch the app repeatedly.
 
 General offers sign-in startup. Panel layout offers the Windows 11-style context menu. If an option is missing, check your version in About.
 
@@ -143,6 +145,10 @@ Back up first, then exit the old app and install the update. For portable update
 
 To connect an agent, copy the Skill installation prompt from Settings → General → Agent & CLI and give it to your chosen agent. Copying the prompt does not install anything or change your desktop. Have the agent read the current layout and preview the changes you want before applying them.
 
+Before connecting, make sure LucidDesk is running and command-line control is enabled in General. Preview summaries help locate changes quickly. If a summary is truncated or points to additional content, have the agent inspect the full diff before you approve the changes.
+
+If a preview reports that it is waiting for a save or another backup task, have the agent follow the returned guidance and preview again when ready. If a submission times out, check its result before retrying to avoid repeating an operation.
+
 **Backup commands:** the CLI can list, create, export and restore backups. Exports do not overwrite existing files. Restoring replaces current configuration and first saves a pre-restore backup. See the [CLI guide](cli.md#english-quick-start). You can continue using the Backup & restore settings page without an agent or command line.
 
 Your external agent may receive queried file names, paths and layout information. Choose its service according to your privacy needs. Disabling command-line control blocks subsequent connections but does not undo submitted operations.
@@ -178,7 +184,7 @@ Click the panel you want to use first.
 | --- | --- |
 | Missing panels | Expand hidden tray icons and click LucidDesk to show panels |
 | Cannot collect desktop icons | Check connection status in About and reconnect; avoid running multiple desktop organizers |
-| Icons update late after dragging into a panel or back to the desktop | Use 0.25.2 or later; check connection status in About and record the drag direction, panel type and delay |
+| Icons update late after dragging into a panel or back to the desktop | Use 0.25.3 or later; check connection status in About and record the drag direction, panel type and delay |
 | Panels have not connected at startup | The app retries automatically and defers connection warnings for 30 seconds; copy diagnostics from About if it remains disconnected |
 | Desktop and panel Recycle Bin icons disagree | Use 0.25.3 or later; if it persists, report the preceding file operation. Emptying the Recycle Bin is not needed to fix its icon |
 | Search or a folder reports that its worker stopped | Reopen the panel as prompted; if it persists, copy diagnostics rather than repeatedly dropping files |
@@ -186,7 +192,7 @@ Click the panel you want to use first.
 | Files do not open after moving computers | Check that original files were transferred and drive letters or folder paths still match |
 | Restore fails | Keep your current data and backup; read the error instead of deleting configuration files |
 
-Collecting or releasing icons in a regular desktop panel only changes their membership. Dropping files into a folder panel copies them to the current directory, so file size and disk speed also affect the wait. Version 0.25.2 fixes delayed updates caused by lost notifications; it does not make all file operations instantaneous.
+Collecting or releasing icons in a regular desktop panel only changes their membership. Dropping files into a folder panel copies them to the current directory, so file size and disk speed also affect the wait. Version 0.25.3 includes the delayed drag-and-drop refresh fix, but copying large files still takes time.
 
 Still stuck? Copy diagnostics from About and [report an issue](https://github.com/Yuch3nE/luciddesk/issues). Hide private paths and filenames before sharing.
 
