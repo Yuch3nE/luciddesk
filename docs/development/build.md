@@ -95,7 +95,7 @@ cargo build -p luciddesk -p luciddesk-explorer --locked --offline --target-dir t
 .\tools\package.ps1 -Offline
 ```
 
-产物位于 `target\packages`。包内配置仍默认保存在 LocalAppData；未提交代码会在包名和 `build.json` 中标记为 dirty。GitHub Actions 的 Build CI 工作流执行全目标编译、核心与存储、多语言、更新检查、框选规则、拖动图像透明度、WARP 彩色 emoji 与 Canvas 兼容测试，以及工作区文档示例。完成检查和打包后，同时上传 EXE 安装包、普通 ZIP、便携 ZIP 及 SHA256 校验文件；需要窗口、焦点或 Explorer 的桌面 UI 测试仍在交互会话运行。
+产物位于 `target\packages`。包内配置仍默认保存在 LocalAppData；未提交代码会在包名和 `build.json` 中标记为 dirty。GitHub Actions 的 Build CI 工作流执行未被测试覆盖的目标编译、核心与存储、多语言、更新检查、框选规则、拖动图像透明度、WARP 彩色 emoji 与 Canvas 兼容测试，以及工作区文档示例。完成检查和打包后，同时上传 EXE 安装包、普通 ZIP、便携 ZIP 及 SHA256 校验文件；需要窗口、焦点或 Explorer 的桌面 UI 测试仍在交互会话运行。
 
 ### EXE 与 MSI 安装包
 
@@ -123,7 +123,9 @@ EXE 由 `tools/packaging/build-exe.ps1` 编译，MSI 由 `tools/packaging/build-
 
 CI 的 `test_installer_payload.py` 将 EXE 清单与技能源目录比较，新增参考文件时缺项即失败；Windows 上 `test_msi_payload.py` 生成 WiX 清单并验证所有 Skill 文件的安装位置和内容，无需安装到系统。`test_refresh_release.py` 覆盖带/不带 MSI 的附件校验及损坏 MSI 的拒绝。
 
-EXE 默认采用 `lzma2/fast` 固实压缩，以较小的体积增量缩短打包时间。需要更小的安装包时使用 `-ExeCompression Max`，也可选择 `Normal`。CI 按准备脚本版本缓存 Inno 编译器。
+EXE 默认采用 `lzma2/fast` 固实压缩，以较小的体积增量缩短打包时间。需要更小的安装包时使用 `-ExeCompression Max`，也可选择 `Normal`。CI 按准备脚本版本缓存 Inno 编译器。 Build CI 将 Windows 测试与发布打包放在两个独立 runner 上并行执行，分别使用 `target/ci-tests` 和 `target/production` 缓存；原有测试步骤和进程隔离保持不变。发布任务必须等待 metadata、build 和 package 全部成功，手动替换 Release 仍要求整个源工作流成功。并行打包可能在测试失败时产生供排查的构建附件，但不会因此发布。
+
+拆分主要缩短总等待时间，不保证减少 runner 总分钟数；冷缓存时两个任务需要各自准备依赖。首次运行会建立新的测试/发布缓存。优化前最近成功运行（40012158503）总耗时约 12 分 44 秒，其中发布构建与打包约 4 分 08 秒；实际收益应比较后续同等缓存状态的 Actions 步骤耗时，不能以本地打包速度代替。
 
 默认 CI 不准备 WiX、不生成或安装 MSI，只检查 WiX 文件清单；需要验证真实 MSI 安装时手动运行下方安装器测试命令。MSI 构建在 `target/msi-cache` 中复用 WiX CAB 压缩缓存和安装检查 DLL；DLL 按源码、构建脚本、工具链及测试模式隔离，并校验文件哈希。MSI 仍执行默认校验，不生成未发布的 `.wixpdb`。
 
@@ -279,3 +281,12 @@ CI 运行 `cargo test -p luciddesk-cli -p luciddesk-api --locked -- --test-threa
 CI 使用滚动更新的 `windows-2025-vs2026` 镜像，MSVC 和 Windows SDK 跟随镜像安装的工具链；本地选择本机可用工具链。Rust 1.99.1、Inno Setup 7.1.0（x64 编译器）、WiX 5.0.2 仍固定版本。`tools/windows-toolchain.json` 仅规定最低 MSVC 14.51.36231 和 SDK 10.0.26100.0；`tools/use-windows-toolchain.ps1` 按数值版本选择最新可用的 x64 MSVC，由 vcvarsall 选择最新 SDK，并显式指定 Cargo 链接器和 C/C++ 工具。缺少工具或版本低于要求时停止，cl/link/lib/rc 的 SHA256 仅用于记录实际构建环境。`build.json` 记录实际 Rust、Cargo、MSVC、SDK、工具版本及 SHA256、CI runner 版本，供定位构建差异；不保证本地与 CI 或不同日期构建的二进制一致。
 
 直接执行 Cargo 构建前，在同一 PowerShell 会话执行 `.\tools\use-windows-toolchain.ps1`；发布打包脚本自动执行该步骤。常规 Visual Studio、SDK 和 runner 镜像更新无需重写哈希配置；若新工具链出现兼容问题，依据日志及 `build.json` 中的实际版本排查。
+
+### CI 编译覆盖与去重
+
+常规测试和发布构建已编译主程序、CLI、协议、存储、诊断及插件目标，因此不再单独对整个工作区执行 `cargo check --all-targets`。保留两组定向检查：
+
+- app、Shell、Explorer 的诊断 examples；插件 examples 由真实 DLL 验证构建。
+- Explorer、graphics、menu、window 的测试目标；这些 crate 的库虽作为依赖编译，但 `cfg(test)` 代码仍需独立检查。
+
+Rust 文档测试只覆盖实际含代码示例的 core、Shell、plugin-host。plugin-host 的 `compile_fail` 测试已由 `test-plugins.ps1` 中的包测试执行，独立文档步骤只运行 core 与 Shell，避免第三次重复插件文档检查。新增 crate、测试目标或文档代码示例时，需同步复核 CI 清单。诊断 feature 未启用的示例仍按既有 Cargo `required-features` 规则跳过。
