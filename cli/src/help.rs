@@ -12,6 +12,34 @@ fn commands() -> Vec<&'static str> {
         .collect()
 }
 
+// Infer only command words, never option values or input contents.
+pub(super) fn error_args(args: &[OsString]) -> Value {
+    let mut words = Vec::new();
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        let Some(arg) = arg.to_str() else { break };
+        match arg {
+            "help" if words.is_empty() => {},
+            "--json" | "--dry-run" | "--unassigned" | "--release-items" | "--help" | "-h" => {},
+            flag if crate::shortcuts::flag(flag).is_some() || matches!(flag,
+                "--id" | "--pane" | "--data-dir" | "--timeout-ms" | "--protocol-version" |
+                "--input" | "--token" | "--request-id") => { args.next(); },
+            flag if flag.starts_with('-') => break,
+            word => words.push(word),
+        }
+    }
+    let commands = commands();
+    while !words.is_empty() {
+        let topic = words.join(".");
+        if commands.contains(&topic.as_str()) || commands.iter().any(|c| c.starts_with(&format!("{topic}."))) { break; }
+        words.pop();
+    }
+    let mut result = vec!["help"];
+    result.extend(words);
+    result.push("--json");
+    json!(result)
+}
+
 fn constraint(schema: &Value) -> String {
     if let Some(values) = schema["enum"].as_array() {
         return values.iter().map(|v| v.as_str().map_or_else(|| v.to_string(), str::to_owned)).collect::<Vec<_>>().join("|");
@@ -444,5 +472,26 @@ mod tests {
                 .unwrap()
                 .is_empty()
         );
+    }
+}
+
+#[cfg(test)]
+mod error_topic_tests {
+    use super::*;
+    #[test]
+    fn errors_target_known_topics_without_treating_values_as_commands() {
+        for (input, expected) in [
+            ("search get --id bad --json", json!(["help","search","get","--json"])),
+            ("--timeout-ms bad pane create --title search --json", json!(["help","pane","create","--json"])),
+            ("pane unknown --json", json!(["help","pane","--json"])),
+            ("help search unknown --json", json!(["help","search","--json"])),
+            ("unknown --title search get", json!(["help","--json"])),
+            ("pane create --unknown search get", json!(["help","pane","create","--json"])),
+        ] {
+            let args: Vec<_> = input.split_whitespace().map(OsString::from).collect();
+            assert_eq!(error_args(&args), expected, "{input}");
+            let strings: Vec<_> = expected.as_array().unwrap().iter().map(|v| OsString::from(v.as_str().unwrap())).collect();
+            assert!(output(&strings).unwrap().is_ok());
+        }
     }
 }

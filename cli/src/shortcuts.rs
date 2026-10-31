@@ -131,6 +131,7 @@ pub(super) fn run(
 ) -> Response {
     let mut response = execute(options, call);
     crate::next_step::attach(&mut response, &options.request, options.timeout);
+    crate::preview_summary::attach(&mut response);
     response
 }
 

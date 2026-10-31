@@ -6,7 +6,7 @@ For related desktop changes, use a single plan so validation and durable workspa
 
 1. Query `workspace get --json` for fresh `context`, exact IDs, pane kinds and lock state. Use already-discovered capabilities unless the instance changed.
 2. Serialize UTF-8 JSON without BOM: `protocol_version:1`, `base` equal to the complete returned context, and ordered `operations`. Pass via `--input -` or a file. Use dotted operation names (`pane.update`) in JSON and words (`pane update`) at the CLI.
-3. Run `plan preview --input FILE_OR_DASH --json`. Inspect `ok`, `data.diff`, and `data.provisional_refs` against the requested scope.
+3. Run `plan preview --input FILE_OR_DASH --json`. Inspect `ok`, `data.diff`, and `data.provisional_refs` against the requested scope. New CLIs add `data.diff_summary`: changed leaf paths and before/after values, limited to 50 entries. Paths are JSON Pointers relative to `diff.before` / `diff.after`; array indices are positions, not IDs. Check `truncated` and every `additional_sections` entry (such as geometry or runtime actions) in the full diff. A zero `change_count` does not mean no runtime/layout effect. Older CLIs may omit the summary; the full diff remains authoritative.
 4. Apply via `data.next_step.args` for `review_then_apply`, or `plan apply --token TOKEN --request-id UNIQUE_ID --json`. Retain the exact token/ID/options. Check original result fields and query postconditions by returned `refs`; use fresh context for subsequent plans.
 
 To create then assign, put `pane.create` with `ref`/`title` before `item.assign` with `pane_ref`/`item_ids`. Other operations require actual pane IDs as defined by the schema. Tokens expire after five minutes and may be evicted earlier.
@@ -25,7 +25,7 @@ Shortcut input differs from a plan: operation fields omit `op`; `settings update
 | `query_receipt` | Query original receipt; poll pending status within a deadline. |
 | `refresh_and_preview` | Read fresh state, then build a new plan preserving concurrent changes. |
 | `inspect_state` | Inspect current state; also query folder/search/settings/startup as relevant. Workspace alone may not establish their state. |
-| `read_help` | Read help, then the specific command topic to fix input. |
+| `read_help` | Execute the supplied help args; newer CLIs target the specific command or nearest known group. Fix input before retrying. |
 | `start_matching_app` | Resolve intended GUI/session within authorization. |
 | `check_access_and_cli_setting` | Resolve access without bypassing restrictions. |
 | `inspect_error` | Handle the original error code; no generic retry is implied. |

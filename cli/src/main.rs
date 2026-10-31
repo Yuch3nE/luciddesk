@@ -1,4 +1,5 @@
 mod diagnostics;
+mod preview_summary;
 mod help;
 mod next_step;
 mod skill;
@@ -191,11 +192,13 @@ fn offline_output(args: &[OsString]) -> Option<String> {
 }
 fn main() {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
+    let error_help = help::error_args(&args);
     if let Some(output) = help::output(&args) {
         match output {
             Ok(text) => println!("{text}"),
             Err(message) => {
-                let response = next_step::invalid_input(message);
+                let mut response = next_step::invalid_input(message);
+                response.data.as_mut().unwrap()["next_step"]["args"] = error_help;
                 if args.iter().any(|a| a == "--json") {
                     println!("{}", serde_json::to_string(&response).unwrap());
                 } else {
@@ -218,7 +221,7 @@ fn main() {
         return;
     }
     let wants_json = args.iter().any(|a| a == "--json");
-    let (response, json) = match parse(args) {
+    let (mut response, json) = match parse(args) {
         Err(error) => (next_step::invalid_input(format!("{error}. Run 'luciddesk-cli help' or 'luciddesk-cli help RESOURCE COMMAND' for usage.")), wants_json),
         Ok(options) => {
             let mut client = None;
@@ -226,6 +229,11 @@ fn main() {
             (response, options.json)
         }
     };
+    if let Some(data) = response.data.as_mut() {
+        if data.pointer("/next_step/action").and_then(serde_json::Value::as_str) == Some("read_help") {
+            data["next_step"]["args"] = error_help;
+        }
+    }
     let code = response.exit_code();
     if json {
         println!(
