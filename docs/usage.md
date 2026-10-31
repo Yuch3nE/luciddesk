@@ -87,7 +87,7 @@
 2. 在“设置 → 文件预览”中选择程序并启用。
 3. 选中文件，按空格预览。
 
-Everything 和预览工具都需要另行安装，相关功能默认关闭。
+Everything 和预览工具都需要另行安装，相关功能默认关闭。第三方工具有独立的系统要求；当前 [PowerToys](https://learn.microsoft.com/windows/powertoys/install) 要求 Windows 10 2004（Build 19041）及以上，不能因 LucidDesk 支持 1809 就认为 Peek 也支持。
 
 ## 外观设置
 

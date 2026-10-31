@@ -82,7 +82,7 @@ Use `ext:pdf` to find PDFs or `folder:` to find folders. If results are missing,
 2. Select the program in Settings → File preview and enable preview.
 3. Select a file and press Space.
 
-Everything and preview tools are not bundled with LucidDesk. Search and preview are off by default.
+Everything and preview tools are not bundled with LucidDesk. Search and preview are off by default. Third-party tools have their own OS requirements: current [PowerToys](https://learn.microsoft.com/windows/powertoys/install) requires Windows 10 2004 (build 19041) or later, so LucidDesk’s 1809 minimum does not imply Peek support on 1809.
 
 ## Theme, materials and appearance
 

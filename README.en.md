@@ -78,7 +78,7 @@ Both features are off by default and require separately installed software:
 | File search | Install and run Everything, then enable it in **Settings → Everything search** |
 | Spacebar preview | Install PowerToys Peek or QuickLook, then select and enable it in **Settings → File preview** |
 
-These tools are not bundled with LucidDesk.
+These tools are not bundled with LucidDesk and may require a newer OS. Current [PowerToys](https://learn.microsoft.com/windows/powertoys/install) requires Windows 10 2004 (build 19041) or later; LucidDesk’s 1809 minimum does not imply Peek support on 1809.
 
 ### Agents and the command line
 
@@ -135,7 +135,7 @@ Check for updates and download them from **Settings → About**. The app does no
 | Environment | Support |
 | --- | --- |
 | Windows 11 x64 | Primary platform; solid color, Acrylic, Mica and Mica Alt |
-| Windows 10 x64 | Tested by users; solid color and Acrylic |
+| Windows 10 1809+ x64 | Tested by users; solid color and Acrylic |
 | ARM64 / Remote Desktop | Not fully validated |
 
 The interface supports 简体中文, 繁體中文, English, 日本語, 한국어, Deutsch and Русский. It follows the Windows display language by default and falls back to English for unsupported languages. Change it in **Settings → General**; changes apply immediately.

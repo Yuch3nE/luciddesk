@@ -2,6 +2,8 @@
 
 # LucidDesk 便携版
 
+最低系统要求：**Windows 10 1809（Build 17763）x64**，或 Windows 11 x64。安装版会拒绝低于此版本的系统；ZIP 版也遵循相同要求。
+
 桌面面板与文件整理 · 开发者 **Yuchen95**
 
 便携包文件名为 `LucidDesk-<版本>-windows-x64-portable.zip`。它通过程序旁的 `portable` 文件启用便携数据目录，适合希望将程序和设置放在一起的用户。主要验证与维护平台为 Windows 11 x64。

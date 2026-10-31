@@ -2,6 +2,8 @@
 
 # 安装与更新
 
+最低系统要求：**Windows 10 1809（Build 17763）x64**，或 Windows 11 x64。安装版会拒绝低于此版本的系统；ZIP 版也遵循相同要求。
+
 下载请到 [GitHub Releases](https://github.com/Yuch3nE/luciddesk/releases)，选择对应版本的附件。安装后从[使用手册](https://luciddesk.bbkingdom365.com/guide/)开始。
 
 默认发布 EXE 安装包，另支持从源码构建 MSI。日常使用推荐 EXE，可在向导中选择当前用户或所有用户；MSI 适合使用 Windows Installer 部署的场景。

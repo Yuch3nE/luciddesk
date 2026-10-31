@@ -2,6 +2,8 @@
 
 # LucidDesk 免安装版
 
+最低系统要求：**Windows 10 1809（Build 17763）x64**，或 Windows 11 x64。安装版会拒绝低于此版本的系统；ZIP 版也遵循相同要求。
+
 LucidDesk 提供桌面分组、文件夹面板和 Everything 搜索入口。开发者：**Yuchen95**。主要验证与维护平台为 Windows 11 x64。
 
 本包是普通免安装 ZIP：解压即可运行，配置默认保存在用户目录。若希望设置随程序目录携带，请使用[便携版](portable.md)；需要安装向导、快捷方式和卸载入口时，使用[安装版](installer.md)。

@@ -10,6 +10,7 @@ Exit the app before upgrading a portable installation and preserve its `data` fo
 
 ### fix · Fixes
 
+- Set the minimum OS requirement to Windows 10 1809 (build 17763), x64. EXE and MSI installation checks reject older systems, matching the existing MSIX minimum.
 - Fix icon updates that could take seconds or tens of seconds after dragging into a desktop panel or back to the desktop. Preserve worker completion notifications during nested window message dispatch.
 - Extend notification protection to search, search icons, monitoring and the CLI queue so queued results are processed promptly.
 - End search and folder loading states when a worker exits unexpectedly and clear pending icon records. Interrupted desktop icon batches can retry within existing limits.

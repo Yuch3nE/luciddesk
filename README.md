@@ -78,7 +78,7 @@ LucidDesk 是一款免费、开源的 Windows 桌面整理工具。用面板收�
 | 文件搜索 | 安装并运行 Everything，在“设置 → Everything 搜索”中启用 |
 | 空格预览 | 安装 PowerToys Peek 或 QuickLook，在“设置 → 文件预览”中选择并启用 |
 
-这些软件不包含在 LucidDesk 发布包内。
+这些软件不包含在 LucidDesk 发布包内，系统要求也可能高于主程序。当前 [PowerToys](https://learn.microsoft.com/windows/powertoys/install) 要求 Windows 10 2004（Build 19041）及以上；LucidDesk 的 1809 最低要求不代表 Peek 在 1809 可用。
 
 ### Agent 与命令行
 
@@ -135,7 +135,7 @@ CLI 支持 JSON 结果与可选诊断日志，适合 Agent 或脚本使用。Luc
 | 环境 | 支持情况 |
 | --- | --- |
 | Windows 11 x64 | 主要维护平台，支持纯色、亚克力、Mica 和 Mica Alt |
-| Windows 10 x64 | 已由用户实机验证，支持纯色和亚克力 |
+| Windows 10 1809+ x64 | 已由用户实机验证，支持纯色和亚克力 |
 | ARM64、远程桌面 | 尚未完整验证 |
 
 支持简体中文、繁體中文、English、日本語、한국어、Deutsch 和 Русский。默认跟随 Windows 显示语言，不支持的语言回退到英语；可在“设置 → 通用”中切换，立即生效。

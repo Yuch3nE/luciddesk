@@ -6,6 +6,7 @@
 #include <msiquery.h>
 #include <tlhelp32.h>
 #include <shlobj.h>
+#include <cwchar>
 #include <string>
 #include <vector>
 
@@ -75,9 +76,18 @@ extern "C" __declspec(dllexport) UINT __stdcall Preflight(MSIHANDLE install) {
     const auto version_result = RegGetValueW(HKEY_LOCAL_MACHINE,
         L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", L"CurrentMajorVersionNumber",
         RRF_RT_REG_DWORD | RRF_SUBKEY_WOW6464KEY, nullptr, &major, &size);
+    wchar_t build_text[32] = {};
+    DWORD build_size = sizeof(build_text);
+    const auto build_result = RegGetValueW(HKEY_LOCAL_MACHINE,
+        L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", L"CurrentBuildNumber",
+        RRF_RT_REG_SZ | RRF_SUBKEY_WOW6464KEY, nullptr, build_text, &build_size);
+    wchar_t* build_end = nullptr;
+    const auto build = wcstoul(build_text, &build_end, 10);
     if (property(install, L"REMOVE") != L"ALL" &&
-        (version_result != ERROR_SUCCESS || major < 10))
-        return fail(install, L"Requires Windows 10 or later. / 需要 Windows 10 或更新系统。");
+        (version_result != ERROR_SUCCESS || major < 10 ||
+         (major == 10 && (build_result != ERROR_SUCCESS || build_end == build_text ||
+                          *build_end != L'\0' || build < 17763))))
+        return fail(install, L"Requires Windows 10 1809 (build 17763) or later, 64-bit. / 需要 64 位 Windows 10 1809（构建 17763）或更新系统。");
     const auto folder = property(install, L"INSTALLFOLDER");
     if (folder.empty()) return fail(install, L"The installation directory is unavailable.");
     if (exists(folder + L"portable") || exists(folder + L"portable.marker"))
