@@ -1,4 +1,4 @@
-<!-- release-doc-version: 0.25.2 -->
+<!-- release-doc-version: 0.25.3 -->
 
 # CLI 使用
 
@@ -6,7 +6,7 @@
 
 使用安装目录中的 `luciddesk-cli.exe` 控制正在运行的 LucidDesk。无需安装 Rust，也无需编译。主程序、CLI 和 Skill 应来自同一套发布包；命令不会替你启动主程序。
 
-适用于 LucidDesk 0.25.2。面板独立图标设置和备份、导出、恢复命令已包含在此版本中；使用前可通过 `capabilities --json` 确认正在运行的程序支持哪些操作。
+适用于 LucidDesk 0.25.3。面板独立图标设置和备份、导出、恢复命令已包含在此版本中；使用前可通过 `capabilities --json` 确认正在运行的程序支持哪些操作。
 
 ## 先确认连接
 
@@ -45,8 +45,11 @@ try {
 
 ```powershell
 $preview = .\luciddesk-cli.exe pane update --id 1 --title "工作" --dry-run --json | ConvertFrom-Json
-$preview.data.diff
+$preview.data.diff_summary # 新版 CLI 的紧凑摘要；旧版可能没有此字段
+$preview.data.diff # 完整差异仍保留
 ```
+
+摘要最多列出 50 项变化，`truncated` 标记是否截断；`additional_sections` 列出仍需查看的几何、文件夹偏好或运行时操作等完整 diff 区段。路径是相对于 `diff.before` / `diff.after` 的 JSON Pointer，数组下标不是项目 ID；`change_count:0` 不代表没有运行时影响。此字段只辅助审阅，不改变提交令牌或完整 diff。
 
 检查改动符合预期，且 `ok` 为 `true`、`next_step.action` 为 `review_then_apply` 后，提交这份预览：
 
@@ -74,7 +77,7 @@ Use the `luciddesk-cli.exe` shipped with your running LucidDesk installation. No
 
 Use `--dry-run --json` on a mutation, review its diff, then execute the returned `data.next_step.args` array to apply that exact preview. Without `--dry-run`, mutation shortcuts preview and submit immediately. Keep the returned request ID and use `request get --id ID --json` to check pending or uncertain results before retrying.
 
-LucidDesk 0.25.2 includes per-pane icon controls and `backup list/create/export/restore`; check the running app’s capabilities before use. Backup exports require a new absolute destination path. Restore replaces settings and layout, validates and freezes the selected backup at preview, and saves a pre-restore copy. It does not restore your original files. Keep `rollback_path` if recovery fails; do not repeatedly submit a restore. See the [online Agent guide](https://luciddesk.bbkingdom365.com/agent/) for general setup; the detailed command reference below is in Chinese.
+LucidDesk 0.25.3 includes per-pane icon controls and `backup list/create/export/restore`; check the running app’s capabilities before use. Backup exports require a new absolute destination path. Restore replaces settings and layout, validates and freezes the selected backup at preview, and saves a pre-restore copy. It does not restore your original files. Keep `rollback_path` if recovery fails; do not repeatedly submit a restore. See the [online Agent guide](https://luciddesk.bbkingdom365.com/agent/) for general setup; the detailed command reference below is in Chinese.
 
 ## 帮助与命令发现
 
@@ -88,6 +91,8 @@ luciddesk-cli pane snap --help
 luciddesk-cli folder fit -h
 luciddesk-cli help pane snap --json
 ```
+
+参数错误的 `read_help.args` 优先指向对应命令；未知子命令退回已知资源组，无法识别时才返回总览。
 
 总览按资源组列出命令及用途，资源组列出子命令，具体命令显示在线/离线模式、读取/预览/执行行为、参数取值和必需字段。示例随命令变化，快捷修改示例默认带 `--dry-run`；示例中的 ID 与路径需要替换为实时查询结果。字段说明来自内置协议；复杂字段用 `--input` 提供。`help ... --json` 返回标准响应信封，`data` 含 `usage`、`commands`，修改命令还包含 `field_flags` 和 `operation_schema`，适合 Agent 读取。在线实际支持范围仍以 `capabilities --json` 为准。
 
@@ -148,7 +153,7 @@ CLI 只连接本机当前用户会话中的应用。查询不会修改工作区�
 
 ## 面板显示
 
-以下选项适用于 LucidDesk 0.25.2。先查询 `capabilities --json`，确认 `pane_display` 支持对应字段。
+以下选项适用于 LucidDesk 0.25.3。先查询 `capabilities --json`，确认 `pane_display` 支持对应字段。
 
 ```powershell
 luciddesk-cli pane update --id 1 --list-view false --icon-only true --icon-size medium --dry-run --json

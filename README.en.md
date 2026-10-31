@@ -12,7 +12,7 @@ Desktop panels · Folder panels · Everything search · Spacebar preview · Agen
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-2EA44F?style=flat-square&labelColor=374151)](LICENSE)
 [![CI status](https://img.shields.io/github/actions/workflow/status/Yuch3nE/luciddesk/build.yml?style=flat-square&label=CI&labelColor=374151)](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml)
-[![Version: 0.25.2](https://img.shields.io/badge/Version-0.25.2-8250DF?style=flat-square&labelColor=374151)](CHANGELOG.en.md)
+[![Version: 0.25.3](https://img.shields.io/badge/Version-0.25.3-8250DF?style=flat-square&labelColor=374151)](CHANGELOG.en.md)
 [![Windows: 10 / 11](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D4?style=flat-square&labelColor=374151)](#compatibility)
 [![Arch: x64](https://img.shields.io/badge/Arch-x64-64748B?style=flat-square&labelColor=374151)](docs/portable.md)
 
@@ -28,7 +28,7 @@ LucidDesk is a free, open-source Windows desktop organizer. Group files and shor
 
 [Get started](#getting-started) · [Features](#features) · [Screenshots](#screenshots) · [Upgrading](#upgrading-and-backups) · [FAQ](#troubleshooting)
 
-**New in 0.25.2:** fixes delayed icon updates after dragging into a panel or back to the desktop, and improves failure handling for search, icon loading and monitoring. See the [changelog](CHANGELOG.en.md#0252--2026-10-31).
+**New in 0.25.3:** fixes icon-state synchronization and premature startup connection warnings, and reduces temporary memory allocations and queued results in Everything search. See the [changelog](CHANGELOG.en.md#0253--2026-10-31).
 
 <a id="getting-started"></a>
 
@@ -147,7 +147,7 @@ The interface supports 简体中文, 繁體中文, English, 日本語, 한국어
 <details>
 <summary>Panels take a long time to appear after sign-in</summary>
 
-LucidDesk checks desktop interfaces in the background and connects when they are ready. It also retries after Explorer restarts. If the app is running but panels have not returned, check the connection status and copy diagnostics in **Settings → About**. If the tray icon has not appeared either, first check Task Manager to see whether the app has started: Windows may delay startup applications. Background readiness checks do not remove that scheduling delay.
+LucidDesk checks desktop interfaces in the background and connects when they are ready. It also retries after Explorer restarts. Connection warnings are deferred for the first 30 seconds after startup or disconnection; persistent failures still produce a warning. If the app is running but panels have not returned, check the connection status and copy diagnostics in **Settings → About**. If the tray icon has not appeared either, first check Task Manager to see whether the app has started: Windows may delay startup applications. Background readiness checks do not remove that scheduling delay.
 
 </details>
 

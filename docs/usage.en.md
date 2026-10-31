@@ -1,4 +1,4 @@
-<!-- manual-version: 0.25.2 -->
+<!-- manual-version: 0.25.3 -->
 
 # LucidDesk User Manual
 
@@ -8,7 +8,7 @@ Start with your first panel, then find the task you need below.
 
 ## Start in five minutes
 
-For LucidDesk 0.25.2.
+For LucidDesk 0.25.3.
 
 1. Install and start LucidDesk. Find its tray icon near the Windows clock; expand hidden icons if needed.
 2. Right-click the tray icon and choose New panel.
@@ -179,6 +179,8 @@ Click the panel you want to use first.
 | Missing panels | Expand hidden tray icons and click LucidDesk to show panels |
 | Cannot collect desktop icons | Check connection status in About and reconnect; avoid running multiple desktop organizers |
 | Icons update late after dragging into a panel or back to the desktop | Use 0.25.2 or later; check connection status in About and record the drag direction, panel type and delay |
+| Panels have not connected at startup | The app retries automatically and defers connection warnings for 30 seconds; copy diagnostics from About if it remains disconnected |
+| Desktop and panel Recycle Bin icons disagree | Use 0.25.3 or later; if it persists, report the preceding file operation. Emptying the Recycle Bin is not needed to fix its icon |
 | Search or a folder reports that its worker stopped | Reopen the panel as prompted; if it persists, copy diagnostics rather than repeatedly dropping files |
 | Search or preview unavailable | Check that the tool is installed, its path is correct and the feature is enabled |
 | Files do not open after moving computers | Check that original files were transferred and drive letters or folder paths still match |

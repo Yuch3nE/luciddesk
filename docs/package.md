@@ -1,4 +1,4 @@
-<!-- release-doc-version: 0.25.2 -->
+<!-- release-doc-version: 0.25.3 -->
 
 # LucidDesk 免安装版
 

@@ -2,9 +2,22 @@
 
 [简体中文](CHANGELOG.md) · English
 
-Current version: **0.25.2**. Features and fixes by release.
+Current version: **0.25.3**. Features and fixes by release.
 
 Exit the app before upgrading a portable installation and preserve its `data` folder. See the [portable guide](docs/portable.md) (Chinese).
+
+## 0.25.3 · 2026-10-31
+
+### fix · Fixes
+
+- Correct the image index decoded from Shell icon-change notifications. Preserve updates when notification payloads are missing or items cannot temporarily be resolved, preventing stale desktop and panel icons.
+- Synchronize the Recycle Bin namespace after app-initiated deletions, including partial completion followed by cancellation or failure, to reduce mismatched empty/full icons.
+- Apply the 30-second warning grace period consistently to desktop readiness, component connection and synchronization failures during startup and reconnection. Keep background retries and diagnostic logs while avoiding premature warnings during transient disconnections.
+
+### perf · Performance
+
+- Direct CLI argument errors to command-specific help and add bounded preview change summaries, retaining full diffs and apply semantics. Update the Agent Skill review guidance.
+- Parse Everything IPC replies directly to reduce temporary allocations per result page. Bound the completed-result queue to prevent accumulation while the UI is busy, preserving pagination, selection and refresh behavior.
 
 ## 0.25.2 · 2026-10-31
 

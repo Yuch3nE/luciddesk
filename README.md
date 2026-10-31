@@ -12,7 +12,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-2EA44F?style=flat-square&labelColor=374151)](LICENSE)
 [![CI status](https://img.shields.io/github/actions/workflow/status/Yuch3nE/luciddesk/build.yml?style=flat-square&label=CI&labelColor=374151)](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml)
-[![Version: 0.25.2](https://img.shields.io/badge/Version-0.25.2-8250DF?style=flat-square&labelColor=374151)](CHANGELOG.md)
+[![Version: 0.25.3](https://img.shields.io/badge/Version-0.25.3-8250DF?style=flat-square&labelColor=374151)](CHANGELOG.md)
 [![Windows: 10 / 11](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D4?style=flat-square&labelColor=374151)](#系统与兼容性)
 [![Arch: x64](https://img.shields.io/badge/Arch-x64-64748B?style=flat-square&labelColor=374151)](docs/portable.md)
 
@@ -28,7 +28,7 @@ LucidDesk 是一款免费、开源的 Windows 桌面整理工具。用面板收�
 
 [开始使用](#开始使用) · [功能](#功能) · [界面截图](#界面截图) · [升级与备份](#升级与备份) · [常见问题](#常见问题)
 
-**0.25.2 更新**：修复图标拖入面板或拖回桌面后延迟刷新的问题，并完善搜索、图标加载和监控的异常退出处理。详见[更新记录](CHANGELOG.md#0252--2026-10-31)。
+**0.25.3 更新**：修复桌面与面板图标状态同步及启动时过早的连接告警，减少 Everything 搜索的临时内存与结果积压。详见[更新记录](CHANGELOG.md#0253--2026-10-31)。
 
 <a id="开始使用"></a>
 
@@ -147,7 +147,7 @@ CLI 支持 JSON 结果与可选诊断日志，适合 Agent 或脚本使用。Luc
 <details>
 <summary>登录后面板迟迟没有出现</summary>
 
-LucidDesk 会在后台检测桌面接口，确认就绪后再连接；Explorer 重启后也会自动重试。若程序已经运行但面板未恢复，可在“设置 → 关于”查看连接状态并复制诊断信息。若托盘图标也迟迟未出现，请先在任务管理器中确认程序是否已启动：Windows 可能延后执行开机启动项，后台接口检测不会消除这段系统调度等待。
+LucidDesk 会在后台检测桌面接口，确认就绪后再连接；Explorer 重启后也会自动重试。启动或断线后的前 30 秒暂缓连接告警，避免短暂失败打断操作；持续失败才显示提示。若程序已经运行但面板未恢复，可在“设置 → 关于”查看连接状态并复制诊断信息。若托盘图标也迟迟未出现，请先在任务管理器中确认程序是否已启动：Windows 可能延后执行开机启动项，后台接口检测不会消除这段系统调度等待。
 
 </details>
 
