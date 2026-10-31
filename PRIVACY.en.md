@@ -1,4 +1,4 @@
-<!-- release-doc-version: 0.24.0 -->
+<!-- release-doc-version: 0.25.3 -->
 
 # LucidDesk Privacy Policy
 

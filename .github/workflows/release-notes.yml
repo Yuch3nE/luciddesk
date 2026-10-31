@@ -41,9 +41,10 @@ jobs:
           set -euo pipefail
           version=$(python3 -c 'import tomllib; from pathlib import Path; print(tomllib.loads(Path("Cargo.toml").read_text())["workspace"]["package"]["version"])')
           updated=false
+          gh api --paginate --slurp "repos/$GH_REPO/releases" > releases.json
           for tag in "v$version" "$version"; do
             if gh release view "$tag" --json tagName >/dev/null 2>&1; then
-              python3 tools/release/release-notes.py --tag "$tag" --repository "$GH_REPO" --output release-notes.md
+              python3 tools/release/release-notes.py --tag "$tag" --repository "$GH_REPO" --releases-json releases.json --output release-notes.md
               gh release edit "$tag" --notes-file release-notes.md
               echo "Updated release notes for $tag"
               updated=true

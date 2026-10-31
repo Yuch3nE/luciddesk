@@ -15,7 +15,7 @@ Astro 7 + Tailwind CSS 4 + shadcn/ui + Lucide 的静态官网。React 通过 Ast
 - `npm run preview`：预览生产构建。
 - `npm run deploy`：检查、构建，再部署 Cloudflare Workers。
 
-首次发布需安装 Wrangler 并完成 `wrangler login`。Worker 为 `luciddesk-website`，域名为 `luciddesk.bbkingdom365.com`，部署目录为 `dist/`。安全响应头与 robots 来自 `public/`；sitemap 由 `src/pages/sitemap.xml.ts` 生成。
+正式发布优先使用 GitHub Actions 的 `Deploy website`：它在 Build CI 的 Release 发布成功后自动执行，也支持手动重试，详见[官网自动发布](../docs/development/website-deployment.md)。本地 `npm run deploy` 只适合已配置 Wrangler 的维护环境，不包含 CI 的版本文档导入和线上版本核验。首次本地部署需安装与工作流相同版本的 Wrangler 并完成 `wrangler login`。Worker 为 `luciddesk-website`，域名为 `luciddesk.bbkingdom365.com`，部署目录为 `dist/`。安全响应头与 robots 来自 `public/`；sitemap 由 `src/pages/sitemap.xml.ts` 生成。
 
 ## 页面结构
 
@@ -66,7 +66,7 @@ shadcn/ui 源码来自官方 `new-york-v4` 注册表，许可见 `SHADCN-LICENSE
 
 `/changelog/` 的中英文内容自动读取仓库根目录的 `CHANGELOG.md`、`CHANGELOG.en.md`。列表每页展示 8 个版本，使用 shadcn Accordion 就地展开完整日志，首页默认展开最新版本，其余收起；保留旧详情地址兼容已有链接；功能基线标明未单独发布，不伪造日期。分类名将 feat/fix/perf 等转为用户可读名称，保留原始更新条目。
 
-每次版本更新同步两份 Markdown 后运行 `npm run deploy`，无需在官网重复录入。中英文版本集合不一致会阻止构建。新增版本详情、分页和 sitemap 会在构建时自动生成。官网页面调整不冒充应用版本更新。
+每次版本更新同步两份 Markdown，由 Release 成功后的官网工作流发布，无需在官网重复录入。仅修订已发布版本的文档时，推送 main 后手动运行 `Deploy website`，不需要重新打包桌面应用。中英文版本集合不一致会阻止构建。新增版本详情、分页和 sitemap 会在构建时自动生成。官网页面调整不冒充应用版本更新。
 
 更新类型标记由 `src/lib/change-types.ts` 统一归类，`ChangeBadge.tsx` 使用 shadcn Badge 和 Lucide 图标显示新增、优化、修复、性能、文档、发布、移除与维护。列表摘要、版本类型计数与详情逐条复用同一规则；明确的类型分组优先，主题分组按条目动作归类。
 

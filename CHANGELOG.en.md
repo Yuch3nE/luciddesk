@@ -8,79 +8,42 @@ Exit the app before upgrading a portable installation and preserve its `data` fo
 
 ## 0.25.3 · 2026-10-31
 
-### fix · Fixes
-
-- Correct the image index decoded from Shell icon-change notifications. Preserve updates when notification payloads are missing or items cannot temporarily be resolved, preventing stale desktop and panel icons.
-- Synchronize the Recycle Bin namespace after app-initiated deletions, including partial completion followed by cancellation or failure, to reduce mismatched empty/full icons.
-- Apply the 30-second warning grace period consistently to desktop readiness, component connection and synchronization failures during startup and reconnection. Keep background retries and diagnostic logs while avoiding premature warnings during transient disconnections.
-
-### feat · CLI and Agent workflows
-
-- Add `diff_summary` to previews with up to 50 changes, explicit truncation and additional sections to inspect. Preserve full diffs, apply tokens and receipt semantics. Summaries reduce irrelevant review content, not the size of the full response.
-- Direct argument errors to command-specific help, falling back to the known resource group for unknown subcommands. Update the Agent Skill guidance for summary review and error recovery.
-
-### perf · Performance
-
-- Parse Everything IPC replies directly to reduce temporary allocations per result page. Bound the completed-result queue to prevent accumulation while the UI is busy, preserving pagination, selection and refresh behavior.
-
-## 0.25.2 · 2026-10-31
-
-### fix · Fixes
-
-- Set the minimum OS requirement to Windows 10 1809 (build 17763), x64. EXE and MSI installation checks reject older systems, matching the existing MSIX minimum.
-- Fix icon updates that could take seconds or tens of seconds after dragging into a desktop panel or back to the desktop. Preserve worker completion notifications during nested window message dispatch.
-- Extend notification protection to search, search icons, monitoring and the CLI queue so queued results are processed promptly.
-- End search and folder loading states when a worker exits unexpectedly and clear pending icon records. Interrupted desktop icon batches can retry within existing limits.
-- Fix state access conflicts when monitor notifications arrive while another window holds application state. Keep pending commands queued and process them after the conflict clears.
-
-## 0.25.1 · 2026-10-31
-
-### fix · Fixes
-
-- Probe desktop interfaces in a background read-only worker before startup connections and reconnections, keeping readiness checks off the UI thread. Connect the desktop component only after matching the desktop window, process and Shell view.
-- Retry unavailable desktop interfaces with backoff from 250 milliseconds to 2 seconds. Suppress warnings for ordinary readiness failures during the first 30 seconds after startup or disconnection, while retaining the existing component-connection backoff.
-- Add readiness outcome and timing logs, with coverage for single-flight probes, stale windows, retries and connection ordering during a real app launch. Windows startup registration is unchanged.
-
-## 0.25.0 · 2026-10-30
-
-### feat · Features
-
-- Backup previews return structured busy states for pending workspace saves and active backup tasks, with read-only queries, wait conditions and fresh-preview guidance.
-- Add optional CLI diagnostics: `LUCIDDESK_CLI_TRACE=1` writes IPC commands, request IDs, timings and error codes to stderr, keeping stdout JSON separate and excluding plan tokens and request payloads. See the [CLI guide](docs/cli.md).
-
-### perf · Performance
-
-- Upgrade rusqlite to 0.41.1, sysinfo to 0.40.0 and compatible transitive dependencies. Adapt backup callbacks and monitor sampling while preserving the existing Windows binding version boundaries.
-
-- Negotiate pipe connection reuse across CLI stages, reuse I/O event handles and combine frame writes to reduce connection, handle and wait overhead. Retain legacy-client compatibility, idle release and no automatic replay after timeouts.
-- Parse JSON once for strict validation and typed decoding. Use lightweight context queries for shortcuts and compare structured server state directly to reduce transfers and string allocation.
-
-### fix · Fixes
-
-- Distinguish timeout recovery for reads, previews and submissions. Text errors show the actual request ID and match JSON next-step guidance; settings and startup failures point to their respective status queries.
-- Update the Agent Skill to rediscover capabilities after instance changes, review previews, batch related operations and follow busy-state guidance without tight polling or duplicate submissions.
-- Fix backup validation wait races, read-only snapshot false alarms from delayed automatic backups, and stale click coordinates in settings tests. Expand multi-client contention, waiting-timeout isolation and live recovery coverage.
-
-## 0.24.0 · 2026-10-29
+All updates since the previous stable release, **0.23.0**. This release improves tabs, desktop drag and drop, startup connections, search, and Agent automation.
 
 ### Tabs and appearance
 
-- Add Left aligned under Settings → Panel layout → Tab alignment; Fill remains the default. Left aligned sizes tabs to their titles and keeps the collapse and menu buttons visible. All tabs shrink when space is limited, preventing tabs from disappearing completely.
-- Use a borderless background for selected tabs and show full titles on hover. Refine tab spacing, inline renaming and panel merge previews.
-- Tune tab backgrounds for each material and theme; solid backgrounds use the selected color's luminance to choose tab contrast. Change the default light solid color to a softer pale gray (`#E9EDF2`) while preserving saved colors.
-- Add the app icon to the settings title bar and align the title and window controls, with refined font sizes, icon sizes and spacing.
+- Add Left aligned under Settings → Panel layout → Tab alignment; Fill remains the default. Left aligned keeps the collapse and menu buttons visible and shrinks tabs when space is limited so no tab disappears completely.
+- Give selected tabs a borderless background and show full titles on hover. Improve tab spacing, inline renaming, and panel merge previews.
+- Refine tab transparency and contrast across materials and light and dark themes. The default solid background in light mode is now a softer pale gray; saved colors remain unchanged.
+- Add the app icon to the settings title bar and improve title and window button alignment, font sizes, and icon sizes.
 
-### Search and installation
+### Desktop and startup
 
-- Load colorful file icons asynchronously in search results and refine result rows, action buttons and interaction feedback. Reuse icon caches and release idle loading resources.
-- Complete all seven installer languages and add translation validation.
+- Fix delays of several seconds or longer before icons refresh after being dragged into a panel or back to the desktop.
+- Improve icon synchronization between the desktop and panels, including mismatched empty/full Recycle Bin icons after deleting files.
+- Improve startup and reconnection: keep the interface responsive while waiting for the Windows desktop, retry connections automatically, and reduce premature error messages during brief disconnections.
+- Fix desktop panels appearing above other application windows and improve panel ordering when multiple instances are running.
+- Improve recovery when applying a background material fails, and improve synchronization of desktop icon visibility.
 
-### Reliability and performance
+### Search and performance
 
-- Fix ordinary desktop panels appearing above application windows. Isolate panel ordering by UI thread to prevent interference from other instances.
-- Fix recovery retries after material application failures and invalidate desktop filtering sessions after request timeouts.
-- Reduce position reads during stable desktop redraws, reuse drawing brushes and icon layouts, and limit horizontal icon uploads while retaining a bounded scrolling cache.
-- Simplify panel state synchronization, control plans and drag state management, with additional window ordering, rendering and desktop filtering regression coverage.
+- Show colorful file icons in search results and improve result rows, action buttons, and loading feedback.
+- Reduce memory overhead when loading Everything results and prevent results from accumulating while the interface is busy.
+- Improve recovery from search, folder, and icon loading errors, reducing cases where loading appears to continue indefinitely.
+- Reduce repeated work when redrawing the desktop and arranging icons, lowering resource overhead during everyday use and scrolling.
+
+### CLI and Agent
+
+- Add change summaries to operation previews for easier review, while keeping full diffs available.
+- Make backup previews explain when they are waiting for a save or another backup task, with guidance on what to do next.
+- Improve messages for invalid arguments, timeouts, and busy states. Update the companion Agent Skill to help automation tools wait appropriately, check results, and avoid duplicate submissions.
+- Reduce communication overhead across consecutive CLI operations to improve automation efficiency.
+- Add optional diagnostic logs for troubleshooting automation without affecting JSON output. See the [CLI guide](docs/cli.md) (Chinese) for setup instructions.
+
+### Installation and compatibility
+
+- Require **Windows 10 1809 (build 17763), x64**, or later. The installer checks the system version.
+- Improve all seven installer languages.
 
 ## 0.23.0 · 2026-10-24
 

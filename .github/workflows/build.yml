@@ -211,7 +211,8 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          python3 tools/release/release-notes.py --tag "$RELEASE_TAG" --repository "$GH_REPO" --changelog CHANGELOG.md --changelog-en CHANGELOG.en.md --output release-notes.md
+            gh api --paginate --slurp "repos/$GH_REPO/releases" > releases.json
+            python3 tools/release/release-notes.py --tag "$RELEASE_TAG" --repository "$GH_REPO" --changelog CHANGELOG.md --changelog-en CHANGELOG.en.md --releases-json releases.json --output release-notes.md
           mapfile -d '' archives < <(find artifacts -type f \( -name '*.zip' -o -name '*-setup.exe' \) -print0)
           mapfile -d '' checksums < <(find artifacts -type f -name '*.sha256' -print0)
           [[ ${#archives[@]} -eq 3 && ${#checksums[@]} -eq 3 ]]

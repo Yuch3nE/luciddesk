@@ -12,6 +12,28 @@ spec.loader.exec_module(notes)
 
 
 class ReleaseNotesTests(unittest.TestCase):
+    def test_release_range_uses_previous_stable_release_and_current_tag_links(self):
+        text = "\n\n".join(f"## {v}\n\n- {v} [Guide](docs/usage.md)" for v in
+                             ["1.11.0", "1.10.0", "1.9.1", "1.9.0", "1.8.0"])
+        releases = [{"tag_name": tag, "draft": draft, "prerelease": pre, "published_at": "date"}
+                    for tag, draft, pre in [("v1.8.0", False, False), ("1.9.0", False, False),
+                                           ("v1.9.1", False, True), ("v1.10.0", False, False),
+                                           ("v1.11.0", False, False), ("v1.9.2", True, False)]]
+        result = notes.release_range(text, text, "v1.10.0", "owner/repo", releases)
+        self.assertIn("1.9.0 → v1.10.0", result)
+        self.assertIn("compare/1.9.0...v1.10.0", result)
+        self.assertEqual(re.findall(r"^## (.+)$", result, re.M), ["1.10.0", "1.9.1"])
+        self.assertIn("blob/v1.10.0/docs/usage.md", result)
+        self.assertNotIn("blob/1.9.1/", result)
+        for invalid in [text.replace("## 1.9.1", "## 1.9.2"), text.replace("## 1.10.0", "## 2.0.0")]:
+            with self.assertRaises(ValueError):
+                notes.release_range(text, invalid, "v1.10.0", "owner/repo", releases)
+        with self.assertRaises(ValueError):
+            notes.release_range(text.replace("## 1.9.0", "## Missing"), text,
+                                "v1.10.0", "owner/repo", releases)
+        first = notes.release_range(text, text, "v1.10.0", "owner/repo", [])
+        self.assertEqual(re.findall(r"^## (.+)$", first, re.M), ["1.10.0", "1.9.1", "1.9.0", "1.8.0"])
+
     def test_both_languages_and_tagged_links(self):
         zh = "## 1.2.3 · 2026-09-30\n\n### feat · 新增功能\n\n- 中文 [指南](docs/usage.md)\n\n### fix · 问题修复\n\n- 中文修复\n\n## 1.2.2\n\nOLD"
         en = "## 1.2.3 · 2026-09-30\n\n### feat · Features\n\n- English [Guide](docs/usage.md) [Web](https://example.com)\n\n### fix · Fixes\n\n- English fix\n"
@@ -65,6 +87,21 @@ class ReleaseNotesTests(unittest.TestCase):
         for ver in versions(zh):
             for tag in (ver, "v" + ver):
                 notes.bilingual(zh, en, tag, "Yuch3nE/luciddesk")
+
+    def test_website_document_versions_match_release(self):
+        version = tomllib.loads((ROOT / "Cargo.toml").read_text())["workspace"]["package"]["version"]
+        documents = {
+            "manual-version": ["docs/usage.md", "docs/usage.en.md"],
+            "release-doc-version": ["PRIVACY.md", "PRIVACY.en.md", "docs/cli.md",
+                                    "docs/installer.md", "docs/portable.md", "docs/package.md"],
+        }
+        for marker, paths in documents.items():
+            for path in paths:
+                with self.subTest(path=path):
+                    text = (ROOT / path).read_text(encoding="utf-8-sig")
+                    self.assertEqual(re.findall(rf"^<!-- {marker}: (.*?) -->$", text, re.M), [version])
+                    self.assertRegex(text, r"(?m)^# .+")
+                    self.assertRegex(text, r"(?m)^## .+")
 
     def test_workspace_packages_inherit_version_and_plugins_remain_independent(self):
         workspace = tomllib.loads((ROOT / "Cargo.toml").read_text())["workspace"]
