@@ -65,13 +65,13 @@ const description = pick('把文件放顺手，把时间留给工作。探索面
           <div class="mt-4"><Button href={feature.href} variant="link" class="h-auto px-0 py-1 text-primary dark:text-blue-300" icon="chevron-right" text={`${categories[index]}${en ? ' guide' : '指南'}`}/></div>
         </div>
         <figure class="min-w-0">
-          {index === 0 ? <WorkspaceIllustration/> : index === 1 ? <Card className="gap-0 overflow-hidden rounded-2xl border-line bg-card/50 p-0 shadow-none backdrop-blur-sm">
+          {index === 0 ? <WorkspaceIllustration/> : index === 1 ? <Card className="illustration-window gap-0 overflow-hidden rounded-2xl border-line bg-card/50 p-0 shadow-none backdrop-blur-sm">
             <div class="flex items-center gap-3 border-b border-line px-6 py-4 text-sm font-medium text-heading"><FolderOpen className="size-5 text-primary dark:text-blue-300" aria-hidden="true"/>{pick('项目资料','Project files')}<span class="ml-auto text-xs font-normal text-muted">{pick('文件夹面板','Folder panel')}</span></div>
-            <div class="grid grid-cols-3 gap-x-3 gap-y-7 px-5 py-8">{[pick('设计素材','Assets'),pick('参考资料','References'),pick('已归档','Archive'),pick('项目计划','Plan'),pick('会议记录','Notes'),pick('交付清单','Checklist')].map((label,i) => <div class="flex min-w-0 flex-col items-center gap-3 text-center text-xs text-muted">{i < 3 ? <Folder className="size-9 text-primary/70 dark:text-blue-300" strokeWidth={1.5} aria-hidden="true"/> : <FileText className="size-9 text-muted" strokeWidth={1.5} aria-hidden="true"/>}<span>{label}</span></div>)}</div>
+            <div class="grid grid-cols-3 gap-x-3 gap-y-7 px-5 py-8">{[pick('设计素材','Assets'),pick('参考资料','References'),pick('已归档','Archive'),pick('项目计划','Plan'),pick('会议记录','Notes'),pick('交付清单','Checklist')].map((label,i) => <div class="flex min-w-0 flex-col items-center gap-3 text-center text-xs text-muted">{i < 3 ? <Folder className="size-9 illustration-folder" strokeWidth={1.5} aria-hidden="true"/> : <FileText className="size-9 illustration-document" strokeWidth={1.5} aria-hidden="true"/>}<span>{label}</span></div>)}</div>
             <div class="border-t border-line px-6 py-3 text-xs text-muted">{pick('文件变化，内容同步刷新','Contents refresh as files change')}</div>
-          </Card> : <Card className="gap-0 rounded-2xl border-line bg-card/50 p-5 shadow-none backdrop-blur-sm sm:p-7">
+          </Card> : <Card className="illustration-window gap-0 rounded-2xl border-line bg-card/50 p-5 shadow-none backdrop-blur-sm sm:p-7">
             <div class="flex items-center gap-3 border-b border-line pb-4 text-sm text-heading"><Search className="size-5 text-primary dark:text-blue-300" aria-hidden="true"/><span>ext:pdf</span><span class="ml-auto text-xs text-muted">Everything</span></div>
-            <div class="my-5 flex items-center gap-3 rounded-xl bg-primary/5 p-4"><FileText className="size-8 shrink-0 text-primary dark:text-blue-300" strokeWidth={1.5} aria-hidden="true"/><div class="min-w-0"><p class="text-sm font-medium text-heading">{pick('项目提案.pdf','Project proposal.pdf')}</p><p class="mt-1 text-xs text-muted">{pick('项目资料 / 文档','Project files / Documents')}</p></div></div>
+            <div class="my-5 flex items-center gap-3 rounded-xl bg-primary/5 p-4"><FileText className="size-8 shrink-0 illustration-document" strokeWidth={1.5} aria-hidden="true"/><div class="min-w-0"><p class="text-sm font-medium text-heading">{pick('项目提案.pdf','Project proposal.pdf')}</p><p class="mt-1 text-xs text-muted">{pick('项目资料 / 文档','Project files / Documents')}</p></div></div>
             <div class="flex items-center justify-center gap-3 py-3 text-sm text-muted"><span class="rounded-md border border-line bg-card px-3 py-1.5 text-xs">Space</span><ArrowRight className="size-4" aria-hidden="true"/><span>{pick('先预览，再打开','Preview before opening')}</span></div>
           </Card>}
           <figcaption class="mx-auto mt-5 max-w-md text-center text-xs leading-6 text-muted">{feature.example}</figcaption>
@@ -94,7 +94,7 @@ const description = pick('把文件放顺手，把时间留给工作。探索面
       </section>)}
     </div>
     <div class="mt-8 flex flex-wrap items-center justify-between gap-5 py-6">
-      <div><h2 class="text-xl font-semibold text-heading">{pick('从一个面板开始','Start with one panel.')}</h2><p class="mt-2 text-sm text-muted">{pick('免费、开源，无需注册账号。Windows 10 / 11 x64。','Free and open source. No account required. Windows 10 / 11 x64.')}</p></div>
+      <div><h2 class="text-xl font-semibold text-heading">{pick('从一个面板开始','Start with one panel.')}</h2><p class="mt-2 text-sm text-muted">{pick('免费、开源，无需注册账号。Windows 10 1809 及以上 / Windows 11 x64。','Free and open source. No account required. Windows 10 1809+ / Windows 11 x64.')}</p></div>
       <Button href="/#download" variant="primary" icon="download" text={pick('选择下载版本','Choose a download')}/>
     </div>
   </div>

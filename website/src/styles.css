@@ -5,22 +5,22 @@
   color-scheme: light;
   --aw-color-primary: #2563eb;
   --aw-color-secondary: #1d4ed8;
-  --aw-color-text-heading: #172033;
-  --aw-color-text-default: #27354b;
-  --aw-color-text-muted: #617087;
-  --aw-color-bg-page: #f8fafc;
-  --aw-color-bg-page-dark: #0f172a;
-  --aw-color-surface: #edf2f8;
-  --aw-color-line: #dce4ef;
+  --aw-color-text-heading: #202124;
+  --aw-color-text-default: #35363a;
+  --aw-color-text-muted: #66686e;
+  --aw-color-bg-page: #fafaf9;
+  --aw-color-bg-page-dark: #18191b;
+  --aw-color-surface: #f0f0ee;
+  --aw-color-line: #dededb;
 }
 .dark {
   color-scheme: dark;
-  --aw-color-text-heading: #f1f5f9;
-  --aw-color-text-default: #dce5f2;
-  --aw-color-text-muted: #a4b2c8;
-  --aw-color-bg-page: #10151f;
-  --aw-color-surface: #192230;
-  --aw-color-line: #2b374a;
+  --aw-color-text-heading: #f4f4f3;
+  --aw-color-text-default: #dededc;
+  --aw-color-text-muted: #adaeac;
+  --aw-color-bg-page: #18191b;
+  --aw-color-surface: #222325;
+  --aw-color-line: #38393b;
 }
 @theme {
   --color-primary: var(--aw-color-primary);
@@ -140,25 +140,28 @@
 
 /* Shared translucent surfaces: solid alpha layers avoid gradient banding. */
 :root {
-  --aw-color-surface: #eef3f8;
-  --aw-color-line: #dce5ef;
   --glass-fill: rgb(255 255 255 / .68);
-  --glass-border: rgb(128 151 180 / .2);
-  --glass-shadow: 0 8px 32px -24px rgb(40 65 100 / .2);
-  --illustration-base: #e9f0f7;
+  --glass-border: rgb(110 110 105 / .2);
+  --glass-shadow: 0 8px 32px -24px rgb(40 40 35 / .16);
+  --illustration-base: #eaeae7;
   --illustration-glass: #ffffff;
-  --illustration-tint: #dce8f7;
+  --illustration-tint: #dedfdb;
+  --illustration-panel: linear-gradient(145deg, #ffffff, #f0f0ee);
+  --illustration-folder-stroke: #cf971e;
+  --illustration-folder-fill: #f4cc65;
+  --illustration-document-stroke: #5681b4;
+  --illustration-document-fill: #f1f6fc;
 }
 .dark {
-  --aw-color-bg-page: #141c28;
-  --aw-color-surface: #1c2736;
-  --aw-color-line: #2d3b4d;
-  --glass-fill: rgb(32 44 60 / .62);
-  --glass-border: rgb(153 179 210 / .16);
+  --glass-fill: rgb(37 38 40 / .72);
+  --glass-border: rgb(190 190 185 / .16);
   --glass-shadow: 0 8px 32px -24px rgb(0 0 0 / .3);
-  --illustration-base: #202d3f;
-  --illustration-glass: #2b3b50;
-  --illustration-tint: #3b5372;
+  --illustration-base: #252628;
+  --illustration-glass: #303133;
+  --illustration-tint: #424447;
+  --illustration-panel: linear-gradient(145deg, #303133, #252628);
+  --illustration-document-stroke: #8ab4e8;
+  --illustration-document-fill: #303a47;
 }
 .site-header, [data-slot="card"] {
   background: var(--glass-fill);
@@ -354,3 +357,8 @@
 @media (prefers-reduced-motion: no-preference) {
   .site-header .site-nav a { transition: background-color 160ms ease, color 160ms ease, box-shadow 160ms ease; }
 }
+
+/* Illustration surfaces and file colors stay consistent across pages. */
+.illustration-window[data-slot="card"] { background: var(--illustration-panel); border-color: var(--aw-color-line); }
+.illustration-folder { color: var(--illustration-folder-stroke); fill: var(--illustration-folder-fill); }
+.illustration-document { color: var(--illustration-document-stroke); fill: var(--illustration-document-fill); }

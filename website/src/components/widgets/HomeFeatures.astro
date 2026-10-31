@@ -58,10 +58,10 @@ const features = [
       <a href="/features/#focus" class="mt-5 inline-flex items-center gap-2 text-sm text-primary dark:text-blue-300">{pick('了解外观与专注','Explore appearance and focus')}<ArrowRight size={15}/></a>
     </div>
     <div data-motion class="grid grid-cols-2 gap-4" aria-label={pick('浅色与深色外观示意','Light and dark appearance illustrations')}>
-      {[false,true].map(dark => <div class:list={['rounded-2xl border p-6 sm:p-8',dark ? 'border-slate-600 bg-slate-800 text-slate-100' : 'border-white bg-slate-100 text-slate-700']}>
+      {[false,true].map(dark => <div class:list={['rounded-2xl border p-6 sm:p-8',dark ? 'border-zinc-600 bg-zinc-800 text-zinc-100' : 'border-zinc-200 bg-zinc-100 text-zinc-700']}>
         {dark ? <Moon size={22}/> : <Sun size={22}/>}
         <p class="mt-6 text-sm font-semibold">{dark ? pick('深色','Dark') : pick('浅色','Light')}</p>
-        <div class="mt-4 space-y-3" aria-hidden="true">{[0,1,2].map(i => <div class="flex items-center gap-2"><span class="size-4 rounded bg-blue-400/30"></span><span class:list={['h-1.5 rounded',i === 1 ? 'w-9' : 'w-14',dark ? 'bg-slate-500' : 'bg-slate-300']}></span></div>)}</div>
+        <div class="mt-4 space-y-3" aria-hidden="true">{[0,1,2].map(i => <div class="flex items-center gap-2"><span class="size-4 rounded bg-blue-400/30"></span><span class:list={['h-1.5 rounded',i === 1 ? 'w-9' : 'w-14',dark ? 'bg-zinc-500' : 'bg-zinc-300']}></span></div>)}</div>
       </div>)}
       <p class="col-span-2 mt-2 flex items-center justify-center gap-2 text-xs text-muted"><MousePointer2 size={15}/>{pick('双击隐藏，再次双击恢复','Double-click to hide. Double-click to restore.')}</p>
     </div>
@@ -78,8 +78,8 @@ const features = [
 .feature-lead .feature-copy > a { margin-top:0; }
 .feature-demo { display:flex; min-width:0; align-items:flex-start; justify-content:center; background:transparent; }
 .feature-lead .feature-demo { align-items:center; }
-.demo-window { width:100%; max-width:460px; border:1px solid var(--aw-color-line); border-radius:12px; overflow:hidden; background:linear-gradient(145deg,#ffffff,#f1f4f7); box-shadow:0 12px 24px -18px rgb(0 0 0 / .18),0 2px 5px -3px rgb(0 0 0 / .08); color:var(--aw-color-text-heading); font-size:12px; }
-:global(.dark) .demo-window { background:linear-gradient(145deg,#25303b,#202a35); border-color:#3b4857; box-shadow:0 12px 24px -18px rgb(0 0 0 / .5),inset 0 1px 0 rgb(255 255 255 / .035); }
+.demo-window { width:100%; max-width:460px; border:1px solid var(--aw-color-line); border-radius:12px; overflow:hidden; background:var(--illustration-panel); box-shadow:0 12px 24px -18px rgb(0 0 0 / .18),0 2px 5px -3px rgb(0 0 0 / .08); color:var(--aw-color-text-heading); font-size:12px; }
+:global(.dark) .demo-window { box-shadow:0 12px 24px -18px rgb(0 0 0 / .5),inset 0 1px 0 rgb(255 255 255 / .035); }
 .demo-title { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 16px; border-bottom:1px solid var(--aw-color-line); font-weight:600; }
 .demo-tab-header { gap:8px; padding:10px; }
 .demo-tabs { display:flex; flex:1; min-width:0; gap:4px; color:var(--aw-color-text-muted); font-size:11px; font-weight:400; }
@@ -100,8 +100,8 @@ const features = [
 .demo-label { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .demo-size { flex-shrink:0; font-size:10px; font-variant-numeric:tabular-nums; color:var(--aw-color-text-muted); }
 .demo-window :global(svg) { flex-shrink:0; }
-.demo-window :global(.demo-folder) { color:#cf971e; fill:#f4cc65; }
-.demo-window :global(.demo-document) { color:#6697d0; fill:color-mix(in srgb,#8ab4e8 10%,var(--aw-color-bg-page)); }
+.demo-window :global(.demo-folder) { color:var(--illustration-folder-stroke); fill:var(--illustration-folder-fill); }
+.demo-window :global(.demo-document) { color:var(--illustration-document-stroke); fill:var(--illustration-document-fill); }
 .demo-result { justify-content:flex-start; min-height:62px; border:1px solid color-mix(in srgb,var(--aw-color-primary) 12%,transparent); border-radius:7px; }
 .result-copy { flex:1; min-width:0; }
 .result-path { display:block; margin-top:4px; font-size:9px; color:var(--aw-color-text-muted); }
