@@ -20,6 +20,33 @@ pub(crate) fn command_completed(result: Result<()>) -> Result<bool> {
     }
 }
 
+// PerformOperations may fail or be cancelled after recycling part of a batch.
+// Reconcile the namespace at completion, independently of panel/icon visibility,
+// and preserve the original operation result if this best-effort update fails.
+fn recycling_completed(result: Result<()>, refresh: impl FnOnce() -> Result<()>) -> Result<bool> {
+    if let Err(error) = refresh() {
+        luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Debug,
+            "shell.file-operation", &format!("Recycle namespace reconciliation failed: {error}"));
+    }
+    command_completed(result)
+}
+
+fn refresh_recycle_namespace() -> Result<()> {
+    unsafe {
+        let item: IShellItem = SHGetKnownFolderItem(&FOLDERID_RecycleBinFolder, KF_FLAG_DEFAULT, None)?;
+        let view: IShellView = item.BindToHandler(None, &BHID_SFViewObject)?;
+        view.Refresh()
+    }
+}
+
+fn file_command_completed(command: FileCommand, result: Result<()>) -> Result<bool> {
+    if command == FileCommand::Delete {
+        recycling_completed(result, refresh_recycle_namespace)
+    } else {
+        command_completed(result)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FileCommand {
     Copy,
@@ -240,7 +267,12 @@ pub fn show_file_items_menu(
             nShow: SW_SHOWNORMAL.0,
             ..Default::default()
         };
-        command_completed(context.InvokeCommand(&command))?;
+        let result = context.InvokeCommand(&command);
+        if verb.starts_with(b"delete\0") {
+            file_command_completed(FileCommand::Delete, result)?;
+        } else {
+            command_completed(result)?;
+        }
         Ok(false)
     }
 }
@@ -330,7 +362,7 @@ fn invoke_batch(owner: HWND, selected: &[ShellIdentity], command: FileCommand) -
             operation
                 .SetOperationFlags(FOF_ALLOWUNDO | FOF_WANTNUKEWARNING | FOFX_RECYCLEONDELETE)?;
             operation.DeleteItems(&items)?;
-            if !command_completed(operation.PerformOperations())? { return Ok(false); }
+            if !file_command_completed(command, operation.PerformOperations())? { return Ok(false); }
             return Ok(!operation.GetAnyOperationsAborted()?.as_bool());
         }
         let data: IDataObject = items.BindToHandler(None, &BHID_DataObject)?;
@@ -434,7 +466,7 @@ pub fn invoke_file_commands(
                 nShow: SW_SHOWNORMAL.0,
                 ..Default::default()
             };
-            return command_completed(context.InvokeCommand(&info));
+            return file_command_completed(command, context.InvokeCommand(&info));
         }
         Ok(false)
     }
@@ -442,6 +474,28 @@ pub fn invoke_file_commands(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn recycling_completion_reconciles_partial_failures_without_masking_results() {
+        use std::cell::Cell;
+        use windows::{core::{Error, HRESULT}, Win32::Foundation::{E_ACCESSDENIED, E_FAIL, ERROR_CANCELLED}};
+        let calls = Cell::new(0);
+        let refresh = || {
+            calls.set(calls.get() + 1);
+            Err(Error::from_hresult(E_FAIL))
+        };
+        assert!(super::recycling_completed(Ok(()), refresh).unwrap());
+        assert!(!super::recycling_completed(Err(Error::from_hresult(HRESULT::from_win32(ERROR_CANCELLED.0))), refresh).unwrap());
+        assert_eq!(super::recycling_completed(Err(Error::from_hresult(E_ACCESSDENIED)), refresh).unwrap_err().code(), E_ACCESSDENIED);
+        assert_eq!(calls.get(), 3, "a partial/cancelled batch may already have recycled items");
+    }
+
+    #[test]
+    #[ignore = "Reconciles the live Recycle Bin namespace without changing its contents"]
+    fn live_recycling_completion_without_a_panel() {
+        let _sta = crate::ShellApartment::initialize_sta().unwrap();
+        assert!(super::recycling_completed(Ok(()), super::refresh_recycle_namespace).unwrap());
+    }
+
     #[test]
     fn explicit_cancellation_is_not_an_error_but_failures_keep_their_hresult() {
         use windows::Win32::Foundation::{ERROR_CANCELLED, E_ACCESSDENIED, E_ABORT};

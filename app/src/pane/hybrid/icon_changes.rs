@@ -20,29 +20,6 @@ pub(super) unsafe fn capture(wparam: usize, event: u32) -> Vec<Change> {
     if event & SHCNE_ASSOCCHANGED.0 != 0 {
         return vec![Change::All];
     }
-    if wparam == 0 {
-        return Vec::new();
-    }
-    let pair = wparam as *const *const Common::ITEMIDLIST;
-    if event & SHCNE_UPDATEIMAGE.0 != 0 {
-        let extra = unsafe { *pair.add(1) };
-        let index = if !extra.is_null() {
-            unsafe { SHHandleUpdateImage(extra) }
-        } else {
-            // Legacy DWORD notifications are encoded as SHChangeDWORDAsIDList.
-            let first = unsafe { *pair };
-            if !first.is_null() && unsafe { ILGetSize(Some(first)) } >= 12 {
-                unsafe { std::ptr::read_unaligned(first.cast::<u8>().add(2).cast::<i32>()) }
-            } else {
-                -1
-            }
-        };
-        return vec![if index >= 0 {
-            Change::Image(index)
-        } else {
-            Change::All
-        }];
-    }
     let item_events = SHCNE_UPDATEITEM.0
         | SHCNE_UPDATEDIR.0
         | SHCNE_ATTRIBUTES.0
@@ -56,6 +33,35 @@ pub(super) unsafe fn capture(wparam: usize, event: u32) -> Vec<Change> {
         | SHCNE_DRIVEREMOVED.0
         | SHCNE_MEDIAINSERTED.0
         | SHCNE_MEDIAREMOVED.0;
+    if wparam == 0 {
+        // Missing invalidation payload is uncertainty, not proof that no icon changed.
+        return if event & (item_events | SHCNE_UPDATEIMAGE.0) != 0 {
+            vec![Change::All]
+        } else {
+            Vec::new()
+        };
+    }
+    let pair = wparam as *const *const Common::ITEMIDLIST;
+    if event & SHCNE_UPDATEIMAGE.0 != 0 {
+        let extra = unsafe { *pair.add(1) };
+        let index = if !extra.is_null() {
+            unsafe { SHHandleUpdateImage(extra) }
+        } else {
+            // SHCNE_UPDATEIMAGE puts the system-image index in dwItem2, not
+            // dwItem1 (normally zero). Shell packs both into this legacy PIDL.
+            let first = unsafe { *pair };
+            if !first.is_null() && unsafe { ILGetSize(Some(first)) } >= 12 {
+                unsafe { std::ptr::read_unaligned(first.cast::<u8>().add(6).cast::<i32>()) }
+            } else {
+                -1
+            }
+        };
+        return vec![if index >= 0 {
+            Change::Image(index)
+        } else {
+            Change::All
+        }];
+    }
     if event & item_events == 0 {
         return Vec::new();
     }
@@ -65,15 +71,16 @@ pub(super) unsafe fn capture(wparam: usize, event: u32) -> Vec<Change> {
         1
     };
     (0..count)
-        .filter_map(|index| unsafe {
+        .map(|index| unsafe {
             let pidl = *pair.add(index);
             if pidl.is_null() {
-                return None;
+                return Change::All;
             }
             let size = ILGetSize(Some(pidl)) as usize;
-            Some(Change::Item(
-                std::slice::from_raw_parts(pidl.cast::<u8>(), size).to_vec(),
-            ))
+            if size <= 2 {
+                return Change::All;
+            }
+            Change::Item(std::slice::from_raw_parts(pidl.cast::<u8>(), size).to_vec())
         })
         .collect()
 }
@@ -121,13 +128,20 @@ impl Pending {
             match change {
                 Change::Item(bytes) => unsafe {
                     let pidl = bytes.as_ptr().cast();
+                    let mut resolved = false;
                     for kind in [SIGDN_FILESYSPATH, SIGDN_DESKTOPABSOLUTEPARSING] {
                         if let Ok(name) = SHGetNameFromIDList(pidl, kind) {
                             if let Ok(value) = name.to_string() {
-                                names.insert(normalize(&value));
+                                if !value.is_empty() {
+                                    names.insert(normalize(&value));
+                                    resolved = true;
+                                }
                             }
                             CoTaskMemFree(Some(name.0.cast()));
                         }
+                    }
+                    if !resolved {
+                        return identities;
                     }
                 },
                 Change::Image(index) => {
@@ -160,10 +174,10 @@ impl Pending {
                         PCWSTR(name.as_ptr()),
                         None,
                     ) else {
-                        return false;
+                        return true;
                     };
                     let Ok(pidl) = SHGetIDListFromObject(&item) else {
-                        return false;
+                        return true;
                     };
                     let ok = SHGetFileInfoW(
                         PCWSTR(pidl.cast()),
@@ -173,7 +187,7 @@ impl Pending {
                         SHGFI_PIDL | SHGFI_SYSICONINDEX,
                     );
                     CoTaskMemFree(Some(pidl.cast()));
-                    ok != 0 && images.contains(&info.iIcon)
+                    ok == 0 || images.contains(&info.iIcon)
                 }
             })
             .collect()
@@ -183,6 +197,62 @@ impl Pending {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[ignore = "Delivers a real Shell image-change notification; run alone on an interactive desktop"]
+    fn native_image_notification_preserves_system_index() {
+        use std::{cell::RefCell, rc::Rc, time::{Duration, Instant}};
+        use windows_sys::Win32::UI::WindowsAndMessaging::*;
+        let _sta = crate::pane::test_support::apartment();
+        let received = Rc::new(RefCell::new(Vec::new()));
+        let output = received.clone();
+        const MESSAGE: u32 = WM_APP + 921;
+        let window = windows_window::Window::new("LucidDesk icon notification test")
+            .size(1, 1).style(WS_POPUP).ex_style(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE)
+            .on_message(move |_, message, wp, lp| {
+                if message == MESSAGE && lp as u32 & SHCNE_UPDATEIMAGE.0 != 0 {
+                    output.borrow_mut().extend(unsafe { capture(wp, lp as u32) });
+                    Some(0)
+                } else { None }
+            }).create().unwrap();
+        let _subscription = luciddesk_shell::DesktopChangeSubscription::register(window.hwnd() as isize, MESSAGE).unwrap();
+        unsafe { SHChangeNotify(SHCNE_UPDATEIMAGE, SHCNF_DWORD | SHCNF_FLUSHNOWAIT, None, Some(27usize as *const _)); }
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while received.borrow().is_empty() && Instant::now() < deadline {
+            unsafe {
+                let mut msg = MSG::default();
+                while PeekMessageW(&mut msg, std::ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
+                    TranslateMessage(&msg);
+                    DispatchMessageW(&msg);
+                }
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(received.borrow().contains(&Change::Image(27)), "actual payload: {:?}", received.borrow());
+    }
+
+    #[test]
+    fn missing_item_payload_invalidates_instead_of_dropping_changes() {
+        for event in [SHCNE_UPDATEIMAGE, SHCNE_UPDATEITEM, SHCNE_RENAMEITEM, SHCNE_UPDATEDIR] {
+            assert_eq!(unsafe { capture(0, event.0) }, [Change::All]);
+        }
+        let pair = [std::ptr::null::<Common::ITEMIDLIST>(); 2];
+        assert_eq!(unsafe { capture(pair.as_ptr() as usize, SHCNE_UPDATEITEM.0) }, [Change::All]);
+        assert!(unsafe { capture(0, SHCNE_FREESPACE.0) }.is_empty());
+    }
+
+    #[test]
+    fn failed_icon_index_lookup_remains_a_refresh_candidate() {
+        let _sta = crate::pane::test_support::apartment();
+        let unavailable = ShellIdentity::Namespace {
+            parsing_name: "::{C678BBA5-CEB1-4F2A-8D5F-3524B8C09372}".into(),
+        };
+        let computer = ShellIdentity::Namespace {
+            parsing_name: "::{20D04FE0-3AEA-1069-A2D8-08002B30309D}".into(),
+        };
+        let mut pending = Pending::default();
+        pending.add([Change::Image(i32::MAX)]);
+        assert_eq!(pending.affected(vec![computer, unavailable.clone()]), [unavailable]);
+    }
     #[test]
     fn duplicate_notifications_coalesce_and_global_changes_supersede_items() {
         let mut pending = Pending::default();
@@ -230,8 +300,8 @@ mod tests {
     fn image_payload_is_decoded_as_index_not_a_shell_item() {
         let payload = SHChangeDWORDAsIDList {
             cb: 10,
-            dwItem1: 27,
-            dwItem2: 0,
+            dwItem1: 0,
+            dwItem2: 27,
             cbZero: 0,
         };
         let pair = [
