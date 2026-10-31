@@ -50,6 +50,12 @@ struct ConnectionNotice {
     last_error: Option<String>,
 }
 impl ConnectionNotice {
+    fn update(&mut self, unavailable: bool, warning_due: bool) -> bool {
+        // Do not consume the unavailable transition during the recovery grace
+        // period: a persistent failure must still notify once it expires.
+        if unavailable && !warning_due { return false; }
+        self.transition(unavailable)
+    }
     fn error_changed(&mut self, error: Option<&str>) -> bool {
         if self.last_error.as_deref() == error { return false; }
         self.last_error = error.map(str::to_owned);
@@ -81,7 +87,10 @@ fn notify_connection(state: &Rc<RefCell<PaneApp>>) {
     let (path, error, generation, notify) = {
         let mut s = state.borrow_mut();
         let Some(runtime) = &mut s.runtime else { return; };
-        let notify = runtime.notice.transition(runtime.desktop_error.is_some());
+        // Readiness, attachment and post-attach synchronization can all race
+        // Explorer startup/restart. Apply the same grace period to every path.
+        let warning_due = runtime.readiness_since.elapsed() >= Duration::from_secs(30);
+        let notify = runtime.notice.update(runtime.desktop_error.is_some(), warning_due);
         runtime.notice.error_changed(runtime.desktop_error.as_deref());
         (runtime.path.clone(), runtime.desktop_error.clone(), runtime.notice.generation, notify)
     };
@@ -149,11 +158,8 @@ pub(super) fn reconnect(state: &Rc<RefCell<PaneApp>>) {
             runtime.last_attempt = Instant::now();
             runtime.reconnect_failures = runtime.reconnect_failures.saturating_add(1);
             runtime.desktop_error = Some(error);
-            // Ordinary login races should not open a modal warning. Persistent
-            // failures retain the existing connection warning and retry path.
-            let notify = runtime.readiness_since.elapsed() >= Duration::from_secs(30);
             drop(s);
-            if notify { notify_connection(state); }
+            notify_connection(state);
             return;
         }
         runtime.waiting_for_desktop = false;
@@ -581,6 +587,26 @@ pub(super) fn supervisor(state: &Rc<RefCell<PaneApp>>) -> Result<windows_window:
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn all_connection_failure_phases_share_the_recovery_grace_period() {
+        let mut notice = super::ConnectionNotice::default();
+        for error in ["Shell not ready", "Inventory changed", "Hook not ready", "Synchronization timeout"] {
+            assert!(notice.error_changed(Some(error)));
+            assert!(!notice.update(true, false));
+            assert!(!notice.unavailable);
+            assert_eq!(notice.generation, 0);
+        }
+        assert!(!notice.update(false, false), "recovery before the deadline must stay silent");
+        assert!(notice.update(true, true), "persistent failures must still warn");
+        let queued_generation = notice.generation;
+        assert!(!notice.update(true, true), "retries must not repeat the warning");
+        assert!(notice.update(false, false), "recovery must invalidate queued warnings");
+        assert_ne!(notice.generation, queued_generation);
+        assert!(!notice.unavailable);
+        assert!(!notice.update(true, false), "a new disconnect gets its own grace period");
+        assert!(notice.update(true, true));
+    }
+
     #[test]
     fn connection_failure_capture_survives_recovery_and_notice_deduplication() {
         let mut app = super::super::tests::test_state();
