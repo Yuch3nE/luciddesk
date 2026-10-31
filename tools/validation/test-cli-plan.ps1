@@ -103,6 +103,24 @@ try {
     $settings = Invoke-Cli @('settings','get')
     if ($settings.data.scope -ne 'application_config' -or $settings.data.values.'diagnostics.level' -ne 'error') { throw 'Settings query returned unexpected defaults' }
     if ($settings.data.values.'search.enabled' -isnot [bool]) { throw 'Settings query lost boolean types' }
+    # Earlier pane mutations and startup discovery can still schedule saves.
+    # Establish a quiet baseline before attributing disk changes to read-only calls.
+    . (Join-Path $PSScriptRoot 'support/cli-idle-state.ps1')
+    $null = Wait-CliIdleSnapshot -ReadState {
+        $state = Invoke-Cli @('status')
+        $backupState = Invoke-Cli @('backup','list')
+        if ($state.data.workspace_save_pending -isnot [bool] -or $backupState.data.busy -isnot [bool]) {
+            throw 'Idle status omitted save/backup busy flags'
+        }
+        @{
+            snapshot = ((Get-SharedHash (Join-Path $root 'workspace.db')) + ':' + (Get-SharedHash (Join-Path $root 'config.toml')))
+            busy = ($state.data.workspace_save_pending -or $backupState.data.busy)
+        }
+    } -RecordState {
+        param($state, $seconds)
+        @{seconds=$seconds;busy=$state.busy;snapshot=$state.snapshot} |
+            ConvertTo-Json -Compress | Add-Content -LiteralPath ($root + '.startup-settle.jsonl') -Encoding utf8
+    }
     $startupDbBefore = Get-SharedHash (Join-Path $root 'workspace.db')
     $startupConfigBefore = Get-SharedHash (Join-Path $root 'config.toml')
     $deadline = [DateTime]::UtcNow.AddSeconds(15)

@@ -56,6 +56,17 @@ try {
     try { $null = Complete-Backup @('backup','create') } catch { $rejected = $true }
     if (-not $rejected -or $script:calls.Count -ne 1) { throw 'Invalid request was retried' }
     $passed++
+    $conflict = @{code=5;body=@{ok=$false;request_id='preview-conflict';error=@{code='CONFLICT'};data=@{next_step=@{action='refresh_and_preview'}}}}
+    Reset-Responses @($conflict, $ready, $done, $done)
+    $result = Complete-Backup @('backup','create')
+    if ($result.request_id -ne 'submitted' -or $script:responses.Count -ne 0 -or $script:calls.Count -ne 4) { throw 'Conflict recovery did not complete' }
+    foreach ($index in @(0,1)) {
+        if ('--dry-run' -notin $script:calls[$index]) { throw 'Conflict recovery submitted before a fresh preview' }
+    }
+    foreach ($index in @(2,3)) {
+        if ('fresh' -notin $script:calls[$index]) { throw 'Conflict apply/replay did not use the fresh token' }
+    }
+    $passed++
     Write-Output "Passed $passed backup wait scenarios; no application state touched."
 } finally {
     if (Test-Path -LiteralPath ($root + '.commands.jsonl')) { Remove-Item -LiteralPath ($root + '.commands.jsonl') }

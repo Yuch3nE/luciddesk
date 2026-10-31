@@ -8,6 +8,14 @@ function Complete-Backup([string[]]$Command) {
         $preview = $raw | ConvertFrom-Json
         if ($code -eq 0 -and $preview.ok) { break }
         $step = $preview.data.next_step
+        if ($code -eq 5 -and $preview.error.code -eq 'CONFLICT' -and $step.action -eq 'refresh_and_preview') {
+            # This invocation was explicitly dry-run: no apply has occurred.
+            # The shortcut obtains fresh context on the next preview attempt.
+            @{event='backup_preview_conflict';request_id=$preview.request_id} |
+                ConvertTo-Json -Compress | Add-Content -LiteralPath ($root + '.commands.jsonl') -Encoding utf8
+            Start-Sleep -Milliseconds 250
+            continue
+        }
         if ($code -ne 6 -or $preview.error.code -ne 'BUSY' -or
             $preview.data.operation_submitted -ne $false -or
             $preview.data.busy.phase -ne 'preview' -or $step.action -ne 'wait_for_idle') {
