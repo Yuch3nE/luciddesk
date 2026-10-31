@@ -888,3 +888,60 @@ fn result_menu_and_dispatch_agree_on_multiselection() {
     assert_eq!(path_text(&items), "C:/测试/a file.txt\r\nD:/b.txt");
     assert_eq!(path_text(&[]), "");
 }
+
+#[test]
+fn stalled_ui_bounds_completed_pages_and_closing_releases_the_worker() {
+    use super::*;
+    let (send, requests) = mpsc::channel();
+    let (responses, receive) = mpsc::sync_channel(1);
+    let (started, observed) = mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        run_queries(requests, responses, Default::default(), |query, offset| {
+            started.send(query.to_owned()).unwrap();
+            Ok(Page {
+                total: 200,
+                offset,
+                entries: (0..200)
+                    .map(|i| Entry {
+                        path: format!("C:/memory/{i}/{}", "x".repeat(4000)).into(),
+                        folder: false,
+                    })
+                    .collect(),
+            })
+        })
+    });
+    send.send(Request {
+        generation: 1,
+        query: "first".into(),
+        offset: 0,
+    })
+    .unwrap();
+    assert_eq!(
+        observed.recv_timeout(Duration::from_secs(5)).unwrap(),
+        "first"
+    );
+    send.send(Request {
+        generation: 2,
+        query: "second".into(),
+        offset: 0,
+    })
+    .unwrap();
+    assert_eq!(
+        observed.recv_timeout(Duration::from_secs(5)).unwrap(),
+        "second"
+    );
+    send.send(Request {
+        generation: 3,
+        query: "third".into(),
+        offset: 0,
+    })
+    .unwrap();
+    // One queued page and one producer page is the bound, irrespective of how
+    // long a native modal loop prevents the UI from consuming its mailbox.
+    drop(receive);
+    worker.join().unwrap();
+    assert!(matches!(
+        observed.try_recv(),
+        Err(mpsc::TryRecvError::Disconnected)
+    ));
+}

@@ -116,10 +116,12 @@ unsafe extern "system" fn receive(
         let data = unsafe { &*(lp as *const COPYDATASTRUCT) };
         if data.dwData == TOKEN && !data.lpData.is_null() && data.cbData <= 32 * 1024 * 1024 {
             unsafe {
-                *(reference as *mut Option<Vec<u8>>) = Some(
-                    std::slice::from_raw_parts(data.lpData.cast::<u8>(), data.cbData as usize)
-                        .to_vec(),
-                );
+                // WM_COPYDATA owns these bytes until this callback returns.
+                // Parse now and retain only owned paths, never a second full
+                // wire buffer alongside the decoded result page.
+                *(reference as *mut Option<Result<Page, String>>) = Some(parse(
+                    std::slice::from_raw_parts(data.lpData.cast::<u8>(), data.cbData as usize),
+                ));
             }
             return 1;
         }
@@ -150,7 +152,7 @@ pub(super) fn query(search: &str, offset: u32) -> Result<Page, String> {
     if target.is_null() {
         return Err(crate::i18n::text("ui-start-everything-enable-ipc-then-refresh").into());
     }
-    let mut reply: Option<Vec<u8>> = None;
+    let mut reply: Option<Result<Page, String>> = None;
     let hwnd = unsafe {
         CreateWindowExW(
             WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
@@ -231,8 +233,8 @@ pub(super) fn query(search: &str, offset: u32) -> Result<Page, String> {
     }
     let deadline = Instant::now() + Duration::from_secs(4);
     loop {
-        if let Some(bytes) = reply.take() {
-            return parse(&bytes);
+        if let Some(result) = reply.take() {
+            return result;
         }
         if Instant::now() >= deadline {
             return Err(crate::i18n::text("ui-everything-search-timed-out-refresh-shortly").into());
@@ -251,6 +253,88 @@ pub(super) fn query(search: &str, offset: u32) -> Result<Page, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn copydata_reply_owns_paths_without_retaining_the_wire_buffer() {
+        let mut bytes = packet("C:\\搜索\\owned-result.txt");
+        let mut reply: Option<Result<Page, String>> = None;
+        let data = COPYDATASTRUCT {
+            dwData: TOKEN,
+            cbData: bytes.len() as u32,
+            lpData: bytes.as_mut_ptr().cast(),
+        };
+        assert_eq!(
+            unsafe {
+                receive(
+                    std::ptr::null_mut(),
+                    WM_COPYDATA,
+                    0,
+                    (&raw const data) as isize,
+                    1,
+                    (&raw mut reply) as usize,
+                )
+            },
+            1
+        );
+        bytes.fill(0);
+        drop(bytes);
+        assert_eq!(
+            reply.take().unwrap().unwrap().entries[0].path,
+            PathBuf::from("C:\\搜索\\owned-result.txt")
+        );
+
+        let mut malformed = packet("C:\\bad.txt");
+        malformed.truncate(20);
+        let data = COPYDATASTRUCT {
+            dwData: TOKEN,
+            cbData: malformed.len() as u32,
+            lpData: malformed.as_mut_ptr().cast(),
+        };
+        unsafe {
+            receive(
+                std::ptr::null_mut(),
+                WM_COPYDATA,
+                0,
+                (&raw const data) as isize,
+                1,
+                (&raw mut reply) as usize,
+            );
+        }
+        assert!(reply.take().unwrap().is_err());
+    }
+
+    #[test]
+    fn measure_result_page_payload_and_owned_storage() {
+        for path_chars in [240, 4000] {
+            let count = PAGE_SIZE as usize;
+            let mut bytes = Vec::new();
+            for value in [PAGE_SIZE, PAGE_SIZE, 0, REQUEST, 1] {
+                bytes.extend(value.to_le_bytes());
+            }
+            bytes.resize(20 + count * 8, 0);
+            for i in 0..count {
+                let offset = bytes.len() as u32;
+                bytes[24 + i * 8..28 + i * 8].copy_from_slice(&offset.to_le_bytes());
+                let path = format!("C:\\memory\\{i}\\{}", "x".repeat(path_chars));
+                bytes.extend((path.encode_utf16().count() as u32).to_le_bytes());
+                for unit in path.encode_utf16().chain(Some(0)) {
+                    bytes.extend(unit.to_le_bytes());
+                }
+            }
+            let page = parse(&bytes).unwrap();
+            let owned = page.entries.capacity() * size_of::<Entry>()
+                + page
+                    .entries
+                    .iter()
+                    .map(|e| e.path.capacity())
+                    .sum::<usize>();
+            println!(
+                "paths={count} suffix_chars={path_chars} removed_wire_copy_bytes={} owned_result_bytes={owned}",
+                bytes.len()
+            );
+            assert_eq!(page.entries.len(), count);
+        }
+    }
+
     fn packet(path: &str) -> Vec<u8> {
         let mut data = Vec::new();
         for v in [

@@ -167,6 +167,26 @@ struct Request {
     query: String,
     offset: u32,
 }
+fn run_queries(
+    requests: mpsc::Receiver<Request>,
+    responses: mpsc::SyncSender<(u64, Result<Page, String>)>,
+    ready: super::wake::Wake,
+    mut query: impl FnMut(&str, u32) -> Result<Page, String>,
+) {
+    let _exit = ready.on_drop();
+    let responses = responses;
+    while let Ok(mut request) = requests.recv() {
+        for next in requests.try_iter() {
+            request = next;
+        }
+        let result = query(&request.query, request.offset);
+        if responses.send((request.generation, result)).is_err() {
+            break;
+        }
+        ready.notify();
+    }
+}
+
 struct Search {
     wake: super::wake::Wake,
     sender: mpsc::Sender<Request>,
@@ -198,21 +218,10 @@ impl Search {
         let wake = super::wake::Wake::default();
         let ready = wake.clone();
         let (sender, requests) = mpsc::channel::<Request>();
-        let (responses, receiver) = mpsc::channel();
-        std::thread::spawn(move || {
-            let _exit = ready.on_drop();
-            let responses = responses;
-            while let Ok(mut request) = requests.recv() {
-                for next in requests.try_iter() {
-                    request = next;
-                }
-                let result = everything::query(&request.query, request.offset);
-                if responses.send((request.generation, result)).is_err() {
-                    break;
-                }
-                ready.notify();
-            }
-        });
+        // The UI may be busy in a Shell menu/modal loop. Keep at most one
+        // completed page queued; dropping Search releases a blocked sender.
+        let (responses, receiver) = mpsc::sync_channel(1);
+        std::thread::spawn(move || run_queries(requests, responses, ready, everything::query));
         Self {
             wake,
             sender,
