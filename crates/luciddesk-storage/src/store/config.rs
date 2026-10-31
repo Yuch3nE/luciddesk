@@ -203,6 +203,8 @@ pub(super) fn decode(doc: &DocumentMut) -> Result<BTreeMap<String, String>, Stor
     for path in [
         &["cli"][..],
         &["updates"],
+        &["desktop"],
+        &["show_panels"],
         &["diagnostics"],
         &["appearance"],
         &["panel_defaults"],

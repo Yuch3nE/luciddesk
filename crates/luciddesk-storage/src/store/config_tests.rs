@@ -1,6 +1,36 @@
 use luciddesk_core::{DesktopItem, DesktopPlacement, GridPosition, ShellIdentity};
 use super::*;
 
+#[test]
+fn desktop_and_show_panels_reject_non_table_sections_without_replacing_valid_config() {
+    for section in ["desktop", "show_panels"] {
+        for invalid in ["false", "1", "'text'", "[]", "[{ enabled = true }]"] {
+            let (dir, store) = open();
+            let path = dir.path().join("config.toml");
+            let before = store.settings().unwrap();
+            let source = format!("config_version = 1\n{section} = {invalid}\n");
+            std::fs::write(&path, &source).unwrap();
+            assert!(store.reload_config().is_err(), "{source}");
+            assert_eq!(store.settings().unwrap(), before);
+            assert!(WorkspaceStore::open(&dir.path().join("workspace.db")).is_err(), "{source}");
+            assert_eq!(std::fs::read_to_string(path).unwrap(), source);
+        }
+    }
+}
+
+#[test]
+fn omitted_and_inline_desktop_sections_remain_editable() {
+    for source in ["config_version = 1\n", "config_version = 1\ndesktop = {}\nshow_panels = {}\n"] {
+        let (dir, store) = open();
+        std::fs::write(dir.path().join("config.toml"), source).unwrap();
+        store.reload_config().unwrap();
+        for key in ["desktop.double_click_hide", "show_panels.enabled"] {
+            store.save_settings(&[(key.into(), SettingValue::Boolean(true))].into_iter().collect()).unwrap();
+            assert_eq!(store.settings().unwrap()[key], SettingValue::Boolean(true));
+        }
+    }
+}
+
 fn open() -> (tempfile::TempDir, WorkspaceStore) {
     let dir = tempfile::tempdir().unwrap();
     let store = WorkspaceStore::open(&dir.path().join("workspace.db")).unwrap();
