@@ -60,7 +60,13 @@ impl MenuHost {
         context: MenuContext,
         cancelled: Arc<AtomicBool>,
     ) -> Result<Self> {
-        Self::create_impl(desktop, targets, context, cancelled, true)
+        #[cfg(not(feature = "menu-diagnostics"))]
+        let compact_available = true;
+        #[cfg(feature = "menu-diagnostics")]
+        let compact_available = unsafe {
+            GetPropW(context.owner as _, windows_sys::w!("LucidDesk.Test.ForceClassic")).is_null()
+        };
+        Self::create_impl(desktop, targets, context, cancelled, compact_available)
     }
     fn create_impl(
         desktop: windows_sys::Win32::Foundation::HWND,
@@ -193,7 +199,6 @@ impl MenuHost {
                     Ok(presenter)
                 })
                 .inspect_err(|_error| {
-                    #[cfg(any(debug_assertions, feature = "menu-diagnostics"))]
                     if let Ok(hwnd) = view.GetWindow() {
                         SetPropW(hwnd.0, windows_sys::w!("LucidDesk.Menu.PresenterError"), _error.code().0 as u32 as usize as _);
                     }
@@ -206,7 +211,6 @@ impl MenuHost {
             // The validated Shell selection still supplies a public classic menu.
             host.presenter = presenter.clone();
             let view_hwnd = view.GetWindow()?.0;
-            #[cfg(any(debug_assertions, feature = "menu-diagnostics"))]
             SetPropW(view_hwnd, windows_sys::w!("LucidDesk.Menu.Presenter"),
                 if presenter.is_some() { 1usize } else { 2usize } as _);
             let callbacks = Rc::new(MenuCallbacks {
@@ -524,6 +528,104 @@ unsafe extern "system" fn host_messages(
 #[cfg(test)]
 mod fallback_tests {
     use super::*;
+    struct ProcessTheme {
+        module: windows_sys::Win32::Foundation::HMODULE,
+        set: unsafe extern "system" fn(i32) -> i32,
+        previous: i32,
+    }
+
+    impl ProcessTheme {
+        unsafe fn force(mode: i32) -> Self {
+            use windows_sys::Win32::System::LibraryLoader::*;
+            unsafe {
+                let module = LoadLibraryExW(windows_sys::w!("uxtheme.dll"), null_mut(), LOAD_LIBRARY_SEARCH_SYSTEM32);
+                assert!(!module.is_null());
+                let set: unsafe extern "system" fn(i32) -> i32 = std::mem::transmute(
+                    GetProcAddress(module, 135usize as *const u8).unwrap());
+                Self { module, set, previous: set(mode) }
+            }
+        }
+    }
+
+    impl Drop for ProcessTheme {
+        fn drop(&mut self) {
+            unsafe {
+                (self.set)(self.previous);
+                windows_sys::Win32::Foundation::FreeLibrary(self.module);
+            }
+        }
+    }
+    thread_local! {
+        static POPUP_COLOR: Cell<Option<u32>> = const { Cell::new(None) };
+    }
+
+    unsafe extern "system" fn inspect_popup(hwnd: windows_sys::Win32::Foundation::HWND, _: isize) -> i32 {
+        unsafe {
+            if GetClassLongPtrW(hwnd, GCW_ATOM) == 32768 && IsWindowVisible(hwnd) != 0 {
+                let mut rect = windows_sys::Win32::Foundation::RECT::default();
+                GetClientRect(hwnd, &raw mut rect);
+                let dc = windows_sys::Win32::Graphics::Gdi::GetDC(hwnd);
+                if !dc.is_null() {
+                    let color = windows_sys::Win32::Graphics::Gdi::GetPixel(dc, (rect.right - 20).max(1), (rect.bottom / 2).max(1));
+                    windows_sys::Win32::Graphics::Gdi::ReleaseDC(hwnd, dc);
+                    if color != u32::MAX { POPUP_COLOR.set(Some(color)); }
+                }
+            }
+        }
+        1
+    }
+
+    unsafe extern "system" fn inspect_and_cancel(hwnd: windows_sys::Win32::Foundation::HWND, _: u32, timer: usize, _: u32) {
+        unsafe {
+            KillTimer(hwnd, timer);
+            EnumThreadWindows(windows_sys::Win32::System::Threading::GetCurrentThreadId(), Some(inspect_popup), 0);
+            EndMenu();
+        }
+    }
+
+    #[test]
+    #[ignore = "opens and automatically cancels a real fallback menu; requires an interactive desktop"]
+    fn fallback_popup_matches_current_windows_theme() {
+        unsafe {
+            // Opt-in only: ordinal 135 has a different ABI before Windows 10 1903.
+            let _theme = std::env::var("LUCIDDESK_TEST_PRIOR_THEME").ok().map(|value| {
+                let mode: i32 = value.parse().expect("expected ForceDark=2 or ForceLight=3");
+                assert!(matches!(mode, 2 | 3));
+                ProcessTheme::force(mode)
+            });
+            windows::Win32::System::Ole::OleInitialize(None).unwrap();
+            let owner = CreateWindowExW(0, windows_sys::w!("STATIC"), windows_sys::w!("LucidDesk fallback theme test"),
+                WS_OVERLAPPEDWINDOW, 200, 200, 480, 320, null_mut(), null_mut(), null_mut(), std::ptr::null());
+            assert!(!owner.is_null());
+            let path = std::env::temp_dir().join(format!("luciddesk-theme-test-{}.txt", std::process::id()));
+            std::fs::write(&path, b"owned theme fixture").unwrap();
+            let observed = {
+                let targets = ResolvedTargets::resolve(&[path.to_string_lossy().into_owned()]).unwrap();
+                let context = MenuContext { owner: owner as u64, x: 250, y: 250 };
+                let host = MenuHost::create_impl(owner, &targets, context, Arc::new(AtomicBool::new(false)), false).unwrap();
+                let callbacks = host.callbacks.as_ref().unwrap();
+                let hwnd = host.view_hwnd().unwrap() as windows_sys::Win32::Foundation::HWND;
+                ShowWindow(owner, SW_SHOW);
+                SetForegroundWindow(owner);
+                let menu: IContextMenu = callbacks.view.GetItemObject(SVGIO_SELECTION).unwrap();
+                POPUP_COLOR.set(None);
+                assert_ne!(SetTimer(hwnd, 0x4c505443, 1500, Some(inspect_and_cancel)), 0);
+                let result = classic::show(hwnd, &menu, context, &callbacks.classic, &callbacks.invocation);
+                KillTimer(hwnd, 0x4c505443);
+                result.unwrap();
+                POPUP_COLOR.get()
+            };
+            DestroyWindow(owner);
+            std::fs::remove_file(path).unwrap();
+            windows::Win32::System::Ole::OleUninitialize();
+            let color = observed.expect("the real popup must be visible for color inspection");
+            println!("fallback_popup_background_rgb=#{:02X}{:02X}{:02X}", color & 255, (color >> 8) & 255, (color >> 16) & 255);
+            if let Ok(expected) = std::env::var("LUCIDDESK_TEST_EXPECT_DARK") {
+                let dark = (color & 255) + ((color >> 8) & 255) + ((color >> 16) & 255) < 384;
+                assert_eq!(dark, expected == "1", "actual fallback popup color must match Windows mode");
+            }
+        }
+    }
     #[test]
     #[ignore = "creates a native Shell view; run separately outside the restricted test sandbox"]
     fn unavailable_presenter_keeps_validated_shell_selection_and_rename_verb() {
