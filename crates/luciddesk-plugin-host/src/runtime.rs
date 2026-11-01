@@ -246,19 +246,24 @@ impl Runtime {
         disabled: &BTreeSet<String>,
         language: &str,
     ) {
+        let root_changed = self.config_root != root;
         self.config_root = root;
         for (id, plugin) in &mut self.plugins {
             let result = if disabled.contains(id) {
                 plugin.info.state = PluginState::Disabled;
                 plugin.stop(language)
             } else {
-                // A previous cleanup failure must be resolved before reopening resources.
-                let cleanup =
-                    if plugin.info.state != PluginState::Ready || plugin.info.error.is_some() {
-                        plugin.stop(language)
-                    } else {
-                        Ok(())
-                    };
+                // Reloading configuration must release its old resources first, even
+                // when the plugin is healthy. A failed cleanup blocks reopening.
+                let cleanup = if plugin.configured
+                    || root_changed
+                    || plugin.info.state != PluginState::Ready
+                    || plugin.info.error.is_some()
+                {
+                    plugin.stop(language)
+                } else {
+                    Ok(())
+                };
                 cleanup.and_then(|()| {
                     plugin.info.state = PluginState::Ready;
                     plugin.configured = false;
