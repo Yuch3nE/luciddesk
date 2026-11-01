@@ -698,18 +698,23 @@ fn scrolling_releases_offscreen_icon_textures() {
     );
 }
 
+fn horizontal_icon_fixture(free: bool, column: u32) -> GroupModel {
+    let mut model = sample_model();
+    model.fixed_grid = true;
+    model.free_layout = free;
+    model.items.truncate(1);
+    model.items[0].details.grid_position = Some(luciddesk_core::GridPosition::new(column, 0));
+    model.items[0].details.free_position = Some(luciddesk_core::PointDip::new(column as f32 * 100.0, 0.0));
+    model
+}
+
 #[test]
-fn horizontal_buffer_reuses_edge_icons_and_releases_distant_ones() {
+fn horizontal_texture_lifecycle_preserves_pixels_and_bounds_uploads() {
     let _sta = crate::pane::test_support::apartment();
     let device = windows_canvas::GpuDevice::new_warp().unwrap();
     for free in [false, true] {
         for scale in [1.0, 1.25, 1.5, 2.0] {
-            let mut model = sample_model();
-            model.fixed_grid = true;
-            model.free_layout = free;
-            model.items.truncate(1);
-            model.items[0].details.grid_position = Some(luciddesk_core::GridPosition::new(0, 0));
-            model.items[0].details.free_position = Some(luciddesk_core::PointDip::new(0.0, 0.0));
+            let mut model = horizontal_icon_fixture(free, 0);
             let mut tail = model.items[0].clone();
             tail.image = None;
             tail.details.grid_position = Some(luciddesk_core::GridPosition::new(20, 0));
@@ -731,6 +736,36 @@ fn horizontal_buffer_reuses_edge_icons_and_releases_distant_ones() {
             model.scroll_x = 0.0;
             renderer.paint(&bitmap.target, width, height, scale, &model).unwrap();
             assert_eq!(renderer.image_uploads, 2);
+
+            // Fresh renderer: an initially hidden icon must not upload until visible.
+            let mut model = horizontal_icon_fixture(free, 8);
+            let image = model.items[0].image.as_ref().unwrap();
+            let key = Arc::as_ptr(image) as usize;
+            let mut renderer = Renderer::new().unwrap();
+            renderer.paint(&bitmap.target, width, height, scale, &model).unwrap();
+            let hidden = bitmap.pixels().unwrap();
+            assert!(renderer.images.is_empty(), "offscreen icons must not be uploaded");
+            assert_eq!(renderer.image_uploads, 0);
+            let mut placeholder = model.clone();
+            placeholder.items[0].image = None;
+            let mut reference = Renderer::new().unwrap();
+            reference.paint(&bitmap.target, width, height, scale, &placeholder).unwrap();
+            assert_eq!(hidden, bitmap.pixels().unwrap(), "hidden image must not affect pixels");
+            model.scroll_x = model.horizontal_max(240.0);
+            renderer.paint(&bitmap.target, width, height, scale, &model).unwrap();
+            let visible = bitmap.pixels().unwrap();
+            assert_eq!(renderer.image_uploads, 1, "entering the viewport uploads once");
+            assert!(renderer.images.contains_key(&key));
+            renderer.paint(&bitmap.target, width, height, scale, &model).unwrap();
+            assert_eq!(renderer.image_uploads, 1, "unchanged visible frame reuses texture");
+            placeholder.scroll_x = model.scroll_x;
+            reference.paint(&bitmap.target, width, height, scale, &placeholder).unwrap();
+            assert_ne!(visible, bitmap.pixels().unwrap(), "loaded icon must appear after scrolling");
+            model.scroll_x = 0.0;
+            renderer.paint(&bitmap.target, width, height, scale, &model).unwrap();
+            assert_eq!(renderer.image_uploads, 1);
+            assert!(renderer.images.is_empty(), "leaving the viewport releases texture");
+            assert_eq!(hidden, bitmap.pixels().unwrap(), "round-trip scrolling must restore the original frame");
         }
     }
 }
@@ -803,51 +838,6 @@ fn horizontal_scroll_bounds_gpu_cache_for_wide_rows() {
                 assert_eq!(renderer.images.contains_key(&key), visible || buffered,
                     "retain only visible or previously uploaded neighboring icons");
             }
-        }
-    }
-}
-
-#[test]
-fn horizontal_scroll_uploads_visible_textures_and_releases_hidden_ones() {
-    let _sta = crate::pane::test_support::apartment();
-    let device = windows_canvas::GpuDevice::new_warp().unwrap();
-    for free in [false, true] {
-        for scale in [1.0, 1.25, 1.5, 2.0] {
-            let mut model = sample_model();
-            model.fixed_grid = true;
-            model.free_layout = free;
-            model.items.truncate(1);
-            model.items[0].details.grid_position = Some(luciddesk_core::GridPosition::new(8, 0));
-            model.items[0].details.free_position = Some(luciddesk_core::PointDip::new(800.0, 0.0));
-            let image = model.items[0].image.as_ref().unwrap();
-            let key = Arc::as_ptr(image) as usize;
-            let (width, height) = ((240.0 * scale) as u32, (240.0 * scale) as u32);
-            let bitmap = canvas::Offscreen::new(&device, width, height).unwrap();
-            let mut renderer = Renderer::new().unwrap();
-            renderer.paint(&bitmap.target, width, height, scale, &model).unwrap();
-            let hidden = bitmap.pixels().unwrap();
-            assert!(renderer.images.is_empty(), "offscreen icons must not be uploaded");
-            assert_eq!(renderer.image_uploads, 0);
-            let mut placeholder = model.clone();
-            placeholder.items[0].image = None;
-            let mut reference = Renderer::new().unwrap();
-            reference.paint(&bitmap.target, width, height, scale, &placeholder).unwrap();
-            assert_eq!(hidden, bitmap.pixels().unwrap(), "hidden image must not affect pixels");
-            model.scroll_x = model.horizontal_max(240.0);
-            renderer.paint(&bitmap.target, width, height, scale, &model).unwrap();
-            let visible = bitmap.pixels().unwrap();
-            assert_eq!(renderer.image_uploads, 1, "entering the viewport uploads once");
-            assert!(renderer.images.contains_key(&key));
-            renderer.paint(&bitmap.target, width, height, scale, &model).unwrap();
-            assert_eq!(renderer.image_uploads, 1, "unchanged visible frame reuses texture");
-            placeholder.scroll_x = model.scroll_x;
-            reference.paint(&bitmap.target, width, height, scale, &placeholder).unwrap();
-            assert_ne!(visible, bitmap.pixels().unwrap(), "loaded icon must appear after scrolling");
-            model.scroll_x = 0.0;
-            renderer.paint(&bitmap.target, width, height, scale, &model).unwrap();
-            assert_eq!(renderer.image_uploads, 1);
-            assert!(renderer.images.is_empty(), "leaving the viewport releases texture");
-            assert_eq!(hidden, bitmap.pixels().unwrap(), "round-trip scrolling must restore the original frame");
         }
     }
 }

@@ -123,7 +123,7 @@ EXE 由 `tools/packaging/build-exe.ps1` 编译，MSI 由 `tools/packaging/build-
 
 CI 的 `test_installer_payload.py` 将 EXE 清单与技能源目录比较，新增参考文件时缺项即失败；Windows 上 `test_msi_payload.py` 生成 WiX 清单并验证所有 Skill 文件的安装位置和内容，无需安装到系统。`test_refresh_release.py` 覆盖带/不带 MSI 的附件校验及损坏 MSI 的拒绝。
 
-EXE 默认采用 `lzma2/fast` 固实压缩，以较小的体积增量缩短打包时间。需要更小的安装包时使用 `-ExeCompression Max`，也可选择 `Normal`。CI 按准备脚本版本缓存 Inno 编译器。 Build CI 将 Windows 测试与发布打包放在两个独立 runner 上并行执行，分别使用 `target/ci-tests` 和 `target/production` 缓存；原有测试步骤和进程隔离保持不变。发布任务必须等待 metadata、build 和 package 全部成功，手动替换 Release 仍要求整个源工作流成功。并行打包可能在测试失败时产生供排查的构建附件，但不会因此发布。
+EXE 默认采用 `lzma2/fast` 固实压缩，以较小的体积增量缩短打包时间。需要更小的安装包时使用 `-ExeCompression Max`，也可选择 `Normal`。CI 按准备脚本版本缓存 Inno 编译器。 Build CI 将 Windows 测试与发布打包放在两个独立 runner 上并行执行，分别使用 `target/ci-tests` 和 `target/production` 缓存；需要原生状态隔离的测试仍单独运行。发布任务必须等待 metadata、build 和 package 全部成功，手动替换 Release 仍要求整个源工作流成功。并行打包可能在测试失败时产生供排查的构建附件，但不会因此发布。
 
 拆分主要缩短总等待时间，不保证减少 runner 总分钟数；冷缓存时两个任务需要各自准备依赖。首次运行会建立新的测试/发布缓存。优化前最近成功运行（40012158503）总耗时约 12 分 44 秒，其中发布构建与打包约 4 分 08 秒；实际收益应比较后续同等缓存状态的 Actions 步骤耗时，不能以本地打包速度代替。
 
@@ -272,7 +272,7 @@ Windows 依赖版本在工作区统一管理，API 特性由各 crate 按需声�
 
 CI 运行 `cargo test -p luciddesk-cli -p luciddesk-api --locked -- --test-threads=1`，覆盖 CLI 参数、离线技能与协议，以及通信契约。版本检查同时校验 GUI、CLI、内部 crates 的继承关系和锁文件版本，以及插件的独立版本声明。
 
-布局计划、内容适配、显示器几何和任务调度测试通过 `python tools/validation/test-control-ci.py` 执行。脚本先构建测试程序，再为每项测试启动独立进程，隔离原生窗口状态；单项超时 60 秒，崩溃、失败、零项匹配或未实际执行测试均使检查失败。本地可加 `--offline --target-dir target/cli-layout-build`，CI 沿用 `CARGO_TARGET_DIR` 缓存目录。该检查不启动真实用户的主程序，不替代多显示器和 MSIX 实机验收。
+布局计划、内容适配、显示器几何和任务调度测试通过 `python tools/validation/test-control-ci.py` 执行。脚本先构建测试程序，将显示器几何换算、任务队列调度和标签缓存测试用精确名称合并到一个串行进程；其余测试仍每项启动独立进程，隔离原生窗口状态。每项保留 60 秒预算，批次按项数累加；检查实际通过数必须与选中项数一致，忽略、崩溃、失败和零项匹配均不能通过。本地可加 `--offline --target-dir target/cli-layout-build`，CI 沿用 `CARGO_TARGET_DIR` 缓存目录。该检查不启动真实用户的主程序，不替代多显示器和 MSIX 实机验收。
 
 发布包中的 CLI、协议与 Skill 一致性继续由打包脚本调用 `test-agent-package.ps1` 校验。元数据任务运行 `test_installer_payload.py`，检查 EXE 安装清单的必需文件、源路径和安装位置，拒绝通配符、递归收录及额外文档；这是脚本清单检查，不替代实际安装验收。
 
@@ -289,4 +289,4 @@ CI 使用滚动更新的 `windows-2025-vs2026` 镜像，MSVC 和 Windows SDK 跟
 - app、Shell、Explorer 的诊断 examples；插件 examples 由真实 DLL 验证构建。
 - Explorer、graphics、menu、window 的测试目标；这些 crate 的库虽作为依赖编译，但 `cfg(test)` 代码仍需独立检查。
 
-Rust 文档测试只覆盖实际含代码示例的 core、Shell、plugin-host。plugin-host 的 `compile_fail` 测试已由 `test-plugins.ps1` 中的包测试执行，独立文档步骤只运行 core 与 Shell，避免第三次重复插件文档检查。新增 crate、测试目标或文档代码示例时，需同步复核 CI 清单。诊断 feature 未启用的示例仍按既有 Cargo `required-features` 规则跳过。
+Rust 文档测试只覆盖实际含代码示例的 core、Shell、plugin-host。plugin-host 的 `compile_fail` 测试已由 `test-plugins.ps1` 中的包测试执行，独立文档步骤只运行 core 与 Shell，插件宿主的单元、真实 DLL 和文档测试统一在测试 DLL 部署后执行一次。缺少监控插件的第二轮只重跑内容、面板生命周期与设置测试；不依赖 DLL 的控制器 IPC／生命周期测试仅在第一轮执行。新增 crate、测试目标或文档代码示例时，需同步复核 CI 清单。诊断 feature 未启用的示例仍按既有 Cargo `required-features` 规则跳过。
