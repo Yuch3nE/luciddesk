@@ -132,6 +132,12 @@ Pane 将鼠标或键盘来源传给菜单。Presenter 适配层在 `DoContextMen
 
 读取主题前必须临时设置 `AllowDark`：`ShouldAppsUseDarkMode` 同时受进程的 `ForceLight` / `ForceDark` 影响，不能直接把返回值视为用户的系统设置。保存的是切换前的进程偏好，菜单关闭后恢复该值。
 
+文件右键与文件夹背景菜单同样使用作用域主题：取消、创建失败时恢复进程偏好，选中命令时在调用 Shell 动词前恢复，避免菜单配色影响后续对话框。独立 Shell 测试和示例也嵌入 Common Controls v6 清单，以加载菜单子类化 API。对应原生回归命令：
+
+```powershell
+cargo test -p luciddesk-shell --lib native_menus_restore_process_theme_after_cancel_and_failure --locked --offline -- --ignored --test-threads=1
+```
+
 交互式桌面上的真实弹出测试会创建临时文件、调用生产回退路径、采样菜单背景并自动取消；不会执行文件命令。以下示例要求 Windows 10 1903 及以上、关闭高对比度，并先将 Windows 默认应用模式设为浅色：
 
 ```powershell

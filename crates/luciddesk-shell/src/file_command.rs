@@ -208,7 +208,7 @@ pub fn show_file_items_menu(
     if selected.is_empty() {
         return Ok(false);
     }
-    luciddesk_menu::apply_theme(owner.0);
+    let theme = luciddesk_menu::apply_scoped_theme(owner.0);
     unsafe {
         let context: IContextMenu = shell_items(selected)?.BindToHandler(None, &BHID_SFUIObject)?;
         let menu = Menu(CreatePopupMenu()?);
@@ -241,6 +241,7 @@ pub fn show_file_items_menu(
         .0;
         drop(frame);
         drop(messages);
+        drop(theme);
         if chosen == 0 {
             return Ok(false);
         }

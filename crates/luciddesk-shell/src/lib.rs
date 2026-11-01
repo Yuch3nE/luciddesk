@@ -38,3 +38,5 @@ pub use rename::{rename_shell_identity, rename_shell_item};
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod menu_theme_tests;
