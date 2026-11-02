@@ -633,6 +633,32 @@ fn same_size_upload_borrows_original_pixel_buffer() {
 }
 
 #[test]
+fn appearance_updates_preserve_uploaded_icons_and_refresh_text() {
+    let _sta = crate::pane::test_support::apartment();
+    let mut model = sample_model();
+    let device = windows_canvas::GpuDevice::new_warp().unwrap();
+    let bitmap = canvas::Offscreen::new(&device, 600, 400).unwrap();
+    let mut renderer = Renderer::new().unwrap();
+    renderer.paint(&bitmap.target, 600, 400, 1.0, &model).unwrap();
+    let original = bitmap.pixels().unwrap();
+    let uploads = renderer.image_uploads;
+    assert!(uploads > 0);
+    let original_dark = model.dark;
+    for dark in [!original_dark, original_dark] {
+        model.dark = dark;
+        assets::invalidate_font();
+        renderer.paint(&bitmap.target, 600, 400, 1.0, &model).unwrap();
+        assert_eq!(renderer.font_revision, assets::font_revision());
+        assert_eq!(renderer.image_uploads, uploads, "appearance changes must reuse icon textures");
+        if dark != original_dark {
+            assert_ne!(bitmap.pixels().unwrap(), original, "theme colors must still update");
+        } else {
+            assert_eq!(bitmap.pixels().unwrap(), original);
+        }
+    }
+}
+
+#[test]
 fn identical_visible_icons_share_one_gpu_upload_and_changed_pixels_replace_it() {
     let _sta = crate::pane::test_support::apartment();
     let mut model = sample_model();

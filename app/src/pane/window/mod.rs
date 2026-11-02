@@ -476,17 +476,15 @@ where
                     invalidate(hwnd);
                     Some(1)
                 }
-                WM_SETTINGCHANGE | WM_THEMECHANGED => {
+                WM_SETTINGCHANGE | WM_THEMECHANGED | WM_FONTCHANGE => {
                     super::assets::invalidate_font();
                     scrollbar_animated = super::scrollbar::animations_enabled();
                     {
                         let mut m = model.borrow_mut();
                         m.dark = super::theme::is_dark(m.theme);
                     }
-                    if let Ok(new_renderer) = Renderer::new() {
-                        renderer = new_renderer;
-                    }
-                    // Appearance changes invalidate rendering resources, not Shell image inventory.
+                    // Refresh text formats lazily on the next paint. Theme colors
+                    // are read from the model; neither change invalidates GPU icons.
                     invalidate(hwnd);
                     Some(0)
                 }

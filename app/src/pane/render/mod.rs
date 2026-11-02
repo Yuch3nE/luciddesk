@@ -68,6 +68,7 @@ pub struct Renderer {
     frame_cache: std::cell::RefCell<canvas::FrameCache>,
     monitor: Option<super::monitor::Drawing>,
     family: String,
+    font_revision: u64,
     language: &'static str,
     #[cfg(test)]
     offscreen_device: Option<windows_canvas::GpuDevice>,
@@ -305,6 +306,7 @@ impl Renderer {
         Ok(Self {
             monitor: None,
             family: family.clone(),
+            font_revision: assets::font_revision(),
             language: crate::i18n::language(),
             #[cfg(test)]
             offscreen_device: None,
@@ -495,9 +497,13 @@ impl Renderer {
         if model.monitor.is_some() && self.monitor.is_none() {
             self.monitor = Some(super::monitor::Drawing::new()?);
         }
-        if self.family != super::fonts::family() || self.language != crate::i18n::language() {
+        if self.font_revision != assets::font_revision()
+            || self.family != super::fonts::family()
+            || self.language != crate::i18n::language()
+        {
             let fresh = Self::new()?;
             self.family = fresh.family;
+            self.font_revision = fresh.font_revision;
             self.language = fresh.language;
             self.labels = fresh.labels;
             self.title = fresh.title;
