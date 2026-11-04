@@ -36,6 +36,7 @@ auto_check = true
 
 [desktop]
 double_click_hide = false
+classification = '{"enabled":false,"rules":[]}'
 
 [diagnostics]
 level = "error"
@@ -243,6 +244,9 @@ pub(super) fn decode(doc: &DocumentMut) -> Result<BTreeMap<String, String>, Stor
         return Err(error("invalid panel_defaults.text"));
     }
     let mut map = BTreeMap::new();
+    let classification = s(&["desktop", "classification"])?;
+    let rules: luciddesk_core::Classification = serde_json::from_str(&classification).map_err(io)?;
+    rules.validate().map_err(error)?;
     let language = s(&["language"])?;
     validate_language(&language)?;
     map.insert("language".into(), language);

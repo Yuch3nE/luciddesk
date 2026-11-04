@@ -48,6 +48,15 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
     let all_fonts = context.all_fonts;
     let mut invalidate = false;
     match &c.action {
+        Action::Classification(command) => {
+            let state = Rc::clone(state);
+            let command = command.clone();
+            window::defer_action(move || {
+                if let Err(error) = classification::execute(&state, hwnd, command) { window::error_for(hwnd, &error); }
+                unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
+            });
+            invalidate = true;
+        }
         Action::Dropdown(_) => {
             controls::open_dropdown(hwnd, appearance, scale, c, context.dropdown_sender.clone());
         }

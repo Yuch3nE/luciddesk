@@ -1370,3 +1370,29 @@ backup-restore-state-changed = 복원 준비 중 설정이 변경되어 복원�
 
 ui-search-copy-path = 전체 경로 복사
 ui-search-more-actions = 추가 작업
+
+# Desktop classification
+classification-title = Automatic classification
+classification-description = Group unassigned desktop icons using rules. Files stay in place.
+classification-auto = Automatically group new icons
+classification-auto-description = Saved rules apply to new icons. Use Organize now for existing icons.
+classification-rules = Classification rules
+classification-priority = Rules run from top to bottom; the first available match wins.
+classification-add = Add rule
+classification-run = Organize now
+classification-empty = No rules yet
+classification-add-hint = Add a rule and select a desktop group.
+classification-missing = Target group missing
+classification-extensions = Extensions
+classification-name = Name contains (optional)
+classification-edit = Edit rule
+classification-delete = Delete
+classification-up = Move up
+classification-down = Move down
+classification-result = Icons organized
+classification-no-target = Create and unlock a desktop group first.
+classification-conflict = Rules changed elsewhere. Reopen the editor.
+classification-target = Target group
+classification-extensions-hint = Extensions (comma separated, e.g. pdf, docx; enter at least one condition)
+classification-save = Save
+classification-cancel = Cancel

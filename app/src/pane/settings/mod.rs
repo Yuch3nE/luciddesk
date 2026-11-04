@@ -56,6 +56,7 @@ use windows_sys::Win32::UI::Controls::WM_MOUSELEAVE;
 
 #[derive(Clone)]
 enum Action {
+    Classification(classification::Command),
     Dropdown(std::sync::Arc<[(String, Action, bool)]>),
     PluginEnabled(String, bool),
     PluginPage(String),
@@ -154,6 +155,7 @@ mod painter;
 use painter::Painter;
 
 mod actions;
+mod classification;
 mod agent;
 mod host;
 pub(super) use host::{show, show_monitor};

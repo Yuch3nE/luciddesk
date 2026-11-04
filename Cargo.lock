@@ -367,6 +367,7 @@ version = "0.25.3"
 dependencies = [
  "luciddesk-core",
  "rusqlite",
+ "serde_json",
  "tempfile",
  "toml_edit",
 ]

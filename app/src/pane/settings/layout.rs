@@ -202,6 +202,7 @@ pub(super) fn pages() -> Vec<(usize, &'static str, &'static str)> {
         (1, crate::i18n::text("ui-panel-layout"), "\u{f0e2}"),
         (8, crate::i18n::text("ui-folder-panels"), "\u{e8b7}"),
         (4, crate::i18n::text("ui-everything-search"), "\u{e721}"),
+        (16, crate::i18n::text("classification-title"), "\u{e8b7}"),
         (3, crate::i18n::text("ui-file-preview"), "\u{e890}"),
         (6, crate::i18n::text("ui-backup-restore"), "\u{e81c}"),
         (5, crate::i18n::text("ui-about"), "\u{e946}"),
