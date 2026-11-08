@@ -6,7 +6,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 # Runtime, Agent support, license and build provenance only.
 PAYLOAD = {
-    "luciddesk.exe", "luciddesk_explorer.dll", "luciddesk-cli.exe",
+    "luciddesk.exe", "luciddesk_explorer.dll", "luciddesk-cli.exe", "updater.exe",
     "skills/luciddesk-control/SKILL.md", "cli.md", "protocol.schema.json",
     "LICENSE", "build.json", "installed",
 }

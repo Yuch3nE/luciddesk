@@ -2410,7 +2410,8 @@ fn available_update_highlights_version_and_download_in_all_languages() {
                 let (title, _, style) = body.text.iter().find(|(_, text, _)| text.contains("99.1.2")).unwrap();
                 assert_eq!(*style, Tokens::STATUS_GOOD);
                 let download = body.controls.iter().find(|c| matches!(c.action,
-                    Action::ProjectLink(url) if url == crate::updates::PAGE)).unwrap();
+                    Action::InstallUpdate)).unwrap();
+                assert!(body.controls.iter().any(|c| matches!(c.action, Action::ProjectLink(url) if url == crate::updates::PAGE)));
                 assert!(download.selected && download.enabled);
                 let check = body.controls.iter().find(|c| matches!(c.action, Action::Update)).unwrap();
                 assert!(!check.selected);

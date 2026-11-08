@@ -4,6 +4,14 @@
 
 本文命令均从仓库根目录执行，适用于 Windows 上的 PowerShell 7（`pwsh`）。安装器测试涉及 junction 清理，使用 PowerShell 7，避免 Windows PowerShell 5 的相关删除异常。
 
+## 应用内更新签名
+
+三个 Windows 发行包都包含独立的 `updater.exe`。应用将更新器复制到临时目录并启动；它完成下载、验签和退出确认后，等待原进程结束，再更新原目录并重启。客户端更新不需要 PowerShell。发布端签名仍使用 PowerShell 7。
+
+首次启用前，在 GitHub Actions 仓库变量 `UPDATE_RSA_MODULUS` 中填写 RSA 公钥模数的十六进制值（不含前缀），在 Secret `UPDATE_PRIVATE_KEY` 中保存对应的 PEM 私钥。使用至少 2048 位的 RSA 密钥，公钥指数为 65537。可在受控环境用 `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out release-private.pem` 生成，用 `openssl rsa -in release-private.pem -noout -modulus` 读取公钥模数。私钥须单独保管，不得提交。构建三个发行包时只需传入公钥变量。
+
+标签发布和刷新附件都会从最终包生成签名清单 `update.json`。两个变量都缺省时可继续手动发布；只配置其一或密钥不匹配会使签名失败。此前未内置公钥的用户需先通过原渠道安装首个支持更新的版本，此后可在“设置 → 关于”更新。同一发布系列须沿用密钥；更换公钥前应先用旧密钥签发带新公钥的过渡版本。
+
 ## 环境
 
 - 主要使用 Windows 11 x64 交互桌面验证，Explorer 正常运行；Windows 10 已由用户完成实机验证，平台边界见[验证与兼容边界](validation.md)。
@@ -133,7 +141,7 @@ EXE 默认采用 `lzma2/fast` 固实压缩，以较小的体积增量缩短打�
 
 ### 应用更新检查
 
-关于页支持自动与手动检查新版本及打开 Release 页面。`config.toml` 的 `[updates].auto_check` 默认为 `true`，启动时及之后每 24 小时检查；关闭开关会取消当前自动检查，手动检查仍可使用。运行时共享检查结果，关闭设置窗口后后台检查继续；每次运行对同一新版只自动提示一次版本号，后台失败不弹窗。检查使用后台 WinHTTP 请求 GitHub Releases API，支持 Windows 代理和显式 `HTTPS_PROXY` HTTP 代理，并比较稳定版本号（标签可有 `v` 前缀）。更新包由用户在浏览器中自行下载。
+关于页支持自动与手动检查新版本及打开 Release 页面。`config.toml` 的 `[updates].auto_check` 默认为 `true`，启动时及之后每 24 小时检查；关闭开关会取消当前自动检查，手动检查仍可使用。运行时共享检查结果，关闭设置窗口后后台检查继续；每次运行对同一新版只自动提示一次版本号，后台失败不弹窗。发布时同步维护仓库根目录的 `version.json` 与 Cargo 工作区版本。标签发布会核对版本并将文件作为 Release 附件上传。客户端通过固定路径 `releases/latest/download/version.json` 检查版本，旧版缺少附件（HTTP 404）时再请求 GitHub Releases API。请求使用后台 WinHTTP，支持 Windows 代理和显式 `HTTPS_PROXY` HTTP 代理，并比较稳定版本号（标签可有 `v` 前缀）。支持的发行版可在关于页下载并验证签名更新包，或打开发行页手动下载。
 
 验证命令（MSI 安装器测试使用随机测试产品名称和 UpgradeCode、快捷方式名称和工作区临时目录，安装与卸载自己的测试注册项）：
 

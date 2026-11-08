@@ -6,6 +6,7 @@ if (-not (Get-Command dumpbin.exe -ErrorAction SilentlyContinue)) {
     & (Join-Path $PSScriptRoot '../use-windows-toolchain.ps1') | Out-Host
 }
 $binaries = @('luciddesk.exe', 'luciddesk-cli.exe', 'luciddesk_explorer.dll')
+if (!(Test-Path -LiteralPath (Join-Path $Directory 'msix'))) { $binaries += 'updater.exe' }
 if (Test-Path -LiteralPath (Join-Path $Directory 'plugins')) {
     $binaries += @(Get-ChildItem -LiteralPath (Join-Path $Directory 'plugins') -File -Filter '*.dll' | ForEach-Object { 'plugins/' + $_.Name })
 }

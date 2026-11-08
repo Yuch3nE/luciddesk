@@ -1304,6 +1304,9 @@ desktop-gesture-title = Скрывать рабочий стол двойным 
 desktop-gesture-description = Дважды щёлкните пустое место рабочего стола, чтобы скрыть все значки и панели. Повторите, чтобы восстановить.
 
 update-installed-version = Установленная версия { $version }
+update-install = Установить обновление
+update-preparing = Подготовка обновления…
+update-restart = Версия { $version } проверена. Закрыть LucidDesk, установить обновление и открыть приложение снова?
 update-download = Скачать обновление
 
 

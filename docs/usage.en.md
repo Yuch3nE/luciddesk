@@ -139,7 +139,7 @@ Advanced options in Backup & restore lets you export configuration or open its f
 
 ### Update LucidDesk
 
-Back up first, then exit the old app and install the update. For portable updates, preserve `data` and `portable`. Check for updates in About; LucidDesk does not automatically install or restart.
+Back up first, then exit the old app and install the update. For portable updates, preserve `data` and `portable`. On supported builds, choose **Download and update** in About and confirm the restart after verification.
 
 ## Agents and the command line
 

@@ -55,17 +55,20 @@ fn explicit_proxy() -> Option<Vec<u16>> {
         .map(|s| wide(&s))
 }
 
-pub(super) fn get(cancel: &AtomicBool) -> Result<Vec<u8>, String> {
+pub(super) fn get(host: &str, path: &str, cancel: &AtomicBool) -> Result<Option<Vec<u8>>, String> {
+    let mut bytes = Vec::new();
+    Ok(download(host, path, cancel, 2 * 1024 * 1024, &mut bytes)?.then_some(bytes))
+}
+
+pub(super) fn download(
+    host: &str,
+    path: &str,
+    cancel: &AtomicBool,
+    limit: u64,
+    output: &mut impl std::io::Write,
+) -> Result<bool, String> {
     if cancel.load(Ordering::Relaxed) {
         return Err("Update canceled".into());
-    }
-    let url = super::API;
-    let (host, path) = url
-        .strip_prefix("https://")
-        .and_then(|u| u.split_once('/'))
-        .ok_or("Invalid HTTPS release API URL")?;
-    if host != "api.github.com" || url.contains(['\r', '\n', '\0']) {
-        return Err("Invalid update host".into());
     }
     // Honor an explicitly configured command-line proxy; otherwise use Windows proxy settings.
     let proxy = explicit_proxy();
@@ -89,7 +92,7 @@ pub(super) fn get(cancel: &AtomicBool) -> Result<Vec<u8>, String> {
         WinHttpOpenRequest(
             connection.0,
             wide("GET").as_ptr(),
-            wide(&format!("/{path}")).as_ptr(),
+            wide(path).as_ptr(),
             null(),
             null(),
             null(),
@@ -115,8 +118,7 @@ pub(super) fn get(cancel: &AtomicBool) -> Result<Vec<u8>, String> {
             4,
         )
     })?;
-    let headers =
-        wide("Accept: application/vnd.github+json\r\nX-GitHub-Api-Version: 2022-11-28\r\n");
+    let headers = wide("Accept: */*\r\n");
     check(unsafe { WinHttpSendRequest(request.0, headers.as_ptr(), u32::MAX, null(), 0, 0, 0) })?;
     check(unsafe { WinHttpReceiveResponse(request.0, std::ptr::null_mut()) })?;
     let mut status = 0u32;
@@ -131,10 +133,14 @@ pub(super) fn get(cancel: &AtomicBool) -> Result<Vec<u8>, String> {
             std::ptr::null_mut(),
         )
     })?;
+    if status == 404 {
+        return Ok(false);
+    }
     if status != 200 {
         return Err(format!("GitHub HTTP {status}"));
     }
-    let mut output = Vec::new();
+    let mut total = 0u64;
+    let started = std::time::Instant::now();
     let mut buffer = vec![0u8; 64 * 1024];
     loop {
         if cancel.load(Ordering::Relaxed) {
@@ -147,10 +153,13 @@ pub(super) fn get(cancel: &AtomicBool) -> Result<Vec<u8>, String> {
         if read == 0 {
             break;
         }
-        if output.len() + read as usize > 2 * 1024 * 1024 {
+        total += u64::from(read);
+        if total > limit || started.elapsed().as_secs() > 600 {
             return Err("Update response exceeds size limit".into());
         }
-        output.extend_from_slice(&buffer[..read as usize]);
+        output
+            .write_all(&buffer[..read as usize])
+            .map_err(|e| e.to_string())?;
     }
-    Ok(output)
+    Ok(true)
 }

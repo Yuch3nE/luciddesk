@@ -119,7 +119,7 @@ Click a screenshot to view the original. These show dark Acrylic; the appearance
 
 ## 🔄 Upgrading and backups
 
-Check for updates and download them from **Settings → About**. The app does not install updates automatically. Save a backup in **Backup & restore** before upgrading.
+In **Settings → About**, check for updates and select **Download and update** on supported builds. Confirm the restart after the package has been verified. Save a backup in **Backup & restore** before upgrading.
 
 - **Installer:** exit the app and run the new installer, keeping the same installation scope and directory.
 - **Standard ZIP:** exit the app and replace all program files, keeping the settings directory.

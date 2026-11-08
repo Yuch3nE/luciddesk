@@ -59,6 +59,17 @@ fn run() -> Result<(), String> {
     if arguments == [OsString::from("--monitor-child")] {
         return pane::run_monitor_child();
     }
+    // The helper holds this gate from normal shutdown through the last file replacement.
+    let update_gate = unsafe {
+        windows_sys::Win32::System::Threading::OpenMutexW(
+            windows_sys::Win32::System::Threading::SYNCHRONIZATION_SYNCHRONIZE, 0,
+            windows_sys::w!("Local\\LucidDesk.UpdateApplying"),
+        )
+    };
+    if !update_gate.is_null() {
+        unsafe { windows_sys::Win32::Foundation::CloseHandle(update_gate); }
+        return Ok(());
+    }
     let startup = arguments.iter().any(|argument| argument == "--startup");
     let title = parse_options(arguments)?;
     let Some(_instance) = Instance::acquire(!startup)? else {

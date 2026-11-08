@@ -1304,6 +1304,9 @@ desktop-gesture-title = Desktop per Doppelklick ausblenden
 desktop-gesture-description = Doppelklicken Sie auf eine freie Desktopfläche, um alle Symbole und Bereiche auszublenden. Erneut doppelklicken zum Wiederherstellen.
 
 update-installed-version = Installierte Version { $version }
+update-install = Update installieren
+update-preparing = Update wird vorbereitet…
+update-restart = Version { $version } wurde geprüft. LucidDesk jetzt schließen, aktualisieren und neu starten?
 update-download = Update herunterladen
 
 

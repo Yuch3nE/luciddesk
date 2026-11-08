@@ -1304,6 +1304,9 @@ desktop-gesture-title = 두 번 클릭하여 바탕 화면 숨기기
 desktop-gesture-description = 바탕 화면의 빈 공간을 두 번 클릭하면 모든 아이콘과 패널을 숨기고, 다시 두 번 클릭하면 복원합니다.
 
 update-installed-version = 현재 버전 { $version }
+update-install = 다운로드 및 업데이트
+update-preparing = 업데이트 준비 중…
+update-restart = 버전 { $version } 검증이 완료되었습니다. LucidDesk를 종료하고 업데이트한 뒤 다시 열까요?
 update-download = 업데이트 다운로드
 
 

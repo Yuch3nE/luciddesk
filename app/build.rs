@@ -5,6 +5,7 @@ fn main() {
         .to_path_buf();
     for path in [
         "app/src",
+        "app/updater",
         "app/assets",
         "app/build.rs",
         "app/Cargo.toml",
@@ -90,12 +91,17 @@ fn main() {
         .replace("@VERSION_STRING@", &version);
     let resource_path = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap())
         .join("app.rc");
-    compile_resources(&resource_path, &resource);
+    for (bin, description) in [("luciddesk", "LucidDesk"), ("updater", "LucidDesk Updater")] {
+        let rc = resource.replace("@BINARY@", bin).replace("@DESCRIPTION@", description);
+        compile_resources(&resource_path.with_file_name(format!("{bin}.rc")), &rc, bin);
+    }
     // Native search controls and the backdrop fixture use Explorer's v6 controls.
     if std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
         let manifest = std::path::PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap())
             .join("../crates/luciddesk-explorer/native-controls.manifest");
         println!("cargo:rerun-if-changed={}", manifest.display());
+        println!("cargo:rustc-link-arg-bin=updater=/MANIFEST:EMBED");
+        println!("cargo:rustc-link-arg-bin=updater=/MANIFESTUAC:level='asInvoker'");
         println!("cargo:rustc-link-arg-bin=luciddesk=/MANIFEST:EMBED");
         println!(
             "cargo:rustc-link-arg-bin=luciddesk=/MANIFESTINPUT:{}",
@@ -109,7 +115,7 @@ fn main() {
     }
 }
 
-fn compile_resources(path: &std::path::Path, resource: &str) {
+fn compile_resources(path: &std::path::Path, resource: &str, bin: &str) {
     // embed-resource 3.x emits app.lib for native MSVC. Keep other hosts/targets
     // on its normal path, and only cache with the selected toolchain recorded.
     let target = std::env::var("TARGET").unwrap();
@@ -147,7 +153,7 @@ fn compile_resources(path: &std::path::Path, resource: &str) {
         && !environment.is_empty()
         && !custom_rc;
     if cacheable && output.is_file() && std::fs::read(&stamp).ok().as_deref() == Some(&inputs) {
-        println!("cargo:rustc-link-arg-bins={}", output.display());
+        println!("cargo:rustc-link-arg-bin={bin}={}", output.display());
         return;
     }
     // Invalidate before compiling so a failed compiler cannot leave a valid stamp.
@@ -155,7 +161,7 @@ fn compile_resources(path: &std::path::Path, resource: &str) {
         std::fs::remove_file(&stamp).expect("failed to invalidate resource cache");
     }
     std::fs::write(path, resource).expect("failed to write application resources");
-    embed_resource::compile(path, embed_resource::NONE)
+    embed_resource::compile_for(path, [bin], embed_resource::NONE)
         .manifest_required()
         .expect("failed to embed the LucidDesk application resources");
     if cacheable {

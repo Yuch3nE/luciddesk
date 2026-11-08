@@ -79,6 +79,7 @@ enum Action {
     ProjectLink(&'static str),
     CopyDiagnostics,
     Update,
+    InstallUpdate,
     AutoCheckUpdates(bool),
     Window(u32),
     Page(usize),

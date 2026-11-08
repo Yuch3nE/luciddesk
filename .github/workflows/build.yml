@@ -4,6 +4,8 @@ on:
     tags: ['**']
     branches: ['codex/ci-compare-*']
   workflow_dispatch:
+env:
+  UPDATE_RSA_MODULUS: ${{ vars.UPDATE_RSA_MODULUS }}
 permissions:
   contents: read
 concurrency:
@@ -74,6 +76,9 @@ jobs:
       - name: Fetch locked Windows dependencies once
         timeout-minutes: 10
         run: cargo fetch --locked --target x86_64-pc-windows-msvc
+      - name: Test signed updates and ZIP recovery offline
+        shell: pwsh
+        run: cargo test -p luciddesk --bin updater --locked --offline
       - name: Test app rules and WARP emoji rendering
         timeout-minutes: 15
         run: >-
@@ -168,7 +173,7 @@ jobs:
       - name: Summarize release binary sizes
         run: |
           $lines = @('### Release binaries', '', '| File | Bytes | MiB |', '| --- | ---: | ---: |')
-          foreach ($name in @('luciddesk.exe', 'luciddesk-cli.exe', 'luciddesk_explorer.dll')) {
+          foreach ($name in @('luciddesk.exe', 'luciddesk-cli.exe', 'updater.exe', 'luciddesk_explorer.dll')) {
             $file = Get-Item -LiteralPath "target/production/release/$name"
             $lines += '| {0} | {1} | {2:F2} |' -f $name, $file.Length, ($file.Length / 1MB)
           }
@@ -209,6 +214,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
+          UPDATE_PRIVATE_KEY: ${{ secrets.UPDATE_PRIVATE_KEY }}
         run: |
           set -euo pipefail
             gh api --paginate --slurp "repos/$GH_REPO/releases" > releases.json
@@ -219,9 +225,13 @@ jobs:
           for checksum in "${checksums[@]}"; do
             (cd "$(dirname "$checksum")" && sha256sum -c "$(basename "$checksum")")
           done
+          jq -e --arg version "${RELEASE_TAG#v}" '.version == $version' version.json >/dev/null
+          pwsh -NoProfile -File tools/release/sign-update.ps1 artifacts "$RELEASE_TAG" update.json
+          if [[ -f update.json ]]; then archives+=(update.json); fi
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release edit "$RELEASE_TAG" --notes-file release-notes.md
             gh release upload "$RELEASE_TAG" "${archives[@]}" "${checksums[@]}" --clobber
+            gh release upload "$RELEASE_TAG" version.json --clobber
           else
-            gh release create "$RELEASE_TAG" "${archives[@]}" "${checksums[@]}" --verify-tag --title "LucidDesk $RELEASE_TAG" --notes-file release-notes.md
+            gh release create "$RELEASE_TAG" "${archives[@]}" "${checksums[@]}" version.json --verify-tag --title "LucidDesk $RELEASE_TAG" --notes-file release-notes.md
           fi

@@ -1304,6 +1304,9 @@ desktop-gesture-title = Double-click to hide desktop
 desktop-gesture-description = Double-click an empty desktop area to hide all icons and panels; double-click again to restore.
 
 update-installed-version = Installed version { $version }
+update-install = Download and update
+update-preparing = Preparing update…
+update-restart = Version { $version } has been verified. Close LucidDesk, install the update and reopen it now?
 update-download = Download update
 
 

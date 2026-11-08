@@ -1304,6 +1304,9 @@ desktop-gesture-title = 双击隐藏桌面
 desktop-gesture-description = 双击桌面空白处隐藏所有图标和面板，再次双击恢复。
 
 update-installed-version = 当前版本 { $version }
+update-install = 下载并更新
+update-preparing = 正在准备更新…
+update-restart = 已验证 { $version }。现在退出 LucidDesk、安装更新并重新打开？
 update-download = 下载新版本
 
 

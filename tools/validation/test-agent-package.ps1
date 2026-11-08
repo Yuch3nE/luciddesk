@@ -24,6 +24,7 @@ foreach ($plugin in $actualPlugins) {
     }
 }
 $required = @('luciddesk-cli.exe', 'cli.md', 'protocol.schema.json', 'skills/luciddesk-control/SKILL.md')
+if (!(Test-Path -LiteralPath (Join-Path $Directory 'msix'))) { $required += 'updater.exe' }
 foreach ($file in $required) {
     $entry = @($build.files | Where-Object file -eq $file)
     if ($entry.Count -ne 1) { throw "Missing or duplicate manifest entry: $file" }

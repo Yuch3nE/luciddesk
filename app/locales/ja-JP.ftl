@@ -1304,6 +1304,9 @@ desktop-gesture-title = ダブルクリックでデスクトップを非表示
 desktop-gesture-description = デスクトップの空白をダブルクリックするとすべてのアイコンとパネルを非表示にし、再度ダブルクリックすると元に戻します。
 
 update-installed-version = 現在のバージョン { $version }
+update-install = 更新を適用
+update-preparing = 更新を準備中…
+update-restart = バージョン { $version } を検証しました。LucidDesk を終了して更新し、再起動しますか？
 update-download = 更新をダウンロード
 
 

@@ -1,5 +1,7 @@
-//! Background and user-initiated release checks. Downloads remain manual.
+//! Background release checks and user-initiated package updates.
 mod http;
+mod install;
+mod distribution;
 use crate::i18n;
 use semver::Version;
 use serde::Deserialize;
@@ -9,7 +11,6 @@ use std::sync::{
     mpsc,
 };
 
-const API: &str = "https://api.github.com/repos/Yuch3nE/luciddesk/releases/latest";
 pub const PAGE: &str = "https://github.com/Yuch3nE/luciddesk/releases/latest";
 const CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
 
@@ -34,15 +35,22 @@ fn parse_release(bytes: &[u8], current: &str) -> Result<Option<String>, String> 
     if release.draft || release.prerelease {
         return Ok(None);
     }
-    let version = Version::parse(
-        release
-            .tag_name
-            .strip_prefix('v')
-            .unwrap_or(&release.tag_name),
-    )
-    .map_err(|e| e.to_string())?;
+    newer_version(release.tag_name.strip_prefix('v').unwrap_or(&release.tag_name), current)
+}
+
+fn parse_manifest(bytes: &[u8], current: &str) -> CheckResult {
+    #[derive(Deserialize)]
+    struct Manifest {
+        version: String,
+    }
+    let manifest: Manifest = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
+    newer_version(&manifest.version, current)
+}
+
+fn newer_version(value: &str, current: &str) -> CheckResult {
+    let version = Version::parse(value).map_err(|e| e.to_string())?;
     let current = Version::parse(current).map_err(|e| e.to_string())?;
-    Ok((version.pre.is_empty() && version > current).then(|| version.to_string()))
+    Ok((version.pre.is_empty() && version.build.is_empty() && version > current).then(|| version.to_string()))
 }
 
 type CheckResult = Result<Option<String>, String>;
@@ -58,6 +66,8 @@ impl Drop for Work {
 
 #[derive(Default)]
 pub struct Controller {
+    installable: std::cell::OnceCell<bool>,
+    installer: Option<std::process::Child>,
     work: Option<Work>,
     available: Option<String>,
     checked: bool,
@@ -101,16 +111,28 @@ impl Controller {
     }
 
     pub fn busy(&self) -> bool {
-        self.work.is_some()
+        self.work.is_some() || self.installer.is_some()
     }
     pub fn available_version(&self) -> Option<&str> {
         if self.busy() || self.error.is_some() { None } else { self.available.as_deref() }
     }
     #[cfg(test)]
     pub(crate) fn with_available_version(version: &str) -> Self {
-        Self { available: Some(version.into()), checked: true, ..Self::default() }
+        Self { available: Some(version.into()), installable: true.into(), checked: true, ..Self::default() }
+    }
+    pub fn can_install(&self) -> bool {
+        *self.installable.get_or_init(install::supported)
+    }
+    pub fn install(&mut self) -> Result<(), String> {
+        if let Some(version) = self.available_version() {
+            self.installer = Some(install::launch(version)?);
+        }
+        Ok(())
     }
     pub fn status(&self) -> String {
+        if self.installer.is_some() {
+            return i18n::text("update-preparing").into();
+        }
         if self.busy() {
             return i18n::text("update-checking").into();
         }
@@ -129,8 +151,14 @@ impl Controller {
     }
     pub fn check(&mut self) -> Result<(), String> {
         self.start(|cancel| {
-            let bytes = http::get(&cancel)?;
-            parse_release(&bytes, env!("CARGO_PKG_VERSION"))
+            let current = env!("CARGO_PKG_VERSION");
+            if let Some(bytes) = http::get("github.com", "/Yuch3nE/luciddesk/releases/latest/download/version.json", &cancel)? {
+                return parse_manifest(&bytes, current);
+            }
+            // Releases published before version.json still support manual downloads.
+            let bytes = http::get("api.github.com", "/repos/Yuch3nE/luciddesk/releases/latest", &cancel)?
+                .ok_or("No published release")?;
+            parse_release(&bytes, current)
         })
     }
     fn start(
@@ -161,6 +189,21 @@ impl Controller {
         Ok(())
     }
     pub fn poll(&mut self) {
+        if let Some(child) = &mut self.installer {
+            match child.try_wait() {
+                Ok(None) => return,
+                Ok(Some(status)) => {
+                    self.installer = None;
+                    if !status.success() {
+                        self.error = Some(status.to_string());
+                    }
+                }
+                Err(error) => {
+                    self.error = Some(error.to_string());
+                    self.installer = None;
+                }
+            }
+        }
         let Some(work) = &self.work else {
             return;
         };
@@ -252,6 +295,16 @@ mod tests {
         completed(&mut controller, Ok(None), true, now);
         controller.maintain(true, now);
         assert_eq!(controller.status(), i18n::text("update-current"));
+    }
+
+    #[test]
+    fn version_manifest_matches_workspace_and_selects_newer_stable_versions() {
+        let manifest = include_bytes!("../../../version.json");
+        assert_eq!(parse_manifest(manifest, "0.0.0").unwrap().as_deref(), Some(env!("CARGO_PKG_VERSION")));
+        assert_eq!(parse_manifest(manifest, env!("CARGO_PKG_VERSION")).unwrap(), None);
+        assert_eq!(parse_manifest(br#"{"version":"2.0.0-beta.1"}"#, "1.0.0").unwrap(), None);
+        assert!(parse_manifest(br#"{"version":"bad"}"#, "1.0.0").is_err());
+        assert!(parse_manifest(b"{}", "1.0.0").is_err());
     }
 
     fn release(tag: &str) -> Vec<u8> {

@@ -6,6 +6,10 @@ Current version: **0.25.3**. Features and fixes by release.
 
 Exit the app before upgrading a portable installation and preserve its `data` folder. See the [portable guide](docs/portable.md) (Chinese).
 
+## Unreleased
+
+- Update portable ZIP, ordinary ZIP and EXE installations in place from Settings → About. LucidDesk verifies the matching release package and asks before restarting.
+
 ## 0.25.3 · 2026-10-31
 
 All updates since the previous stable release, **0.23.0**. This release improves tabs, desktop drag and drop, startup connections, search, and Agent automation.

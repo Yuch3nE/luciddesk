@@ -17,10 +17,10 @@ BEGIN
         BLOCK "040904B0"
         BEGIN
             VALUE "CompanyName", "Yuchen95\0"
-            VALUE "FileDescription", "LucidDesk\0"
+            VALUE "FileDescription", "@DESCRIPTION@\0"
             VALUE "FileVersion", "@VERSION_STRING@\0"
-            VALUE "InternalName", "luciddesk\0"
-            VALUE "OriginalFilename", "luciddesk.exe\0"
+            VALUE "InternalName", "@BINARY@\0"
+            VALUE "OriginalFilename", "@BINARY@.exe\0"
             VALUE "ProductName", "LucidDesk\0"
             VALUE "ProductVersion", "@VERSION_STRING@\0"
         END
