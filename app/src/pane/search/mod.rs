@@ -980,6 +980,10 @@ pub(super) fn create(
             if msg == WM_APP + 199 {
                 return Some(drawing.as_ref().map_or(-1, |d| (d.surface.current_opacity() * 1000.0) as isize));
             }
+            #[cfg(test)]
+            if msg == super::window::TEST_HOST_BACKDROP {
+                return Some(drawing.as_ref().is_some_and(|d| d.surface.has_host_backdrop()) as isize);
+            }
             if msg == WM_DESTROY || (msg == WM_SHOWWINDOW && wp == 0) {
                 if let Some(drawing) = drawing.as_mut() {drawing.clear_icons();}
             }
@@ -1542,6 +1546,7 @@ pub(super) fn create(
     super::wake::protect_dispatch(hwnd as isize)?;
     unsafe {
         crate::window_visibility::prepare_canvas(hwnd);
+        super::window::attach_search_desktop(hwnd);
         SetWindowSubclass(hwnd, Some(super::window::borderless_proc), 1, 0);
     }
     let mut native = Editor::new(hwnd)?;
@@ -1565,6 +1570,7 @@ pub(super) fn create(
     invalidate(hwnd);
     unsafe {
         SendMessageW(hwnd, WM_PAINT, 0, 0);
+        super::window::start_search_desktop(hwnd);
         prepared.set(true);
         ShowWindow(hwnd, SW_SHOWNOACTIVATE);
         ShowWindow(edit(hwnd), SW_SHOWNOACTIVATE);

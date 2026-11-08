@@ -27,6 +27,16 @@ level = "error"
 
 Rust panic 会记录异常位置、原始载荷和堆栈，并继续执行原有 panic hook 与展开/终止策略。入口由主程序显式安装，依赖库和注入 Explorer 的 DLL 不会自行替换宿主 hook。日志无法保证捕获访问冲突、断电、强制终止或进程已经无法写入的故障；此类原生崩溃仍使用现有转储工具。
 
+## Win+D 面板消失诊断
+
+将诊断日志级别设为 `info` 并退出重启应用后，每个面板每 500 ms 只读采样一次，仅在状态变化时记录 `pane.desktop_state`；默认 `error` 级别不创建采样计时器、不查询窗口状态。采样不调用激活、显示、层级调整或桌面切换 API。销毁面板或降低日志级别时清理计时器和缓存；重新开启采样需再次重启应用。
+
+记录面板及 owner、图标视图宿主、Shell、前台窗口的句柄和类名、可见/最小化状态、DWM cloak 标志、窗口样式，以及面板上方最多 12 个可见窗口和沿 GetWindow 遍历实际 Z 顺序得到的完整排名。不会读取其他窗口的标题或内容。`cloak=0` 表示没有 cloak，位 `1/2/4` 分别表示应用/Shell/owner 继承；查询失败记录 HRESULT，不能当作未隐藏。rank 越小越靠前，`None` 表示未找到，`window_count` 记录遍历数量，`enumeration_ok` 记录是否完整遍历且没有遇到重复句柄（旧版 `scan_truncated=true` 表示达到 512 个窗口上限）。可见且未最小化、未 cloak 不代表没有被遮挡，须同时看宿主和窗口层级。500 ms 采样不能证明期间没有短暂变化。
+
+托盘/快捷键“显示所有面板”额外记录请求、每个面板恢复前后快照、`SetWindowPos` 结果和操作前后的前台窗口。`ShowWindow` 返回值表示此前可见性。沿用已有日志文件轮转与限流，复现后应及时导出。
+
+先启用 `info`，从托盘退出并重新启动应用，关闭设置窗口，等 3 秒。按 Win+D 后等 3 秒。若面板消失，先点托盘“显示所有面板”再等 3 秒，然后打开一个普通窗口并等 3 秒。最后在“设置 → 关于 → 复制诊断信息”导出，并注明每一步的显示结果。打开设置会改变桌面状态，请先记录面板消失时的表现。
+
 ## 保留、去重与故障
 
 - 近期事件最多 128 个不同记录、256 KiB 内容；严重错误另保留最多 16 个、128 KiB 内容。相同级别、组件、调用位置和消息合并计数，保留首次序号/时间与最后一条记录，避免重复错误挤掉其他原因。恢复不会清空错误历史。容量淘汰与合并次数明确列入报告。
@@ -48,6 +58,14 @@ Rust panic 会记录异常位置、原始载荷和堆栈，并继续执行原有
 
 ## 验证
 
+桌面层级修复单独跟踪图标宿主 HWND。Win10 普通面板的 `native_owner=0x0` 是预期结果，Win11 普通面板和搜索面板使用 Shell owner。判断遮挡应比较 pane 与 icon_host 的排名。`repair blocked` 表示宿主位于面板上方，且中间有普通应用。
+
+INFO 级别的 `pane.desktop_content` 补充记录面板内容透明度：`surface_opacity` 是合成 Surface 缓存的已提交值，`transition_opacity` 是显示动画状态，不是对屏幕最终像素的测量。状态变化及 `WM_SHOWWINDOW`、`WM_WINDOWPOSCHANGED` 时记录；`pane.desktop_state` 的 `content` 附带最近记录值。它用于区分 HWND 可见但内容透明与合成画面未恢复，不能仅凭值为 1 证明画面已正确显示。
+
 `cargo test -p luciddesk-diagnostics --locked --offline` 覆盖字段转义、去重、字节/条数上限、严重性额度隔离、轮转、真实 I/O 失败/退避/恢复、多线程捕获、回调重入及 panic 记录。`cargo clippy -p luciddesk-diagnostics --all-targets --locked --offline -- -D warnings` 检查日志库。
 
 主程序报告回归验证原始错误不变、日志无需借用应用状态、快照可独立存活及文件内容。`tools/validation/test-startup-diagnostics.py` 在正常 Windows 桌面上使用隔离空数据库，验证真实启动、进入托盘和正常退出，不修改用户配置或剪贴板。
+
+桌面排序恢复日志的 `showing_desktop` 区分当前图标宿主是否处于前台。新版同步和只读采样沿实际 Z 顺序遍历，而不依赖 EnumWindows 回调顺序，并以重复句柄检测避免窗口变动引起的循环。
+
+Win11 注册 Win+D 焦点交接 hook 失败时记录 `pane.desktop_owner` 警告。

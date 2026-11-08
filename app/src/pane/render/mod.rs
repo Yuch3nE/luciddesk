@@ -1235,6 +1235,13 @@ impl Renderer {
                     target.fill_rect(&bounds, &*fill);
                     target.draw_rect(&bounds, &*border, 1.0 / scale);
                 }
+                // The real-desktop regression samples composition content, not
+                // Acrylic's changing background tint or a separate child HWND.
+                #[cfg(test)]
+                if model.title == "Shell visibility regression" {
+                    let marker = canvas_result(target.cached_solid_brush(ColorF::new(1.0, 0.0, 1.0, 1.0)))?;
+                    target.fill_rect(&Rect::from_xywh(10.0, 45.0, 30.0, 25.0), &*marker);
+                }
                 let result = target.finish();
                 // Retain only backgrounds used by this frame, including after resize,
                 // DPI changes, deselection, or collapsing the content.

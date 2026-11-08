@@ -416,6 +416,11 @@ impl Drawing {
                     );
                 }
             }
+            #[cfg(test)]
+            if model.title == "Shell search visibility regression" {
+                let marker = canvas_result(target.cached_solid_brush(ColorF::new(1.0, 0.0, 1.0, 1.0)))?;
+                target.fill_rect(&Rect::from_xywh(8.0, 8.0, 20.0, 20.0), &*marker);
+            }
             target.finish()
         })
         .map_err(|e| e.to_string())?;

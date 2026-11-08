@@ -28,6 +28,8 @@ mod context_menu;
 mod input;
 mod interaction;
 mod scheduling;
+mod desktop_owner;
+mod desktop_diagnostics;
 #[cfg(test)]
 mod error_tests;
 pub(super) use scheduling::{post_action, defer_action};
@@ -64,6 +66,9 @@ pub(super) const TAB_CHANGED: u32 = WM_APP + 13;
 pub(super) const RESTORE_MERGE: u32 = WM_APP + 14;
 const DESKTOP_LAYER: windows_sys::core::PCWSTR = windows_sys::w!("LucidDesk.DesktopLayer");
 const CLOSING_PANE: windows_sys::core::PCWSTR = windows_sys::w!("LucidDesk.ClosingPane");
+
+#[cfg(test)]
+pub(super) const TEST_HOST_BACKDROP: u32 = WM_APP + 0x1af0;
 
 pub(super) fn is_desktop_layer(hwnd: HWND) -> bool {
     unsafe { !GetPropW(hwnd, DESKTOP_LAYER).is_null() }
@@ -144,13 +149,26 @@ pub(super) fn raise_among_peers(hwnd: HWND) {
 
 /// Raise once while preserving the topmost bit and subsequent desktop behavior.
 pub(super) fn raise_once(hwnd: HWND) {
+    desktop_diagnostics::sample(hwnd, "reveal-before", true);
+    desktop_owner::refresh(hwnd);
     unsafe {
         let desktop = RemovePropW(hwnd, DESKTOP_LAYER);
-        ShowWindow(hwnd, SW_SHOWNOACTIVATE);
-        SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+        let was_visible = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        let flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER;
+        let positioned = if !desktop.is_null() && desktop_owner::shell_owned(hwnd) {
+            desktop_owner::raise_owned(hwnd, flags)
+        } else {
+            SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0, flags)
+        };
+        let error = if positioned == 0 { windows_sys::Win32::Foundation::GetLastError() } else { 0 };
+        luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Info, "pane.desktop_state",
+            "reveal native calls; hwnd={hwnd:?} show_previously_visible={was_visible} set_window_pos={positioned} error={error}");
         if !desktop.is_null() { SetPropW(hwnd, DESKTOP_LAYER, desktop); }
+        // An already-visible composition window may have no invalid region
+        // after a Shell transition. Explicit reveal also requests fresh content.
+        InvalidateRect(hwnd, std::ptr::null(), 0);
     }
+    desktop_diagnostics::sample(hwnd, "reveal-after", true);
 }
 
 pub fn set_layer(hwnd: HWND, always_on_top: bool) {
@@ -212,6 +230,8 @@ pub(super) unsafe extern "system" fn borderless_proc(
         return 0;
     }
     if message == WM_NCDESTROY {
+        desktop_owner::detach(hwnd);
+        desktop_diagnostics::stop(hwnd);
         scheduling::cancel(hwnd);
     }
     if message == WM_DESTROY && unsafe { !GetPropW(hwnd, CLOSING_PANE).is_null() } {
@@ -245,8 +265,8 @@ pub(super) unsafe extern "system" fn borderless_proc(
                 position.flags |= SWP_NOZORDER;
             }
             if position.flags & SWP_NOZORDER == 0 {
-                // All desktop panes share a Shell owner. Raising a pane must
-                // not reorder that owner and indirectly raise its other panes.
+                // Raising a pane must not reorder an owner and indirectly raise
+                // other panes (including owned-window regression fixtures).
                 position.flags |= SWP_NOOWNERZORDER;
                 if let Some(after) = desktop_insert_after(hwnd) {
                     let previous = GetWindow(hwnd, GW_HWNDPREV);
@@ -335,7 +355,16 @@ where
             if message == WM_APP + 199 {
                 return Some(surface.as_ref().map_or(-1, |s| (s.current_opacity() * 1000.0) as isize));
             }
-            if visibility.message(hwnd, message, wparam, lparam, surface.as_ref(), |_| {}) {
+            #[cfg(test)]
+            if message == TEST_HOST_BACKDROP {
+                return Some(surface.as_ref().is_some_and(Surface::has_host_backdrop) as isize);
+            }
+            let visibility_handled = visibility.message(hwnd, message, wparam, lparam, surface.as_ref(), |_| {});
+            if message != WM_DESTROY && message != WM_NCDESTROY {
+                desktop_diagnostics::content(hwnd, message,
+                    surface.as_ref().map(|s| s.current_opacity()), visibility.opacity());
+            }
+            if visibility_handled {
                 return Some(0);
             }
             if message == super::visibility::CLOSED {
@@ -1511,7 +1540,7 @@ where
     let s = scale(hwnd);
     unsafe {
         if !inspect {
-            SetWindowLongPtrW(hwnd, GWLP_HWNDPARENT, GetShellWindow() as isize);
+            desktop_owner::attach(hwnd);
             SetWindowPos(
                 hwnd,
                 HWND_BOTTOM,
@@ -1553,9 +1582,11 @@ where
     // Bootstrap the transparent composition content before the first visible frame.
     unsafe {
         SendMessageW(hwnd, WM_PAINT, 0, 0);
+        desktop_owner::start(hwnd);
         prepared.set(true);
         ShowWindow(hwnd, SW_SHOWNOACTIVATE);
     }
+    desktop_diagnostics::start(hwnd);
     Ok(window)
 }
 
@@ -1573,3 +1604,11 @@ pub fn error(message: &str) {
 pub fn error_for(owner: HWND, message: &str) {
     crate::error_report::error(owner as isize, message);
 }
+
+// On Win11 the search pane also follows the Shell's desktop window.
+pub(super) fn attach_search_desktop(hwnd: HWND) {
+    if desktop_owner::uses_shell_owner() {
+        desktop_owner::attach(hwnd);
+    }
+}
+pub(super) fn start_search_desktop(hwnd: HWND) { desktop_owner::start(hwnd); desktop_diagnostics::start(hwnd); }

@@ -1,5 +1,31 @@
 use super::*;
 
+#[test]
+fn desktop_frame_and_content_preserve_normal_mouse_activation() {
+    let pane = Window::new("Frame activation regression").size(120, 100)
+        .style(WS_POPUP | WS_THICKFRAME)
+        .ex_style(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE)
+        .on_message(|_, msg, _, _| match msg {
+            WM_MOUSEACTIVATE => Some(MA_ACTIVATE as isize),
+            WM_DESTROY => Some(0),
+            _ => None,
+        }).create().unwrap();
+    let hwnd = pane.hwnd().cast();
+    unsafe {
+        assert_ne!(windows_sys::Win32::UI::Shell::SetWindowSubclass(hwnd, Some(borderless_proc), 1, 0), 0);
+        set_layer(hwnd, false);
+        let foreground = GetForegroundWindow();
+        for hit in [HTCAPTION, HTLEFT, HTRIGHT, HTTOP, HTTOPLEFT, HTTOPRIGHT,
+            HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT] {
+            let input = ((WM_NCLBUTTONDOWN << 16) | hit) as isize;
+            assert_eq!(SendMessageW(hwnd, WM_MOUSEACTIVATE, hwnd as usize, input), MA_ACTIVATE as isize);
+            assert_eq!(GetForegroundWindow(), foreground);
+        }
+        assert_eq!(SendMessageW(hwnd, WM_MOUSEACTIVATE, hwnd as usize,
+            ((WM_LBUTTONDOWN << 16) | HTCLIENT) as isize), MA_ACTIVATE as isize);
+    }
+}
+
 /// Keep a foreign UI thread responsive to native window-position messages.
 struct OtherThreadPane {
     hwnd: HWND,
@@ -209,7 +235,7 @@ fn desktop_panes_raise_among_peers_without_covering_apps() {
             above(app, second),
             "desktop panes must remain below applications"
         );
-        SetWindowPos(
+        let raised = SetWindowPos(
             first,
             HWND_TOP,
             0,
@@ -218,7 +244,14 @@ fn desktop_panes_raise_among_peers_without_covering_apps() {
             0,
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER,
         );
-        assert!(above(first, second), "activation must raise the old pane");
+        assert_ne!(raised, 0, "peer raise failed: Win32 error {}; insert_after={:?}",
+            windows_sys::Win32::Foundation::GetLastError(), desktop_insert_after(first));
+        assert!(above(first, second),
+            "activation must raise the old pane; first={first:?} second={second:?} \
+             first_previous={:?} second_previous={:?} insert_after={:?}; \
+             run this native desktop test outside the sandbox to exclude window-order restrictions",
+            GetWindow(first, GW_HWNDPREV), GetWindow(second, GW_HWNDPREV),
+            desktop_insert_after(first));
         assert!(above(app, first));
         for _ in 0..3 {
             let mut menu_owner = first;

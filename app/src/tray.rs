@@ -208,7 +208,11 @@ fn menu(
     );
     unsafe {
         PostMessageW(hwnd, WM_NULL, 0, 0);
-        Shell_NotifyIconW(NIM_SETFOCUS, &data(hwnd, null_mut()));
+        // A selected command may need the foreground (notably Show). Return
+        // focus to Explorer only when dismissing the menu without a command.
+        if command == 0 {
+            Shell_NotifyIconW(NIM_SETFOCUS, &data(hwnd, null_mut()));
+        }
     }
     match command {
         1 => Some(Action::Show),

@@ -14,7 +14,7 @@ use luciddesk_core::{Backdrop, PanelTheme};
 use windows_canvas::ID2D1DeviceContext;
 use windows_sys::Win32::{
     Graphics::Gdi::*,
-    UI::{HiDpi::GetDpiForWindow, Input::KeyboardAndMouse::*, WindowsAndMessaging::*},
+    UI::{ Input::KeyboardAndMouse::*, WindowsAndMessaging::*},
 };
 const FONT_LOAD_TIMER: usize = 0x4c5046;
 const UPDATE_TIMER: usize = 0x4c5056;
