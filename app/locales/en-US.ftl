@@ -1396,3 +1396,6 @@ classification-target = Target group
 classification-extensions-hint = Extensions (comma separated, e.g. pdf, docx; enter at least one condition)
 classification-save = Save
 classification-cancel = Cancel
+
+dialog-confirm = OK
+dialog-cancel = Cancel

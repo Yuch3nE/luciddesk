@@ -503,6 +503,9 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 selected = p.id();
             }
             let dark = theme::is_dark(appearance.0);
+            luciddesk_window::set_message_theme(match appearance.0 {
+                PanelTheme::System => None, PanelTheme::Dark => Some(true), PanelTheme::Light => Some(false),
+            });
             let mut bounds = RECT::default();
             unsafe {
                 GetClientRect(hwnd, &raw mut bounds);

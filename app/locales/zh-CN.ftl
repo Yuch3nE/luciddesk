@@ -1396,3 +1396,6 @@ classification-target = 目标分组
 classification-extensions-hint = 扩展名（逗号分隔，例如 pdf, docx；至少填写一个条件）
 classification-save = 保存
 classification-cancel = 取消
+
+dialog-confirm = 确定
+dialog-cancel = 取消

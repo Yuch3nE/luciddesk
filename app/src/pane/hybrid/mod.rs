@@ -141,6 +141,13 @@ pub fn run(path: &Path, title: Option<String>) -> Result<(), String> {
     interface_flags::TITLE_EMOJI.load(&store)?;
     everything_settings::load(&store)?;
     let mut workspace = store.load_workspace().map_err(|e| e.to_string())?;
+    let message_theme = workspace.appearance().or_else(|| workspace.panels().first().map(|p| (p.theme(), p.backdrop())))
+        .map(|(theme, _)| theme).unwrap_or(luciddesk_core::PanelTheme::System);
+    luciddesk_window::set_message_theme(match message_theme {
+        luciddesk_core::PanelTheme::System => None,
+        luciddesk_core::PanelTheme::Dark => Some(true),
+        luciddesk_core::PanelTheme::Light => Some(false),
+    });
     // Migrate older workspaces that allowed multiple search panes.
     let duplicates: Vec<_> = workspace
         .panels()

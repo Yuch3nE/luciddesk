@@ -186,6 +186,11 @@ pub(super) fn material(state: &Rc<RefCell<PaneApp>>, event: Event) -> Result<boo
         s.workspace = old;
         return Err(error);
     }
+    luciddesk_window::set_message_theme(match theme {
+        luciddesk_core::PanelTheme::System => None,
+        luciddesk_core::PanelTheme::Dark => Some(true),
+        luciddesk_core::PanelTheme::Light => Some(false),
+    });
     for view in &s.views {
         {
             let mut model = view.model.borrow_mut();

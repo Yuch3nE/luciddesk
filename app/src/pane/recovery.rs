@@ -519,16 +519,7 @@ fn confirm_restore(state: &Rc<RefCell<PaneApp>>, input: RestoreInput) {
         crate::i18n::format("ui-nthese-folders-are-currently-unavailable-their-mappings-will-be-kept", &[("arg0", format!("{}", input.missing.join("\n")))])
     };
     let text = crate::i18n::format("ui-integrity-and-compatibility-checks-passed-npanels-app-version-n-nres", &[("arg0", format!("{}", input.count)), ("arg1", format!("{}", input.version)), ("arg2", format!("{}", input.original.display())), ("missing", format!("{}", missing))]);
-    let wide: Vec<u16> = text.encode_utf16().chain(Some(0)).collect();
-    use windows_sys::Win32::UI::WindowsAndMessaging::*;
-    if unsafe {
-        MessageBoxW(
-            owner as _,
-            wide.as_ptr(),
-            crate::i18n::wide("ui-restore-backup"),
-            MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2,
-        )
-    } != IDYES
+    if !crate::error_report::confirm(owner, crate::i18n::text("ui-restore-backup"), &text)
     {
         state
             .borrow_mut()
@@ -720,15 +711,9 @@ fn execute(state: &Rc<RefCell<PaneApp>>, event: &Event) -> Result<(), String> {
             if path.parent() != Some(root.as_path()) || path.extension().is_none_or(|e| e != "db") {
                 return Err(crate::i18n::text("ui-only-records-in-the-backup-folder-can-be-deleted").into());
             }
-            use windows_sys::Win32::UI::WindowsAndMessaging::*;
-            if unsafe {
-                MessageBoxW(
-                    owner as _,
-                    crate::i18n::wide("ui-delete-this-backup-your-current-configuration-will-not-change"),
-                    crate::i18n::wide("ui-delete-backup"),
-                    MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2,
-                )
-            } != IDYES
+            if !crate::error_report::confirm(owner,
+                crate::i18n::text("ui-delete-backup"),
+                crate::i18n::text("ui-delete-this-backup-your-current-configuration-will-not-change"))
             {
                 return Ok(());
             }

@@ -7,8 +7,16 @@ pub(crate) fn show(owner: isize, title: &str, message: &str, kind: MessageKind) 
         let level = if kind == MessageKind::Warning { luciddesk_diagnostics::Level::Warn } else { luciddesk_diagnostics::Level::Error };
         luciddesk_diagnostics::log(level, "ui.error", message);
     }
-    let body = format!("{}\n\n{}", message.trim(), crate::i18n::text("error-copy-hint"));
-    luciddesk_window::show_message(owner, &format!("LucidDesk — {title}"), &body, kind);
+    labels();
+    luciddesk_window::show_message(owner, title, message.trim(), kind);
+}
+
+fn labels() {
+    luciddesk_window::set_message_labels(crate::i18n::text("dialog-confirm"), crate::i18n::text("dialog-cancel"), crate::i18n::text("ui-copy"));
+}
+pub(crate) fn confirm(owner: isize, title: &str, message: &str) -> bool {
+    labels();
+    luciddesk_window::confirm_message(owner, title, message, MessageKind::Warning)
 }
 
 pub(crate) fn error(owner: isize, message: &str) {
