@@ -260,9 +260,12 @@ fn synchronize(view: HWND) {
             continue;
         }
         let changed = update_host(hwnd, view, owner);
-        let restore_band = (returning || (restored && shell_owned(hwnd)))
+        let owned_by_shell = shell_owned(hwnd);
+        let restore_band = (returning || (restored && owned_by_shell))
             && unsafe { !GetPropW(hwnd, RETURN_TO_HOST).is_null() };
-        if changed || restore_band {
+        // Win10 can change the icon host as it shows the desktop. A pane
+        // already above that host should stay there while Explorer settles.
+        if restore_band || (changed && (owned_by_shell || !showing_desktop || restored)) {
             lower_in_order(hwnd, owner, &order);
         }
         repair_in_order(hwnd, owner, &order, showing_desktop && !restored);
