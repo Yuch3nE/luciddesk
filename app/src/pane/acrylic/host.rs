@@ -129,29 +129,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Interactive desktop backdrop capability probe; run alone"]
-    fn host_backdrop_capability_across_parent_changes() {
-        use windows_sys::Win32::UI::WindowsAndMessaging::*;
-        let _sta = crate::pane::test_support::apartment();
-        let host = windows_window::Window::new("Backdrop parent probe")
-            .size(160, 120).style(WS_POPUP).create().unwrap();
-        let pane = windows_window::Window::new("Backdrop child probe")
-            .size(96, 64).style(WS_POPUP).ex_style(WS_EX_NOREDIRECTIONBITMAP)
-            .create().unwrap();
-        let hwnd = HWND(pane.hwnd().cast());
-        for child in [false, true, false] {
-            unsafe {
-                SetWindowLongPtrW(hwnd.0, GWL_STYLE, if child { WS_CHILD } else { WS_POPUP } as isize);
-                SetParent(hwnd.0, if child { host.hwnd().cast() } else { std::ptr::null_mut() });
-            }
-            let result = unsafe { set_attribute(hwnd, DWMWA_USE_HOSTBACKDROPBRUSH, &1i32) };
-            eprintln!("child={child} public_host_backdrop={result:?}");
-            let legacy = HostBackdrop::enable_legacy(hwnd, legacy_setter().unwrap());
-            eprintln!("child={child} legacy_host_backdrop={:?}", legacy.as_ref().map(|_| ()));
-        }
-    }
-
-    #[test]
     fn legacy_host_entry_accepts_a_native_window() {
         let _sta = crate::pane::test_support::apartment();
         let window = windows_window::Window::new("Host backdrop compatibility")

@@ -411,20 +411,14 @@ fn is_visible_unpinned(hwnd: HWND) -> bool {
 // where it was raised. Follow that downward transition without activating it.
 // Run on a host change or a tracked Show Desktop return, so unrelated events
 // in the normal desktop state do not undo explicit reveal.
-#[cfg(test)]
-fn lower_to_host(hwnd: HWND, host: HWND) -> bool {
-    let Some(order) = window_order() else { return false; };
-    lower_in_order(hwnd, host, &order)
-}
-
-fn lower_in_order(hwnd: HWND, host: HWND, order: &[HWND]) -> bool {
+fn lower_in_order(hwnd: HWND, host: HWND, order: &[HWND]) {
     unsafe {
-        if !is_visible_unpinned(hwnd) { return true; }
+        if !is_visible_unpinned(hwnd) { return; }
         let (Some(pane_rank), Some(host_rank)) = (
             order.iter().position(|&window| window == hwnd),
             order.iter().position(|&window| window == host),
-        ) else { return false; };
-        if host_rank <= pane_rank { return false; }
+        ) else { return; };
+        if host_rank <= pane_rank { return; }
         let after = if shell_owned(hwnd) {
             // Stay above the Shell's own window group. Inserting just above
             // the host can briefly put an owned popup behind the icon view.
@@ -433,21 +427,19 @@ fn lower_in_order(hwnd: HWND, host: HWND, order: &[HWND]) -> bool {
                 .rev()
                 .find(|&&window| application_boundary(window))
             else {
-                return true;
+                return;
             };
             app
         } else {
             GetWindow(host, GW_HWNDPREV)
         };
-        if after == hwnd { return true; }
-        if after.is_null() { return false; }
+        if after == hwnd || after.is_null() { return; }
         let desktop = RemovePropW(hwnd, DESKTOP_LAYER);
         let moved = SetWindowPos(hwnd, after, 0, 0, 0, 0, REORDER_WITHOUT_ACTIVATION);
         let error = if moved == 0 { windows_sys::Win32::Foundation::GetLastError() } else { 0 };
         if !desktop.is_null() { SetPropW(hwnd, DESKTOP_LAYER, desktop); }
         luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Info, "pane.desktop_owner",
             "restore desktop band; pane={hwnd:?} host={host:?} moved={moved} error={error}");
-        moved != 0
     }
 }
 
@@ -1233,7 +1225,7 @@ mod tests {
             position(hwnd, HWND_TOP);
             SetPropW(hwnd, DESKTOP_LAYER, 1usize as _);
             position(host.hwnd().cast(), previous);
-            lower_to_host(hwnd, host.hwnd().cast());
+            lower_in_order(hwnd, host.hwnd().cast(), &window_order().unwrap());
             assert_eq!(GetWindow(host.hwnd().cast(), GW_HWNDPREV), hwnd);
             assert_eq!(GetForegroundWindow(), foreground);
             assert_eq!(GetWindowLongW(hwnd, GWL_EXSTYLE) as u32 & WS_EX_TOPMOST, 0);

@@ -589,7 +589,7 @@ impl Renderer {
                                     ColorF::new(base, base, base, opacity)
                                 }
                             }),
-                            super::theme::panel_border(model.dark, model.backdrop),
+                            super::theme::panel_border(model.backdrop),
                             ColorF::new(ink, ink, ink, 1.0),
                             ColorF::new(ink, ink, ink, 0.85),
                             ColorF::new(ink, ink, ink, 0.08),

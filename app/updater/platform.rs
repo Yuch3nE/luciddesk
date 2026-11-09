@@ -8,7 +8,7 @@ use std::{
         io::{AsRawHandle, FromRawHandle, OwnedHandle},
     },
     path::{Path, PathBuf},
-    ptr::{null, null_mut},
+    ptr::null,
 };
 use windows_sys::Win32::{
     Foundation::*,

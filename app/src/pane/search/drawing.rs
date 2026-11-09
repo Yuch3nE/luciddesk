@@ -196,7 +196,7 @@ impl Drawing {
                     ColorF::new(ink, ink, ink, 1.0),
                     ColorF::new(ink, ink, ink, 0.58),
                     crate::pane::theme::panel_divider(model.dark, model.backdrop),
-                    crate::pane::theme::panel_border(model.dark, model.backdrop),
+                    crate::pane::theme::panel_border(model.backdrop),
                     ColorF::new(ink, ink, ink, if contrast.light_text { 0.14 } else { 0.10 }),
                     ColorF::new(ink, ink, ink, 0.06),
                     if model.dark { ColorF::new(0.48, 0.74, 1.0, 1.0) } else { ColorF::new(0.0, 0.40, 0.76, 1.0) },

@@ -47,7 +47,6 @@ pub(super) fn apply(
         | Event::ToggleListView
         | Event::ToggleSearch
         | Event::EnableSearch
-        | Event::EnableMonitor
         | Event::MonitorOptions(_)
         | Event::FileDrag(_)
         | Event::NewFolder

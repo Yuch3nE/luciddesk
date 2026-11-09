@@ -15,19 +15,12 @@ pub(super) fn handle(
     id: PanelId,
     event: Event,
 ) -> Result<bool, String> {
-    if !state.borrow().monitor_child {
-        let options = match &event {
-            Event::EnableMonitor => Some(monitor::Preferences { enabled: true, ..monitor::Preferences::load()? }),
-            Event::MonitorOptions(options) => Some(options.clone()),
-            _ => None,
-        };
-        if let Some(options) = options {
+    if let Event::MonitorOptions(options) = &event {
+        if !state.borrow().monitor_child {
             options.save()?;
             monitor::process::configure(state)?;
             return Ok(false);
         }
-    }
-    if let Event::MonitorOptions(options) = &event {
         let s = state.borrow();
         if !s.workspace.panel(id).is_some_and(Panel::is_monitor) {
             return Ok(false);
@@ -436,7 +429,7 @@ pub(super) fn handle(
     }
     if matches!(
         event,
-        Event::New | Event::EnableMonitor | Event::EnableSearch | Event::MapFolder(_)
+        Event::New | Event::EnableSearch | Event::MapFolder(_)
     ) {
         return lifecycle::create(state, event);
     }
