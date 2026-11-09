@@ -32,6 +32,8 @@ mod desktop_owner;
 mod desktop_diagnostics;
 #[cfg(test)]
 mod error_tests;
+pub(super) use desktop_diagnostics::start as start_desktop_diagnostics;
+pub(super) use desktop_owner::{DesktopPane, attach as attach_desktop, start as start_desktop};
 pub(super) use scheduling::{post_action, defer_action};
 use input::*;
 pub(super) fn dispatch_sort_menu(
@@ -66,6 +68,8 @@ pub(super) const TAB_CHANGED: u32 = WM_APP + 13;
 pub(super) const RESTORE_MERGE: u32 = WM_APP + 14;
 const DESKTOP_LAYER: windows_sys::core::PCWSTR = windows_sys::w!("LucidDesk.DesktopLayer");
 const CLOSING_PANE: windows_sys::core::PCWSTR = windows_sys::w!("LucidDesk.ClosingPane");
+const REORDER_WITHOUT_ACTIVATION: u32 =
+    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER;
 
 #[cfg(test)]
 pub(super) const TEST_HOST_BACKDROP: u32 = WM_APP + 0x1af0;
@@ -154,11 +158,10 @@ pub(super) fn raise_once(hwnd: HWND) {
     unsafe {
         let desktop = RemovePropW(hwnd, DESKTOP_LAYER);
         let was_visible = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
-        let flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER;
         let positioned = if !desktop.is_null() && desktop_owner::shell_owned(hwnd) {
-            desktop_owner::raise_owned(hwnd, flags)
+            desktop_owner::raise_owned(hwnd)
         } else {
-            SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0, flags)
+            SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0, REORDER_WITHOUT_ACTIVATION)
         };
         let error = if positioned == 0 { windows_sys::Win32::Foundation::GetLastError() } else { 0 };
         luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Info, "pane.desktop_state",
@@ -1540,7 +1543,7 @@ where
     let s = scale(hwnd);
     unsafe {
         if !inspect {
-            desktop_owner::attach(hwnd);
+            attach_desktop(hwnd, DesktopPane::Regular);
             SetWindowPos(
                 hwnd,
                 HWND_BOTTOM,
@@ -1582,11 +1585,11 @@ where
     // Bootstrap the transparent composition content before the first visible frame.
     unsafe {
         SendMessageW(hwnd, WM_PAINT, 0, 0);
-        desktop_owner::start(hwnd);
+        start_desktop(hwnd);
         prepared.set(true);
         ShowWindow(hwnd, SW_SHOWNOACTIVATE);
     }
-    desktop_diagnostics::start(hwnd);
+    start_desktop_diagnostics(hwnd);
     Ok(window)
 }
 
@@ -1604,11 +1607,3 @@ pub fn error(message: &str) {
 pub fn error_for(owner: HWND, message: &str) {
     crate::error_report::error(owner as isize, message);
 }
-
-// On Win11 the search pane also follows the Shell's desktop window.
-pub(super) fn attach_search_desktop(hwnd: HWND) {
-    if desktop_owner::uses_shell_owner() {
-        desktop_owner::attach(hwnd);
-    }
-}
-pub(super) fn start_search_desktop(hwnd: HWND) { desktop_owner::start(hwnd); desktop_diagnostics::start(hwnd); }

@@ -251,6 +251,7 @@ fn synchronize(view: HWND) {
     let restored = WATCH.with(|watch| {
         watch.borrow().restored.iter().any(|&hwnd| application_boundary(hwnd as HWND))
     });
+    let desktop_is_exposed = showing_desktop && !restored;
     let panes = WATCH.with(|watch| watch.borrow().panes.clone());
     let Some(order) = window_order() else { return; };
     for pane in panes {
@@ -265,14 +266,13 @@ fn synchronize(view: HWND) {
             && unsafe { !GetPropW(hwnd, RETURN_TO_HOST).is_null() };
         // Win10 can change the icon host as it shows the desktop. A pane
         // already above that host should stay there while Explorer settles.
-        if restore_band || (changed && (owned_by_shell || !showing_desktop || restored)) {
+        if restore_band || (changed && (owned_by_shell || !desktop_is_exposed)) {
             lower_in_order(hwnd, owner, &order);
         }
-        repair_in_order(hwnd, owner, &order, showing_desktop && !restored);
+        repair_in_order(hwnd, owner, &order, desktop_is_exposed);
         // An explicitly revealed pane may already be above the desktop and
         // need no upward repair, but must still return when Win+D restores apps.
-        if showing_desktop && !restored && unsafe { IsWindowVisible(hwnd) != 0
-            && IsIconic(hwnd) == 0 && GetWindowLongW(hwnd, GWL_EXSTYLE) as u32 & WS_EX_TOPMOST == 0 } {
+        if desktop_is_exposed && is_visible_unpinned(hwnd) {
             unsafe { SetPropW(hwnd, RETURN_TO_HOST, 1usize as _); }
         }
     }
@@ -283,7 +283,7 @@ fn host(view: HWND, fallback: HWND) -> HWND {
     if root.is_null() { fallback } else { root }
 }
 
-pub(super) fn uses_shell_owner() -> bool {
+fn uses_shell_owner() -> bool {
     let os = windows_version::OsVersion::current();
     os.major > 10 || (os.major == 10 && os.build >= 22000)
 }
@@ -292,7 +292,16 @@ pub(super) fn shell_owned(hwnd: HWND) -> bool {
     unsafe { !GetPropW(hwnd, SHELL_OWNED).is_null() }
 }
 
-pub(super) fn attach(hwnd: HWND) {
+pub(in crate::pane) enum DesktopPane {
+    Regular,
+    Search,
+}
+
+pub(in crate::pane) fn attach(hwnd: HWND, pane: DesktopPane) {
+    // Win10 search keeps its own window ordering.
+    if matches!(pane, DesktopPane::Search) && !uses_shell_owner() {
+        return;
+    }
     let shell = unsafe { GetShellWindow() };
     if uses_shell_owner() && !shell.is_null() {
         // A Win32 owner gives Explorer its original Show Desktop behavior
@@ -310,7 +319,7 @@ pub(super) fn attach(hwnd: HWND) {
     update_host(hwnd, view, host);
 }
 
-pub(super) fn start(hwnd: HWND) {
+pub(in crate::pane) fn start(hwnd: HWND) {
     if shell_owned(hwnd) {
         SHORTCUT.with(|slot| {
             if slot.get().is_null() {
@@ -349,17 +358,20 @@ unsafe extern "system" fn shortcut(code: i32, wp: usize, lp: isize) -> isize {
     }
 }
 
-pub(super) unsafe fn raise_owned(hwnd: HWND, flags: u32) -> i32 {
+pub(super) unsafe fn raise_owned(hwnd: HWND) -> i32 {
     unsafe {
         // HWND_TOP alone can leave an Explorer-owned popup behind the
         // foreground app. Reset its stacking position synchronously.
-        if SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, flags) == 0 {
+        if SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, REORDER_WITHOUT_ACTIVATION) == 0 {
             return 0;
         }
-        if SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, flags) != 0 {
+        if SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, REORDER_WITHOUT_ACTIVATION) != 0 {
             return 1;
         }
-        SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, flags & !SWP_NOOWNERZORDER)
+        SetWindowPos(
+            hwnd, HWND_NOTOPMOST, 0, 0, 0, 0,
+            REORDER_WITHOUT_ACTIVATION & !SWP_NOOWNERZORDER,
+        )
     }
 }
 
@@ -387,6 +399,14 @@ fn update_host(hwnd: HWND, view: HWND, owner: HWND) -> bool {
     }
 }
 
+fn is_visible_unpinned(hwnd: HWND) -> bool {
+    unsafe {
+        IsWindowVisible(hwnd) != 0
+            && IsIconic(hwnd) == 0
+            && GetWindowLongW(hwnd, GWL_EXSTYLE) as u32 & WS_EX_TOPMOST == 0
+    }
+}
+
 // When Show Desktop ends, its host moves down but an independent pane stays
 // where it was raised. Follow that downward transition without activating it.
 // Run on a host change or a tracked Show Desktop return, so unrelated events
@@ -399,8 +419,7 @@ fn lower_to_host(hwnd: HWND, host: HWND) -> bool {
 
 fn lower_in_order(hwnd: HWND, host: HWND, order: &[HWND]) -> bool {
     unsafe {
-        if IsWindowVisible(hwnd) == 0 || IsIconic(hwnd) != 0
-            || GetWindowLongW(hwnd, GWL_EXSTYLE) as u32 & WS_EX_TOPMOST != 0 { return true; }
+        if !is_visible_unpinned(hwnd) { return true; }
         let (Some(pane_rank), Some(host_rank)) = (
             order.iter().position(|&window| window == hwnd),
             order.iter().position(|&window| window == host),
@@ -423,8 +442,7 @@ fn lower_in_order(hwnd: HWND, host: HWND, order: &[HWND]) -> bool {
         if after == hwnd { return true; }
         if after.is_null() { return false; }
         let desktop = RemovePropW(hwnd, DESKTOP_LAYER);
-        let moved = SetWindowPos(hwnd, after, 0, 0, 0, 0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+        let moved = SetWindowPos(hwnd, after, 0, 0, 0, 0, REORDER_WITHOUT_ACTIVATION);
         let error = if moved == 0 { windows_sys::Win32::Foundation::GetLastError() } else { 0 };
         if !desktop.is_null() { SetPropW(hwnd, DESKTOP_LAYER, desktop); }
         luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Info, "pane.desktop_owner",
@@ -492,8 +510,7 @@ fn repair_order(hwnd: HWND, owner: HWND) {
 
 fn repair_in_order(hwnd: HWND, owner: HWND, order: &[HWND], showing_desktop: bool) {
     unsafe {
-        if IsWindowVisible(hwnd) == 0 || IsIconic(hwnd) != 0
-            || GetWindowLongW(hwnd, GWL_EXSTYLE) as u32 & WS_EX_TOPMOST != 0 { return; }
+        if !is_visible_unpinned(hwnd) { return; }
         let (Some(pane_rank), Some(host_rank)) = (
             order.iter().position(|&window| window == hwnd),
             order.iter().position(|&window| window == owner),
@@ -517,8 +534,7 @@ fn repair_in_order(hwnd: HWND, owner: HWND, order: &[HWND], showing_desktop: boo
         } else { previous };
         // Repair just above the desktop, without activation or permanent topmost.
         let desktop = RemovePropW(hwnd, DESKTOP_LAYER);
-        let moved = SetWindowPos(hwnd, after, 0, 0, 0, 0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+        let moved = SetWindowPos(hwnd, after, 0, 0, 0, 0, REORDER_WITHOUT_ACTIVATION);
         let error = if moved == 0 { windows_sys::Win32::Foundation::GetLastError() } else { 0 };
         if !desktop.is_null() { SetPropW(hwnd, DESKTOP_LAYER, desktop); }
         if moved != 0 && showing_desktop { SetPropW(hwnd, RETURN_TO_HOST, 1usize as _); }

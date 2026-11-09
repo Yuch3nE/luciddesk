@@ -1546,7 +1546,7 @@ pub(super) fn create(
     super::wake::protect_dispatch(hwnd as isize)?;
     unsafe {
         crate::window_visibility::prepare_canvas(hwnd);
-        super::window::attach_search_desktop(hwnd);
+        super::window::attach_desktop(hwnd, super::window::DesktopPane::Search);
         SetWindowSubclass(hwnd, Some(super::window::borderless_proc), 1, 0);
     }
     let mut native = Editor::new(hwnd)?;
@@ -1570,7 +1570,8 @@ pub(super) fn create(
     invalidate(hwnd);
     unsafe {
         SendMessageW(hwnd, WM_PAINT, 0, 0);
-        super::window::start_search_desktop(hwnd);
+        super::window::start_desktop(hwnd);
+        super::window::start_desktop_diagnostics(hwnd);
         prepared.set(true);
         ShowWindow(hwnd, SW_SHOWNOACTIVATE);
         ShowWindow(edit(hwnd), SW_SHOWNOACTIVATE);

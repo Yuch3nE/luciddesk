@@ -91,7 +91,7 @@ pub(super) fn sample(hwnd: HWND, reason: &str, force: bool) {
     }
 }
 
-pub(super) fn start(hwnd: HWND) {
+pub(in crate::pane) fn start(hwnd: HWND) {
     // Opt in at window creation; enabling diagnostics requires an app restart.
     // Normal error-only logging must not add idle timer wakeups.
     if !enabled(Level::Info) { return; }
