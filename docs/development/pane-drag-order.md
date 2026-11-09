@@ -7,10 +7,11 @@
 | 入口 | 职责 |
 | --- | --- |
 | `app/src/pane/window/mod.rs` | `set_layer`、`raise_among_peers`、`raise_once` 和 `borderless_proc` |
+| `app/src/pane/window/desktop_owner.rs` | 桌面注册、WinEvent 订阅、图标宿主跟踪和层级恢复 |
 | `app/src/pane/search/mod.rs` | 搜索窗口、原生 EDIT 的定位、层级同步、输入处理及托盘激活 |
 | `app/src/pane/hybrid/mod.rs` | 托盘动作与面板显示操作 |
 
-普通分组和文件夹面板共用 `window::create`，搜索面板使用独立顶层窗口。Win10 普通面板以图标宿主为 Z 顺序参照，搜索面板沿用自身层级规则。Win11 普通面板和搜索面板均为 Shell 拥有的顶层工具窗口，保留 DWM 原生背景画刷。搜索 EDIT 始终是由搜索窗口拥有的独立 popup。
+普通分组和文件夹面板共用 `window::create`，搜索面板使用独立顶层窗口。两种面板通过 `attach_desktop` 和 `start_desktop` 进入共用的桌面注册与监听流程。Win10 普通面板以图标宿主为 Z 顺序参照，搜索面板沿用自身层级规则。Win11 普通面板和搜索面板均为 Shell 拥有的顶层工具窗口，保留 DWM 原生背景画刷。搜索 EDIT 始终是由搜索窗口拥有的独立 popup。
 
 ## 行为约束
 
@@ -38,13 +39,17 @@
 
 ## owner 重排与菜单
 
-桌面图标视图可以在同一个 HWND 不变的情况下从 Progman 移到 WorkerW。`window/desktop_owner.rs` 在每个拥有面板的 UI 线程上共用进程外 WinEvent 监听。两套路径都跟踪桌面窗口对象和前台变化，Win11 另外监听普通应用从最小化恢复。回调过滤事件后投递任务，窗口枚举和层级调整由任务执行。窗口对象事件跳过本进程，前台和最小化恢复事件包含本进程。监听不绑定 Explorer PID。
+桌面图标视图可以在同一个 HWND 不变的情况下从 Progman 移到 WorkerW。`window/desktop_owner.rs` 在每个拥有面板的 UI 线程上共用进程外 WinEvent 监听，监听范围覆盖各进程，因此 Explorer 更换 PID 后也能收到事件。回调筛选窗口对象、已知句柄或桌面类名，再投递任务执行窗口枚举和层级调整。
+
+- 对象事件分两段订阅。`EVENT_OBJECT_CREATE` 到 `EVENT_OBJECT_REORDER` 覆盖创建、销毁、显示、隐藏和重排，另订阅 `EVENT_OBJECT_PARENTCHANGE` 跟踪图标视图迁移。两段都跳过本进程。
+- 两个平台都订阅 `EVENT_SYSTEM_FOREGROUND`，Win11 另订阅 `EVENT_SYSTEM_MINIMIZEEND`。这两类系统事件都接收本进程的通知。
+- 控件焦点、选中状态、位置、名称等 10 种对象事件（`0x8005` 到 `0x800E`）此前在回调入口即被丢弃，现由订阅范围提前过滤。桌面视图、父窗口、图标宿主和 Shell 句柄存于固定数组，窗口类名直接比较 UTF-16，省去句柄列表和临时类名字符串的堆分配。 [WinEvent 事件定义](https://learn.microsoft.com/en-us/windows/win32/winauto/event-constants)
 
 相关事件合并为一个立即投递的窗口任务，重新解析实际图标宿主，随后以 250 ms、1000 ms 做两次有限重试以覆盖 Explorer 的过渡阶段。新事件会取消尚未执行的延迟重试并立即投递任务，不能排在旧重试后；连续事件合并到已经排队的任务，不推迟其执行时间。接收任务的面板关闭时，将任务转交仍存活的面板。处理完后不再周期唤醒。临时找不到图标视图时保持现有宿主参照，不回退到旧 Progman，等待后续生命周期事件或有限重试。只有 WinEvent 注册失败时降级为 5 秒检查并重试注册。最后一个面板销毁时取消待处理任务和计时器并卸载监听。此功能不依赖诊断日志级别；INFO 模式的只读诊断采样是独立功能，仍按日志指南开启和关闭。
 
 宿主位于面板上方时，通常只在没有可见普通应用阻隔的情况下，将面板放到宿主紧上方；若图标宿主本身处于前台，则夹在宿主和面板之间的窗口已被桌面遮挡，不再阻止恢复，插入位置仍限于宿主紧上方，不越过宿主上方的应用；不激活、不显示隐藏面板、不改变尺寸位置或永久置顶状态。已在正确层级的面板不会重复调用 `SetWindowPos`。最小化或 DWM cloaked 的窗口不作为可见应用边界，DWM 查询失败时保守保留边界。事件送达和排序修复都是异步的，不能保证零延迟；不同系统上的 Explorer 事件覆盖仍需实际 Win+D 验证。
 
-`dynamic_host_switch_preserves_apps_geometry_visibility_and_topmost` 用原生窗口模拟图标视图往返迁移，验证覆盖关系、隐藏/置顶状态、几何、无变化时不重排，以及监听随面板销毁清理；`host_repair_does_not_cross_an_intervening_application` 验证不能为了追随桌面跨过普通应用。`winevent_delivery_coalesces_work_and_stops_after_settling` 用 `NotifyWinEvent` 验证真实进程外回调、事件过滤、合并和重试结束后不保留周期计时器。它们不替代 Windows 10/Server 上实际 Win+D 的复测。
+`dynamic_host_switch_preserves_apps_geometry_visibility_and_topmost` 用原生窗口模拟图标视图往返迁移，验证覆盖关系、隐藏和置顶状态、几何、无变化时跳过重排，以及监听随面板销毁清理。`host_repair_does_not_cross_an_intervening_application` 检查提升时的普通应用边界。`winevent_delivery_coalesces_work_and_stops_after_settling` 通过 `NotifyWinEvent` 分别验证重排和父窗口变化的进程外通知可触发同步，并检查事件过滤、合并和重试后的计时器清理。真实 Win+D 的复测步骤见[验证指南](validation.md)。
 
 Win10 的普通面板保持无 owner，避免其激活关系进入 Explorer 的显示桌面流程。`active_pane_stays_out_of_desktop_popup_chain_across_host_switches` 覆盖这条路径。Win11 顶层面板使用 Shell owner。显式抬升和菜单定位使用 `SWP_NOOWNERZORDER`，避免带动 owner。
 
@@ -108,7 +113,7 @@ Windows 11 x64 是主要验证平台。自动发送消息不能完全覆盖真�
 
 标题栏、缩放边缘和内容区保留正常鼠标激活，不再靠禁止标题栏激活绕过 Win+D 问题。`desktop_frame_and_content_preserve_normal_mouse_activation` 验证原生消息路由；真实长拖、内容区键盘交互后连续两次 Win+D 恢复其他应用仍需 Win10 实机验证。
 
-Win10 在宿主切换或跟踪到普通应用从显示桌面返回时，将合适的面板归位到宿主紧上方。Win11 归位到仍位于面板下方的普通应用后方，避开桌面图标窗口组。隐藏、最小化及永久置顶面板不参与归位。普通稳定状态的同步保留显式“显示所有面板”的结果。`returning_host_lowers_pane_below_restored_apps_without_changing_focus` 验证 Win10 式的归位和焦点行为。
+Win10 显示桌面期间，单纯的图标宿主切换只更新宿主参照并按需向上恢复。已在新宿主上方的面板保持当前位置，避免首次 Win+D 时先下移再抬回。普通应用恢复后，待归位的面板跟随宿主回到应用下方。Win11 归位到仍位于面板下方的普通应用后方，避开桌面图标窗口组。隐藏、最小化及永久置顶面板不参与归位。普通稳定状态的同步保留显式“显示所有面板”的结果。`returning_host_lowers_pane_below_restored_apps_without_changing_focus` 验证 Win10 式的归位和焦点行为。
 
 屏幕外辅助窗口同样不作为应用边界：矩形查询成功后，用 MonitorFromRect / MONITOR_DEFAULTTONULL 检查与实际显示器的交集，避免 NarratorHelperWindow 的非零矩形（日志中为 -48000,-48000 至 -47976,-47976）阻止恢复。不能简单排除负坐标，负坐标显示器和部分可见窗口仍必须受保护。host_round_trip_crosses_offscreen_helper_without_covering_restored_apps 覆盖连续三次宿主往返、屏幕外辅助窗口、恢复应用覆盖面板、焦点与非置顶状态不变，以及部分屏幕外窗口仍构成边界。
 

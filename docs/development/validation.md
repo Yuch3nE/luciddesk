@@ -36,6 +36,17 @@
 
 Win+D 可见性回归需在 Windows 10 和 Windows 11 分别验证。普通面板与置顶面板同时存在时，反复 Win+D、打开任意应用、返回桌面，并执行托盘“显示所有面板”，再组合桌面双击隐藏与恢复。覆盖桌面图标位于 Progman 和 WorkerW 的情况，以及壁纸切换后再次显示面板。检查面板可见性、置顶设置、位置和普通应用的覆盖关系。`pane::window::desktop_owner` 的常规测试覆盖宿主与层级逻辑，`real_shell_show_desktop_preserves_pane_pixels` 在交互桌面验证真实 Win+D 和原生亚克力画刷是否建立。背景模糊效果需另行观察。
 
+Win10 冷启动场景从托盘退出并重新启动 LucidDesk。保留普通窗口，面板出现后立即点“显示所有面板”，按第一次 Win+D 检查是否闪烁，约 2 秒后再按一次，确认普通窗口恢复并盖住面板。每轮都重新启动应用，并记录 Windows 构建号和 LucidDesk 构建号。
+
+修改桌面事件订阅后，在可交互 Windows 会话中分别运行事件投递回归和真实 Shell 回归。
+
+```powershell
+cargo test -p luciddesk --bin luciddesk --locked --offline -- pane::window::desktop_owner::tests::winevent_delivery_coalesces_work_and_stops_after_settling --exact --test-threads=1
+cargo test -p luciddesk --bin luciddesk --locked --offline -- pane::window::desktop_owner::tests::real_shell_show_desktop_preserves_pane_pixels --exact --ignored --test-threads=1
+```
+
+记录首轮异常及同环境对照结果，分别标明冷启动手测和自动回归的平台。事件回归验证投递和合并，CPU 开销和切换耗时需单独测量。已执行的结果见[验证历史](validation-history.md#2026-11-09-wind-冷启动修复与事件订阅优化)。
+
 桌面双击隐藏、逐帧采样和 hook 消融的前置条件、命令及指标解释统一见 [Hook 验证指南](hook-validation.md)。该指南区分手势正确性、窗口可见状态和像素合成完成，避免把淡出时长算作 hook 开销。
 
 依赖和工具链就绪后，可按范围选用以下命令；`--offline` 要求依赖已缓存：
