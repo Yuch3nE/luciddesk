@@ -16,7 +16,7 @@ struct Watch {
     pending: Option<(usize, usize)>,
     hooks: Vec<HWINEVENTHOOK>,
     retries: u8,
-    desktop: Vec<usize>,
+    desktop: [usize; 4],
     restored: Vec<usize>,
 }
 thread_local! {
@@ -47,9 +47,10 @@ fn ensure_hooks() {
 
 fn register_hooks(flags: u32) -> Vec<HWINEVENTHOOK> {
     let mut hooks = Vec::new();
-    // Process-independent subscriptions survive Explorer replacement. Filter
-    // callback events by desktop class/known HWND before scheduling any work.
-    for (first, last) in [(EVENT_OBJECT_CREATE, EVENT_OBJECT_PARENTCHANGE),
+    // Process-independent subscriptions survive Explorer replacement. Leave
+    // out focus, selection and location events between reorder and parent change.
+    for (first, last) in [(EVENT_OBJECT_CREATE, EVENT_OBJECT_REORDER),
+        (EVENT_OBJECT_PARENTCHANGE, EVENT_OBJECT_PARENTCHANGE),
         (EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND),
         (EVENT_SYSTEM_MINIMIZEEND, EVENT_SYSTEM_MINIMIZEEND)] {
         if first == EVENT_SYSTEM_MINIMIZEEND && !uses_shell_owner() { continue; }
@@ -71,8 +72,8 @@ fn register_hooks(flags: u32) -> Vec<HWINEVENTHOOK> {
 
 fn relevant(event: u32, hwnd: HWND, object: i32, child: i32) -> bool {
     if hwnd.is_null() || child != 0 || (object != OBJID_WINDOW && object != OBJID_CLIENT)
-        || !matches!(event, EVENT_OBJECT_CREATE | EVENT_OBJECT_DESTROY | EVENT_OBJECT_SHOW
-            | EVENT_OBJECT_HIDE | EVENT_OBJECT_REORDER | EVENT_OBJECT_PARENTCHANGE | EVENT_SYSTEM_FOREGROUND) {
+        || !matches!(event, EVENT_OBJECT_CREATE..=EVENT_OBJECT_REORDER
+            | EVENT_OBJECT_PARENTCHANGE | EVENT_SYSTEM_FOREGROUND) {
         return false;
     }
     if WATCH.with(|watch| watch.borrow().desktop.contains(&(hwnd as usize))) { return true; }
@@ -83,7 +84,9 @@ fn relevant(event: u32, hwnd: HWND, object: i32, child: i32) -> bool {
     }
     let mut class = [0u16; 128];
     let len = unsafe { GetClassNameW(hwnd, class.as_mut_ptr(), class.len() as i32) }.max(0) as usize;
-    matches!(String::from_utf16_lossy(&class[..len]).as_str(), "Progman" | "WorkerW" | "SHELLDLL_DefView")
+    ["Progman", "WorkerW", "SHELLDLL_DefView"].into_iter().any(|name| {
+        class[..len].iter().copied().eq(name.encode_utf16())
+    })
 }
 
 unsafe extern "system" fn changed(hook: HWINEVENTHOOK, event: u32, hwnd: HWND,
@@ -171,8 +174,7 @@ fn run_sync() {
     let view = luciddesk_explorer::desktop_view().unwrap_or_default() as HWND;
     if !view.is_null() {
         let desktop = unsafe { [view, GetParent(view), host(view, std::ptr::null_mut()), GetShellWindow()] };
-        WATCH.with(|watch| watch.borrow_mut().desktop = desktop.into_iter()
-            .filter(|hwnd| !hwnd.is_null()).map(|hwnd| hwnd as usize).collect());
+        WATCH.with(|watch| watch.borrow_mut().desktop = desktop.map(|hwnd| hwnd as usize));
     }
     synchronize(view);
     ensure_hooks();
@@ -723,7 +725,7 @@ mod tests {
         let old = WATCH.with(|watch| std::mem::take(&mut watch.borrow_mut().hooks));
         for hook in old { unsafe { UnhookWinEvent(hook); } }
         let hooks = register_hooks(WINEVENT_OUTOFCONTEXT);
-        assert_eq!(hooks.len(), if uses_shell_owner() { 3 } else { 2 });
+        assert_eq!(hooks.len(), if uses_shell_owner() { 4 } else { 3 });
         WATCH.with(|watch| watch.borrow_mut().hooks = hooks);
         fn pump_until(done: impl Fn() -> bool) {
             let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
@@ -745,13 +747,16 @@ mod tests {
         });
         pump_until(idle);
         let target = event_window.hwnd().cast();
-        WATCH.with(|watch| watch.borrow_mut().desktop.push(target as usize));
+        WATCH.with(|watch| watch.borrow_mut().desktop[0] = target as usize);
         assert!(!relevant(EVENT_OBJECT_NAMECHANGE, target, OBJID_WINDOW, 0));
         assert!(!relevant(EVENT_OBJECT_PARENTCHANGE, target, OBJID_CLIENT, 1));
         assert!(!relevant(EVENT_OBJECT_PARENTCHANGE, owner.hwnd().cast(), OBJID_WINDOW, 0));
-        unsafe { NotifyWinEvent(EVENT_OBJECT_PARENTCHANGE, target, OBJID_WINDOW, 0); }
-        pump_until(|| WATCH.with(|watch| watch.borrow().timer != 0));
-        pump_until(idle);
+        for event in [EVENT_OBJECT_REORDER, EVENT_OBJECT_PARENTCHANGE] {
+            WATCH.with(|watch| watch.borrow_mut().desktop[0] = target as usize);
+            unsafe { NotifyWinEvent(event, target, OBJID_WINDOW, 0); }
+            pump_until(|| WATCH.with(|watch| watch.borrow().timer != 0));
+            pump_until(idle);
+        }
         for delay in [250, 1_000] {
             schedule(delay);
             let slow_timer = WATCH.with(|watch| watch.borrow().timer);
