@@ -920,6 +920,7 @@ fn resize(hwnd: HWND, state: &mut Search) {
 }
 
 fn search_frame_hit(bounds: RECT, point: POINT, scale: f32, locked: bool) -> u32 {
+    if locked { return HTCLIENT; }
     let x = point.x as f32 / scale;
     let y = point.y as f32 / scale;
     let width = bounds.right as f32 / scale;

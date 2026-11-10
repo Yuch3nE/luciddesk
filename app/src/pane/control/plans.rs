@@ -86,9 +86,6 @@ fn editable(workspace: &Workspace, id: PanelId) -> Result<(), (String, String)> 
     if !panel.supports_tabs() {
         return Err(invalid("only desktop panels are supported"));
     }
-    if panel.locked() {
-        return Err(("PANE_LOCKED".into(), "panel is locked".into()));
-    }
     Ok(())
 }
 fn ordered(workspace: &Workspace, pane: PanelId) -> Vec<String> {
@@ -274,8 +271,7 @@ fn prepare(
             Operation::BackupCreate { .. } | Operation::BackupExport { .. } | Operation::BackupRestore { .. } | Operation::StartupSet { .. } | Operation::SettingsUpdate { .. } => unreachable!("handled above"),
             Operation::FolderUpdate { pane_id, path, list_view, sort_column, descending, column_widths, visible_columns } => {
                 let target=id(pane_id)?;
-                let panel=next.panel(target).filter(|p|p.folder().is_some()).ok_or_else(||("NOT_FOUND".into(),"folder panel does not exist".into()))?;
-                if panel.locked(){return Err(("PANE_LOCKED".into(),"explicitly unlock the panel first".into()));}
+                next.panel(target).filter(|p|p.folder().is_some()).ok_or_else(||("NOT_FOUND".into(),"folder panel does not exist".into()))?;
                 if path.is_none() && list_view.is_none() && sort_column.is_none() && descending.is_none() && column_widths.is_none() && visible_columns.is_none(){return Err(invalid("folder update requires at least one field"));}
                 if !folders.contains_key(&target) {
                     let original=store.folder_preferences(target).map_err(|e|invalid(e.to_string()))?;
@@ -376,7 +372,7 @@ fn prepare(
                 {
                     return Err(invalid("update requires at least one field"));
                 }
-                if panel.locked() && *locked != Some(false) {
+                if panel.locked() && title.is_some() && *locked != Some(false) {
                     return Err((
                         "PANE_LOCKED".into(),
                         "explicitly unlock the panel first".into(),
@@ -449,7 +445,6 @@ fn prepare(
                 let target = id(pane_id)?;
                 let panel=next.panel(target).ok_or_else(||("NOT_FOUND".into(),"panel does not exist".into()))?;
                 if panel.is_search(){return Err(invalid("disable search through settings.update"));}
-                if panel.locked(){return Err(("PANE_LOCKED".into(),"panel is locked".into()));}
                 let members = ordered(&next, target);
                 if !members.is_empty() && !release_items {
                     return Err(invalid("panel is not empty; set release_items explicitly"));
@@ -1432,7 +1427,7 @@ mod tests {
         assert!(reversed.ok);
         assert_eq!(ordered(&snapshot.plans.pending.back().unwrap().workspace().next, PanelId::new(1)), ordered(&original, PanelId::new(1)));
         state.workspace.panel_mut(PanelId::new(1)).unwrap().set_locked(true);
-        assert_eq!(preview(&mut snapshot, &mut state, json!([{"op":"pane.sort","pane_id":"1"}])).error.unwrap().code, "PANE_LOCKED");
+        assert!(preview(&mut snapshot, &mut state, json!([{"op":"pane.sort","pane_id":"1"}])).ok);
         state.workspace.panel_mut(PanelId::new(1)).unwrap().set_locked(false);
         state.workspace.panel_mut(PanelId::new(1)).unwrap().set_folder(Some(std::env::temp_dir()));
         assert!(!preview(&mut snapshot, &mut state, json!([{"op":"pane.sort","pane_id":"1"}])).ok);
@@ -1646,9 +1641,10 @@ mod tests {
         assert!(snapshot.respond(&mut state, &apply(&p)).ok);
         assert!(state.workspace.panel(id).unwrap().icon_display().icon_only);
         state.workspace.panel_mut(id).unwrap().set_locked(true);
-        let denied = preview(&mut snapshot, &mut state,
+        let allowed = preview(&mut snapshot, &mut state,
             json!([{"op":"pane.update","pane_id":"1","icon_only":false}]));
-        assert_eq!(denied.error.unwrap().code, "PANE_LOCKED");
+        assert!(snapshot.respond(&mut state, &apply(&allowed)).ok);
+        assert!(state.workspace.panel(id).unwrap().locked());
     }
     #[test]
     fn options_require_explicit_unlock_and_preview_lists_shared_changes() {
@@ -1773,6 +1769,43 @@ mod tests {
         );
         assert_eq!(state.store.change_count(), count);
     }
+    #[test]
+    fn locked_panes_allow_content_changes_but_preserve_title_and_geometry() {
+        let mut state = super::super::super::tests::test_state();
+        let mut snapshot = Snapshot::new();
+        for id in [PanelId::new(1), PanelId::new(2)] {
+            state.workspace.panel_mut(id).unwrap().set_locked(true);
+        }
+        let before = state.workspace.panels().to_vec();
+        let data = snapshot.respond(&mut state, &request("workspace.get"));
+        let item = data.data.as_ref().unwrap()["items"][0]["id"].clone();
+        for op in [
+            json!({"op":"item.assign","pane_id":"2","item_ids":[item.clone()]}),
+            json!({"op":"item.release","item_ids":[item]}),
+            json!({"op":"pane.sort","pane_id":"1"}),
+            json!({"op":"pane.update","pane_id":"1","auto_compact":false}),
+            json!({"op":"pane.update","pane_id":"1","align_icons_to_grid":false}),
+            json!({"op":"pane.update","pane_id":"1","icon_only":true,"icon_size":"large"}),
+        ] {
+            let plan = preview(&mut snapshot, &mut state, json!([op]));
+            assert!(plan.ok, "{plan:?}");
+            state.workspace = snapshot.plans.pending.back().unwrap().workspace().next.clone();
+            state.store.save_workspace(&state.workspace).unwrap();
+        }
+        for original in before {
+            let panel = state.workspace.panel(original.id()).unwrap();
+            assert!(panel.locked());
+            assert_eq!(panel.title(), original.title());
+            assert_eq!(panel.rect(), original.rect());
+        }
+        for op in [
+            json!({"op":"pane.update","pane_id":"1","title":"blocked"}),
+            json!({"op":"pane.fit","pane_id":"1","icon_columns":1}),
+        ] {
+            assert_eq!(preview(&mut snapshot, &mut state, json!([op])).error.unwrap().code, "PANE_LOCKED");
+        }
+    }
+
     #[test]
     fn assignment_preserves_unrelated_locked_pane_and_reorder_checks_membership() {
         let mut state = super::super::super::tests::test_state();

@@ -161,7 +161,7 @@ CLI 只连接本机当前用户会话中的应用。查询不会修改工作区�
 luciddesk-cli pane update --id 1 --list-view false --icon-only true --icon-size medium --dry-run --json
 ```
 
-`--list-view true` 切换为列表；`false` 切换为图标。`--icon-only` 控制是否隐藏文件名，`--icon-size` 接受 `small`、`medium`、`large`。这些设置只影响指定普通面板或文件夹面板，包括未激活的标签。列表视图保留图标偏好，切回图标时生效；省略的字段保持不变。锁定面板必须先解锁，或显式传入 `--locked false`。
+`--list-view true` 切换为列表；`false` 切换为图标。`--icon-only` 控制是否隐藏文件名，`--icon-size` 接受 `small`、`medium`、`large`。这些设置只影响指定普通面板或文件夹面板，包括未激活的标签。列表视图保留图标偏好，切回图标时生效；省略的字段保持不变。锁定只限制面板的位置、大小和名称，不影响图标显示及整理设置。修改名称须先解锁，或显式传入 `--locked false`。
 
 `--dry-run` 仅预览；确认后按返回的 `next_step.args` 提交。新建面板默认值仍由 `settings update` 中的 `panel_defaults.icon_only` / `panel_defaults.icon_size` 修改，不影响已有面板。需要适配大小时，可在同一计划中先更新显示方式，再执行 `pane.fit` 或 `folder.fit`。
 
@@ -182,7 +182,7 @@ Agent 默认使用 `--dry-run --json` 检查差异，再执行返回的 `next_st
 | `item.assign` | `item_ids`，以及二选一的 `pane_id` / `pane_ref` | 收纳项目；保留目标现有顺序，新项目按输入追加 |
 | `item.reorder` | `pane_id`, `item_ids` | 提供该面板全部项目 ID 的完整顺序；空面板允许空列表 |
 
-`pane_ref` 引用同一计划中此前创建的面板。ID 均为字符串；项目 ID 必须取自当前实例的查询结果。源/目标面板锁定时拒绝修改；使用 `pane.update` 显式设置 `locked:false` 后可继续修改。不移动或删除真实文件。标题最多 256 个字符，计划最多 256 个操作，每个项目列表最多 10000 项，输入及 IPC 消息上限 4 MiB。
+`pane_ref` 引用同一计划中此前创建的面板。ID 均为字符串；项目 ID 必须取自当前实例的查询结果。锁定源/目标面板仍允许图标分配、释放和排序；修改分组位置、大小或名称前，使用 `pane.update` 显式设置 `locked:false`。不移动或删除真实文件。标题最多 256 个字符，计划最多 256 个操作，每个项目列表最多 10000 项，输入及 IPC 消息上限 4 MiB。
 
 PowerShell 示例（创建空面板）：
 
@@ -426,7 +426,7 @@ luciddesk-cli pane snap --id 7 --target 4 --side bottom --align start --dry-run 
 
 取消勾选普通面板菜单中的“自动排列图标”即可进入手动网格排列模式，`pane get/list` 与 `content_layout` 返回 `fixed_icon_positions`（为 true 表示自动排列图标已关闭）。此时 item.assign 填空位、item.release 留空位，pane.fit/snap/arrange 保留坐标和空行，并将实际宽度至少保留到最右侧已占用列；请求的 icon_columns 可能因此被提高。主动 pane.sort 和 item.reorder 会重新紧凑排列，不能用它们作为无副作用的刷新。取消“对齐到网格”后为自由排列，`align_icons_to_grid=false`；图标查询的 `placement.position_dip` 返回相对面板内容区的坐标（若为空则按 column/row 推算）。CLI 适配尺寸会包含自由位置的实际内容范围，不移动图标；自由内容的宽度不再向上取整到整列，请求的 icon_columns 仍作为宽度下限。
 
-排序只改变指定普通面板内部顺序，不改变文件、面板位置或其他标签页，也不启用持续自动排序。名称排序不扫描文件元数据；其他字段在预览期间由后台线程读取，提交沿用预览时确定的顺序。锁定面板须先解锁；文件夹使用 folder.update 排序。复用 preview/apply、冲突保护及回执，顺序与布局均已满足时不写数据库。任意自定义顺序继续使用 `item reorder --pane ID --input FILE`，文件为完整当前成员 ID 数组；查询后按 placement.row/column 核对顺序。
+排序只改变指定普通面板内部顺序，不改变文件、面板位置或其他标签页，也不启用持续自动排序。名称排序不扫描文件元数据；其他字段在预览期间由后台线程读取，提交沿用预览时确定的顺序。锁定面板仍可排序；文件夹使用 folder.update 排序。复用 preview/apply、冲突保护及回执，顺序与布局均已满足时不写数据库。任意自定义顺序继续使用 `item reorder --pane ID --input FILE`，文件为完整当前成员 ID 数组；查询后按 placement.row/column 核对顺序。
 
 ## CLI 控制开关与 Skill 安装
 

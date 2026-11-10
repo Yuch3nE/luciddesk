@@ -239,6 +239,7 @@ impl Panel {
     }
 
     #[must_use]
+    /// Protects window position, size, and title; content organization remains available.
     pub const fn locked(&self) -> bool {
         self.locked
     }

@@ -39,8 +39,8 @@ pub(super) fn extent(w: &Workspace, id: PanelId) -> (f32, f32) {
 }
 pub(super) fn toggle(w: &mut Workspace, id: PanelId) -> Result<(), String> {
     let panel = w.panel(id).ok_or("panel does not exist")?;
-    if !panel.supports_tabs() || panel.locked() {
-        return Err("only unlocked desktop panels support free positions".into());
+    if !panel.supports_tabs() {
+        return Err("only desktop panels support free positions".into());
     }
     let enable = !panel.free_layout();
     if !panel.fixed_grid() { fixed_grid::toggle(w, id)?; }

@@ -165,9 +165,6 @@ pub(super) fn add(
         if !source.supports_tabs() || folder.is_some() {
             return Err(crate::i18n::text("ui-only-group-panels-support-tabs").into());
         }
-        if source.locked() {
-            return Err(crate::i18n::text("ui-unlock-the-panel-first").into());
-        }
         let next = next_panel_id(&s)?;
         let title = folder
             .as_ref()
@@ -215,14 +212,6 @@ pub(super) fn close(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result<(), Str
         handle(state, id, Event::ClosePane)?;
         return Ok(());
     };
-    if state
-        .borrow()
-        .workspace
-        .panel(id)
-        .is_some_and(Panel::locked)
-    {
-        return Err(crate::i18n::text("ui-unlock-the-panel-first").into());
-    }
     if group.active == id {
         let at = group
             .members
@@ -257,9 +246,6 @@ pub(super) fn reorder(
     before: PanelId,
 ) -> Result<(), String> {
     let mut s = state.borrow_mut();
-    if s.workspace.panel(id).is_some_and(Panel::locked) {
-        return Err(crate::i18n::text("ui-unlock-the-panel-first").into());
-    }
     let previous = s.workspace.clone();
     let mut groups = s.workspace.tab_groups().to_vec();
     let group = groups
@@ -412,7 +398,7 @@ fn merge(state: &Rc<RefCell<PaneApp>>, from: PanelId, to: PanelId) -> Result<(),
         let mut s = state.borrow_mut();
         for id in [from, to] {
             let panel = s.workspace.panel(id).ok_or(crate::i18n::text("ui-panel-closed"))?;
-            if panel.locked() || !panel.supports_tabs() {
+            if (id == from && panel.locked()) || !panel.supports_tabs() {
                 return Err(crate::i18n::text("ui-select-an-unlocked-group-panel").into());
             }
             if !s.views.iter().any(|v| v.id == id) {
@@ -497,7 +483,7 @@ fn merge_target(s: &PaneApp, from: PanelId) -> Option<PanelId> {
         let margin = (6.0 * dpi as f32 / 96.0).round() as i32;
         if s.workspace
             .panel(view.id)
-            .is_some_and(|p| !p.locked() && p.supports_tabs())
+            .is_some_and(|p| p.supports_tabs())
             && unsafe { IsWindowVisible(hwnd) != 0 && GetWindowRect(hwnd, &raw mut bounds) != 0 }
         {
             let bottom = bounds.top + (layout::HEADER * dpi as f32 / 96.0).round() as i32;
@@ -531,7 +517,7 @@ fn merge_target(s: &PaneApp, from: PanelId) -> Option<PanelId> {
                 return (s
                     .workspace
                     .panel(view.id)
-                    .is_some_and(|p| !p.locked() && p.supports_tabs())
+                    .is_some_and(|p| p.supports_tabs())
                     && header_contains(bounds, unsafe { GetDpiForWindow(hwnd) }, pointer))
                 .then_some(view.id);
             }
@@ -985,7 +971,9 @@ mod tests {
                 .iter()
                 .all(|v| v.model.borrow().merge_preview.is_empty())
         );
+        state.borrow_mut().workspace.panel_mut(left.active).unwrap().set_locked(true);
         assert!(merge(&state, left.active, right.active).is_err());
+        state.borrow_mut().workspace.panel_mut(left.active).unwrap().set_locked(false);
         assert!(detach(&state, right.active).is_err());
         assert_eq!(state.borrow().workspace, before);
         assert_eq!(state.borrow().views.len(), 2);

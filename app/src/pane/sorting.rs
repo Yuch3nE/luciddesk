@@ -8,7 +8,6 @@ pub(super) fn apply(workspace: &mut Workspace, id: PanelId, descending: bool) ->
 pub(super) fn apply_order(workspace: &mut Workspace, id: PanelId, descending: bool, ranks: Option<&HashMap<String, usize>>) -> Result<bool, String> {
     let panel = workspace.panel(id).ok_or("panel does not exist")?;
     if !panel.supports_tabs() { return Err("only desktop panels support name sorting".into()); }
-    if panel.locked() { return Err("panel is locked".into()); }
 
     struct Entry {
         index: usize,
@@ -85,7 +84,7 @@ pub(super) fn next_order(previous: Option<(u8, bool)>, column: u8) -> (u8, bool)
 pub(super) fn request(state: &mut PaneApp, id: PanelId, column: u8) -> Result<(), String> {
     if column > 3 { return Err("invalid sort column".into()); }
     let panel = state.workspace.panel(id).ok_or("panel does not exist")?;
-    if !panel.supports_tabs() || panel.locked() { return Err("only unlocked desktop panels can be sorted".into()); }
+    if !panel.supports_tabs() { return Err("only desktop panels can be sorted".into()); }
     let previous = state.sorting.pending.get(&id).map(|p| p.order)
         .or_else(|| state.sorting.orders.borrow().get(&id).copied());
     let order = next_order(previous, column);
@@ -169,7 +168,7 @@ pub(super) fn maintain(state: &mut PaneApp) {
     if state.sorting.checked_revision == Some(revision) { return; }
     state.sorting.checked_revision = Some(revision);
     let expired: Vec<_> = state.sorting.pending.iter().filter_map(|(&id, pending)|
-        (state.workspace.panel(id) != Some(&pending.panel) || !snapshot_matches(&state.workspace, id, &pending.before)).then_some(id)).collect();
+        (!panel_matches(state.workspace.panel(id), &pending.panel) || !snapshot_matches(&state.workspace, id, &pending.before)).then_some(id)).collect();
     for id in expired { invalidate(&mut state.sorting, id); }
     state.sorting.observed.retain(|id, items| {
         if state.sorting.pending.contains_key(id) && state.workspace.panel(*id).is_some() { return true; }
@@ -177,6 +176,15 @@ pub(super) fn maintain(state: &mut PaneApp) {
         if !unchanged { state.sorting.orders.borrow_mut().remove(id); }
         unchanged
     });
+}
+
+// Locking window geometry does not invalidate an in-flight content sort.
+fn panel_matches(current: Option<&Panel>, original: &Panel) -> bool {
+    current.is_some_and(|panel| {
+        let mut normalized = panel.clone();
+        normalized.set_locked(original.locked());
+        &normalized == original
+    })
 }
 
 fn snapshot_matches(workspace: &Workspace, id: PanelId, snapshot: &HashMap<ShellIdentity, luciddesk_core::DesktopItem>) -> bool {
@@ -234,7 +242,7 @@ pub(super) fn poll(state: &mut PaneApp) {
     for (id, items) in ready {
         let pending = state.sorting.pending.remove(&id).unwrap();
         let Some(mut items) = items else { invalidate(&mut state.sorting, id); continue; };
-        if state.workspace.panel(id) != Some(&pending.panel) { invalidate(&mut state.sorting, id); continue; }
+        if !panel_matches(state.workspace.panel(id), &pending.panel) { invalidate(&mut state.sorting, id); continue; }
         if !snapshot_matches(&state.workspace, id, &pending.before) { invalidate(&mut state.sorting, id); continue; }
         folder::sort_items(&mut items, pending.order);
         let ranks = items.iter().enumerate().map(|(i, item)| (item.identity.persistent_key(), i)).collect();
@@ -320,7 +328,7 @@ mod tests {
                 receiver, order: (3, false), cancelled: Arc::clone(&cancel) });
             maintain(&mut state);
             assert!(!cancel.load(std::sync::atomic::Ordering::Relaxed));
-            if change_panel { state.workspace.panel_mut(id).unwrap().set_locked(true); }
+            if change_panel { state.workspace.panel_mut(id).unwrap().set_title("Changed"); }
             else { state.workspace.desktop_items_mut()[0].set_display_name("Changed"); }
             save(&mut state).unwrap();
             let writes = state.store.change_count();
@@ -446,11 +454,10 @@ mod tests {
         for _ in 0..20 { maintain(&mut state); poll(&mut state); }
         assert_eq!(state.store.change_count(), writes);
         assert_eq!(names(&state), ["Large.lnk", "Medium.txt", "Small.txt"]);
-        let before = state.workspace.clone();
         request(&mut state, id, 2).unwrap();
         state.workspace.panel_mut(id).unwrap().set_locked(true);
         finish(&mut state);
-        assert_eq!(state.workspace.desktop_items(), before.desktop_items());
-        assert_eq!(state.sorting.orders.borrow().get(&id), None);
+        assert!(state.workspace.panel(id).unwrap().locked());
+        assert!(state.sorting.orders.borrow().contains_key(&id));
     }
 }

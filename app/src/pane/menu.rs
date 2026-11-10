@@ -173,15 +173,13 @@ fn pane_entries_fixed(folder: (bool, bool), visible_columns: u8,
         entry(25, crate::i18n::text("menu-icons-with-names"), if folder.1 { "" } else { "\u{e73e}" }, ""),
         entry(26, crate::i18n::text("ui-list"), if folder.1 { "\u{e73e}" } else { "" }, ""),
     ];
-    if !folder.0 && !folder.1 && !locked {
+    if !folder.0 && !folder.1 {
         view.children.push(entry(0, "", "", ""));
         view.children.push(entry(55, crate::i18n::text("ui-align-icons-to-grid"), if free_layout { "" } else { "\u{e73e}" }, ""));
         view.children.push(entry(54, crate::i18n::text("ui-auto-arrange-icons"), if fixed_grid { "" } else { "\u{e73e}" }, ""));
     }
     let mut rows = vec![view];
-    if !locked {
-        rows.push(Entry { children: sort_entries(None), ..entry(51, crate::i18n::text("ui-sort-by"), "", "") });
-    }
+    rows.push(Entry { children: sort_entries(None), ..entry(51, crate::i18n::text("ui-sort-by"), "", "") });
     if folder.0 && folder.1 {
         rows.push(Entry { children: column_entries(visible_columns), ..entry(24, crate::i18n::text("ui-columns"), "", "") });
     }
@@ -227,12 +225,12 @@ fn pane_entries_fixed(folder: (bool, bool), visible_columns: u8,
 }
 
 #[test]
-fn sort_menu_is_available_only_when_unlocked() {
+fn sort_menu_is_available_when_locked() {
     let rows = pane_entries((false,false),15,false,false,false,false);
     let sort = rows.iter().find(|e|e.id==51).unwrap();
     assert_eq!(sort.children.iter().map(|e|e.id).collect::<Vec<_>>(), vec![60,62,61,63]);
     for (folder,locked) in [(true,true),(false,true)] {
-        assert!(!pane_entries((folder,false),15,false,locked,false,false).iter().any(|e|e.id==51));
+        assert!(pane_entries((folder,false),15,false,locked,false,false).iter().any(|e|e.id==51));
     }
 }
 
@@ -241,8 +239,7 @@ pub(super) fn tab_position(model: &super::GroupModel, target: luciddesk_core::Pa
 }
 
 fn tab_entries(position: Option<(usize, usize)>, locked: bool) -> Vec<Entry> {
-    let mut create = entry(40, crate::i18n::text("ui-new-group-tab"), "", "");
-    create.enabled = !locked;
+    let create = entry(40, crate::i18n::text("ui-new-group-tab"), "", "");
     let Some((index, count)) = position.filter(|(index, count)| *count > 1 && index < count) else {
         return vec![create];
     };
@@ -259,9 +256,9 @@ fn tab_entries(position: Option<(usize, usize)>, locked: bool) -> Vec<Entry> {
     ];
     for row in &mut rows {
         row.enabled = match row.id {
-            44 => !locked && index > 0,
-            45 => !locked && index + 1 < count,
-            42 | 49 => !locked,
+            44 => index > 0,
+            45 => index + 1 < count,
+            49 => !locked,
             _ => row.enabled,
         };
     }
@@ -846,14 +843,14 @@ mod tests {
                         assert_clean_separators(rows);
                         let commands = tab_commands(rows);
                         if count <= 1 {
-                            assert_eq!(commands, vec![(40, !locked)]);
+                            assert_eq!(commands, vec![(40, true)]);
                             assert!(!rows.iter().any(|row| row.id == 39));
                             assert!(rows.iter().any(|row| row.id == 40));
                         } else {
                             assert_eq!(commands, vec![
-                                (40, !locked), (42, !locked),
-                                (44, !locked && index > 0),
-                                (45, !locked && index + 1 < count),
+                                (40, true), (42, true),
+                                (44, index > 0),
+                                (45, index + 1 < count),
                                 (46, true), (47, true), (49, !locked),
                             ]);
                             assert!(rows.iter().any(|row| row.id == 39));

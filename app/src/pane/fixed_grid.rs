@@ -38,7 +38,7 @@ pub(super) fn set_position(item: &mut luciddesk_core::DesktopItem, id: PanelId, 
 }
 pub(super) fn toggle(w: &mut Workspace, id: PanelId) -> Result<(), String> {
     let panel = w.panel(id).ok_or("panel does not exist")?;
-    if !panel.supports_tabs() || panel.locked() { return Err("only unlocked desktop panels support fixed positions".into()); }
+    if !panel.supports_tabs() { return Err("only desktop panels support fixed positions".into()); }
     let enabled = !panel.fixed_grid();
     let columns = visible_columns(w, id);
     let keys: Vec<_> = ordered_desktop_items(w, id).into_iter().map(|i| i.identity().clone()).collect();

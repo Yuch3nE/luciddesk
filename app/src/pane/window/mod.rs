@@ -726,7 +726,7 @@ where
                     let hit = pane_hit(r, p, scale(hwnd), &m);
                     Some(isize::try_from(hit).unwrap_or_default())
                 }
-                WM_SYSCOMMAND if model.borrow().locked && wparam as u32 & 0xfff0 == SC_MOVE => {
+                WM_SYSCOMMAND if model.borrow().locked && matches!(wparam as u32 & 0xfff0, SC_MOVE | SC_SIZE) => {
                     Some(0)
                 }
                 WM_GETMINMAXINFO => {

@@ -29,7 +29,7 @@ pub(super) fn apply(next: &mut Workspace, op: &Operation) -> Result<(), String> 
             let source = panel_id(pane_id)?;
             let target = panel_id(into_pane_id)?;
             editable(next, source, true)?;
-            editable(next, target, true)?;
+            editable(next, target, false)?;
             if source == target
                 || next
                     .tab_group(source)
@@ -45,7 +45,7 @@ pub(super) fn apply(next: &mut Workspace, op: &Operation) -> Result<(), String> 
                 active: target,
             });
             for id in source_members.iter().chain(destination.members.iter()) {
-                editable(next, *id, true)?;
+                editable(next, *id, source_members.contains(id))?;
             }
             destination.members.extend(source_members);
             groups.retain(|g| !g.members.contains(&source) && !g.members.contains(&target));
@@ -62,7 +62,7 @@ pub(super) fn apply(next: &mut Workspace, op: &Operation) -> Result<(), String> 
         }
         Operation::TabReorder { pane_id, pane_ids } => {
             let id = panel_id(pane_id)?;
-            editable(next, id, true)?;
+            editable(next, id, false)?;
             let group = groups
                 .iter_mut()
                 .find(|g| g.members.contains(&id))
@@ -79,7 +79,7 @@ pub(super) fn apply(next: &mut Workspace, op: &Operation) -> Result<(), String> 
                 return Err("reorder requires every member exactly once".into());
             }
             for id in &members {
-                editable(next, *id, true)?;
+                editable(next, *id, false)?;
             }
             group.members = members;
         }
@@ -167,7 +167,7 @@ mod tests {
                     into_pane_id: "1".into()
                 }
             )
-            .is_err()
+            .is_ok()
         );
     }
 }

@@ -489,7 +489,7 @@ fn tab_click_jitter_does_not_start_a_pane_drag() {
 }
 
 #[test]
-fn locked_pane_blocks_moving_but_preserves_resize_hit_targets() {
+fn locked_pane_blocks_moving_and_resizing() {
     for scale in [1.0, 1.25, 1.5, 2.0] {
         for collapsed in [false, true] {
             let height = if collapsed { HEADER } else { 300.0 };
@@ -505,14 +505,9 @@ fn locked_pane_blocks_moving_but_preserves_resize_hit_targets() {
                         x: (x * scale) as i32,
                         y: (y * scale) as i32,
                     };
-                    let unlocked = frame_hit(r, p, scale, collapsed, false);
                     assert_eq!(
                         frame_hit(r, p, scale, collapsed, true),
-                        if unlocked == HTCAPTION {
-                            HTCLIENT
-                        } else {
-                            unlocked
-                        }
+                        HTCLIENT
                     );
                 }
             }

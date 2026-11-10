@@ -119,6 +119,7 @@ pub(super) fn pane_hit(r: RECT, p: POINT, scale: f32, model: &GroupModel) -> u32
 }
 
 pub(super) fn frame_hit(r: RECT, p: POINT, scale: f32, collapsed: bool, locked: bool) -> u32 {
+    if locked { return HTCLIENT; }
     let border = (5.0 * scale) as i32;
     match (
         p.x < border,
@@ -488,4 +489,20 @@ mod icon_only_tooltip_tests {
         tooltip.refresh(hwnd, &model);
         assert!(tooltip.current.is_none());
     }
+}
+
+#[test]
+fn locked_frame_blocks_moving_and_resizing_at_every_edge() {
+    let bounds = RECT { left: 0, top: 0, right: 400, bottom: 300 };
+    for collapsed in [false, true] {
+        for point in [POINT { x: 0, y: 0 }, POINT { x: 399, y: 0 },
+            POINT { x: 0, y: 299 }, POINT { x: 399, y: 299 },
+            POINT { x: 0, y: 150 }, POINT { x: 399, y: 150 },
+            POINT { x: 200, y: 0 }, POINT { x: 200, y: 299 },
+            POINT { x: 100, y: 20 }] {
+            assert_eq!(frame_hit(bounds, point, 1.0, collapsed, true), HTCLIENT);
+        }
+    }
+    assert_eq!(frame_hit(bounds, POINT { x: 0, y: 0 }, 1.0, false, false), HTTOPLEFT);
+    assert_eq!(frame_hit(bounds, POINT { x: 100, y: 20 }, 1.0, false, false), HTCAPTION);
 }
