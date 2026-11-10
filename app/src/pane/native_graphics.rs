@@ -85,6 +85,7 @@ pub fn create_layer(
     dxgi: &windows::Win32::Graphics::Dxgi::IDXGIDevice,
     content: &windows::Win32::Graphics::Dxgi::IDXGISwapChain1,
     opacity: f32,
+    above_children: bool,
 ) -> Result<luciddesk_graphics::Layer> {
     let dxgi_ptr = dxgi.as_raw();
     let content_ptr = content.as_raw();
@@ -94,6 +95,7 @@ pub fn create_layer(
             canvas_core::IUnknown::from_raw_borrowed(&dxgi_ptr).unwrap(),
             canvas_core::IUnknown::from_raw_borrowed(&content_ptr).unwrap(),
             opacity,
+            above_children,
         )
     })
 }

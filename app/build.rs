@@ -95,10 +95,11 @@ fn main() {
         let rc = resource.replace("@BINARY@", bin).replace("@DESCRIPTION@", description);
         compile_resources(&resource_path.with_file_name(format!("{bin}.rc")), &rc, bin);
     }
-    // Native search controls and the backdrop fixture use Explorer's v6 controls.
+    // Declare modern Windows compatibility for composited native child editors,
+    // and use the same v6 controls in the app and backdrop fixtures.
     if std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
         let manifest = std::path::PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap())
-            .join("../crates/luciddesk-explorer/native-controls.manifest");
+            .join("app.manifest");
         println!("cargo:rerun-if-changed={}", manifest.display());
         println!("cargo:rustc-link-arg-bin=updater=/MANIFEST:EMBED");
         println!("cargo:rustc-link-arg-bin=updater=/MANIFESTUAC:level='asInvoker'");

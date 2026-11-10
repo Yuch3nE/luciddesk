@@ -12,7 +12,7 @@ fn diagnostic_bypass_never_enables_host_or_wallpaper_backdrops() {
     let device = super::super::native_graphics::gpu_device().unwrap();
     let swap = device.create_swap_chain(96, 64).unwrap();
     let native_swap = super::super::native_graphics::native_interface(swap.raw_swap_chain()).unwrap();
-    let mut acrylic = Acrylic::new_with_content(HWND(window.hwnd().cast()), 1.0, &native_swap).unwrap();
+    let mut acrylic = Acrylic::new_with_content(HWND(window.hwnd().cast()), 1.0, &native_swap, true).unwrap();
     for disabled_by_policy in [false, true] {
         acrylic.disable_backdrop = !disabled_by_policy;
         acrylic.effects_override.set(Some(!disabled_by_policy));
@@ -23,7 +23,7 @@ fn diagnostic_bypass_never_enables_host_or_wallpaper_backdrops() {
                     acrylic.assert_solid_color(if material == Backdrop::Acrylic { if dark { 0x2c2c2c } else { 0xf9f9f9 } } else if dark { 0x202020 } else { 0xf3f3f3 }, 1.0);
                     assert!(acrylic.host_backdrop.borrow().is_none());
                     assert!(acrylic.material_brush.borrow().is_none());
-                    acrylic.assert_content_visible();
+                    acrylic.assert_content_visible(true);
                 }
             }
         }
@@ -32,7 +32,7 @@ fn diagnostic_bypass_never_enables_host_or_wallpaper_backdrops() {
     acrylic.effects_override.set(Some(true));
     acrylic.material(Backdrop::Acrylic, false).unwrap();
     acrylic.assert_material_effect();
-    acrylic.assert_content_visible();
+    acrylic.assert_content_visible(true);
 }
 
 #[test]
@@ -49,7 +49,7 @@ fn missing_wallpaper_uses_acrylic_then_opaque_color_without_hiding_content() {
     let native_swap =
         super::super::native_graphics::native_interface(swap.raw_swap_chain()).unwrap();
     let acrylic =
-        Acrylic::new_with_content(HWND(window.hwnd().cast()), 1.0, &native_swap).unwrap();
+        Acrylic::new_with_content(HWND(window.hwnd().cast()), 1.0, &native_swap, true).unwrap();
     acrylic.unavailable_backdrops.set((true, false));
     for dark in [false, true] {
         for requested in [Backdrop::Mica, Backdrop::MicaAlt] {
@@ -62,7 +62,7 @@ fn missing_wallpaper_uses_acrylic_then_opaque_color_without_hiding_content() {
                     Backdrop::Acrylic.with_strength(requested.strength().unwrap_or(50)),
                     dark,
                 );
-                acrylic.assert_content_visible();
+                acrylic.assert_content_visible(true);
             }
         }
         // Fault injection must also bypass a previously cached acrylic brush.
@@ -71,7 +71,7 @@ fn missing_wallpaper_uses_acrylic_then_opaque_color_without_hiding_content() {
         acrylic.assert_solid_color(if dark { 0x0020_2020 } else { 0x00f3_f3f3 }, 1.0);
         assert!(acrylic.material_brush.borrow().is_none());
         assert!(acrylic.host_backdrop.borrow().is_none());
-        acrylic.assert_content_visible();
+        acrylic.assert_content_visible(true);
         acrylic.unavailable_backdrops.set((true, false));
     }
     acrylic.material(Backdrop::Mica, true).unwrap();
@@ -96,7 +96,7 @@ fn missing_wallpaper_uses_acrylic_then_opaque_color_without_hiding_content() {
     acrylic.material(Backdrop::Acrylic, true).unwrap();
     acrylic.assert_material_effect();
     acrylic.assert_material_colors(Backdrop::Acrylic, true);
-    acrylic.assert_content_visible();
+    acrylic.assert_content_visible(true);
 }
 
 impl Acrylic {
@@ -162,8 +162,8 @@ impl Acrylic {
     }
 
     #[cfg(test)]
-    pub fn assert_content_visible(&self) {
-        assert!(self._target.IsTopmost().unwrap());
+    pub fn assert_content_visible(&self, above_children: bool) {
+        assert_eq!(self._target.IsTopmost().unwrap(), above_children);
         assert!(self.root.IsVisible().unwrap());
         assert!(self.content.as_ref().unwrap().IsVisible().unwrap());
     }
@@ -195,7 +195,7 @@ fn material_background_transitions_preserve_content() {
     let device = super::super::native_graphics::gpu_device().unwrap();
     let swap = device.create_swap_chain(160, 100).unwrap();
     let native_swap = super::super::native_graphics::native_interface(swap.raw_swap_chain()).unwrap();
-    let acrylic = Acrylic::new_with_content(HWND(window.hwnd().cast()), 1.0, &native_swap).unwrap();
+    let acrylic = Acrylic::new_with_content(HWND(window.hwnd().cast()), 1.0, &native_swap, true).unwrap();
     acrylic.animations_override.set(Some(true));
     acrylic.material(Backdrop::Acrylic, true).unwrap();
     assert!(acrylic.transition.borrow().is_none(), "first frame must not fade from an empty background");

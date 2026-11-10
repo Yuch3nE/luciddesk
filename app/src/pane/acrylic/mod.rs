@@ -79,8 +79,9 @@ impl Acrylic {
         hwnd: HWND,
         initial_opacity: f32,
         swap: &windows::Win32::Graphics::Dxgi::IDXGISwapChain1,
+        above_children: bool,
     ) -> Result<Self> {
-        let mut material = Self::new_target(hwnd, initial_opacity, true)?;
+        let mut material = Self::new_target(hwnd, initial_opacity, above_children)?;
         material.attach_content(swap)?;
         Ok(material)
     }
@@ -89,8 +90,8 @@ impl Acrylic {
         let runtime = Runtime::shared()?;
         let compositor = &runtime.compositor;
         let interop: ICompositorDesktopInterop = compositor.cast()?;
-        // A standalone material uses the bottom target; a combined content tree
-        // owns the top target so NOREDIRECTIONBITMAP windows remain visible.
+        // The target layer determines whether native child controls appear
+        // above or below the composition visuals.
         let target = unsafe { interop.CreateDesktopWindowTarget(hwnd, topmost)? };
         let root = compositor.CreateContainerVisual()?;
         root.SetOpacity(initial_opacity)?;

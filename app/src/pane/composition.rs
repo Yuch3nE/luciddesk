@@ -85,11 +85,12 @@ impl Surface {
     }
 
     pub fn new_settings(hwnd: HWND) -> Result<Self> {
-        Self::create(hwnd, 1.0, gpu_device()?, true)
+        // Keep native inline text fields above the settings visuals.
+        Self::create(hwnd, 1.0, gpu_device()?, true, false)
     }
 
     pub fn new_flyout(hwnd: HWND, initial_opacity: f32) -> Result<Self> {
-        let mut surface = Self::create(hwnd, initial_opacity, gpu_device()?, true)?;
+        let mut surface = Self::create(hwnd, initial_opacity, gpu_device()?, true, true)?;
         surface.rounded_backdrop = Some(hwnd);
         surface.pane_corner_radius = super::menu::CORNER_RADIUS;
         Ok(surface)
@@ -107,7 +108,7 @@ impl Surface {
 
     pub fn new_pane(hwnd: HWND) -> Result<Self> {
         let mut surface = if crate::pane::render_debug::shared_pane_tree() {
-            Self::create(hwnd, 1.0, gpu_device()?, true)?
+            Self::create(hwnd, 1.0, gpu_device()?, true, true)?
         } else {
             Self::new(hwnd)?
         };
@@ -166,7 +167,7 @@ impl Surface {
     }
 
     fn new_with_device(hwnd: HWND, initial_opacity: f32, device: GpuDevice) -> Result<Self> {
-        Self::create(hwnd, initial_opacity, device, false)
+        Self::create(hwnd, initial_opacity, device, false, true)
     }
 
     fn create(
@@ -174,6 +175,7 @@ impl Surface {
         initial_opacity: f32,
         device: GpuDevice,
         shared_tree: bool,
+        above_children: bool,
     ) -> Result<Self> {
         unsafe {
             let d3d: ID3D11Device = native_interface(device.d3d_device())?;
@@ -193,7 +195,7 @@ impl Surface {
             };
             let native_swap: IDXGISwapChain1 = native_interface(swap.raw_swap_chain())?;
             let acrylic = if shared_tree {
-                match super::acrylic::Acrylic::new_with_content(hwnd, initial_opacity, &native_swap)
+                match super::acrylic::Acrylic::new_with_content(hwnd, initial_opacity, &native_swap, above_children)
                 {
                     Ok(material) => Some(material),
                     Err(error) => {
@@ -208,7 +210,7 @@ impl Surface {
             let layer = if acrylic.is_some() {
                 None
             } else {
-                Some(create_layer(hwnd, &dxgi, &native_swap, initial_opacity)?)
+                Some(create_layer(hwnd, &dxgi, &native_swap, initial_opacity, above_children)?)
             };
             crate::pane::render_debug::render_trace(format_args!("hwnd={hwnd:?} surface created shared={} opacity={initial_opacity}", acrylic.is_some()));
             let margins = MARGINS {
@@ -504,7 +506,7 @@ pub(super) mod animation_tests {
                 surface.material(hwnd, material).unwrap();
                 let acrylic = surface.acrylic.as_ref().unwrap();
                 acrylic.assert_solid_color(if material == Backdrop::Acrylic { if dark { 0x2c2c2c } else { 0xf9f9f9 } } else if dark { 0x202020 } else { 0xf3f3f3 }, 1.0);
-                acrylic.assert_content_visible();
+                acrylic.assert_content_visible(false);
                 acrylic.set_effects_enabled_for_test(true);
                 surface.material(hwnd, material).unwrap();
                 surface.acrylic.as_ref().unwrap().assert_material_effect();
@@ -610,7 +612,7 @@ pub(super) mod animation_tests {
         surface.opacity(0.75).unwrap();
         assert_eq!(surface.acrylic.as_ref().unwrap().opacity_value().unwrap(), 0.75);
         if crate::pane::render_debug::shared_pane_tree() {
-            surface.acrylic.as_ref().unwrap().assert_content_visible();
+            surface.acrylic.as_ref().unwrap().assert_content_visible(true);
         }
     }
     #[test]
@@ -628,7 +630,7 @@ pub(super) mod animation_tests {
             surface.material(hwnd, material).unwrap();
             surface.resize(240, 160).unwrap();
             let acrylic = surface.acrylic.as_ref().unwrap();
-            acrylic.assert_content_visible();
+            acrylic.assert_content_visible(true);
             acrylic.assert_rounded_clip(240, 160, (super::super::menu::CORNER_RADIUS + 0.5) * scale);
             for opacity in [0.0, 0.5, 1.0] {
                 surface.opacity(opacity).unwrap();
@@ -677,7 +679,7 @@ pub(super) mod animation_tests {
                     surface.native,
                     !matches!(material, Backdrop::Translucent { .. })
                 );
-                surface.acrylic.as_ref().unwrap().assert_content_visible();
+                surface.acrylic.as_ref().unwrap().assert_content_visible(false);
                 if matches!(
                     material,
                     Backdrop::Acrylic | Backdrop::Mica | Backdrop::MicaAlt
@@ -705,7 +707,7 @@ pub(super) mod animation_tests {
                             .as_ref()
                             .unwrap()
                             .assert_material_colors(tuned, dark);
-                        surface.acrylic.as_ref().unwrap().assert_content_visible();
+                        surface.acrylic.as_ref().unwrap().assert_content_visible(false);
                     }
                 }
             }

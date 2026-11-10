@@ -45,7 +45,7 @@ unsafe fn composition_device(dxgi: &IUnknown) -> Result<dcomp::IDCompositionDevi
     })
 }
 impl Layer {
-    /// Attaches an existing composition swap chain to the top HWND target.
+    /// Attaches a composition swap chain above or below the native child windows.
     ///
     /// # Safety
     /// `hwnd` must remain valid on the calling UI thread while this layer exists.
@@ -57,10 +57,11 @@ impl Layer {
         dxgi: &IUnknown,
         content: &IUnknown,
         initial_opacity: f32,
+        above_children: bool,
     ) -> Result<Self> {
         unsafe {
             let device = composition_device(dxgi)?;
-            let target = device.CreateTargetForHwnd(hwnd, true)?;
+            let target = device.CreateTargetForHwnd(hwnd, above_children)?;
             let visual = device.CreateVisual()?;
             let opacity = device.CreateEffectGroup()?;
             opacity.SetOpacity2(initial_opacity).ok()?;
