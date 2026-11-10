@@ -2,6 +2,8 @@
 mod http;
 mod install;
 mod distribution;
+pub(crate) mod probe;
+mod signed;
 use crate::i18n;
 use semver::Version;
 use serde::Deserialize;
@@ -13,6 +15,37 @@ use std::sync::{
 
 pub const PAGE: &str = "https://github.com/Yuch3nE/luciddesk/releases/latest";
 const CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
+pub(crate) fn check_recovery(root: &std::path::Path) -> Result<(), String> {
+    if let Some(work) = distribution::interrupted_update(root).map_err(|error| error.to_string())? {
+        return Err(i18n::format(
+            "update-recovery-required",
+            &[("folder", work.display().to_string())],
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn applying(root: &std::path::Path) -> Result<bool, String> {
+    if root.join("msix").exists() {
+        return Ok(false);
+    }
+    let name = distribution::update_gate_name(root).map_err(|error| error.to_string())?;
+    use windows_sys::Win32::{
+        Foundation::{CloseHandle, ERROR_FILE_NOT_FOUND},
+        System::Threading::{OpenMutexW, SYNCHRONIZATION_SYNCHRONIZE},
+    };
+    let handle = unsafe { OpenMutexW(SYNCHRONIZATION_SYNCHRONIZE, 0, name.as_ptr()) };
+    if handle.is_null() {
+        let error = std::io::Error::last_os_error();
+        if error.raw_os_error() == Some(ERROR_FILE_NOT_FOUND as i32) {
+            return Ok(false);
+        }
+        return Err(error.to_string());
+    }
+    unsafe { CloseHandle(handle) };
+    Ok(true)
+}
 
 pub fn automatic_enabled(store: &luciddesk_storage::WorkspaceStore) -> bool {
     store
@@ -38,7 +71,7 @@ fn parse_release(bytes: &[u8], current: &str) -> Result<Option<String>, String> 
     newer_version(release.tag_name.strip_prefix('v').unwrap_or(&release.tag_name), current)
 }
 
-fn parse_manifest(bytes: &[u8], current: &str) -> CheckResult {
+fn parse_manifest(bytes: &[u8], current: &str) -> Result<Option<String>, String> {
     #[derive(Deserialize)]
     struct Manifest {
         version: String,
@@ -47,13 +80,34 @@ fn parse_manifest(bytes: &[u8], current: &str) -> CheckResult {
     newer_version(&manifest.version, current)
 }
 
-fn newer_version(value: &str, current: &str) -> CheckResult {
+fn newer_version(value: &str, current: &str) -> Result<Option<String>, String> {
     let version = Version::parse(value).map_err(|e| e.to_string())?;
     let current = Version::parse(current).map_err(|e| e.to_string())?;
     Ok((version.pre.is_empty() && version.build.is_empty() && version > current).then(|| version.to_string()))
 }
 
-type CheckResult = Result<Option<String>, String>;
+struct AvailableRelease {
+    version: String,
+    install: InstallAvailability,
+}
+
+enum InstallAvailability {
+    Manual,
+    Ready,
+    Failed(String),
+}
+
+impl InstallAvailability {
+    fn from_signed_check<T>(result: signed::Result<Option<T>>) -> Self {
+        match result {
+            Ok(Some(_)) => Self::Ready,
+            Ok(None) => Self::Manual,
+            Err(error) => Self::Failed(error.to_string()),
+        }
+    }
+}
+
+type CheckResult = Result<Option<AvailableRelease>, String>;
 struct Work {
     receiver: mpsc::Receiver<CheckResult>,
     cancel: Arc<AtomicBool>,
@@ -66,10 +120,9 @@ impl Drop for Work {
 
 #[derive(Default)]
 pub struct Controller {
-    installable: std::cell::OnceCell<bool>,
     installer: Option<std::process::Child>,
     work: Option<Work>,
-    available: Option<String>,
+    available: Option<AvailableRelease>,
     checked: bool,
     error: Option<String>,
     last_attempt: Option<std::time::Instant>,
@@ -114,17 +167,40 @@ impl Controller {
         self.work.is_some() || self.installer.is_some()
     }
     pub fn available_version(&self) -> Option<&str> {
-        if self.busy() || self.error.is_some() { None } else { self.available.as_deref() }
+        if self.busy() || self.error.is_some() {
+            None
+        } else {
+            self.available
+                .as_ref()
+                .map(|release| release.version.as_str())
+        }
     }
     #[cfg(test)]
     pub(crate) fn with_available_version(version: &str) -> Self {
-        Self { available: Some(version.into()), installable: true.into(), checked: true, ..Self::default() }
+        Self::with_release(version, true)
+    }
+    #[cfg(test)]
+    pub(crate) fn with_release(version: &str, installable: bool) -> Self {
+        Self {
+            available: Some(AvailableRelease {
+                version: version.into(),
+                install: if installable {
+                    InstallAvailability::Ready
+                } else {
+                    InstallAvailability::Manual
+                },
+            }),
+            checked: true,
+            ..Self::default()
+        }
     }
     pub fn can_install(&self) -> bool {
-        *self.installable.get_or_init(install::supported)
+        self.available
+            .as_ref()
+            .is_some_and(|release| matches!(release.install, InstallAvailability::Ready))
     }
     pub fn install(&mut self) -> Result<(), String> {
-        if let Some(version) = self.available_version() {
+        if let Some(version) = self.available_version().filter(|_| self.can_install()) {
             self.installer = Some(install::launch(version)?);
         }
         Ok(())
@@ -139,8 +215,16 @@ impl Controller {
         if let Some(error) = &self.error {
             return format!("{}: {error}", i18n::text("update-failed"));
         }
-        if let Some(version) = &self.available {
-            return i18n::format("update-available", &[("version", version.clone())]);
+        if let Some(release) = &self.available {
+            let available =
+                i18n::format("update-available", &[("version", release.version.clone())]);
+            if let InstallAvailability::Failed(error) = &release.install {
+                return format!(
+                    "{available} · {} ({error})",
+                    i18n::text("update-manifest-unavailable")
+                );
+            }
+            return available;
         }
         i18n::text(if self.checked {
             "update-current"
@@ -152,13 +236,29 @@ impl Controller {
     pub fn check(&mut self) -> Result<(), String> {
         self.start(|cancel| {
             let current = env!("CARGO_PKG_VERSION");
-            if let Some(bytes) = http::get("github.com", "/Yuch3nE/luciddesk/releases/latest/download/version.json", &cancel)? {
-                return parse_manifest(&bytes, current);
-            }
-            // Releases published before version.json still support manual downloads.
-            let bytes = http::get("api.github.com", "/repos/Yuch3nE/luciddesk/releases/latest", &cancel)?
+            let version = if let Some(bytes) = http::get(
+                "github.com",
+                "/Yuch3nE/luciddesk/releases/latest/download/version.json",
+                &cancel,
+            )? {
+                parse_manifest(&bytes, current)?
+            } else {
+                let bytes = http::get(
+                    "api.github.com",
+                    "/repos/Yuch3nE/luciddesk/releases/latest",
+                    &cancel,
+                )?
                 .ok_or("No published release")?;
-            parse_release(&bytes, current)
+                parse_release(&bytes, current)?
+            };
+            Ok(version.map(|version| {
+                let install = install::kind().map_or(InstallAvailability::Manual, |kind| {
+                    InstallAvailability::from_signed_check(signed::find_asset(
+                        &version, kind, &cancel,
+                    ))
+                });
+                AvailableRelease { version, install }
+            }))
         })
     }
     fn start(
@@ -278,11 +378,24 @@ mod tests {
         let mut controller = Controller::default();
         for automatic in [true, false] {
             for version in ["1.0.0", "1.1.0"] {
-                completed(&mut controller, Ok(Some(version.into())), automatic, now);
+                completed(
+                    &mut controller,
+                    Ok(Some(AvailableRelease {
+                        version: version.into(),
+                        install: if automatic {
+                            InstallAvailability::Ready
+                        } else {
+                            InstallAvailability::Manual
+                        },
+                    })),
+                    automatic,
+                    now,
+                );
                 controller.maintain(true, now);
                 assert!(!controller.busy());
                 assert!(controller.checked);
-                assert_eq!(controller.available.as_deref(), Some(version));
+                assert_eq!(controller.available_version(), Some(version));
+                assert_eq!(controller.can_install(), automatic);
                 assert_eq!(controller.status(), i18n::format("update-available", &[("version", version.into())]));
             }
         }
@@ -359,14 +472,67 @@ mod tests {
         wait(&mut controller);
         assert_eq!(controller.error.as_deref(), Some("offline"));
         assert!(!controller.checked);
-        controller.start(|_| Ok(Some("0.15.0".into()))).unwrap();
+        controller
+            .start(|_| {
+                Ok(Some(AvailableRelease {
+                    version: "0.15.0".into(),
+                    install: InstallAvailability::Manual,
+                }))
+            })
+            .unwrap();
         wait(&mut controller);
-        assert_eq!(controller.available.as_deref(), Some("0.15.0"));
+        assert_eq!(controller.available_version(), Some("0.15.0"));
+        assert!(!controller.can_install());
+        controller.install().unwrap();
+        assert!(controller.installer.is_none());
         assert!(controller.error.is_none());
         controller.start(|_| Ok(None)).unwrap();
         let cancel = controller.work.as_ref().unwrap().cancel.clone();
         drop(controller);
         assert!(cancel.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn startup_requires_recovery_only_when_a_zip_replacement_is_pending() {
+        let root = tempfile::tempdir().unwrap();
+        let work = root.path().join(".luciddesk-update-fixture");
+        let backup = work.join("backup");
+        std::fs::create_dir_all(work.join("new")).unwrap();
+        check_recovery(root.path()).unwrap();
+        std::fs::create_dir(&backup).unwrap();
+        for locale in 0..7 {
+            i18n::with_locale(locale, || {
+                let error = check_recovery(root.path()).unwrap_err();
+                assert!(error.contains(".luciddesk-update-fixture"));
+                assert!(!error.contains("update-recovery-required"));
+            });
+        }
+        std::fs::rename(&backup, work.join("backup-completed")).unwrap();
+        check_recovery(root.path()).unwrap();
+    }
+
+    #[test]
+    fn failed_signed_manifest_keeps_manual_download_and_reports_the_error() {
+        let mut controller = Controller::default();
+        completed(
+            &mut controller,
+            Ok(Some(AvailableRelease {
+                version: "99.1.2".into(),
+                install: InstallAvailability::from_signed_check::<()>(Err(
+                    "invalid signature".into()
+                )),
+            })),
+            false,
+            std::time::Instant::now(),
+        );
+        controller.poll();
+        assert_eq!(controller.available_version(), Some("99.1.2"));
+        assert!(!controller.can_install());
+        assert!(controller.status().contains("invalid signature"));
+        assert!(matches!(
+            InstallAvailability::from_signed_check::<()>(Ok(None)),
+            InstallAvailability::Manual
+        ));
     }
     #[test]
     #[ignore = "Checks GitHub metadata without downloading packages or opening a browser"]

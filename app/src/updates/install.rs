@@ -1,24 +1,21 @@
 use std::path::PathBuf;
 use std::process::{Child, Command};
 
-const MODULUS: &str = match option_env!("UPDATE_RSA_MODULUS") {
-    Some(key) => key,
-    None => "",
-};
-
-pub(super) fn supported() -> bool {
-    MODULUS.len() >= 512
-        && MODULUS.bytes().all(|c| c.is_ascii_hexdigit())
-        && std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(PathBuf::from))
-            .is_some_and(|dir| {
-                dir.join("build.json").is_file()
-                    && dir.join("updater.exe").is_file()
-                    && !dir.join("msix").exists()
-                    && (!dir.join("installed").exists()
-                        || super::distribution::inno_scope(&dir).is_some())
-            })
+pub(super) fn kind() -> Option<&'static str> {
+    let key = super::signed::MODULUS;
+    if key.len() < 512
+        || !key.len().is_multiple_of(2)
+        || !key.bytes().all(|c| c.is_ascii_hexdigit())
+    {
+        return None;
+    }
+    let dir = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(PathBuf::from))?;
+    if !dir.join("build.json").is_file() || !dir.join("updater.exe").is_file() {
+        return None;
+    }
+    super::distribution::Distribution::detect(&dir).map(|distribution| distribution.kind())
 }
 
 pub(super) fn launch(version: &str) -> Result<Child, String> {

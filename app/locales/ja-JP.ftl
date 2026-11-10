@@ -1306,6 +1306,8 @@ desktop-gesture-description = デスクトップの空白をダブルクリッ�
 update-installed-version = 現在のバージョン { $version }
 update-install = 更新を適用
 update-preparing = 更新を準備中…
+update-manifest-unavailable = アプリ内更新の検証に失敗しました
+update-recovery-required = 前回の更新が中断されました。ユーザーデータを保持し、完全な ZIP からプログラムファイルを復元してください。復元後、復旧フォルダーをアプリのフォルダーの外に移動してから再起動してください。復旧フォルダーは { $folder } です。
 update-restart = バージョン { $version } を検証しました。LucidDesk を終了して更新し、再起動しますか？
 update-download = 更新をダウンロード
 

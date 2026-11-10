@@ -1306,6 +1306,8 @@ desktop-gesture-description = 双击桌面空白处隐藏所有图标和面板�
 update-installed-version = 当前版本 { $version }
 update-install = 下载并更新
 update-preparing = 正在准备更新…
+update-manifest-unavailable = 应用内更新校验失败
+update-recovery-required = 上次更新未完成。请使用完整 ZIP 恢复程序文件，保留用户数据。恢复后，将恢复目录移出应用目录，再重新启动。恢复目录为 { $folder }
 update-restart = 已验证 { $version }。现在退出 LucidDesk、安装更新并重新打开？
 update-download = 下载新版本
 

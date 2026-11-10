@@ -31,11 +31,16 @@ fn main() -> Result<(), String> {
 
 fn run() -> Result<(), String> {
     // Installer preflight only: no COM, application windows, data access or hooks.
-    if std::env::args_os()
-        .skip(1)
-        .eq([OsString::from("--check-desktop-component")])
-    {
-        std::process::exit(match luciddesk_explorer::desktop_component_released() {
+    let arguments: Vec<_> = std::env::args_os().skip(1).collect();
+    let probe = match arguments.as_slice() {
+        [arg] if arg == "--check-desktop-component" => {
+            Some(luciddesk_explorer::desktop_component_released())
+        }
+        [arg] if arg == "--wait-desktop-component" => Some(updates::probe::wait()),
+        _ => None,
+    };
+    if let Some(probe) = probe {
+        std::process::exit(match probe {
             Ok(true) => 0,
             Ok(false) => 1,
             Err(_) => 2,
@@ -46,7 +51,6 @@ fn run() -> Result<(), String> {
             windows_sys::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
         );
     }
-    let arguments: Vec<_> = std::env::args_os().skip(1).collect();
     let _apartment = ShellApartment::initialize_sta().map_err(|e| e.to_string())?;
     // Match the installer shortcuts; keep independent of version and install path.
     // Set before creating any UI, including when launched directly from the EXE.
@@ -75,6 +79,13 @@ fn run() -> Result<(), String> {
     let Some(_instance) = Instance::acquire(!startup)? else {
         return Ok(());
     };
+    let exe = std::env::current_exe().map_err(|error| error.to_string())?;
+    if let Some(root) = exe.parent() {
+        if updates::applying(root)? {
+            return Ok(());
+        }
+        updates::check_recovery(root)?;
+    }
     let _ = system_info::system();
     pane::render_debug::render_trace(format_args!("startup"));
     let path = database_path()?;

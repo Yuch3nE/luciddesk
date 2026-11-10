@@ -377,14 +377,10 @@ begin
     Guard := ExpandConstant('{tmp}\luciddesk.exe');
   end;
   ExitCode := 2;
-  for Attempt := 1 to 40 do begin
-    if not Exec(Guard, '--check-desktop-component', ExpandConstant('{tmp}'),
-        SW_HIDE, ewWaitUntilTerminated, ExitCode) then begin
-      Result := OperationMessage('ComponentInspectionFailed', Uninstalling);
-      Exit;
-    end;
-    if ExitCode = 0 then Break;
-    Sleep(250);
+  if not Exec(Guard, '--wait-desktop-component', ExpandConstant('{tmp}'),
+      SW_HIDE, ewWaitUntilTerminated, ExitCode) then begin
+    Result := OperationMessage('ComponentInspectionFailed', Uninstalling);
+    Exit;
   end;
   if ExitCode <> 0 then begin
     Log(Format('Explorer component preflight failed with exit code %d.', [ExitCode]));

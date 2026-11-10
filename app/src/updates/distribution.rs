@@ -1,7 +1,95 @@
-use std::path::PathBuf;
-use std::{fs, io, os::windows::fs::MetadataExt};
-use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
-pub(crate) fn inno_scope(directory: &std::path::Path) -> Option<&'static str> {
+use std::{
+    fs, io,
+    os::windows::{
+        fs::{MetadataExt, OpenOptionsExt},
+        io::AsRawHandle,
+    },
+    path::{Path, PathBuf},
+};
+use windows_sys::Win32::Storage::FileSystem::{
+    BY_HANDLE_FILE_INFORMATION, FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS,
+    FILE_READ_ATTRIBUTES, GetFileInformationByHandle,
+};
+
+pub(crate) const UPDATE_WORK_PREFIX: &str = ".luciddesk-update-";
+pub(crate) const UPDATE_BACKUP: &str = "backup";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Distribution {
+    Green,
+    Portable,
+    Inno(&'static str),
+}
+
+impl Distribution {
+    pub(crate) fn detect(directory: &Path) -> Option<Self> {
+        if directory.join("msix").exists() {
+            return None;
+        }
+        if directory.join("installed").exists() {
+            if directory.join("portable").is_file() {
+                return None;
+            }
+            return inno_scope(directory).map(Self::Inno);
+        }
+        if directory.join("portable").is_file() {
+            Some(Self::Portable)
+        } else {
+            Some(Self::Green)
+        }
+    }
+
+    pub(crate) fn kind(self) -> &'static str {
+        match self {
+            Self::Green => "green",
+            Self::Portable => "portable",
+            Self::Inno(_) => "installed",
+        }
+    }
+}
+
+pub(crate) fn update_gate_name(directory: &Path) -> io::Result<Vec<u16>> {
+    let handle = fs::OpenOptions::new()
+        .access_mode(FILE_READ_ATTRIBUTES)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+        .open(directory)?;
+    let mut info = BY_HANDLE_FILE_INFORMATION::default();
+    if unsafe { GetFileInformationByHandle(handle.as_raw_handle(), &raw mut info) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(format!(
+        r"Global\LucidDesk.UpdateApplying.{:08x}.{:08x}{:08x}",
+        info.dwVolumeSerialNumber, info.nFileIndexHigh, info.nFileIndexLow
+    )
+    .encode_utf16()
+    .chain(Some(0))
+    .collect())
+}
+
+
+pub(crate) fn interrupted_update(directory: &std::path::Path) -> io::Result<Option<PathBuf>> {
+    if directory.join("installed").exists() || directory.join("msix").exists() {
+        return Ok(None);
+    }
+    for entry in fs::read_dir(directory)? {
+        let entry = entry?;
+        if !entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with(UPDATE_WORK_PREFIX)
+            || !entry.file_type()?.is_dir()
+        {
+            continue;
+        }
+        let work = entry.path();
+        if work.join(UPDATE_BACKUP).try_exists()? {
+            return Ok(Some(work));
+        }
+    }
+    Ok(None)
+}
+
+fn inno_scope(directory: &Path) -> Option<&'static str> {
     let Ok(directory) = directory.canonicalize() else {
         return None;
     };

@@ -2476,6 +2476,30 @@ fn about_exposes_automatic_update_switch_and_manual_actions_in_all_languages() {
 }
 
 #[test]
+fn about_offers_in_app_install_only_for_a_verified_release() {
+    for installable in [false, true] {
+        let mut body = layout::scene(
+            900.0,
+            568.0,
+            5,
+            false,
+            (PanelTheme::Dark, Backdrop::Mica),
+            Default::default(),
+        );
+        let updates = crate::updates::Controller::with_release("99.1.2", installable);
+        layout::about_updates(&mut body, 900.0, true, false, &updates, true);
+        assert_eq!(
+            body.controls
+                .iter()
+                .any(|control| matches!(control.action, Action::InstallUpdate)),
+            installable
+        );
+        assert!(body.controls.iter().any(|control|
+            matches!(control.action, Action::ProjectLink(url) if url == crate::updates::PAGE)));
+    }
+}
+
+#[test]
 fn desktop_connection_card_aligns_both_states_without_technical_details() {
     for locale in 0..7 {
         crate::i18n::with_locale(locale, || {

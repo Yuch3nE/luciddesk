@@ -1306,6 +1306,8 @@ desktop-gesture-description = 바탕 화면의 빈 공간을 두 번 클릭하�
 update-installed-version = 현재 버전 { $version }
 update-install = 다운로드 및 업데이트
 update-preparing = 업데이트 준비 중…
+update-manifest-unavailable = 앱 내 업데이트 검증 실패
+update-recovery-required = 이전 업데이트가 중단되었습니다. 사용자 데이터를 보존하고 전체 ZIP에서 프로그램 파일을 복원하세요. 복원한 후 복구 폴더를 앱 폴더 밖으로 옮기고 다시 시작하세요. 복구 폴더는 { $folder }입니다.
 update-restart = 버전 { $version } 검증이 완료되었습니다. LucidDesk를 종료하고 업데이트한 뒤 다시 열까요?
 update-download = 업데이트 다운로드
 

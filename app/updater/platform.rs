@@ -8,10 +8,13 @@ use std::{
         io::{AsRawHandle, FromRawHandle, OwnedHandle},
     },
     path::{Path, PathBuf},
-    ptr::null,
+    ptr::{null, null_mut},
 };
 use windows_sys::Win32::{
     Foundation::*,
+    Security::{
+        Authorization::ConvertStringSecurityDescriptorToSecurityDescriptorW, SECURITY_ATTRIBUTES,
+    },
     System::Threading::*,
     UI::{Shell::*, WindowsAndMessaging::*},
 };
@@ -98,6 +101,49 @@ pub fn gate(name: &str) -> Result<OwnedHandle> {
         Ok(mutex)
     }
 }
+pub fn installation_gate(directory: &Path) -> io::Result<OwnedHandle> {
+    let name = crate::distribution::update_gate_name(directory)?;
+    let mut descriptor = null_mut();
+    // Allow other signed-in users to observe this installation's update gate.
+    if unsafe {
+        ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            windows_sys::w!("D:(A;;0x00100000;;;AU)"),
+            1,
+            &raw mut descriptor,
+            null_mut(),
+        )
+    } == 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    let attributes = SECURITY_ATTRIBUTES {
+        nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
+        lpSecurityDescriptor: descriptor,
+        bInheritHandle: 0,
+    };
+    let (raw, error) = unsafe {
+        let handle = CreateMutexExW(
+            &raw const attributes,
+            name.as_ptr(),
+            0,
+            SYNCHRONIZATION_SYNCHRONIZE,
+        );
+        let error = GetLastError();
+        LocalFree(descriptor);
+        (handle, error)
+    };
+    if raw.is_null() {
+        return Err(io::Error::from_raw_os_error(error as i32));
+    }
+    let handle = unsafe { OwnedHandle::from_raw_handle(raw) };
+    if error == ERROR_ALREADY_EXISTS {
+        return Err(io::Error::other(
+            "An update is already applying to this installation",
+        ));
+    }
+    Ok(handle)
+}
+
 pub fn setup(path: &Path, root: &Path, scope: &str) -> Result<()> {
     let mut args = OsString::from(format!("{scope} /SILENT /NORESTART /SP- /DIR=\""));
     args.push(root);
@@ -129,4 +175,21 @@ pub fn setup(path: &Path, root: &Path, scope: &str) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn installation_gate_excludes_other_updaters_of_the_same_directory() {
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        let gate = installation_gate(first.path()).unwrap();
+        let alias = first.path().join(".");
+        assert!(installation_gate(&alias).is_err());
+        let _other_gate = installation_gate(second.path()).unwrap();
+        drop(gate);
+        assert!(installation_gate(first.path()).is_ok());
+    }
 }

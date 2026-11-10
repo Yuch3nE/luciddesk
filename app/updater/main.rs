@@ -6,14 +6,32 @@ mod distribution;
 mod http;
 mod package;
 mod platform;
+#[path = "../src/updates/probe.rs"]
+mod probe;
 mod release;
+#[path = "../src/updates/signed.rs"]
+mod signed;
 
 use semver::Version;
-use std::{env, fs, path::Path, process::Command};
+use std::{
+    env,
+    fs::File,
+    path::{Path, PathBuf},
+    process::Command,
+};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     IDOK, MB_ICONERROR, MB_ICONINFORMATION, MB_OKCANCEL,
 };
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+type UpdateError = Box<dyn std::error::Error>;
+type Result<T> = std::result::Result<T, UpdateError>;
+
+#[derive(Debug)]
+enum ApplyFailure {
+    Restartable(UpdateError),
+    RecoveryRequired(UpdateError),
+}
+
+type ApplyResult = std::result::Result<(), ApplyFailure>;
 
 fn main() {
     if let Err(error) = run() {
@@ -53,103 +71,164 @@ fn run() -> Result<()> {
         .exe
         .parent()
         .ok_or("Missing installation directory")?;
-    let build = package::build(root)?;
-    let portable = root.join("portable").is_file();
-    if build.version != current
-        || build.architecture != "windows-x64"
-        || build.portable != portable
-        || root.join("msix").exists()
-    {
-        return Err("Unsupported distribution or updater version".into());
-    }
-    let scope = if root.join("installed").exists() {
-        Some(
-            distribution::inno_scope(root)
-                .ok_or("Use the original installer to update this installation")?,
-        )
-    } else {
-        None
-    };
-    let kind = if scope.is_some() {
-        "installed"
-    } else if portable {
-        "portable"
-    } else {
-        "green"
-    };
-    if scope.is_none() {
-        for item in fs::read_dir(root)? {
-            let item = item?;
-            if item
-                .file_name()
-                .to_string_lossy()
-                .starts_with(".luciddesk-update-")
-                && item.path().join("backup").exists()
-            {
-                return Err(format!(
-                    "Recover the interrupted update in {} before retrying",
-                    item.path().display()
-                )
-                .into());
-            }
-        }
-    }
-    let temp = env::temp_dir();
-    let parent = if scope.is_some() {
-        temp.as_path()
-    } else {
-        root
-    };
-    distribution::no_links(parent)?;
-    let work = tempfile::Builder::new()
-        .prefix(".luciddesk-update-")
-        .tempdir_in(parent)?;
-    let stage = work.path().join("new");
-    let archive = work.path().join(if scope.is_some() {
-        "setup.exe"
-    } else {
-        "update.zip"
-    });
-    let mut verified = release::fetch(version, kind, &archive)?;
-    let mut files = Vec::new();
-    if scope.is_none() {
-        files = package::extract(&mut verified, &stage, version, portable)?;
-        package::check_targets(root, &files, &build)?;
-    }
+    let update = PreparedUpdate::prepare(root, version, current)?;
     if platform::message(&prompt.to_string_lossy(), MB_OKCANCEL | MB_ICONINFORMATION) != IDOK {
         return Ok(());
     }
-    let gate = platform::gate(r"Local\LucidDesk.UpdateApplying")?;
-    original.close()?;
-    let mut retain = false;
-    let result = match scope {
-        Some(scope) => platform::setup(&archive, root, scope),
-        None => apply_zip(root, work.path(), &files, &mut retain),
-    };
-    drop(verified);
-    drop(gate);
-    if retain {
-        let _recovery = work.keep();
-    } else {
-        Command::new(&original.exe).spawn()?;
-    }
-    result
+    update.install(root, &original)
 }
 
-fn apply_zip(root: &Path, work: &Path, files: &[String], retain: &mut bool) -> Result<()> {
-    let _instance = platform::gate(r"Local\LucidDesk.DesktopSession")?;
-    let probe = Command::new(work.join("new/luciddesk.exe"))
-        .arg("--check-desktop-component")
-        .status()?;
-    if !probe.success() {
-        return Err("Explorer has not released the desktop component".into());
-    }
-    package::replace(root, work, files, retain)
+enum PreparedPayload {
+    Zip(Vec<package::StagedFile>),
+    Inno { setup: PathBuf, scope: &'static str },
 }
+
+struct PreparedUpdate {
+    // Drop the staged file and archive handles before removing the working directory.
+    payload: PreparedPayload,
+    verified_archive: File,
+    work: tempfile::TempDir,
+    distribution: distribution::Distribution,
+    build: package::Build,
+}
+
+impl PreparedUpdate {
+    fn prepare(root: &Path, version: &str, current: &str) -> Result<Self> {
+        check_pending_recovery(root)?;
+        let build = package::build(root)?;
+        let distribution = distribution::Distribution::detect(root)
+            .ok_or("Use the original installer to update this installation")?;
+        let portable = distribution == distribution::Distribution::Portable;
+        if build.version != current
+            || build.architecture != "windows-x64"
+            || build.portable != portable
+        {
+            return Err("Unsupported distribution or updater version".into());
+        }
+
+        let (parent, archive_name) = match distribution {
+            distribution::Distribution::Inno(_) => (env::temp_dir(), "setup.exe"),
+            _ => (root.to_path_buf(), "update.zip"),
+        };
+        distribution::no_links(&parent)?;
+        let work = tempfile::Builder::new()
+            .prefix(distribution::UPDATE_WORK_PREFIX)
+            .tempdir_in(parent)?;
+        let archive = work.path().join(archive_name);
+        let mut verified_archive = release::fetch(version, distribution.kind(), &archive)?;
+        let payload = match distribution {
+            distribution::Distribution::Inno(scope) => PreparedPayload::Inno {
+                setup: archive,
+                scope,
+            },
+            _ => {
+                let files = package::extract(
+                    &mut verified_archive,
+                    &work.path().join("new"),
+                    version,
+                    portable,
+                )?;
+                package::check_targets(
+                    root,
+                    files.iter().map(|file| file.relative.as_str()),
+                    &build,
+                )?;
+                PreparedPayload::Zip(files)
+            }
+        };
+
+        Ok(Self {
+            payload,
+            verified_archive,
+            work,
+            distribution,
+            build,
+        })
+    }
+
+    fn install(self, root: &Path, original: &platform::Original) -> Result<()> {
+        let install_gate = platform::installation_gate(root)?;
+        let session_gate = platform::gate(r"Local\LucidDesk.UpdateApplying")?;
+        check_pending_recovery(root)?;
+        // Another session may have completed an update while we waited for confirmation.
+        if package::build(root)? != self.build
+            || distribution::Distribution::detect(root) != Some(self.distribution)
+        {
+            return Err(
+                "The installation changed while preparing the update. Check for updates again."
+                    .into(),
+            );
+        }
+        original.close()?;
+
+        let Self {
+            payload,
+            verified_archive,
+            work,
+            build,
+            ..
+        } = self;
+        let outcome = match payload {
+            PreparedPayload::Inno { setup, scope } => {
+                platform::setup(&setup, root, scope).map_err(ApplyFailure::Restartable)
+            }
+            PreparedPayload::Zip(files) => apply_zip(root, work.path(), &files, &build),
+        };
+        drop(verified_archive);
+
+        let result = match outcome {
+            Ok(()) => Ok(()),
+            Err(ApplyFailure::Restartable(error)) => Err(error),
+            Err(ApplyFailure::RecoveryRequired(error)) => {
+                let _recovery = work.keep();
+                return Err(error);
+            }
+        };
+        drop(work);
+        drop(session_gate);
+        drop(install_gate);
+        let restart = Command::new(&original.exe).spawn();
+        result?;
+        restart?;
+        Ok(())
+    }
+}
+
+fn check_pending_recovery(root: &Path) -> Result<()> {
+    if let Some(work) = distribution::interrupted_update(root)? {
+        return Err(format!(
+            "Recover the interrupted update in {} before retrying",
+            work.display()
+        )
+        .into());
+    }
+    Ok(())
+}
+
+fn apply_zip(
+    root: &Path,
+    work: &Path,
+    files: &[package::StagedFile],
+    build: &package::Build,
+) -> ApplyResult {
+    let _instance =
+        platform::gate(r"Local\LucidDesk.DesktopSession").map_err(ApplyFailure::Restartable)?;
+    match probe::wait() {
+        Ok(true) => package::replace(root, work, files, build),
+        Ok(false) => Err(ApplyFailure::Restartable(
+            "Explorer has not released the desktop component".into(),
+        )),
+        Err(error) => Err(ApplyFailure::Restartable(
+            format!("Could not inspect the Explorer desktop component: {error}").into(),
+        )),
+    }
+}
+
 
 #[cfg(test)]
 mod lifecycle_tests {
     use super::*;
+    use std::fs;
     #[test]
     #[ignore = "Installs two isolated Inno fixtures through the native updater launcher"]
     fn real_installer_upgrade_preserves_files() {
@@ -246,10 +325,15 @@ mod lifecycle_tests {
         let mut archive = fs::File::open(zip).unwrap();
         let files =
             package::extract(&mut archive, &work.path().join("new"), version, portable).unwrap();
-        package::check_targets(&root, &files, &package::build(&root).unwrap()).unwrap();
-        let mut retain = false;
-        apply_zip(&root, work.path(), &files, &mut retain).unwrap();
-        assert!(!retain);
+        let build = package::build(&root).unwrap();
+        package::check_targets(
+            &root,
+            files.iter().map(|file| file.relative.as_str()),
+            &build,
+        )
+        .unwrap();
+        apply_zip(&root, work.path(), &files, &build).unwrap();
+        drop(files);
         assert_eq!(fs::read(data.join("config.toml")).unwrap(), before_config);
         assert_eq!(
             fs::read(data.join("workspace.db")).unwrap(),

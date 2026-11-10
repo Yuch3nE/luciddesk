@@ -1,9 +1,9 @@
-use crate::{Result, http};
-use base64::{Engine, engine::general_purpose::STANDARD};
-use ring::{digest, signature};
-use serde::Deserialize;
+use crate::{
+    Result, http,
+    signed::{self, Asset},
+};
+use ring::digest;
 use std::{
-    collections::HashMap,
     fs::{File, OpenOptions},
     io::{Read, Seek},
     os::windows::fs::OpenOptionsExt,
@@ -11,88 +11,23 @@ use std::{
     sync::atomic::AtomicBool,
 };
 
-#[derive(Deserialize)]
-struct Envelope {
-    payload: String,
-    signature: String,
-}
-#[derive(Deserialize)]
-struct Manifest {
-    version: String,
-    packages: HashMap<String, Asset>,
-}
-#[derive(Deserialize)]
-struct Asset {
-    name: String,
-    size: u64,
-    sha256: String,
-}
-
-fn asset(bytes: &[u8], modulus: &str, version: &str, kind: &str) -> Result<Asset> {
-    let envelope: Envelope = serde_json::from_slice(bytes)?;
-    let payload = STANDARD.decode(envelope.payload)?;
-    let signature = STANDARD.decode(envelope.signature)?;
-    if !modulus.is_ascii() || !modulus.len().is_multiple_of(2) {
-        return Err("Invalid update key".into());
-    }
-    let n = (0..modulus.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&modulus[i..i + 2], 16))
-        .collect::<std::result::Result<Vec<_>, _>>()?;
-    signature::RsaPublicKeyComponents {
-        n: n.as_slice(),
-        e: &[1, 0, 1],
-    }
-    .verify(&signature::RSA_PKCS1_2048_8192_SHA256, &payload, &signature)
-    .map_err(|_| "Invalid release signature")?;
-    let mut manifest: Manifest = serde_json::from_slice(&payload)?;
-    let asset = manifest
-        .packages
-        .remove(kind)
-        .ok_or("Missing update package")?;
-    if manifest.version != version
-        || !(1..=512 * 1024 * 1024).contains(&asset.size)
-        || !asset.name.starts_with("LucidDesk-")
-        || !asset
-            .name
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b".-".contains(&b))
-        || asset.sha256.len() != 64
-        || !asset.sha256.bytes().all(|b| b.is_ascii_hexdigit())
-    {
-        return Err("Invalid signed package metadata".into());
-    }
-    Ok(asset)
-}
-
 pub fn fetch(version: &str, kind: &str, destination: &Path) -> Result<File> {
     let cancel = AtomicBool::new(false);
-    for tag in [format!("v{version}"), version.to_owned()] {
-        let base = format!("/Yuch3nE/luciddesk/releases/download/{tag}");
-        let Some(feed) = http::get("github.com", &format!("{base}/update.json"), &cancel)? else {
-            continue;
-        };
-        let asset = asset(
-            &feed,
-            option_env!("UPDATE_RSA_MODULUS").unwrap_or(""),
-            version,
-            kind,
-        )?;
-        {
-            let mut file = File::create_new(destination)?;
-            if !http::download(
-                "github.com",
-                &format!("{base}/{}", asset.name),
-                &cancel,
-                asset.size,
-                &mut file,
-            )? {
-                return Err("Missing release asset".into());
-            }
+    let (base, asset) = signed::find_asset(version, kind, &cancel)?
+        .ok_or("Missing signed update feed. Use the release page to update manually.")?;
+    {
+        let mut file = File::create_new(destination)?;
+        if !http::download(
+            "github.com",
+            &format!("{base}/{}", asset.name),
+            &cancel,
+            asset.size,
+            &mut file,
+        )? {
+            return Err("Missing release asset".into());
         }
-        return verified_file(destination, &asset);
     }
-    Err("Missing signed update feed. Use the release page to update manually.".into())
+    verified_file(destination, &asset)
 }
 
 fn verified_file(destination: &Path, asset: &Asset) -> Result<File> {
@@ -126,6 +61,8 @@ fn verified_file(destination: &Path, asset: &Asset) -> Result<File> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    use signed::{asset, find_asset_with};
     #[test]
     #[ignore = "Downloads and verifies production release assets; requires a configured public key and published signed release"]
     fn live_release_packages_verify() {
@@ -166,6 +103,18 @@ mod tests {
         assert!(status.success());
         let feed = std::fs::read(dir.path().join("update.json")).unwrap();
         let key = std::fs::read_to_string(dir.path().join("public.hex")).unwrap();
+        assert!(
+            find_asset_with("99.0.1", "green", &key, |_| Ok(None))
+                .unwrap()
+                .is_none()
+        );
+        let (base, _) = find_asset_with("99.0.1", "green", &key, |path| {
+            Ok((!path.contains("/v99.0.1/")).then(|| feed.clone()))
+        })
+        .unwrap()
+        .unwrap();
+        assert!(base.ends_with("/99.0.1"));
+        assert!(find_asset_with("99.0.1", "msix", &key, |_| Ok(Some(feed.clone()))).is_err());
         for (kind, suffix) in [
             ("installed", "setup.exe"),
             ("green", "120000.zip"),
@@ -185,14 +134,7 @@ mod tests {
         assert!(asset(&feed, &key, "99.0.2", "green").is_err());
         let mut changed: serde_json::Value = serde_json::from_slice(&feed).unwrap();
         changed["payload"] = STANDARD.encode(b"{}").into();
-        assert!(
-            asset(
-                &serde_json::to_vec(&changed).unwrap(),
-                &key,
-                "99.0.1",
-                "green"
-            )
-            .is_err()
-        );
+        let changed = serde_json::to_vec(&changed).unwrap();
+        assert!(find_asset_with("99.0.1", "green", &key, |_| Ok(Some(changed.clone()))).is_err());
     }
 }
