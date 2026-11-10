@@ -244,7 +244,8 @@ fn prepare(
         .iter()
         .map(|p| p.id().get())
         .max()
-        .unwrap_or(0);
+        .unwrap_or(0)
+        .max(store.panel_id_high_water().map_err(|e| invalid(e.to_string()))?);
     let mut operations: VecDeque<_> = plan.operations.iter().cloned().collect();
     while let Some(operation) = operations.pop_front() {
         let operation = &operation;
@@ -779,6 +780,9 @@ impl Plans {
                     PreparedAction::Settings { updates, .. } => {
                         if let Err(error) = super::settings::save(&state.store, updates) {
                             return fail("PERSISTENCE_ERROR", &error);
+                        }
+                        if updates.contains_key(hybrid::CLASSIFICATION_KEY) {
+                            hybrid::classification_settings_changed(state);
                         }
                     }
                     PreparedAction::Workspace(change) => {
@@ -1682,6 +1686,20 @@ mod tests {
         assert!(snapshot.respond(&mut state, &apply(&p)).ok);
         assert!(state.workspace.panels().iter().all(|p| !p.locked()));
     }
+    #[test]
+    fn deleted_rule_target_cannot_be_reused_by_new_panes() {
+        let mut state = super::super::super::tests::test_state();
+        let directory = tempfile::tempdir().unwrap();
+        state.store = WorkspaceStore::open(&directory.path().join("workspace.db")).unwrap();
+        state.store.save_settings(&[(hybrid::CLASSIFICATION_KEY.into(), luciddesk_storage::SettingValue::Text(
+            r#"{"rules":[{"target_panel":50,"extensions":["pdf"]}]}"#.into()))].into_iter().collect()).unwrap();
+        let mut snapshot = Snapshot::new();
+        let p = preview(&mut snapshot, &mut state, json!([{"op":"pane.create","ref":"new","title":"New"}]));
+        assert!(p.ok, "{p:?}");
+        assert_eq!(p.data.unwrap()["provisional_refs"]["new"], "51");
+        assert_eq!(next_panel_id(&state).unwrap(), PanelId::new(51));
+    }
+
     #[test]
     fn provisional_ids_are_not_reused_within_a_plan() {
         let mut state = super::super::super::tests::test_state();

@@ -23,6 +23,7 @@ pub(super) struct Context<'a> {
     pub folder_defaults: &'a mut folder::Defaults,
     pub layout_defaults: &'a mut layout_defaults::Mode,
     pub style_input: &'a mut Option<(bool, String)>,
+    pub classification_editor: &'a mut classification::Editor,
     pub startup: &'a mut crate::startup::Controller,
     pub diagnostics_copied: &'a mut bool,
     pub skill_prompt_copied: &'a mut bool,
@@ -49,12 +50,7 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
     let mut invalidate = false;
     match &c.action {
         Action::Classification(command) => {
-            let state = Rc::clone(state);
-            let command = command.clone();
-            window::defer_action(move || {
-                if let Err(error) = classification::execute(&state, hwnd, command) { window::error_for(hwnd, &error); }
-                unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
-            });
+            context.classification_editor.execute(state, hwnd, *command);
             invalidate = true;
         }
         Action::Dropdown(_) => {
@@ -475,6 +471,7 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
             invalidate = true;
         }
         Action::Page(value) => {
+            if *value == 16 { context.classification_editor.resume(); }
             *context.selected_plugin = None;
             if *value == 13 {
                 if let Err(error) = start_login_operation(&mut *context.startup, hwnd, None) {

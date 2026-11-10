@@ -81,7 +81,10 @@ pub(super) fn same(a: &Inventory, b: &Inventory) -> bool {
         && a.dpi == b.dpi
         && a.items.len() == b.items.len()
         && a.items.iter().zip(&b.items).all(|(a, b)| {
-            a.identity == b.identity && a.display_name == b.display_name && a.modified == b.modified
+            a.identity == b.identity
+                && a.display_name == b.display_name
+                && a.created == b.created
+                && a.modified == b.modified
         })
 }
 
@@ -97,6 +100,7 @@ mod tests {
             },
             display_name: name.into(),
             attributes: Default::default(),
+            created: None,
             modified: None,
             size: None,
         }

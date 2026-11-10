@@ -199,6 +199,7 @@ mod tests {
             identity: identity.clone(),
             display_name: "Renamed".into(),
             attributes: Default::default(),
+            created: None,
             modified: None,
             size: None,
         };
@@ -260,7 +261,7 @@ mod tests {
         s.workspace.desktop_item_mut(&old).unwrap().set_pane_position(Some(point));
         let renamed=luciddesk_shell::ShellEntry {
             identity: ShellIdentity::Namespace { parsing_name:"test:renamed".into() },
-            display_name:"Renamed".into(),attributes:Default::default(),modified:None,size:None,
+            display_name:"Renamed".into(),attributes:Default::default(),created:None,modified:None,size:None,
         };
         let identity=renamed.identity.clone();
         replace_item(&mut s,&old,renamed);

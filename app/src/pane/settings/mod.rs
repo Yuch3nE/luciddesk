@@ -22,6 +22,7 @@ const STARTUP_TIMER: usize = 0x4c5354;
 const SELECT_PANEL: u32 = WM_APP + 95;
 const SELECT_PLUGIN: u32 = WM_APP + 97;
 const SELECT_SETTING: u32 = WM_APP + 98;
+const CLASSIFICATION_KEY: u32 = WM_APP + 99;
 #[cfg(test)]
 const INSPECT_STARTUP: u32 = WM_APP + 198;
 #[cfg(test)]

@@ -168,16 +168,7 @@ pub(super) fn add(
         if source.locked() {
             return Err(crate::i18n::text("ui-unlock-the-panel-first").into());
         }
-        let next = PanelId::new(
-            s.workspace
-                .panels()
-                .iter()
-                .map(|p| p.id().get())
-                .max()
-                .unwrap_or(0)
-                .checked_add(1)
-                .ok_or(crate::i18n::text("tab-id-overflow"))?,
-        );
+        let next = next_panel_id(&s)?;
         let title = folder
             .as_ref()
             .and_then(|p| p.file_name())

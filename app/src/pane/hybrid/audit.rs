@@ -103,9 +103,9 @@ impl DesktopAudit {
         self.schedule.invalidate();
     }
 
-    // Membership can change and return to the same identity set while a slow
-    // snapshot is running. Equality of member keys cannot detect that round trip.
-    pub(super) fn membership_changed(&mut self) {
+    // A membership change or a new classification baseline invalidates captures
+    // already in flight, even if their member keys still match.
+    pub(super) fn invalidate_snapshot(&mut self) {
         self.discard_pending |= self.pending;
         self.schedule.invalidate();
     }
@@ -207,8 +207,8 @@ mod tests {
         let (mut audit, requests, results) = fixture();
         audit.submit(Vec::new(), false).unwrap();
         requests.recv().unwrap();
-        audit.membership_changed();
-        audit.membership_changed();
+        audit.invalidate_snapshot();
+        audit.invalidate_snapshot();
         results.send(AuditResult { member_keys: Vec::new(), inventory: Ok(None) }).unwrap();
         assert!(audit.poll().unwrap().is_none(), "same keys do not make a pre-drag snapshot current");
         assert!(audit.due(Duration::ZERO));
@@ -217,7 +217,7 @@ mod tests {
         results.send(AuditResult { member_keys: Vec::new(), inventory: Ok(None) }).unwrap();
         assert!(audit.poll().unwrap().is_some());
         // With no snapshot in flight, invalidation must not discard the next one.
-        audit.membership_changed();
+        audit.invalidate_snapshot();
         audit.submit(Vec::new(), false).unwrap();
         assert!(requests.recv().unwrap().1);
         results.send(AuditResult { member_keys: Vec::new(), inventory: Ok(None) }).unwrap();

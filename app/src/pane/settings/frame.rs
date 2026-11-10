@@ -107,6 +107,11 @@ pub(super) unsafe extern "system" fn frame_proc(
     _: usize,
 ) -> isize {
     use windows_sys::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass};
+    if msg == WM_CTLCOLOREDIT
+        && let Some(brush) = classification::input_colors(wp as HDC, lp as _)
+    {
+        return brush;
+    }
     // Destruction may be nested inside WM_CLOSE while windows-window has
     // detached its callback. Closing settings must never post WM_QUIT.
     if msg == WM_DESTROY {

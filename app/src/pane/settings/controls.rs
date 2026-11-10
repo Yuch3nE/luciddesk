@@ -99,6 +99,8 @@ impl Slider {
 #[derive(Clone, Copy)]
 pub(super) enum ControlKind {
     Button,
+    IconButton(&'static str),
+    Disclosure,
     BackButton,
     Row,
     ForwardRow,
@@ -139,6 +141,7 @@ impl Control {
                 != (other.bounds.left, other.bounds.top, other.bounds.right, other.bounds.bottom)
         { return false; }
         match (&self.action, &other.action) {
+            (Action::Classification(a), Action::Classification(b)) => a == b,
             (Action::Change(a), Action::Change(b)) => std::mem::discriminant(a) == std::mem::discriminant(b),
             (Action::PluginEnabled(a, _), Action::PluginEnabled(b, _)) => a == b,
             (Action::BackupPolicy(a), Action::BackupPolicy(b)) => a == b,
@@ -170,6 +173,18 @@ impl Scene {
     }
     pub fn button(&mut self, bounds: Rect, label: &str, action: Action, selected: bool) {
         self.control(ControlKind::Button, bounds, label, action, selected);
+    }
+    pub fn icon_button(
+        &mut self,
+        bounds: Rect,
+        glyph: &'static str,
+        label: &str,
+        action: Action,
+        selected: bool,
+        enabled: bool,
+    ) {
+        self.control(ControlKind::IconButton(glyph), bounds, label, action, selected);
+        self.controls.last_mut().unwrap().enabled = enabled;
     }
     pub fn toggle(&mut self, bounds: Rect, action: Action, selected: bool, enabled: bool) {
         self.controls.push(Control {

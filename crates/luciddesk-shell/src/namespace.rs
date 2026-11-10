@@ -47,6 +47,7 @@ pub struct ShellEntry {
     pub identity: ShellIdentity,
     pub display_name: String,
     pub attributes: ShellAttributes,
+    pub created: Option<SystemTime>,
     pub modified: Option<SystemTime>,
     /// File length from the directory snapshot; no recursive folder sizing.
     pub size: Option<u64>,
@@ -170,11 +171,19 @@ pub fn enumerate_folder(path: &Path) -> Result<Vec<ShellEntry>, ShellError> {
         if name != "." && name != ".." {
             let child = path.join(&name);
             let folder = data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY != 0;
-            let ticks = (u64::from(data.ftLastWriteTime.dwHighDateTime) << 32) | u64::from(data.ftLastWriteTime.dwLowDateTime);
-            let epoch_ticks = 116_444_736_000_000_000u64;
-            let duration = std::time::Duration::from_nanos(ticks.abs_diff(epoch_ticks) % 10_000_000 * 100)
-                + std::time::Duration::from_secs(ticks.abs_diff(epoch_ticks) / 10_000_000);
-            let modified = if ticks >= epoch_ticks { std::time::UNIX_EPOCH.checked_add(duration) } else { std::time::UNIX_EPOCH.checked_sub(duration) };
+            let file_time = |time: windows_sys::Win32::Foundation::FILETIME| {
+                let ticks = (u64::from(time.dwHighDateTime) << 32) | u64::from(time.dwLowDateTime);
+                if ticks == 0 { return None; }
+                let epoch_ticks = 116_444_736_000_000_000u64;
+                let delta = ticks.abs_diff(epoch_ticks);
+                let duration = std::time::Duration::from_nanos(delta % 10_000_000 * 100)
+                    + std::time::Duration::from_secs(delta / 10_000_000);
+                if ticks >= epoch_ticks {
+                    std::time::UNIX_EPOCH.checked_add(duration)
+                } else {
+                    std::time::UNIX_EPOCH.checked_sub(duration)
+                }
+            };
             items.push(ShellEntry {
                 display_name: name.to_string_lossy().into_owned(),
                 attributes: ShellAttributes {
@@ -183,7 +192,8 @@ pub fn enumerate_folder(path: &Path) -> Result<Vec<ShellEntry>, ShellError> {
                     can_rename: true, can_delete: true,
                 },
                 size: (!folder).then_some((u64::from(data.nFileSizeHigh) << 32) | u64::from(data.nFileSizeLow)),
-                modified,
+                created: file_time(data.ftCreationTime),
+                modified: file_time(data.ftLastWriteTime),
                 identity: ShellIdentity::FileSystem { path: child, volume_id: None, file_id: None },
             });
         }
@@ -315,11 +325,13 @@ pub(crate) fn shell_entry(item: &IShellItem) -> Result<ShellEntry, ShellError> {
         .as_ref()
         .filter(|value| value.is_file())
         .map(fs::Metadata::len);
+    let created = metadata.as_ref().and_then(|metadata| metadata.created().ok());
     let modified = metadata.and_then(|metadata| metadata.modified().ok());
     Ok(ShellEntry {
         identity,
         display_name,
         attributes,
+        created,
         modified,
         size,
     })

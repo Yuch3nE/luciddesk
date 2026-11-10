@@ -352,6 +352,39 @@ impl Painter {
                         }
                         continue;
                     }
+                    if matches!(c.action, Action::Classification(classification::Command::Input(_))) {
+                        let frame = RoundedRect { rect: c.bounds, radius_x: Style::RADIUS, radius_y: Style::RADIUS };
+                        let fill = canvas_result(t.create_solid_brush(color(palette.background)))?;
+                        t.fill_rounded_rect(&frame, &fill);
+                        if focus == Some(i) {
+                            t.draw_rounded_rect(&frame, accent, super::super::control_style::FOCUS_STROKE);
+                        } else {
+                            t.draw_rounded_rect(&frame, border, 1.0);
+                        }
+                        continue;
+                    }
+                    if matches!(c.kind, ControlKind::IconButton(_) | ControlKind::Disclosure) {
+                        let frame = RoundedRect { rect: c.bounds, radius_x: Style::RADIUS, radius_y: Style::RADIUS };
+                        let open = controls::dropdown_is_open(c.bounds);
+                        if c.enabled && (hover == Some(i) || open) { t.fill_rounded_rect(&frame, hovered); }
+                        if c.enabled && focus == Some(i) {
+                            t.draw_rounded_rect(&frame, accent, super::super::control_style::FOCUS_STROKE);
+                        }
+                        let text = if c.enabled { ink } else { disabled };
+                        match c.kind {
+                            ControlKind::IconButton(glyph) => t.clipped_icon(glyph, &self.formats[5], &c.bounds, text),
+                            ControlKind::Disclosure => {
+                                let glyph = Rect::from_xywh(c.bounds.left + 4.0, c.bounds.top, 16.0, c.bounds.bottom - c.bounds.top);
+                                t.clipped_icon(if c.selected { "\u{e70d}" } else { "\u{e76c}" }, &self.formats[4], &glyph, text);
+                                let mut label = c.bounds;
+                                label.left += 28.0;
+                                label.right -= Tokens::GAP;
+                                t.clipped_text(&c.label, &self.formats[1], &label, text);
+                            }
+                            _ => unreachable!(),
+                        }
+                        continue;
+                    }
                     if matches!(c.kind, ControlKind::FooterLink) {
                         let frame = RoundedRect { rect: c.bounds, radius_x: 4.0, radius_y: 4.0 };
                         if c.enabled && hover == Some(i) { t.fill_rounded_rect(&frame, hovered); }
@@ -550,7 +583,8 @@ impl Painter {
                             },
                         );
                     }
-                    let combo_open = matches!(c.kind, ControlKind::Combo) && controls::dropdown_is_open(c.bounds);
+                    let combo_open = matches!(c.kind, ControlKind::Combo)
+                        && controls::dropdown_is_open(c.bounds);
                     if (!navigation && !caption && !plain) || focus == Some(i) {
                         t.draw_rounded_rect(
                             &rr,
@@ -564,13 +598,17 @@ impl Painter {
                     }
                     if matches!(c.kind, ControlKind::Combo) {
                         let text = if c.enabled { ink } else { disabled };
+                        let width = c.bounds.right - c.bounds.left;
+                        let compact = width < 112.0;
+                        let inset = if compact { Tokens::GAP } else { 12.0 };
+                        let chevron = c.bounds.right - Style::ICON_SLOT - inset;
                         t.clipped_text(
                             &c.label,
                             &self.combo_format,
                             &Rect::from_xywh(
-                                c.bounds.left + 12.0,
+                                c.bounds.left + inset,
                                 c.bounds.top,
-                                c.bounds.right - c.bounds.left - 44.0,
+                                (chevron - c.bounds.left - inset - Style::ICON_GAP / 2.0).max(1.0),
                                 c.bounds.bottom - c.bounds.top,
                             ),
                             text,
@@ -579,7 +617,7 @@ impl Painter {
                             if combo_open { "\u{e70e}" } else { "\u{e70d}" },
                             &self.formats[4],
                             &Rect::from_xywh(
-                                c.bounds.right - 28.0,
+                                chevron,
                                 c.bounds.top,
                                 Style::ICON_SLOT,
                                 c.bounds.bottom - c.bounds.top,

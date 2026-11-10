@@ -660,6 +660,13 @@ fn save_state(state: &mut PaneApp, record_layout: bool) -> Result<(), String> {
     Ok(())
 }
 
+fn next_panel_id(state: &PaneApp) -> Result<PanelId, String> {
+    let high_water = state.store.panel_id_high_water().map_err(|e| e.to_string())?
+        .max(state.workspace.panels().iter().map(|p| p.id().get()).max().unwrap_or(0));
+    high_water.checked_add(1).filter(|id| *id <= i64::MAX as u64)
+        .map(PanelId::new).ok_or_else(|| crate::i18n::text("tab-id-overflow").into())
+}
+
 fn remove_panel(workspace: &mut Workspace, id: PanelId) {
     workspace.remove_panel(id);
     for item in workspace.desktop_items_mut() {

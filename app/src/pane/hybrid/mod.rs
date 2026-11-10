@@ -1,7 +1,7 @@
 //! Pane UI with Explorer-owned desktop membership, drawing, layout and input.
 mod audit;
-mod classification;
 mod audit_schedule;
+mod classification;
 mod icon_changes;
 mod icons;
 mod image_retention;
@@ -12,6 +12,7 @@ use super::assets::RECYCLE_BIN_PARSING_NAME;
 use super::search::everything_settings;
 use super::*;
 use audit::DesktopAudit;
+pub(super) use classification::KEY as CLASSIFICATION_KEY;
 pub(super) use icons::refresh_icons;
 use icons::{queue_pane_icons, retain_pane_images};
 use inventory::Inventory;
@@ -41,7 +42,7 @@ pub(super) struct Session {
     view: isize,
     snapshot: Inventory,
     last_reconcile: Instant,
-    classification_seen: std::collections::HashSet<String>,
+    classification: classification::Automatic,
     audit: DesktopAudit,
     last_tick: Instant,
     tick_deferred: bool,
@@ -457,7 +458,7 @@ pub(super) fn connect(state: &Rc<RefCell<PaneApp>>, _path: &Path) -> Result<(), 
         view,
         snapshot,
         last_reconcile: Instant::now(),
-        classification_seen: Default::default(),
+        classification: Default::default(),
         audit,
         last_tick: Instant::now() - Duration::from_millis(20),
         tick_deferred: false,
@@ -674,24 +675,86 @@ fn reconcile_inventory(s: &mut PaneApp) -> Result<(), String> {
     h.icon_failures.retain(|key, _| live.contains(key));
     h.last_reconcile = Instant::now();
     classification::apply(s)?;
+    finish_inventory_update(s);
+    Ok(())
+}
+
+fn finish_inventory_update(s: &mut PaneApp) {
     queue_pane_icons(s, true);
     s.session.as_mut().unwrap().pending_workspace_save = true;
     // Persistence is retried by tick before any new membership is published.
     refresh_views(s);
-    Ok(())
 }
 
-pub(super) fn organize_now(s: &mut PaneApp) -> Result<usize, String> {
-    let session = s.session.as_ref().ok_or("Desktop integration is disconnected")?;
-    if !is_alive(session) || session.menu_active.get() { return Err("Desktop integration is busy or disconnected".into()); }
-    let before = s.workspace.clone();
-    let seen = session.classification_seen.clone();
-    let count = classification::apply_mode(s, true)?;
-    if let Err(error) = s.store.save_workspace(&s.workspace) {
-        s.workspace = before;
-        s.session.as_mut().unwrap().classification_seen = seen;
-        return Err(error.to_string());
+pub(super) fn classification_settings_changed(s: &mut PaneApp) {
+    let Some(session) = s.session.as_mut() else {
+        return;
+    };
+    if let Ok((_, config)) = classification::load(&s.store)
+        && session.classification.set_enabled(config.enabled)
+        && config.enabled
+    {
+        // The baseline must come from an audit started after the switch was enabled.
+        session.audit.invalidate_snapshot();
+        s.wake.notify();
     }
+}
+
+pub(super) struct OrganizePreview {
+    // The owner may disconnect while the modal confirmation runs.
+    session: std::rc::Weak<FilterSession>,
+    rules: String,
+    moves: Vec<classification::Move>,
+}
+
+impl OrganizePreview {
+    pub(super) fn entries(&self) -> impl ExactSizeIterator<Item = (&str, usize, &str)> {
+        self.moves.iter().map(|entry| {
+            (entry.item_name.as_str(), entry.rule, entry.target_name.as_str())
+        })
+    }
+}
+
+pub(super) fn preview_organize(s: &PaneApp) -> Result<OrganizePreview, String> {
+    let session = s
+        .session
+        .as_ref()
+        .filter(|session| is_alive(session) && !session.menu_active.get())
+        .ok_or_else(|| crate::i18n::text("classification-desktop-unavailable"))?;
+    let (raw, config) = classification::load(&s.store)?;
+    let rules = config.compile().map_err(|error| error.to_string())?;
+    let times = classification::TemporaryTimes::new(
+        &session.snapshot.items,
+        std::time::SystemTime::now(),
+    );
+    Ok(OrganizePreview {
+        session: Rc::downgrade(&session.hook),
+        rules: raw,
+        moves: classification::moves(&s.workspace, s.workspace.desktop_items(), &rules, &times),
+    })
+}
+
+pub(super) fn apply_organize(s: &mut PaneApp, preview: OrganizePreview) -> Result<usize, String> {
+    let current = preview_organize(s)?;
+    if !current.session.ptr_eq(&preview.session)
+        || current.rules != preview.rules
+        || current.moves != preview.moves
+    {
+        return Err(crate::i18n::text("classification-preview-stale").into());
+    }
+    let count = preview.moves.len();
+    if count == 0 {
+        return Ok(0);
+    }
+    let mut next = s.workspace.clone();
+    classification::apply_moves(&mut next, &preview.moves);
+    s.store
+        .save_workspace(&next)
+        .map_err(|error| error.to_string())?;
+    s.workspace = next;
+    let session = s.session.as_mut().unwrap();
+    session.audit.invalidate_snapshot();
+    session.dirty.set(true);
     queue_pane_icons(s, true);
     refresh_views(s);
     s.wake.notify();
@@ -827,7 +890,7 @@ pub(super) fn sync(s: &mut PaneApp) -> Result<(), String> {
     let h = s.session.as_mut().unwrap();
     if let Err(error) = publish_membership(&h.published, names, |names| {
         h.hook.submit_hidden(names)?;
-        h.audit.membership_changed();
+        h.audit.invalidate_snapshot();
         h.membership_pending = Some(Instant::now());
         crate::pane::render_debug::render_trace(format_args!(
             "membership submitted count={}",
@@ -1069,10 +1132,15 @@ fn tick_once(s: &mut PaneApp) -> Result<(), String> {
 }
 
 fn poll_inventory(s: &mut PaneApp, urgent: bool) -> Result<bool, String> {
-    let h = s.session.as_ref().unwrap();
+    let h = s.session.as_mut().unwrap();
     if h.pending_workspace_save || h.membership_pending.is_some() || h.published.borrow().is_none()
     {
         return Ok(false);
+    }
+    if h.classification.take_due(Instant::now()) {
+        // Re-read timestamps on the worker. A write since the last inventory
+        // can move the deadline even if Explorer sent no change notification.
+        h.audit.invalidate_snapshot();
     }
     if h.audit.due(h.last_reconcile.elapsed()) {
         let managed = managed_identities(s);
@@ -1116,10 +1184,16 @@ fn poll_inventory(s: &mut PaneApp, urgent: bool) -> Result<bool, String> {
             .repair()
             .inspect_err(|error| diagnostics::failure(diagnostics::Operation::Repair, error))?;
     }
-    if let Some(snapshot) = snapshot.filter(|_| changed) {
-        h.snapshot = snapshot;
-        reconcile_inventory(s)
-            .inspect_err(|error| diagnostics::failure(diagnostics::Operation::Reconcile, error))?;
+    if let Some(snapshot) = snapshot {
+        if changed {
+            h.snapshot = snapshot;
+            reconcile_inventory(s).inspect_err(|error| {
+                diagnostics::failure(diagnostics::Operation::Reconcile, error)
+            })?;
+        } else if classification::apply(s)? {
+            finish_inventory_update(s);
+            return Ok(true);
+        }
     }
     Ok(changed)
 }
@@ -1169,6 +1243,13 @@ pub(super) fn next_work(s: &PaneApp) -> Option<u32> {
                 .filter(|_| !h.pending_workspace_save),
         )
         .chain(h.shortcut_retention.deadline())
+        .chain(
+            h.classification.deadline().filter(|_| {
+                !h.pending_workspace_save
+                    && h.membership_pending.is_none()
+                    && h.published.borrow().is_some()
+            }),
+        )
         .chain(h.recycle_subscription.is_none().then_some(h.recycle_retry))
         .chain(icons::retry_deadline(
             h.initial_batches != 0 || h.icon_reload.is_some(),
@@ -1194,7 +1275,7 @@ fn save_placement(s: &mut PaneApp) -> Result<(), String> {
         .map_err(|error| error.to_string())?;
     refresh_views(s);
     if let Some(h) = &mut s.session {
-        h.audit.membership_changed();
+        h.audit.invalidate_snapshot();
         h.dirty.set(true);
         h.wake.notify();
     }

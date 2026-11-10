@@ -14,7 +14,9 @@
 
 mod appearance;
 mod classification;
-pub use classification::{Classification, ClassificationRule};
+pub use classification::{
+    Classification, ClassificationError, ClassificationRule, CompiledClassificationRule,
+};
 mod geometry;
 mod identity;
 mod item;

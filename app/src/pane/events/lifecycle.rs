@@ -164,15 +164,7 @@ pub(super) fn create(state: &Rc<RefCell<PaneApp>>, event: Event) -> Result<bool,
     let next = {
         let mut s = state.borrow_mut();
         let old = s.workspace.clone();
-        let next = PanelId::new(
-            s.workspace
-                .panels()
-                .iter()
-                .map(|p| p.id().get())
-                .max()
-                .unwrap_or(0)
-                + 1,
-        );
+        let next = next_panel_id(&s)?;
         let mut panel = Panel::new(
             next,
             path.as_ref()

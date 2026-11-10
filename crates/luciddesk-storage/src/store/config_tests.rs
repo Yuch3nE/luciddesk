@@ -5,9 +5,15 @@ use super::*;
 fn classification_settings_validate_and_round_trip() {
     let (dir, store) = open();
     let key = "desktop.classification";
-    let valid = SettingValue::Text(r#"{"enabled":true,"rules":[{"target_panel":1,"extensions":["pdf"]}]}"#.into());
+    let valid = SettingValue::Text(r#"{"enabled":true,"rules":[{"target_panel":1,"extensions":["pdf"]},{"target_panel":2,"name_regex":"^Report[0-9]+$"}]}"#.into());
     store.save_settings(&[(key.into(), valid.clone())].into_iter().collect()).unwrap();
-    for invalid in ["{", r#"{"rules":[{"target_panel":1}]}"#, r#"{"enabeld":true}"#] {
+    for invalid in [
+        "{",
+        r#"{"rules":[{"target_panel":1}]}"#,
+        r#"{"enabeld":true}"#,
+        r#"{"rules":[{"target_panel":1,"name_regex":"["}]}"#,
+        r#"{"rules":[{"target_panel":1,"name_contains":"Report","name_regex":"^Report"}]}"#,
+    ] {
         assert!(store.save_settings(&[(key.into(), SettingValue::Text(invalid.into()))].into_iter().collect()).is_err());
         assert_eq!(store.settings().unwrap()[key], valid);
     }
@@ -610,4 +616,18 @@ fn obsolete_search_shortcut_is_ignored_when_loading_config() {
     let reopened = WorkspaceStore::open(&dir.path().join("workspace.db")).unwrap();
     assert_eq!(reopened.preference("search_enabled").unwrap().as_deref(), Some("0"));
     assert!(reopened.preference("search_hotkey").unwrap().is_none());
+}
+
+#[test]
+fn deleted_panel_ids_remain_reserved_across_restart_and_legacy_rules() {
+    let (dir, mut store) = open();
+    let panel = Panel::new(PanelId::new(42), "Removed", RectDip::default());
+    store.save_workspace(&Workspace::from_panels(vec![panel]).unwrap()).unwrap();
+    store.save_workspace(&Workspace::new()).unwrap();
+    drop(store);
+    let store = WorkspaceStore::open(&dir.path().join("workspace.db")).unwrap();
+    assert_eq!(store.panel_id_high_water().unwrap(), 42);
+    store.save_settings(&[("desktop.classification".into(), SettingValue::Text(
+        r#"{"rules":[{"target_panel":99,"extensions":["pdf"]}]}"#.into()))].into_iter().collect()).unwrap();
+    assert_eq!(store.panel_id_high_water().unwrap(), 99);
 }

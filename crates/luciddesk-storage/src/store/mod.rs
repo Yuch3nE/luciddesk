@@ -183,10 +183,28 @@ impl WorkspaceStore {
         })
     }
 
-    /// Loads the complete workspace.
-    ///
+    /// Highest allocated or referenced panel ID, including deleted panels.
     /// # Errors
-    ///
+    /// Returns an error for invalid persisted data or a database failure.
+    pub fn panel_id_high_water(&self) -> Result<u64, StoreError> {
+        let persisted = self.preference("panel_id_high_water")?
+            .map(|value| value.parse::<u64>().map_err(|e| StoreError::InvalidData(e.to_string())))
+            .transpose()?.unwrap_or(0);
+        let live: u64 = self.connection.query_row("SELECT COALESCE(MAX(id),0) FROM panels", [], |row| row.get(0))?;
+        // Reserve dangling targets from installations predating the high-water mark.
+        let classification = if self.config.is_some() {
+            self.settings()?.remove("desktop.classification")
+        } else { None };
+        let referenced = if let Some(SettingValue::Text(raw)) = classification {
+            let config: luciddesk_core::Classification = serde_json::from_str(&raw)
+                .map_err(|e| StoreError::InvalidData(e.to_string()))?;
+            config.rules.iter().map(|rule| rule.target_panel).max().unwrap_or(0)
+        } else { 0 };
+        Ok(persisted.max(live).max(referenced))
+    }
+
+    /// Loads the complete workspace.
+    /// # Errors
     /// Returns an error for invalid persisted data or a database failure.
     pub fn load_workspace(&self) -> Result<Workspace, StoreError> {
         let mut statement = self.connection.prepare(
@@ -402,7 +420,11 @@ impl WorkspaceStore {
         folders: &[(PanelId, FolderPreferences)],
     ) -> Result<(), StoreError> {
         let previous = self.raw_change_count();
+        let high_water = self.panel_id_high_water()?.max(workspace.panels().iter().map(|p| p.id().get()).max().unwrap_or(0));
         let transaction = self.connection.transaction()?;
+        if high_water > 0 {
+            transaction.execute("INSERT INTO metadata(key,value) VALUES ('panel_id_high_water',?1) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE value != excluded.value", [high_water.to_string()])?;
+        }
         tabs::save(&transaction, workspace)?;
         if self.config.is_none() {
             if workspace.appearance().is_none() {

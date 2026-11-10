@@ -285,6 +285,19 @@ impl<'a> SettingsForm<'a> {
     pub fn actions(&mut self, title: &str, description: &str, actions: Vec<(&str, Action)>) {
         self.action_group(title, description, actions, false);
     }
+    pub fn actions_enabled(
+        &mut self,
+        title: &str,
+        description: &str,
+        actions: Vec<(&str, Action)>,
+        enabled: bool,
+    ) {
+        let first = self.scene.controls.len();
+        self.actions(title, description, actions);
+        for control in &mut self.scene.controls[first..] {
+            control.enabled = enabled;
+        }
+    }
     pub fn desktop_connection(&mut self, connected: bool, copied: bool) {
         let title = crate::i18n::text("ui-desktop-connection");
         let actions = vec![
@@ -466,6 +479,9 @@ impl<'a> SettingsForm<'a> {
         let r = self.card(title, description, 232.0);
         self.scene
             .control(ControlKind::Combo, r, label, action, false);
+    }
+    pub fn into_content(self) -> (&'a mut Scene, Rect) {
+        (self.scene, Rect::from_xywh(self.x, self.y, self.width, 0.0))
     }
     pub fn dropdown(&mut self, title: &str, description: &str, options: Vec<(&str, Action, bool)>) {
         let label = options
@@ -976,10 +992,10 @@ impl Drop for ContentClip<'_, '_> {
     }
 }
 
-fn text_width(text: &str, size: f32) -> f32 {
+pub(super) fn text_width(text: &str, size: f32) -> f32 {
     measured_text(text, size, 10000.0).0
 }
-fn text_height(text: &str, size: f32, width: f32) -> f32 {
+pub(super) fn text_height(text: &str, size: f32, width: f32) -> f32 {
     measured_text(text, size, width).1.ceil()
 }
 type MetricsKey = (String, String, String, u32, u32);
