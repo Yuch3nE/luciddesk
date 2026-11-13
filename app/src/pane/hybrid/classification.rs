@@ -58,6 +58,29 @@ impl Automatic {
         self.deadline.take_if(|deadline| *deadline <= now).is_some()
     }
 
+    fn remember(&mut self, identity: &ShellIdentity) {
+        if let Some(seen) = &mut self.seen {
+            let key = identity.persistent_key();
+            self.pending.remove(&key);
+            seen.insert(key);
+        }
+    }
+
+    pub(super) fn record_released(&mut self, before: &Workspace, after: &Workspace) {
+        if self.seen.is_none() {
+            return;
+        }
+        let grouped: HashSet<_> = before.desktop_items().iter()
+            .filter(|item| !unassigned(item))
+            .map(|item| item.identity().persistent_key())
+            .collect();
+        for item in after.desktop_items().iter().filter(|item| unassigned(item)) {
+            if grouped.contains(&item.identity().persistent_key()) {
+                self.remember(item.identity());
+            }
+        }
+    }
+
     fn candidates<'a>(
         &mut self,
         items: &'a [DesktopItem],
@@ -315,9 +338,7 @@ pub(super) fn apply(s: &mut PaneApp) -> Result<bool, String> {
     let planned = moves(&s.workspace, candidates, &rules, &times);
     // Preserve deliberate releases even if they happen before the next inventory.
     for entry in &planned {
-        let key = entry.identity.persistent_key();
-        automatic.pending.remove(&key);
-        if let Some(seen) = &mut automatic.seen { seen.insert(key); }
+        automatic.remember(&entry.identity);
     }
     apply_moves(&mut s.workspace, &planned);
     Ok(!planned.is_empty())
@@ -503,6 +524,33 @@ mod tests {
         automatic.candidates(&[], &times, start + NAME_SETTLE * 5, false);
         assert!(automatic.pending.is_empty());
         assert_eq!(automatic.deadline(), None);
+    }
+
+    #[test]
+    fn a_manual_release_between_inventories_cancels_pending_classification() {
+        let mut automatic = Automatic::default();
+        automatic.set_enabled(true);
+        let now = Instant::now();
+        let times = TemporaryTimes::new(&[], SystemTime::now());
+        automatic.candidates(&[], &times, now, false);
+        let id = PanelId::new(1);
+        let mut workspace = Workspace::from_panels(vec![Panel::new(id, "Target", RectDip::default())]).unwrap();
+        workspace.reconcile_desktop_items([item("new.pdf", 1), item("other.pdf", 2)]);
+        automatic.candidates(workspace.desktop_items(), &times, now, false);
+
+        workspace.desktop_items_mut()[0].set_placement(DesktopPlacement::Pane {
+            pane_id: id, position: GridPosition::new(0, 0),
+        });
+        let grouped = workspace.clone();
+        workspace.desktop_items_mut()[0].set_placement(DesktopPlacement::default());
+        automatic.record_released(&grouped, &workspace);
+        let later = now + NAME_SETTLE;
+        assert_eq!(automatic.candidates(workspace.desktop_items(), &times, later, false), [&workspace.desktop_items()[1]]);
+
+        automatic.candidates(&[], &times, later, false);
+        let new = [item("new.pdf", 1)];
+        automatic.candidates(&new, &times, later, false);
+        assert_eq!(automatic.candidates(&new, &times, later + NAME_SETTLE, false), [&new[0]]);
     }
 
     #[test]

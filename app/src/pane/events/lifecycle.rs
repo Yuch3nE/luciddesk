@@ -102,6 +102,7 @@ pub(super) fn close(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result<bool, S
         hybrid::sync(&mut s)?;
         return Err(error);
     }
+    hybrid::record_released_items(&mut s, &old);
     for member in members {
         s.folders.remove(&member);
         s.tab_models.remove(&member);

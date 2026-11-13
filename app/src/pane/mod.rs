@@ -667,8 +667,13 @@ fn save_state(state: &mut PaneApp, record_layout: bool) -> Result<(), String> {
 fn next_panel_id(state: &PaneApp) -> Result<PanelId, String> {
     let high_water = state.store.panel_id_high_water().map_err(|e| e.to_string())?
         .max(state.workspace.panels().iter().map(|p| p.id().get()).max().unwrap_or(0));
-    high_water.checked_add(1).filter(|id| *id <= i64::MAX as u64)
+    let reserved = state.store.classification_panel_ids().map_err(|e| e.to_string())?;
+    next_unreserved_panel_id(high_water, &reserved)
         .map(PanelId::new).ok_or_else(|| crate::i18n::text("tab-id-overflow").into())
+}
+
+fn next_unreserved_panel_id(after: u64, reserved: &std::collections::HashSet<u64>) -> Option<u64> {
+    (after.checked_add(1)?..=i64::MAX as u64).find(|id| !reserved.contains(id))
 }
 
 fn remove_panel(workspace: &mut Workspace, id: PanelId) {

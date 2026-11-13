@@ -19,6 +19,7 @@ use windows_sys::Win32::{
 const FONT_LOAD_TIMER: usize = 0x4c5046;
 const UPDATE_TIMER: usize = 0x4c5056;
 const STARTUP_TIMER: usize = 0x4c5354;
+const ORGANIZE_TIMER: usize = 0x4c4f52;
 const SELECT_PANEL: u32 = WM_APP + 95;
 const SELECT_PLUGIN: u32 = WM_APP + 97;
 const SELECT_SETTING: u32 = WM_APP + 98;

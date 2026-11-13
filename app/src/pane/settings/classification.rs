@@ -142,6 +142,7 @@ pub(super) struct Editor {
     deleted: Option<DeletedRule>,
     expanded: Option<usize>,
     preview: Option<hybrid::OrganizePreview>,
+    applying: Option<std::sync::mpsc::Receiver<Result<usize, String>>>,
     result: Option<usize>,
     error: Option<String>,
     reveal: Option<Command>,
@@ -154,6 +155,22 @@ impl Editor {
 
     pub fn previewing(&self) -> bool {
         self.preview.is_some()
+    }
+
+    pub(super) fn poll_organize(&mut self) -> bool {
+        use std::sync::mpsc::TryRecvError;
+        let Some(receiver) = &self.applying else { return false; };
+        let result = match receiver.try_recv() {
+            Ok(result) => result,
+            Err(TryRecvError::Empty) => return false,
+            Err(TryRecvError::Disconnected) => Err(t("classification-desktop-unavailable").into()),
+        };
+        self.applying = None;
+        match result {
+            Ok(count) => self.result = Some(count),
+            Err(error) => self.error = Some(error),
+        }
+        true
     }
 
     pub fn take_reveal(&mut self) -> Option<Command> {
@@ -216,13 +233,21 @@ impl Editor {
                 if let Some(preview) = self.preview.take() {
                     self.reveal = Some(Command::Run);
                     if command == Command::ApplyPreview {
-                        self.result =
-                            Some(hybrid::apply_organize(&mut state.borrow_mut(), preview)?);
+                        if unsafe { SetTimer(hwnd, ORGANIZE_TIMER, 100, None) } == 0 {
+                            return Err(std::io::Error::last_os_error().to_string());
+                        }
+                        match hybrid::apply_organize(&mut state.borrow_mut(), preview) {
+                            Ok(receiver) => self.applying = Some(receiver),
+                            Err(error) => {
+                                unsafe { KillTimer(hwnd, ORGANIZE_TIMER); }
+                                return Err(error);
+                            }
+                        }
                     }
                 }
                 return Ok(());
             }
-            _ if self.previewing() => return Ok(()),
+            _ if self.previewing() || self.applying.is_some() => return Ok(()),
             Command::Run if !self.editing() => {
                 self.result = None;
                 let preview = hybrid::preview_organize(&state.borrow())?;
@@ -407,7 +432,7 @@ pub(super) fn draw(
         }
     };
     let editing = editor.editing();
-    let idle = !editing && !editor.previewing();
+    let idle = !editing && !editor.previewing() && editor.applying.is_none();
     form.toggle_enabled(
         t("classification-auto"),
         t("classification-auto-description"),
@@ -456,6 +481,10 @@ pub(super) fn draw(
         );
         let (scene, bounds) = form.into_content();
         table::draw_preview(scene, bounds, entries);
+        return;
+    }
+    if editor.applying.is_some() {
+        form.info(t("ui-loading-desktop-items"), "");
         return;
     }
     if let Some(error) = &editor.error

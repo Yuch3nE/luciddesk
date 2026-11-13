@@ -43,6 +43,7 @@ pub(super) struct Session {
     snapshot: Inventory,
     last_reconcile: Instant,
     classification: classification::Automatic,
+    organize: Option<OrganizeRequest>,
     audit: DesktopAudit,
     last_tick: Instant,
     tick_deferred: bool,
@@ -459,6 +460,7 @@ pub(super) fn connect(state: &Rc<RefCell<PaneApp>>, _path: &Path) -> Result<(), 
         snapshot,
         last_reconcile: Instant::now(),
         classification: Default::default(),
+        organize: None,
         audit,
         last_tick: Instant::now() - Duration::from_millis(20),
         tick_deferred: false,
@@ -652,6 +654,13 @@ fn managed_identities(s: &PaneApp) -> Vec<ShellIdentity> {
 }
 // Apply the captured inventory without another synchronous Shell enumeration.
 fn reconcile_inventory(s: &mut PaneApp) -> Result<(), String> {
+    update_inventory(s);
+    classification::apply(s)?;
+    finish_inventory_update(s);
+    Ok(())
+}
+
+fn update_inventory(s: &mut PaneApp) {
     s.session
         .as_mut()
         .unwrap()
@@ -685,9 +694,6 @@ fn reconcile_inventory(s: &mut PaneApp) -> Result<(), String> {
     h.requested.retain(|key| live.contains(key));
     h.icon_failures.retain(|key, _| live.contains(key));
     h.last_reconcile = Instant::now();
-    classification::apply(s)?;
-    finish_inventory_update(s);
-    Ok(())
 }
 
 fn finish_inventory_update(s: &mut PaneApp) {
@@ -711,11 +717,21 @@ pub(super) fn classification_settings_changed(s: &mut PaneApp) {
     }
 }
 
+pub(super) fn record_released_items(s: &mut PaneApp, before: &Workspace) {
+    if let Some(session) = &mut s.session {
+        session.classification.record_released(before, &s.workspace);
+    }
+}
+
 pub(super) struct OrganizePreview {
-    // The owner may disconnect while the modal confirmation runs.
     session: std::rc::Weak<FilterSession>,
     rules: String,
     moves: Vec<classification::Move>,
+}
+
+struct OrganizeRequest {
+    preview: OrganizePreview,
+    result: mpsc::Sender<Result<usize, String>>,
 }
 
 impl OrganizePreview {
@@ -733,20 +749,65 @@ pub(super) fn preview_organize(s: &PaneApp) -> Result<OrganizePreview, String> {
         .filter(|session| is_alive(session) && !session.menu_active.get())
         .ok_or_else(|| crate::i18n::text("classification-desktop-unavailable"))?;
     let (raw, config) = classification::load(&s.store)?;
-    let rules = config.compile().map_err(|error| error.to_string())?;
-    let times = classification::TemporaryTimes::new(
-        &session.snapshot.items,
-        std::time::SystemTime::now(),
-    );
-    Ok(OrganizePreview {
-        session: Rc::downgrade(&session.hook),
-        rules: raw,
-        moves: classification::moves(&s.workspace, s.workspace.desktop_items(), &rules, &times),
-    })
+    let moves = organize_moves(&s.workspace, &session.snapshot, &config, std::time::SystemTime::now())?;
+    Ok(OrganizePreview { session: Rc::downgrade(&session.hook), rules: raw, moves })
 }
 
-pub(super) fn apply_organize(s: &mut PaneApp, preview: OrganizePreview) -> Result<usize, String> {
+fn organize_moves(
+    workspace: &Workspace,
+    snapshot: &Inventory,
+    config: &luciddesk_core::Classification,
+    now: std::time::SystemTime,
+) -> Result<Vec<classification::Move>, String> {
+    let rules = config.compile().map_err(|error| error.to_string())?;
+    let times = classification::TemporaryTimes::new(&snapshot.items, now);
+    Ok(classification::moves(workspace, workspace.desktop_items(), &rules, &times))
+}
+
+pub(super) fn apply_organize(
+    s: &mut PaneApp,
+    preview: OrganizePreview,
+) -> Result<mpsc::Receiver<Result<usize, String>>, String> {
+    let session = s
+        .session
+        .as_mut()
+        .filter(|session| is_alive(session) && !session.menu_active.get())
+        .ok_or_else(|| crate::i18n::text("classification-desktop-unavailable"))?;
+    if !preview.session.ptr_eq(&Rc::downgrade(&session.hook)) {
+        return Err(crate::i18n::text("classification-preview-stale").into());
+    }
+    if session.organize.is_some() {
+        return Err(crate::i18n::text("ui-desktop-groups-are-syncing-try-again-shortly").into());
+    }
+    let (result, receiver) = mpsc::channel();
+    session.organize = Some(OrganizeRequest { preview, result });
+    // Even a completed result must be discarded if its capture began before confirmation.
+    session.audit.invalidate_snapshot();
+    s.wake.notify();
+    Ok(receiver)
+}
+
+fn commit_organize(s: &mut PaneApp, preview: OrganizePreview) -> Result<usize, String> {
     let current = preview_organize(s)?;
+    let count = save_organize(&mut s.store, &mut s.workspace, preview, current)?;
+    if count == 0 {
+        return Ok(0);
+    }
+    let session = s.session.as_mut().unwrap();
+    session.audit.invalidate_snapshot();
+    session.dirty.set(true);
+    queue_pane_icons(s, true);
+    refresh_views(s);
+    s.wake.notify();
+    Ok(count)
+}
+
+fn save_organize(
+    store: &mut WorkspaceStore,
+    workspace: &mut Workspace,
+    preview: OrganizePreview,
+    current: OrganizePreview,
+) -> Result<usize, String> {
     if !current.session.ptr_eq(&preview.session)
         || current.rules != preview.rules
         || current.moves != preview.moves
@@ -754,21 +815,12 @@ pub(super) fn apply_organize(s: &mut PaneApp, preview: OrganizePreview) -> Resul
         return Err(crate::i18n::text("classification-preview-stale").into());
     }
     let count = preview.moves.len();
-    if count == 0 {
-        return Ok(0);
+    if count > 0 {
+        let mut next = workspace.clone();
+        classification::apply_moves(&mut next, &preview.moves);
+        store.save_workspace(&next).map_err(|error| error.to_string())?;
+        *workspace = next;
     }
-    let mut next = s.workspace.clone();
-    classification::apply_moves(&mut next, &preview.moves);
-    s.store
-        .save_workspace(&next)
-        .map_err(|error| error.to_string())?;
-    s.workspace = next;
-    let session = s.session.as_mut().unwrap();
-    session.audit.invalidate_snapshot();
-    session.dirty.set(true);
-    queue_pane_icons(s, true);
-    refresh_views(s);
-    s.wake.notify();
     Ok(count)
 }
 
@@ -1116,11 +1168,14 @@ fn tick_once(s: &mut PaneApp) -> Result<(), String> {
             s.session.as_ref().unwrap().dirty.set(true);
             refresh_views(s);
         }
-        Err(error) => luciddesk_diagnostics::log(
-            luciddesk_diagnostics::Level::Warn,
-            "pane.hybrid.save",
-            &format!("Workspace save pending; retrying in 5s: {error}"),
-        ),
+        Err(error) => {
+            let error = fail_organize(s.session.as_mut().unwrap(), error);
+            luciddesk_diagnostics::log(
+                luciddesk_diagnostics::Level::Warn,
+                "pane.hybrid.save",
+                &format!("Workspace save pending; retrying in 5s: {error}"),
+            );
+        }
         Ok(false) => {}
     }
     let h = s.session.as_mut().unwrap();
@@ -1131,7 +1186,9 @@ fn tick_once(s: &mut PaneApp) -> Result<(), String> {
     h.tick_deferred = false;
     h.last_tick = Instant::now();
     let mut urgent = h.dirty.replace(false);
-    if urgent {
+    if urgent && h.organize.is_some() {
+        h.audit.invalidate_snapshot();
+    } else if urgent {
         h.audit.invalidate();
     }
     urgent |= icons::tick(s, urgent);
@@ -1155,24 +1212,20 @@ fn poll_inventory(s: &mut PaneApp, urgent: bool) -> Result<bool, String> {
     }
     if h.audit.due(h.last_reconcile.elapsed()) {
         let managed = managed_identities(s);
-        s.session
-            .as_mut()
-            .unwrap()
-            .audit
-            .submit(managed, urgent)
-            .inspect_err(|error| {
-                diagnostics::failure(diagnostics::Operation::SubmitAudit, error)
-            })?;
+        let h = s.session.as_mut().unwrap();
+        if let Err(error) = h.audit.submit(managed, urgent) {
+            diagnostics::failure(diagnostics::Operation::SubmitAudit, &error);
+            return Err(fail_organize(h, error));
+        }
     }
-    let Some(result) = s
-        .session
-        .as_mut()
-        .unwrap()
-        .audit
-        .poll()
-        .inspect_err(|error| diagnostics::failure(diagnostics::Operation::PollAudit, error))?
-    else {
-        return Ok(false);
+    let h = s.session.as_mut().unwrap();
+    let result = match h.audit.poll() {
+        Ok(Some(result)) => result,
+        Ok(None) => return Ok(false),
+        Err(error) => {
+            diagnostics::failure(diagnostics::Operation::PollAudit, &error);
+            return Err(fail_organize(h, error));
+        }
     };
     let managed_keys = inventory::revision_keys(&managed_identities(s));
     let h = s.session.as_mut().unwrap();
@@ -1181,32 +1234,56 @@ fn poll_inventory(s: &mut PaneApp, urgent: bool) -> Result<bool, String> {
         return Ok(false);
     }
     h.last_reconcile = Instant::now();
-    let snapshot = result
-        .inventory
-        .inspect_err(|error| diagnostics::failure(diagnostics::Operation::ReadAudit, error))?;
+    let snapshot = match result.inventory {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            diagnostics::failure(diagnostics::Operation::ReadAudit, &error);
+            return Err(fail_organize(h, error));
+        }
+    };
     let changed = snapshot
         .as_ref()
         .is_some_and(|next| !inventory::same(&h.snapshot, next));
     h.audit.complete(changed);
     // One scheduler owns fallback audits and hook repair. Changed inventories
     // publish membership through sync(); unchanged ones still repair missed events.
-    if !changed {
-        h.hook
-            .repair()
-            .inspect_err(|error| diagnostics::failure(diagnostics::Operation::Repair, error))?;
+    if !changed && let Err(error) = h.hook.repair() {
+        diagnostics::failure(diagnostics::Operation::Repair, &error);
+        return Err(fail_organize(h, error));
     }
     if let Some(snapshot) = snapshot {
         if changed {
             h.snapshot = snapshot;
-            reconcile_inventory(s).inspect_err(|error| {
-                diagnostics::failure(diagnostics::Operation::Reconcile, error)
-            })?;
-        } else if classification::apply(s)? {
-            finish_inventory_update(s);
-            return Ok(true);
         }
+        let organize = h.organize.take();
+        if changed {
+            update_inventory(s);
+        }
+        let organized = organize.is_some_and(|OrganizeRequest { preview, result }| {
+            let saved = commit_organize(s, preview);
+            let changed = saved.as_ref().is_ok_and(|count| *count > 0);
+            let _ = result.send(saved);
+            changed
+        });
+        let classified = classification::apply(s).inspect_err(|error| {
+            diagnostics::failure(diagnostics::Operation::Reconcile, error)
+        })?;
+        if classified || (changed && !organized) {
+            finish_inventory_update(s);
+        }
+        return Ok(changed || classified || organized);
+    } else if h.organize.is_some() {
+        // A confirmation requires a full capture even if the Shell revision matches.
+        h.audit.invalidate_snapshot();
     }
     Ok(changed)
+}
+
+fn fail_organize(session: &mut Session, error: String) -> String {
+    if let Some(request) = session.organize.take() {
+        let _ = request.result.send(Err(error.clone()));
+    }
+    error
 }
 
 // Schedule the next input, retry, audit, cache expiry or repair deadline.
@@ -1323,12 +1400,78 @@ pub(super) fn release(
         s.workspace = old;
         return Err(error);
     }
+    record_released_items(s, &old);
     Ok(true)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn organize_confirmation_rechecks_renames_removals_and_tmp_writes_before_saving() {
+        use std::time::SystemTime;
+
+        let id = PanelId::new(1);
+        let now = SystemTime::now();
+        let original = luciddesk_shell::ShellEntry {
+            identity: ShellIdentity::FileSystem {
+                path: "old.tmp".into(), volume_id: Some(1), file_id: Some(2),
+            },
+            display_name: "old.tmp".into(),
+            attributes: Default::default(),
+            created: Some(now - Duration::from_secs(90)),
+            modified: Some(now - Duration::from_secs(90)),
+            size: None,
+        };
+        let rules = r#"{"rules":[{"target_panel":1,"extensions":["tmp"]}]}"#;
+        let config = serde_json::from_str(rules).unwrap();
+        let snapshot = |entry: Option<luciddesk_shell::ShellEntry>| Inventory {
+            icon_size: 48, spacing: (88, 96), dpi: 96, items: entry.into_iter().collect(),
+        };
+        let reconcile = |workspace: &mut Workspace, inventory: &Inventory| {
+            workspace.reconcile_desktop_items(inventory.items.iter().map(|entry| {
+                DesktopItem::new(entry.identity.clone(), &entry.display_name)
+            }));
+        };
+        let preview = |workspace: &Workspace, inventory: &Inventory| OrganizePreview {
+            session: std::rc::Weak::new(),
+            rules: rules.into(),
+            moves: organize_moves(workspace, inventory, &config, now).unwrap(),
+        };
+        let mut workspace = Workspace::from_panels(vec![Panel::new(id, "Target", RectDip::default())]).unwrap();
+        let cached = snapshot(Some(original.clone()));
+        reconcile(&mut workspace, &cached);
+        let mut renamed = original.clone();
+        renamed.identity = ShellIdentity::FileSystem {
+            path: "renamed.tmp".into(), volume_id: Some(1), file_id: Some(2),
+        };
+        renamed.display_name = "renamed.tmp".into();
+        let mut written = original;
+        written.modified = Some(now);
+
+        for fresh in [snapshot(Some(renamed)), snapshot(None), snapshot(Some(written))] {
+            let mut current = workspace.clone();
+            let proposed = preview(&workspace, &cached);
+            assert_eq!(proposed.moves.len(), 1);
+            reconcile(&mut current, &fresh);
+            let confirmed = preview(&current, &fresh);
+            let before = current.clone();
+            let mut store = WorkspaceStore::open_in_memory().unwrap();
+            store.save_workspace(&before).unwrap();
+            let writes = store.change_count();
+            assert!(save_organize(&mut store, &mut current, proposed, confirmed).is_err());
+            assert_eq!(current, before);
+            assert_eq!(store.change_count(), writes);
+        }
+
+        let proposed = preview(&workspace, &cached);
+        let confirmed = preview(&workspace, &cached);
+        let mut store = WorkspaceStore::open_in_memory().unwrap();
+        assert_eq!(save_organize(&mut store, &mut workspace, proposed, confirmed).unwrap(), 1);
+        assert!(matches!(workspace.desktop_items()[0].placement(), DesktopPlacement::Pane { pane_id, .. } if *pane_id == id));
+        assert_eq!(store.load_workspace().unwrap(), workspace);
+    }
 
     #[test]
     fn optional_subscription_failure_retries_without_busy_loop_or_replacing_success() {

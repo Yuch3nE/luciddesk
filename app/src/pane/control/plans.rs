@@ -255,6 +255,7 @@ fn prepare(
         .max()
         .unwrap_or(0)
         .max(store.panel_id_high_water().map_err(|e| invalid(e.to_string()))?);
+    let reserved_panel_ids = store.classification_panel_ids().map_err(|e| invalid(e.to_string()))?;
     let mut operations: VecDeque<_> = plan.operations.iter().cloned().collect();
     while let Some(operation) = operations.pop_front() {
         let operation = &operation;
@@ -345,9 +346,7 @@ fn prepare(
                 if title.trim().is_empty() || title.chars().count() > 256 {
                     return Err(invalid("title must contain 1..256 characters"));
                 }
-                next_id = next_id
-                    .checked_add(1)
-                    .filter(|n| *n <= i64::MAX as u64)
+                next_id = next_unreserved_panel_id(next_id, &reserved_panel_ids)
                     .ok_or_else(|| invalid("panel ID exhausted"))?;
                 let number = next_id;
                 let mut panel = Panel::new(
@@ -807,7 +806,10 @@ impl Plans {
                         ) {
                             return fail("PERSISTENCE_ERROR", &error.to_string());
                         }
-                        state.workspace = std::mem::take(&mut change.next);
+                        let before = std::mem::replace(&mut state.workspace, std::mem::take(&mut change.next));
+                        if membership {
+                            hybrid::record_released_items(state, &before);
+                        }
                         if let Some(runtime) = &mut state.runtime {
                             runtime.layouts.positions.retain(|id, _| state.workspace.panel(*id).is_some());
                             if let Some((_, entries)) = &change.layout {
@@ -1739,13 +1741,23 @@ mod tests {
         let mut state = super::super::super::tests::test_state();
         let directory = tempfile::tempdir().unwrap();
         state.store = WorkspaceStore::open(&directory.path().join("workspace.db")).unwrap();
+        let reserved = next_panel_id(&state).unwrap().get();
+        let rules = json!({"rules":[
+            {"target_panel":reserved,"extensions":["pdf"]},
+            {"target_panel":i64::MAX - 1,"extensions":["png"]}
+        ]});
         state.store.save_settings(&[(hybrid::CLASSIFICATION_KEY.into(), luciddesk_storage::SettingValue::Text(
-            r#"{"rules":[{"target_panel":50,"extensions":["pdf"]}]}"#.into()))].into_iter().collect()).unwrap();
+            rules.to_string()))].into_iter().collect()).unwrap();
         let mut snapshot = Snapshot::new();
-        let p = preview(&mut snapshot, &mut state, json!([{"op":"pane.create","ref":"new","title":"New"}]));
+        let p = preview(&mut snapshot, &mut state, json!([
+            {"op":"pane.create","ref":"new","title":"New"},
+            {"op":"pane.create","ref":"another","title":"Another"}
+        ]));
         assert!(p.ok, "{p:?}");
-        assert_eq!(p.data.unwrap()["provisional_refs"]["new"], "51");
-        assert_eq!(next_panel_id(&state).unwrap(), PanelId::new(51));
+        let refs = &p.data.unwrap()["provisional_refs"];
+        assert_eq!(refs["new"], (reserved + 1).to_string());
+        assert_eq!(refs["another"], (reserved + 2).to_string());
+        assert_eq!(next_panel_id(&state).unwrap(), PanelId::new(reserved + 1));
     }
 
     #[test]

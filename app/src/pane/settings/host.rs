@@ -166,6 +166,13 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
                 return Some(0);
             }
+            if msg == WM_TIMER && wp == ORGANIZE_TIMER {
+                if classification_editor.poll_organize() {
+                    unsafe { KillTimer(hwnd, ORGANIZE_TIMER); InvalidateRect(hwnd, std::ptr::null(), 0); }
+                    scene_key = None;
+                }
+                return Some(0);
+            }
             if msg == WM_TIMER && wp == FONT_LOAD_TIMER {
                 if let Some(load) = &font_load {
                     match load.poll() {
@@ -333,6 +340,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
             if msg == WM_CLOSE {
                 icon_tip = None;
                 classification_editor.discard();
+                unsafe { KillTimer(hwnd, ORGANIZE_TIMER); }
                 if !lifecycle::close(&state, hwnd, &mut pending_styles) {
                     unsafe { PostMessageW(hwnd, WM_CLOSE, 0, 0); }
                 }

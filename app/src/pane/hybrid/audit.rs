@@ -225,6 +225,23 @@ mod tests {
     }
 
     #[test]
+    fn organize_confirmation_discards_a_completed_capture_and_forces_another() {
+        let (mut audit, requests, results) = fixture();
+        audit.submit(Vec::new(), false).unwrap();
+        requests.recv().unwrap();
+        results.send(AuditResult {
+            member_keys: Vec::new(),
+            inventory: Ok(Some(inventory::Inventory { icon_size: 48, spacing: (88, 96), dpi: 96, items: Vec::new() })),
+        }).unwrap();
+
+        audit.invalidate_snapshot();
+        assert!(audit.poll().unwrap().is_none());
+        assert!(audit.due(Duration::ZERO));
+        audit.submit(Vec::new(), false).unwrap();
+        assert!(requests.recv().unwrap().1);
+    }
+
+    #[test]
     fn disconnected_in_flight_worker_restarts_with_a_forced_capture() {
         let (mut audit, requests, results) = fixture();
         audit.submit(Vec::new(), false).unwrap();

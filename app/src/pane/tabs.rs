@@ -233,6 +233,7 @@ pub(super) fn close(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result<(), Str
         let _ = hybrid::sync(&mut s);
         return Err(error);
     }
+    hybrid::record_released_items(&mut s, &previous);
     s.folders.remove(&id);
     s.tab_models.remove(&id);
     refresh_changed_views(&mut s, true);

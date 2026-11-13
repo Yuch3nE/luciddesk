@@ -13,8 +13,12 @@ fn classification_settings_validate_and_round_trip() {
         r#"{"enabeld":true}"#,
         r#"{"rules":[{"target_panel":1,"name_regex":"["}]}"#,
         r#"{"rules":[{"target_panel":1,"name_contains":"Report","name_regex":"^Report"}]}"#,
+        r#"{"rules":[{"target_panel":9223372036854775807,"extensions":["pdf"]}]}"#,
+        r#"{"rules":[{"target_panel":18446744073709551615,"extensions":["pdf"]}]}"#,
     ] {
-        assert!(store.save_settings(&[(key.into(), SettingValue::Text(invalid.into()))].into_iter().collect()).is_err());
+        let updates = [(key.into(), SettingValue::Text(invalid.into()))].into_iter().collect();
+        assert!(store.preview_settings(&updates).is_err());
+        assert!(store.save_settings(&updates).is_err());
         assert_eq!(store.settings().unwrap()[key], valid);
     }
     drop(store);
@@ -629,5 +633,44 @@ fn deleted_panel_ids_remain_reserved_across_restart_and_legacy_rules() {
     assert_eq!(store.panel_id_high_water().unwrap(), 42);
     store.save_settings(&[("desktop.classification".into(), SettingValue::Text(
         r#"{"rules":[{"target_panel":99,"extensions":["pdf"]}]}"#.into()))].into_iter().collect()).unwrap();
-    assert_eq!(store.panel_id_high_water().unwrap(), 99);
+    assert_eq!(store.panel_id_high_water().unwrap(), 42);
+    assert_eq!(store.classification_panel_ids().unwrap(), HashSet::from([99]));
+}
+
+#[test]
+fn classification_recovers_a_legacy_exhausted_panel_counter() {
+    let (dir, store) = open();
+    let path = dir.path().join("workspace.db");
+    store.save_preference("panel_id_high_water", &u64::MAX.to_string()).unwrap();
+    drop(store);
+    std::fs::write(dir.path().join("config.toml"), r#"config_version = 1
+[desktop]
+classification = '{"rules":[{"target_panel":9223372036854775807,"extensions":["pdf"]}]}'
+"#).unwrap();
+
+    let mut store = WorkspaceStore::open(&path).unwrap();
+    assert_eq!(store.panel_id_high_water().unwrap(), 0);
+    store.save_workspace(&Workspace::new()).unwrap();
+    assert!(store.preference("panel_id_high_water").unwrap().is_none());
+    let panel = Panel::new(PanelId::new(1), "New", RectDip::default());
+    store.save_workspace(&Workspace::from_panels(vec![panel]).unwrap()).unwrap();
+    store.save_settings(&[("desktop.classification".into(), SettingValue::Text("{}".into()))].into_iter().collect()).unwrap();
+    drop(store);
+
+    let store = WorkspaceStore::open(&path).unwrap();
+    assert_eq!(store.panel_id_high_water().unwrap(), 1);
+    assert!(store.classification_panel_ids().unwrap().is_empty());
+}
+
+#[test]
+fn allocated_panel_counter_keeps_a_real_last_id_after_deletion() {
+    let (dir, mut store) = open();
+    let id = PanelId::new(i64::MAX as u64);
+    let panel = Panel::new(id, "Last", RectDip::default());
+    store.save_workspace(&Workspace::from_panels(vec![panel]).unwrap()).unwrap();
+    store.save_workspace(&Workspace::new()).unwrap();
+    drop(store);
+
+    let store = WorkspaceStore::open(&dir.path().join("workspace.db")).unwrap();
+    assert_eq!(store.panel_id_high_water().unwrap(), id.get());
 }

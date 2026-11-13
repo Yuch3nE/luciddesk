@@ -551,6 +551,13 @@ fn patch_settings(doc: &DocumentMut, updates: &BTreeMap<String, SettingValue>) -
         }
         let parts: Vec<_> = path.split('.').collect();
         if old != proposed || (path == "appearance.solid.color" && get(doc, &parts).is_none()) {
+            // Existing configurations must still open so a bad legacy target can be removed.
+            if path == "desktop.classification" && let SettingValue::Text(raw) = proposed {
+                let rules: luciddesk_core::Classification = serde_json::from_str(raw).map_err(io)?;
+                if rules.rules.iter().any(|rule| rule.target_panel >= i64::MAX as u64) {
+                    return Err(error("classification target panel ID is outside the supported range"));
+                }
+            }
             set(&mut next, &parts, proposed.item());
         }
     }
