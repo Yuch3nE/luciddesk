@@ -122,6 +122,41 @@ fn paste_into_item(owner: HWND, item: &IShellItem) -> Result<bool> {
     }
 }
 
+/// The Shell data object and drag loop for an outgoing file drop.
+pub struct FileDrag(windows::Win32::System::Com::IDataObject);
+
+impl FileDrag {
+    /// Creates a native Shell data object from the selected items.
+    /// # Errors
+    /// Returns an error if the Shell cannot bind the selection as a data object.
+    pub fn new(selected: &[ShellIdentity]) -> Result<Self> {
+        unsafe { shell_items(selected)?.BindToHandler(None, &BHID_DataObject).map(Self) }
+    }
+
+    #[must_use]
+    pub fn data(&self) -> &windows::Win32::System::Com::IDataObject {
+        &self.0
+    }
+
+    /// Runs the native drag loop with the Shell's default drop source.
+    /// # Errors
+    /// Returns an error if the Shell cannot run the drag.
+    pub fn run(&self, owner: HWND, image: Option<&crate::FileDragImage>) -> Result<()> {
+        use windows::Win32::System::Ole::*;
+        // A preview failure must not prevent the underlying file operation.
+        let _image_helper = image.and_then(|image| image.initialize(self.data()).ok());
+        unsafe {
+            SHDoDragDrop(
+                Some(owner),
+                self.data(),
+                None,
+                DROPEFFECT_COPY | DROPEFFECT_MOVE | DROPEFFECT_LINK,
+            )?;
+        }
+        Ok(())
+    }
+}
+
 /// Starts a native file drag; Explorer determines destination copy/move semantics.
 /// # Errors
 /// Returns errors creating the Shell data object or starting the drag loop.
@@ -130,22 +165,10 @@ pub fn drag_file_items(
     selected: &[ShellIdentity],
     image: Option<&crate::FileDragImage>,
 ) -> Result<()> {
-    use windows::Win32::System::{Com::IDataObject, Ole::*};
     if selected.is_empty() {
         return Ok(());
     }
-    unsafe {
-        let data: IDataObject = shell_items(selected)?.BindToHandler(None, &BHID_DataObject)?;
-        // A preview failure must not prevent the underlying file operation.
-        let _image_helper = image.and_then(|image| image.initialize(&data).ok());
-        SHDoDragDrop(
-            Some(owner),
-            &data,
-            None,
-            DROPEFFECT_COPY | DROPEFFECT_MOVE | DROPEFFECT_LINK,
-        )?;
-    }
-    Ok(())
+    FileDrag::new(selected)?.run(owner, image)
 }
 
 pub(super) struct MenuMessages {

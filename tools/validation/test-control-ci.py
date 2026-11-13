@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 FILTERS = (
     "pane::fixed_grid::tests::",
     "pane::free_layout::tests::",
+    "pane::drag_drop::target::tests::",
     "pane::control::plans::tests::",
     "pane::control::content_layout::tests::",
     "pane::control::geometry::tests::",

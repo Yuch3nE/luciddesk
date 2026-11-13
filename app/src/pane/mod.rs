@@ -246,7 +246,11 @@ enum Event {
     ActivateSelection,
     Peek,
     FileCommand(luciddesk_shell::FileCommand),
-    FileDrag(Option<luciddesk_shell::FileDragImage>),
+    FileDrag {
+        grabbed: ShellIdentity,
+        offset: luciddesk_core::PointDip,
+        image: Option<luciddesk_shell::FileDragImage>,
+    },
     ToggleListView,
     Drop {
         index: usize,

@@ -19,7 +19,7 @@ pub use drag_image::FileDragImage;
 pub use luciddesk_core::ShellIdentity;
 pub use error::ShellError;
 pub use file_command::{
-    FileCommand, copy_to_folder, drag_file_items, invoke_file_commands, paste_into_folder,
+    FileCommand, FileDrag, copy_to_folder, drag_file_items, invoke_file_commands, paste_into_folder,
     show_file_items_menu,
 };
 pub use folder_menu::{FolderMenuResult, show_folder_menu};

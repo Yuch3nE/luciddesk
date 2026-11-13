@@ -1161,11 +1161,13 @@ where
                                 // External applications need an OLE data object while
                                 // the button is down; internal drops use mouse-up to
                                 // change pane membership or ordering.
+                                let grabbed = item_drag.identity.take().unwrap();
+                                let offset = item_drag.offset;
                                 item_drag.cancel();
                                 unsafe {
                                     ReleaseCapture();
                                 }
-                                event(Event::FileDrag(preview));
+                                event(Event::FileDrag { grabbed, offset, image: preview });
                                 return Some(0);
                             }
                             if item_drag.image.is_none() {

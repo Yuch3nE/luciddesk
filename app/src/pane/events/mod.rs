@@ -8,6 +8,7 @@ mod shell;
 mod tab_events;
 pub(super) use appearance::{commit_grid, commit_material, commit_radius};
 pub(super) use appearance::{preview_grid, preview_material, preview_radius};
+pub(super) use panel::drop_from_ole;
 pub(super) use shell::activate_item_with;
 
 pub(super) fn handle(
@@ -300,7 +301,7 @@ pub(super) fn handle(
     }
     if matches!(
         event,
-        Event::FileDrag(_)
+        Event::FileDrag { .. }
             | Event::NewFolder
             | Event::ChangeFolder
             | Event::SetFolder(_)

@@ -48,7 +48,7 @@ pub(super) fn apply(
         | Event::ToggleSearch
         | Event::EnableSearch
         | Event::MonitorOptions(_)
-        | Event::FileDrag(_)
+        | Event::FileDrag { .. }
         | Event::NewFolder
         | Event::MapFolder(_)
         | Event::ChangeFolder
@@ -309,87 +309,132 @@ pub(super) fn apply(
                     }
                 })
                 .unwrap_or_else(|| vec![index]);
-            let target_window = unsafe { WindowFromPoint(point) };
-            let target = s.views.iter().rev().find_map(|view| {
-                if s.workspace.panel(view.id).is_some_and(|p| p.is_search() || p.is_monitor()) {
-                    return None;
-                }
-                let hwnd = view.window.hwnd().cast();
-                if target_window != hwnd {
-                    return None;
-                }
-                if unsafe { IsWindow(hwnd) } == 0 {
-                    return None;
-                }
-                let model = view.model.borrow();
-                if model.collapsed { return None; }
-                let mut local = point;
-                let mut bounds = RECT::default();
-                unsafe {
-                    if ScreenToClient(hwnd, &raw mut local) == 0
-                        || windows_sys::Win32::UI::WindowsAndMessaging::GetClientRect(hwnd, &raw mut bounds) == 0 { return None; }
-                }
-                if local.x < bounds.left || local.x >= bounds.right
-                    || local.y < bounds.top || local.y >= bounds.bottom { return None; }
-                let scale = unsafe { GetDpiForWindow(hwnd) }.max(96) as f32 / 96.0;
-                let (x, y) = (local.x as f32 / scale, local.y as f32 / scale);
-                let grid = model.grid(
-                    (bounds.right - bounds.left) as f32 / scale,
-                    (bounds.bottom - bounds.top) as f32 / scale,
-                );
-                let (at, free) = model.drop_destination(grid, x, y, offset);
-                Some((view.id, at, free))
-            });
-            if let Some((target, at, free)) = target {
-                if let Some(path) = s.folders.get(&target).map(|source| source.path.clone()) {
-                    let identities: Vec<_> = indices
-                        .iter()
-                        .filter_map(|i| source.get(*i))
-                        .map(|i| i.identity.clone())
-                        .collect();
-                    if !folder::accepts_copy(&identities, &path) {
-                        return Ok(false);
-                    }
-                    let owner = s
-                        .views
-                        .iter()
-                        .find(|v| v.id == target)
-                        .unwrap()
-                        .window
-                        .hwnd() as isize;
-                    window::post_action(owner as _, move || {
-                        if let Err(error) = luciddesk_shell::copy_to_folder(
-                            windows::Win32::Foundation::HWND(owner as _),
-                            &identities,
-                            &path,
-                        ) {
-                            window::error_for(owner as _, &error.to_string());
-                        }
-                    });
-                    return Ok(false);
-                }
-                if s.workspace.panel(id).is_some_and(|p| p.folder().is_some()) {
-                    return Ok(false);
-                }
-                if let Some(destination) = free {
-                    let previous = s.workspace.clone();
-                    let keys: Vec<_> = indices.iter().filter_map(|i| source.get(*i)).map(|i| i.identity.persistent_key()).collect();
-                    free_layout::move_items(&mut s.workspace, id, target, &keys, &source[index].identity.persistent_key(), destination)?;
-                    if target != id && !s.workspace.panel(id).is_some_and(Panel::fixed_grid) {
-                        let remaining = items_for(&s, id); set_order(&mut s.workspace, id, &remaining);
-                    }
-                    sorting::finish_move(&mut s, previous, id, target)?;
-                } else { transfer_many(&mut s, id, &indices, target, at)?; }
-                for view in &s.views {
-                    view.model.borrow_mut().clear_selection();
-                }
-                refresh_views(&mut s);
-            } else if hybrid::release(&mut s, id, &indices, point)? {
-                refresh_views(&mut s);
-            }
+            let location = DropLocation {
+                point,
+                offset,
+                window: unsafe { WindowFromPoint(point) },
+                pane: None,
+            };
+            drop_items(&mut s, id, &source, index, &indices, location)?;
         }
         Event::Exit => windows_window::quit(),
         Event::New => unreachable!(),
     }
     Ok(false)
+}
+
+pub(in crate::pane) fn drop_from_ole(
+    state: &mut PaneApp,
+    target: PanelId,
+    hwnd: windows_sys::Win32::Foundation::HWND,
+    drag: &drag_drop::PaneDrag,
+    point: POINT,
+) -> Result<(), String> {
+    let source = items_for(state, drag.source);
+    let Some(index) = source.iter().position(|item| item.identity == drag.grabbed) else {
+        return Ok(());
+    };
+    let indices: Vec<_> = source.iter().enumerate()
+        .filter_map(|(index, item)| drag.items.contains(&item.identity).then_some(index))
+        .collect();
+    if indices.len() != drag.items.len() || !indices.contains(&index) {
+        return Ok(());
+    }
+    let location = DropLocation { point, offset: drag.offset, window: hwnd, pane: Some(target) };
+    drop_items(state, drag.source, &source, index, &indices, location)
+}
+
+struct DropLocation {
+    point: POINT,
+    offset: luciddesk_core::PointDip,
+    window: windows_sys::Win32::Foundation::HWND,
+    pane: Option<PanelId>,
+}
+
+fn drop_items(
+    s: &mut PaneApp,
+    id: PanelId,
+    source: &[Item],
+    index: usize,
+    indices: &[usize],
+    location: DropLocation,
+) -> Result<(), String> {
+    let target = s.views.iter().rev().find_map(|view| {
+        if s.workspace.panel(view.id).is_some_and(|p| p.is_search() || p.is_monitor()) {
+            return None;
+        }
+        let hwnd = view.window.hwnd().cast();
+        if location.window != hwnd || location.pane.is_some_and(|id| id != view.id) {
+            return None;
+        }
+        if unsafe { IsWindow(hwnd) } == 0 {
+            return None;
+        }
+        let model = view.model.borrow();
+        if model.collapsed { return None; }
+        let mut local = location.point;
+        let mut bounds = RECT::default();
+        unsafe {
+            if ScreenToClient(hwnd, &raw mut local) == 0
+                || windows_sys::Win32::UI::WindowsAndMessaging::GetClientRect(hwnd, &raw mut bounds) == 0 { return None; }
+        }
+        if local.x < bounds.left || local.x >= bounds.right
+            || local.y < bounds.top || local.y >= bounds.bottom { return None; }
+        let scale = unsafe { GetDpiForWindow(hwnd) }.max(96) as f32 / 96.0;
+        let (x, y) = (local.x as f32 / scale, local.y as f32 / scale);
+        let grid = model.grid(
+            (bounds.right - bounds.left) as f32 / scale,
+            (bounds.bottom - bounds.top) as f32 / scale,
+        );
+        let (at, free) = model.drop_destination(grid, x, y, location.offset);
+        Some((view.id, at, free))
+    });
+    if let Some((target, at, free)) = target {
+        if let Some(path) = s.folders.get(&target).map(|source| source.path.clone()) {
+            let identities: Vec<_> = indices
+                .iter()
+                .filter_map(|i| source.get(*i))
+                .map(|i| i.identity.clone())
+                .collect();
+            if !folder::accepts_copy(&identities, &path) {
+                return Ok(());
+            }
+            let owner = s
+                .views
+                .iter()
+                .find(|v| v.id == target)
+                .unwrap()
+                .window
+                .hwnd() as isize;
+            window::post_action(owner as _, move || {
+                if let Err(error) = luciddesk_shell::copy_to_folder(
+                    windows::Win32::Foundation::HWND(owner as _),
+                    &identities,
+                    &path,
+                ) {
+                    window::error_for(owner as _, &error.to_string());
+                }
+            });
+            return Ok(());
+        }
+        if s.workspace.panel(id).is_some_and(|p| p.folder().is_some()) {
+            return Ok(());
+        }
+        if let Some(destination) = free {
+            let previous = s.workspace.clone();
+            let keys: Vec<_> = indices.iter().filter_map(|i| source.get(*i)).map(|i| i.identity.persistent_key()).collect();
+            free_layout::move_items(&mut s.workspace, id, target, &keys, &source[index].identity.persistent_key(), destination)?;
+            if target != id && !s.workspace.panel(id).is_some_and(Panel::fixed_grid) {
+                let remaining = items_for(s, id); set_order(&mut s.workspace, id, &remaining);
+            }
+            sorting::finish_move(s, previous, id, target)?;
+        } else { transfer_many(s, id, indices, target, at)?; }
+        for view in &s.views {
+            view.model.borrow_mut().clear_selection();
+        }
+        refresh_views(s);
+    } else if location.pane.is_none() && hybrid::release(s, id, indices, location.point)? {
+        refresh_views(s);
+    }
+    Ok(())
 }

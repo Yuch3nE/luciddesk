@@ -528,7 +528,7 @@ pub(super) fn register_drop(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result
         } else {
             windows::Win32::System::Ole::DROPEFFECT_LINK
         },
-        move |identities, commit| {
+        move |identities, pane_drag, drop_point| {
             let Some(state) = weak.upgrade() else {
                 return false;
             };
@@ -546,7 +546,7 @@ pub(super) fn register_drop(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result
                 if !folder::accepts_copy(identities, &path) {
                     return false;
                 }
-                if !commit {
+                if drop_point.is_none() {
                     return true;
                 }
                 let items = identities.to_vec();
@@ -558,6 +558,17 @@ pub(super) fn register_drop(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result
                         &path,
                     ) {
                         window::error_for(hwnd.cast(), &error.to_string());
+                    }
+                });
+            }
+            if let Some(drag) = pane_drag {
+                let Some(point) = drop_point else { return true };
+                let drag = drag.clone();
+                drop(s);
+                return window::post_action(hwnd.cast(), move || {
+                    let point = POINT { x: point.x, y: point.y };
+                    if let Err(error) = events::drop_from_ole(&mut state.borrow_mut(), id, hwnd.cast(), &drag, point) {
+                        window::defer_error(hwnd as isize, error);
                     }
                 });
             }
@@ -574,7 +585,7 @@ pub(super) fn register_drop(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result
             let Some(keys) = keys else {
                 return false;
             };
-            if !commit {
+            if drop_point.is_none() {
                 return true;
             }
             // Explorer is the OLE caller. Apply membership only after returning

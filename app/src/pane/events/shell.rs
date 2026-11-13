@@ -57,23 +57,30 @@ pub(super) fn route(
     id: PanelId,
     event: Event,
 ) -> Result<bool, String> {
-    if let Event::FileDrag(image) = event {
+    if let Event::FileDrag { grabbed, offset, image } = event {
         let target = {
             let s = state.borrow();
             s.views.iter().find(|v| v.id == id).map(|v| {
+                let model = v.model.borrow();
                 (
                     v.window.hwnd() as isize,
-                    v.model.borrow().selected_identities(),
+                    model.selected_identities(),
+                    model.folder.is_some(),
                 )
             })
         };
-        if let Some((owner, items)) = target {
+        if let Some((owner, items, is_folder)) = target.filter(|(_, items, _)| !items.is_empty()) {
             window::post_action(owner as _, move || {
-                if let Err(error) = luciddesk_shell::drag_file_items(
-                    windows::Win32::Foundation::HWND(owner as _),
-                    &items,
-                    image.as_ref(),
-                ) {
+                let hwnd = windows::Win32::Foundation::HWND(owner as _);
+                let result = if is_folder {
+                    luciddesk_shell::drag_file_items(hwnd, &items, image.as_ref())
+                } else {
+                    luciddesk_shell::FileDrag::new(&items).and_then(|data| {
+                        let drag = drag_drop::PaneDrag { source: id, grabbed, items, offset };
+                        drag_drop::with_pane_drag(data.data(), drag, || data.run(hwnd, image.as_ref()))
+                    })
+                };
+                if let Err(error) = result {
                     window::error_for(owner as _, &crate::i18n::format("ui-file-operation-failed", &[("error", error.to_string())]));
                 }
             });
