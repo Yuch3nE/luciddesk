@@ -1,4 +1,4 @@
-<!-- manual-version: 0.25.3 -->
+<!-- manual-version: 0.26.0 -->
 
 # LucidDesk User Manual
 
@@ -8,7 +8,7 @@ Start with your first panel, then find the task you need below.
 
 ## Start in five minutes
 
-For LucidDesk 0.25.3. Requires **Windows 10 1809 (build 17763), x64, or later**. Mica requires Windows 11.
+For LucidDesk 0.26.0. Requires **Windows 10 1809 (build 17763), x64, or later**. Mica requires Windows 11.
 
 1. Install and start LucidDesk. Find its tray icon near the Windows clock; expand hidden icons if needed.
 2. Right-click the tray icon and choose New panel.
@@ -28,16 +28,22 @@ Open the header's “…” menu or right-click empty panel space.
 | Keep icons together | Enable Auto arrange icons; disable it to leave gaps |
 | Position icons freely | Disable Align icons to grid |
 | Temporarily hide panel contents | Collapse the panel, then expand it when needed |
-| Prevent accidental movement | Check Lock panel; resizing remains available |
+| Fix the panel's position, size, and name | Enable Lock panel. You can still organize icons or switch tabs |
 | Keep a panel above other windows | Enable Always on top |
 
-Drag files from a desktop panel into other applications, such as a terminal to insert their paths.
+Drag files from a desktop panel into Windows Terminal to insert their paths. If you drag over another window and return to a panel, release the icon where you want it placed.
 
 **Collecting icons, removing them from a panel or closing a panel does not delete files.** File-menu commands such as delete, rename and cut affect real files, even when the panel is locked.
 
 ### Icons only
 
 Choose Icons only in View to hide filenames; hover to read the full name. Choose small, medium or large under Icon size. Each panel saves its own choice. Choose Icons with names to show filenames again.
+
+### Automatic classification
+
+Create the desktop panels you want to use as destinations. In Settings → Automatic classification, choose Add rule, select a group, and enter extensions, a keyword, or a regular expression. Rules run from top to bottom. The first matching rule with an available group applies.
+
+Choose Organize now to preview where existing unassigned icons will go, then choose Apply. Enable Automatically group new icons to apply the rules to new unassigned icons. Files stay in their original locations.
 
 ### Find or hide panels
 
@@ -141,7 +147,9 @@ Advanced options in Backup & restore lets you export configuration or open its f
 
 ### Update LucidDesk
 
-Back up first, then exit the old app and install the update. For portable updates, preserve `data` and `portable`. On supported builds, choose **Download and update** in About and confirm the restart after verification.
+Before updating, you can export a backup in Backup & restore. EXE, standard ZIP, and portable ZIP builds can use **Download and update** in Settings → About when a signed update is available. Confirm the restart after verification to update in place.
+
+For a manual update, exit from the tray and use the same installation format. Keep `data` and `portable` when replacing portable program files. See [installation and updates](installer.md) for the steps.
 
 ## Agents and the command line
 

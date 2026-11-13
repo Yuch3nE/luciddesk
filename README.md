@@ -12,7 +12,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-2EA44F?style=flat-square&labelColor=374151)](LICENSE)
 [![CI status](https://img.shields.io/github/actions/workflow/status/Yuch3nE/luciddesk/build.yml?style=flat-square&label=CI&labelColor=374151)](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml)
-[![Version: 0.25.3](https://img.shields.io/badge/Version-0.25.3-8250DF?style=flat-square&labelColor=374151)](CHANGELOG.md)
+[![Version: 0.26.0](https://img.shields.io/badge/Version-0.26.0-8250DF?style=flat-square&labelColor=374151)](CHANGELOG.md)
 [![Windows: 10 / 11](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D4?style=flat-square&labelColor=374151)](#系统与兼容性)
 [![Arch: x64](https://img.shields.io/badge/Arch-x64-64748B?style=flat-square&labelColor=374151)](docs/portable.md)
 
@@ -28,7 +28,7 @@ LucidDesk 是一款免费、开源的 Windows 桌面整理工具。用面板收�
 
 [开始使用](#开始使用) · [功能](#功能) · [界面截图](#界面截图) · [升级与备份](#升级与备份) · [常见问题](#常见问题)
 
-**0.25.3 更新**：修复桌面与面板图标状态同步及启动时过早的连接告警，减少 Everything 搜索的临时内存与结果积压；CLI 新增预览变更摘要和定向错误帮助，并更新 Agent Skill。详见[更新记录](CHANGELOG.md#0253--2026-10-31)。
+**0.26.0** 新增桌面图标自动分类和签名应用内更新，支持把普通面板中的文件拖入 Windows Terminal，并改善 Win+D 和标签合并时的窗口行为。详见[更新记录](CHANGELOG.md#0260--2026-11-14)。
 
 <a id="开始使用"></a>
 

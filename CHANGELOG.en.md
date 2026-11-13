@@ -2,14 +2,31 @@
 
 [简体中文](CHANGELOG.md) · English
 
-Current version: **0.25.3**. Features and fixes by release.
+Current version: **0.26.0**. Features and fixes by release.
 
 Exit the app before upgrading a portable installation and preserve its `data` folder. See the [portable guide](docs/portable.md) (Chinese).
 
-## Unreleased
+## 0.26.0 · 2026-11-14
 
-- Update portable ZIP, ordinary ZIP and EXE installations in place from Settings → About. LucidDesk verifies the matching release package and asks before restarting.
-- Fix dragging files from desktop panels into terminals and other external applications.
+### Desktop organization and drag and drop
+
+- Add Automatic classification. Use extensions, keywords, or regular expressions to group new unassigned icons. Choose Organize now to preview and group existing icons. Rules support templates, priority order, individual toggles, and undo for the most recent deletion.
+- Fix automatic classification grouping a new icon again after you quickly drag it into a panel and back to the desktop.
+- Refresh the desktop inventory before applying Organize now. If a rename, deletion, or write to a temporary file changes the result, LucidDesk asks you to preview it again.
+- Skip IDs referenced by classification rules when creating panels and restore panel creation for workspaces affected by invalid rule targets in earlier versions.
+- Drag files from desktop panels into Windows Terminal and other applications. Thanks to @tohsakarat ([PR #7](https://github.com/Yuch3nE/luciddesk/pull/7)).
+- Preserve the drop position when you drag an icon over an external window and back to a panel.
+- Improve panel stacking when Win+D shows or restores the desktop. Fix cases where panels disappear and a flash the first time Show Desktop is used on Windows 10.
+- Locking a panel fixes its position, size, and name while still allowing icon grouping, sorting, and tab switching.
+
+### Updates and interface
+
+- Download signed updates for portable ZIP, standard ZIP, and EXE installations from Settings → About. LucidDesk verifies the matching package and updates in place after you confirm the restart. Interrupted ZIP updates show recovery instructions.
+- Improve native text input visibility on panels, file context menu theming, and Windows 11 menu recovery. Use consistent error and confirmation dialogs.
+
+### CLI
+
+- Keep the destination window's position, size, and lock state when a single plan merges tab groups and selects a newly joined tab.
 
 ## 0.25.3 · 2026-10-31
 

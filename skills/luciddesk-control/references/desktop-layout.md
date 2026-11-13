@@ -4,7 +4,7 @@
 
 The display fields below are included in LucidDesk 0.23.0; use them only when `capabilities.pane_display` advertises the required fields.
 
-`pane update --id ID --list-view false --icon-only true --icon-size medium --dry-run --json` changes only the named desktop or folder pane, including inactive tabs. Sizes are `small`, `medium`, `large`. Omitted fields preserve state. List view retains icon preferences without displaying them; pass `list_view:false` to show icons. Locked panes require an explicit unlock. Window locking/folding/topmost options still apply across a tab group; display options do not.
+`pane update --id ID --list-view false --icon-only true --icon-size medium --dry-run --json` changes only the named desktop or folder pane, including inactive tabs. Sizes are `small`, `medium`, `large`. Omitted fields preserve state. List view saves icon preferences for the next switch to icon view. Pass `list_view:false` to show icons. Locked panes still allow display changes. Position, size, and name changes require an explicit unlock. Lock, collapse, and topmost settings apply across a tab group.
 
 Use `panel_defaults.icon_only` and `panel_defaults.icon_size` in `settings.update` only for future panes. To resize after changing display, put `pane.update` before `pane.fit` / `folder.fit` in the same plan. Preview first, then submit the returned plan token with its fixed request ID.
 
@@ -85,4 +85,4 @@ Sort/reorder explicitly compact the arrangement using the current visible column
 
 Assignment/release requires desktop integration; receipts can stay pending while images load or Explorer confirms visibility. Inspect `status.desktop_sync_status`; an open native menu can defer synchronization. Removing a nonempty desktop pane requires `release_items:true`; releasing/removing never moves or deletes real files.
 
-Ordinary panes support `tab.merge`, `tab.select`, `tab.reorder` (complete `pane_ids`) and `tab.detach`. Merge appends the source group and retains target active tab/window options. Selection is allowed while locked; detach retains bounds. Folder/search panes cannot join tabs. Window changes affect the shared group, while titles and item order belong to individual panes. Omitted update fields stay unchanged; `null` does not reset them.
+Ordinary panes support `tab.merge`, `tab.select`, `tab.reorder` (complete `pane_ids`) and `tab.detach`. Merge appends an unlocked source group and retains the target's active tab, window bounds, and shared options, including its lock. When a plan merges and then selects a newly joined tab, verify the active tab and the target's saved and actual bounds. Locked groups allow selection and reordering. Detach requires an unlock and retains expanded bounds. Window changes affect the shared group, while titles and item order belong to individual panes. Omit update fields to preserve their values.

@@ -1,4 +1,4 @@
-<!-- release-doc-version: 0.25.3 -->
+<!-- release-doc-version: 0.26.0 -->
 
 # CLI 使用
 
@@ -6,7 +6,7 @@
 
 使用安装目录中的 `luciddesk-cli.exe` 控制正在运行的 LucidDesk。无需安装 Rust，也无需编译。主程序、CLI 和 Skill 应来自同一套发布包；命令不会替你启动主程序。
 
-适用于 LucidDesk 0.25.3。面板独立图标设置和备份、导出、恢复命令已包含在此版本中；使用前可通过 `capabilities --json` 确认正在运行的程序支持哪些操作。
+适用于 LucidDesk 0.26.0。使用前可通过 `capabilities --json` 确认正在运行的程序支持哪些操作。
 
 ## 先确认连接
 
@@ -77,9 +77,9 @@ Use the `luciddesk-cli.exe` shipped with your running LucidDesk installation. No
 
 Use `--dry-run --json` on a mutation, review its diff, then execute the returned `data.next_step.args` array to apply that exact preview. Without `--dry-run`, mutation shortcuts preview and submit immediately. Keep the returned request ID and use `request get --id ID --json` to check pending or uncertain results before retrying.
 
-In 0.25.3, `data.diff_summary` helps locate preview changes before inspecting the relevant full diff sections. It lists up to 50 changes: check `truncated` and `additional_sections`, and fall back to `data.diff` when older CLIs omit the summary. A zero change count does not rule out runtime or geometry effects. Argument errors now provide targeted help through `data.next_step.args`.
+`data.diff_summary` helps locate preview changes before inspecting the relevant full diff sections. It lists up to 50 changes. Check `truncated` and `additional_sections`, and use `data.diff` when older CLIs omit the summary. Geometry and runtime effects can appear in the full diff even when the summary shows zero changes. Argument errors provide targeted help through `data.next_step.args`.
 
-LucidDesk 0.25.3 includes per-pane icon controls and `backup list/create/export/restore`; check the running app’s capabilities before use. Backup exports require a new absolute destination path. Restore replaces settings and layout, validates and freezes the selected backup at preview, and saves a pre-restore copy. It does not restore your original files. Keep `rollback_path` if recovery fails; do not repeatedly submit a restore. See the [online Agent guide](https://luciddesk.bbkingdom365.com/agent/) for general setup; the detailed command reference below is in Chinese.
+Check the running app’s capabilities for per-pane icon controls and `backup list/create/export/restore`. Backup exports require a new absolute destination path. Restore replaces settings and layout, validates and freezes the selected backup at preview, and saves a pre-restore copy. It does not restore your original files. Keep `rollback_path` if recovery fails; do not repeatedly submit a restore. See the [online Agent guide](https://luciddesk.bbkingdom365.com/agent/) for general setup; the detailed command reference below is in Chinese.
 
 ## 帮助与命令发现
 
@@ -155,7 +155,7 @@ CLI 只连接本机当前用户会话中的应用。查询不会修改工作区�
 
 ## 面板显示
 
-以下选项适用于 LucidDesk 0.25.3。先查询 `capabilities --json`，确认 `pane_display` 支持对应字段。
+先查询 `capabilities --json`，确认 `pane_display` 支持对应字段。
 
 ```powershell
 luciddesk-cli pane update --id 1 --list-view false --icon-only true --icon-size medium --dry-run --json
@@ -266,12 +266,14 @@ $retryArgs = [string[]]$result.data.recovery.retry_args
 
 | 操作 | 参数 | 语义 |
 | --- | --- | --- |
-| `tab.merge` | `pane_id`, `into_pane_id` | 将源整个标签组合并到目标组末尾，保留目标活动标签及共享窗口选项 |
+| `tab.merge` | `pane_id`, `into_pane_id` | 将整个源标签组追加到目标组，沿用目标活动标签、窗口位置、大小和共享选项 |
 | `tab.select` | `pane_id` | 激活该标签；锁定面板仍允许切换内容 |
 | `tab.reorder` | `pane_id`, `pane_ids` | 指定组内完整顺序，必须每个成员恰好一次 |
 | `tab.detach` | `pane_id` | 拆分为独立窗口，保留内容及展开位置，可随后用 `pane.geometry` 移动 |
 
-合并、排序、拆分需要解锁。文件夹和搜索面板不支持标签，与 GUI 一致。预览包含修改前后 `tabs`；读取 `workspace get` 的 `tabs` 验证成员、顺序与活动标签。切换复用原生窗口和临时收起状态，合并/拆分保留内容模型缓存。界面处理结果写入幂等回执；`applied` 表示更新已成功处理，重绘和收起动画由正常消息循环完成。
+合并前须解锁源组，目标组可以锁定。锁定组仍可切换和排序，分离标签前须解锁。文件夹和搜索面板不支持标签，与 GUI 一致。
+
+同一计划先执行 `tab.merge` 再执行 `tab.select` 时，新激活的标签沿用目标窗口的位置和展开尺寸。用 `workspace get` 的 `tabs` 验证成员、顺序与活动标签，用 `pane get` 的 `geometry` 和 `window_bounds_px` 核对保存布局与实际窗口。界面处理结果写入幂等回执，`applied` 表示更新已成功处理。
 
 ## 文件夹面板
 

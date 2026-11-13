@@ -12,7 +12,7 @@ Desktop panels · Folder panels · Everything search · Spacebar preview · Agen
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-2EA44F?style=flat-square&labelColor=374151)](LICENSE)
 [![CI status](https://img.shields.io/github/actions/workflow/status/Yuch3nE/luciddesk/build.yml?style=flat-square&label=CI&labelColor=374151)](https://github.com/Yuch3nE/luciddesk/actions/workflows/build.yml)
-[![Version: 0.25.3](https://img.shields.io/badge/Version-0.25.3-8250DF?style=flat-square&labelColor=374151)](CHANGELOG.en.md)
+[![Version: 0.26.0](https://img.shields.io/badge/Version-0.26.0-8250DF?style=flat-square&labelColor=374151)](CHANGELOG.en.md)
 [![Windows: 10 / 11](https://img.shields.io/badge/Windows-10%20%2F%2011-0078D4?style=flat-square&labelColor=374151)](#compatibility)
 [![Arch: x64](https://img.shields.io/badge/Arch-x64-64748B?style=flat-square&labelColor=374151)](docs/portable.md)
 
@@ -28,7 +28,7 @@ LucidDesk is a free, open-source Windows desktop organizer. Group files and shor
 
 [Get started](#getting-started) · [Features](#features) · [Screenshots](#screenshots) · [Upgrading](#upgrading-and-backups) · [FAQ](#troubleshooting)
 
-**New in 0.25.3:** fixes icon-state synchronization and premature startup connection warnings, and reduces temporary memory allocations and queued results in Everything search. CLI previews now include change summaries, with command-specific error help and updated Agent guidance. See the [changelog](CHANGELOG.en.md#0253--2026-10-31).
+**Version 0.26.0** adds automatic desktop icon classification and signed in-app updates. Drag files from desktop panels into Windows Terminal and other apps, and get more reliable panel behavior when using Win+D or merging tabs. See the [changelog](CHANGELOG.en.md#0260--2026-11-14).
 
 <a id="getting-started"></a>
 
