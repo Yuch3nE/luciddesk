@@ -1146,7 +1146,7 @@ where
                                 ClientToScreen(hwnd, &raw mut screen);
                             }
                             if model.borrow().folder.is_some()
-                                || super::drag_drop::over_explorer(screen)
+                                || super::drag_drop::over_external_window(screen)
                             {
                                 let preview = drag_preview(hwnd, &model.borrow(), *index)
                                     .map(|(pixels, origin)| luciddesk_shell::FileDragImage {
@@ -1158,9 +1158,9 @@ where
                                             y: start.y - origin.y,
                                         },
                                     });
-                                // Group drags normally change membership or ordering.
-                                // Explorer needs an OLE data object while the button is
-                                // still down, rather than our internal mouse-up event.
+                                // External applications need an OLE data object while
+                                // the button is down; internal drops use mouse-up to
+                                // change pane membership or ordering.
                                 item_drag.cancel();
                                 unsafe {
                                     ReleaseCapture();

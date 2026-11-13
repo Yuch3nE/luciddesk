@@ -9,6 +9,7 @@ Exit the app before upgrading a portable installation and preserve its `data` fo
 ## Unreleased
 
 - Update portable ZIP, ordinary ZIP and EXE installations in place from Settings → About. LucidDesk verifies the matching release package and asks before restarting.
+- Fix dragging files from desktop panels into terminals and other external applications.
 
 ## 0.25.3 · 2026-10-31
 
