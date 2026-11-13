@@ -19,8 +19,10 @@ fn editable(workspace: &Workspace, id: PanelId, locked: bool) -> Result<(), Stri
     }
     Ok(())
 }
-pub(super) fn apply(next: &mut Workspace, op: &Operation) -> Result<(), String> {
+/// Returns the destination window's active tab when a merge changes membership.
+pub(super) fn apply(next: &mut Workspace, op: &Operation) -> Result<Option<PanelId>, String> {
     let mut groups = next.tab_groups().to_vec();
+    let mut destination_active = None;
     match op {
         Operation::TabMerge {
             pane_id,
@@ -35,7 +37,7 @@ pub(super) fn apply(next: &mut Workspace, op: &Operation) -> Result<(), String> 
                     .tab_group(source)
                     .is_some_and(|g| g.members.contains(&target))
             {
-                return Ok(());
+                return Ok(None);
             }
             let source_members = next
                 .tab_group(source)
@@ -47,6 +49,7 @@ pub(super) fn apply(next: &mut Workspace, op: &Operation) -> Result<(), String> 
             for id in source_members.iter().chain(destination.members.iter()) {
                 editable(next, *id, source_members.contains(id))?;
             }
+            destination_active = Some(destination.active);
             destination.members.extend(source_members);
             groups.retain(|g| !g.members.contains(&source) && !g.members.contains(&target));
             groups.push(destination);
@@ -87,7 +90,7 @@ pub(super) fn apply(next: &mut Workspace, op: &Operation) -> Result<(), String> 
             let id = panel_id(pane_id)?;
             editable(next, id, true)?;
             let Some(group) = groups.iter_mut().find(|g| g.members.contains(&id)) else {
-                return Ok(());
+                return Ok(None);
             };
             group.members.retain(|member| *member != id);
             if group.active == id {
@@ -98,7 +101,8 @@ pub(super) fn apply(next: &mut Workspace, op: &Operation) -> Result<(), String> 
         }
         _ => return Err("not a tab operation".into()),
     }
-    next.set_tab_groups(groups).map_err(|e| e.to_string())
+    next.set_tab_groups(groups).map_err(|e| e.to_string())?;
+    Ok(destination_active)
 }
 
 #[cfg(test)]

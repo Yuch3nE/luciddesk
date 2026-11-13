@@ -50,6 +50,16 @@ pub(super) struct LayoutObservation {
     pub positions: HashMap<PanelId, RectDip>,
     pub collapsed: std::collections::HashSet<PanelId>,
 }
+impl LayoutObservation {
+    pub(super) fn expanded_bounds(&self, panel: &Panel) -> Option<RectDip> {
+        let mut bounds = *self.positions.get(&panel.id())?;
+        if self.collapsed.contains(&panel.id()) {
+            let rect = panel.rect();
+            bounds.height = (rect.height * (bounds.width / rect.width)).round();
+        }
+        Some(bounds)
+    }
+}
 pub(super) fn observe_layout(state: &PaneApp) -> LayoutObservation {
     let mut observed = LayoutObservation::default();
     for view in &state.views {
@@ -89,17 +99,18 @@ pub(super) fn query(
         .as_ref()
         .and_then(|r| r.layouts.positions.get(&panel.id()))
         .copied();
-    let px = px.unwrap_or_else(|| {
-        let scale = monitors.first().map_or(1.0, |m| m.dpi as f32 / 96.0);
-        let r = panel.rect();
-        RectDip {
-            x: r.x * scale,
-            y: r.y * scale,
-            width: r.width * scale,
-            height: r.height * scale,
-        }
-    });
+    let px = px.unwrap_or_else(|| scale_bounds(panel.rect(), monitors));
     describe(px, monitors)
+}
+
+pub(super) fn scale_bounds(r: RectDip, monitors: &[MonitorDescriptor]) -> RectDip {
+    let scale = monitors.first().map_or(1.0, |m| m.dpi as f32 / 96.0);
+    RectDip {
+        x: r.x * scale,
+        y: r.y * scale,
+        width: r.width * scale,
+        height: r.height * scale,
+    }
 }
 pub(super) fn nearest_monitor(px: RectDip, monitors: &[MonitorDescriptor]) -> Option<&MonitorDescriptor> {
     monitors.iter().min_by_key(|m| {
@@ -130,7 +141,15 @@ pub(super) fn present(state: &Rc<RefCell<PaneApp>>, before: &Workspace) -> Resul
             .iter()
             .filter_map(|v| {
                 let p = s.workspace.panel(v.id)?;
-                if before.panel(v.id).is_some_and(|old| old.rect() == p.rect()) {
+                // The surviving view may still be at its old window's physical position,
+                // even if the source and destination had equal stored DIP bounds.
+                let previous_group = before.tab_group(v.id);
+                let merged = s.workspace.tab_group(v.id).is_some_and(|group| {
+                    group.members.iter().any(|id| {
+                        *id != v.id && previous_group.is_none_or(|old| !old.members.contains(id))
+                    })
+                });
+                if !merged && before.panel(v.id).is_some_and(|old| old.rect() == p.rect()) {
                     return None;
                 }
                 let r = *runtime.layouts.positions.get(&v.id)?;

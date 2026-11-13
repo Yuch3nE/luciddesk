@@ -100,7 +100,7 @@ fn scenario_with_search(
 fn scenario_with_options(
     run: impl FnOnce(Client, std::path::PathBuf) + Send + 'static,
     search: bool,
-    backup: bool,
+    with_runtime: bool,
 ) {
     let _sta = crate::pane::test_support::apartment();
     let root = tempfile::tempdir().unwrap();
@@ -116,12 +116,12 @@ fn scenario_with_options(
             .set_search(true);
     }
     app.store.save_workspace(&app.workspace).unwrap();
-    if backup {
+    if with_runtime {
         app.runtime = Some(runtime::State::new(root.path().join("workspace.db")));
     }
     let state = Rc::new(RefCell::new(app));
-    // No runtime connection state: the supervisor cannot attach to Explorer.
-    let _runtime = (!search && !backup).then(|| runtime::supervisor(&state).unwrap());
+    // Only run the supervisor without runtime connection state so it cannot attach to Explorer.
+    let _runtime = (!search && !with_runtime).then(|| runtime::supervisor(&state).unwrap());
     let endpoint = format!(
         "{}-skill-{}",
         luciddesk_api::transport::endpoint().unwrap(),
@@ -147,6 +147,45 @@ fn scenario_with_options(
     }
     worker.join().unwrap();
     drop(control);
+}
+
+#[test]
+fn batch_merge_and_select_keeps_locked_destination_bounds() {
+    scenario_with_options(
+        |client, _| {
+            let pane = |id| client.query("pane.get", json!({"id":id})).data.unwrap();
+            let monitors = client.query("monitor.list", json!({})).data.unwrap();
+            let monitor = &monitors["monitors"][0]["id"];
+            assert!(monitor.is_string(), "a native monitor is required");
+            client.change(json!([
+                {"op":"pane.geometry","pane_id":"1","monitor_id":monitor,"x":60,"y":60,"width":400,"height":300},
+                {"op":"pane.geometry","pane_id":"2","monitor_id":monitor,"x":120,"y":120,"width":420,"height":320}
+            ]));
+            client.change(json!([{"op":"pane.update","pane_id":"1","locked":true}]));
+            let target = pane("1");
+            assert!(target["window_bounds_px"].is_object());
+            assert_ne!(target["window_bounds_px"], pane("2")["window_bounds_px"]);
+
+            let preview = client.preview(json!([
+                {"op":"tab.merge","pane_id":"2","into_pane_id":"1"},
+                {"op":"tab.select","pane_id":"2"}
+            ]));
+            client.apply(&preview);
+
+            let active = pane("2");
+            assert_eq!(active["window_bounds_px"], target["window_bounds_px"]);
+            assert_eq!(active["geometry"], target["geometry"]);
+            assert_eq!(active["locked"], true);
+            assert_eq!(pane("1")["title"], target["title"]);
+            let workspace = client.query("workspace.get", json!({})).data.unwrap();
+            assert_eq!(workspace["tabs"], json!([{"members":["1","2"],"active":"2"}]));
+            let diff = &preview.data.unwrap()["diff"]["geometry"];
+            assert_eq!(diff["1"], target["geometry"]);
+            assert_eq!(diff["2"], target["geometry"]);
+        },
+        false,
+        true,
+    );
 }
 
 #[test]

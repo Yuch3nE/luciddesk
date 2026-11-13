@@ -234,6 +234,18 @@ fn prepare(
     let mut refs = HashMap::new();
     let mut membership = false;
     let mut geometry = HashMap::new();
+    let topology = display_layout::key(monitors);
+    let saved_layout = std::cell::OnceCell::new();
+    let saved_positions = || {
+        saved_layout
+            .get_or_init(|| {
+                store
+                    .monitor_layout(&topology)
+                    .map(|entries| entries.into_iter().collect::<HashMap<_, _>>())
+            })
+            .as_ref()
+            .map_err(|error| invalid(error.to_string()))
+    };
     let mut folders: HashMap<PanelId,luciddesk_storage::FolderPreferences> = HashMap::new();
     let mut folders_before = serde_json::Map::new();
     let mut next_id = workspace
@@ -290,7 +302,18 @@ fn prepare(
             }
 
             Operation::TabMerge { .. } | Operation::TabSelect { .. } | Operation::TabReorder { .. } | Operation::TabDetach { .. } => {
-                super::tab_plan::apply(&mut next, operation).map_err(invalid)?;
+                if let Some(destination) = super::tab_plan::apply(&mut next, operation).map_err(invalid)? {
+                    // Carry the destination frame forward before a later selection can change
+                    // the active ID to one that used to belong to a different window.
+                    let panel = next.panel(destination).unwrap();
+                    let position = geometry.get(&destination).copied()
+                        .or_else(|| observed.expanded_bounds(panel))
+                        .or(saved_positions()?.get(&destination).copied())
+                        .unwrap_or_else(|| super::geometry::scale_bounds(panel.rect(), monitors));
+                    for member in &next.tab_group(destination).unwrap().members {
+                        geometry.insert(*member, position);
+                    }
+                }
             }
 
             Operation::Geometry { pane_id, monitor_id, x, y, width, height } => {
@@ -572,13 +595,10 @@ fn prepare(
         }
     }
     if next.tab_groups() != workspace.tab_groups() {
-        let saved: HashMap<_,_> = store.monitor_layout(&display_layout::key(monitors)).map_err(|e|invalid(e.to_string()))?.into_iter().collect();
+        let saved = saved_positions()?;
         for group in next.tab_groups() {
-            let physical = geometry.get(&group.active).or_else(||saved.get(&group.active)).copied().unwrap_or_else(|| {
-                let r=next.panel(group.active).unwrap().rect();
-                let scale=monitors.first().map_or(1.0,|m|m.dpi as f32/96.0);
-                RectDip{x:r.x*scale,y:r.y*scale,width:r.width*scale,height:r.height*scale}
-            });
+            let physical = geometry.get(&group.active).or_else(|| saved.get(&group.active)).copied()
+                .unwrap_or_else(|| super::geometry::scale_bounds(next.panel(group.active).unwrap().rect(), monitors));
             for id in &group.members {geometry.insert(*id,physical);}
         }
     }
@@ -591,8 +611,7 @@ fn prepare(
     let layout = if geometry.is_empty() { None } else {
         geometry.retain(|id,_| next.panel(*id).is_some());
         diff["geometry"] = json!(geometry.iter().map(|(id,r)|(id.get().to_string(),super::geometry::describe(*r,monitors))).collect::<std::collections::BTreeMap<_,_>>());
-        let topology = display_layout::key(monitors);
-        let mut positions: HashMap<_,_> = store.monitor_layout(&topology).map_err(|e|invalid(e.to_string()))?.into_iter().collect();
+        let mut positions = saved_positions()?.clone();
         positions.retain(|id,_|next.panel(*id).is_some());
         positions.extend(geometry);
         Some((topology,positions.into_iter().collect()))
@@ -1339,6 +1358,39 @@ mod tests {
         state.workspace.panel_mut(PanelId::new(1)).unwrap().set_locked(true);
         let blocked=preview(&mut snapshot,&mut state,json!([op]));
         assert_eq!(blocked.error.unwrap().code,"PANE_LOCKED");
+    }
+
+    #[test]
+    fn batch_merge_and_select_persists_destination_geometry_from_earlier_operations() {
+        let mut state = super::super::super::tests::test_state();
+        let mut snapshot = Snapshot::new();
+        let monitors = luciddesk_window::enumerate_monitors();
+        let monitor = monitors.first().expect("test desktop monitor");
+        let target = RectDip::new(40.0, 50.0, 400.0, 240.0);
+        let (stored, physical) = super::super::geometry::convert(monitor, target).unwrap();
+        let plan = preview(&mut snapshot, &mut state, json!([
+            {"op":"pane.geometry","pane_id":"1","monitor_id":monitor.id.as_str(),
+                "x":target.x,"y":target.y,"width":target.width,"height":target.height},
+            {"op":"pane.geometry","pane_id":"2","monitor_id":monitor.id.as_str(),
+                "x":80,"y":90,"width":420,"height":260},
+            {"op":"pane.update","pane_id":"1","locked":true},
+            {"op":"tab.merge","pane_id":"2","into_pane_id":"1"},
+            {"op":"tab.select","pane_id":"2"}
+        ]));
+        assert!(plan.ok, "{plan:?}");
+        let result = snapshot.respond(&mut state, &apply(&plan));
+        assert!(result.ok, "{result:?}");
+
+        let workspace = state.store.load_workspace().unwrap();
+        let positions: HashMap<_, _> = state.store.monitor_layout(&display_layout::key(&monitors))
+            .unwrap().into_iter().collect();
+        for id in [PanelId::new(1), PanelId::new(2)] {
+            let panel = workspace.panel(id).unwrap();
+            assert_eq!(panel.rect(), stored);
+            assert!(panel.locked());
+            assert_eq!(positions.get(&id), Some(&physical));
+        }
+        assert!(workspace.tab_visible(PanelId::new(2)));
     }
 
     #[test]
