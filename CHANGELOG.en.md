@@ -6,6 +6,10 @@ Current version: **0.25.3**. Features and fixes by release.
 
 Exit the app before upgrading a portable installation and preserve its `data` folder. See the [portable guide](docs/portable.md) (Chinese).
 
+## Unreleased
+
+- Fix dragging files from desktop panels into terminals and other external applications.
+
 ## 0.25.3 · 2026-10-31
 
 ### fix · Fixes

@@ -31,6 +31,8 @@ Open the header's “…” menu or right-click empty panel space.
 | Prevent accidental movement | Check Lock panel; resizing remains available |
 | Keep a panel above other windows | Enable Always on top |
 
+Drag files from a desktop panel into other applications, such as a terminal to insert their paths.
+
 **Collecting icons, removing them from a panel or closing a panel does not delete files.** File-menu commands such as delete, rename and cut affect real files, even when the panel is locked.
 
 ### Icons only
