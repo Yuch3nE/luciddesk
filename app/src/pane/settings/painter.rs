@@ -264,7 +264,7 @@ impl Painter {
                     drop(cached);
                     let panel = Rect::from_xywh(r.left + 10.0, r.top + 10.0, 180.0, 100.0);
                     let preview_edge = canvas_result(
-                        t.create_solid_brush(super::super::theme::panel_border(dark, *material)),
+                        t.create_solid_brush(super::super::theme::panel_border(*material)),
                     )?;
                     let stroke = 1.0 / scale;
                     let inset = stroke * 0.5;

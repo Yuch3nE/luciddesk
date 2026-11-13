@@ -3,6 +3,14 @@
 这里保留历次验证记录，包括当时的行为和后来已替换的方案。它们不是当前实现规范，也不表示当前构建已重新通过。执行入口见[验证指南](validation.md)，当前桌面切换规则见[Hook 验证](hook-validation.md)。日志中的 `target/` 路径是本地证据，不随仓库分发。
 
 
+## 2026-11-09 Win+D 冷启动修复与事件订阅优化
+
+- Windows 10 `19045.6466` 虚拟机使用包含 `32a462e` 和 `055faf6` 两项改动的测试包。托盘“显示所有面板”通过。两次分别退出并重启 LucidDesk 后，首次 Win+D 均未观察到闪烁，再按一次时资源管理器正常恢复并盖住面板。
+- 在 `055faf6` 基础上完成代码清理与事件订阅优化后，全工作区全目标编译检查通过，应用常规测试 575 项通过、41 项跳过。重排和父窗口变化的原生事件投递均覆盖到。
+- Windows 11 `26300` 上，优化版首次真实 Shell 回归中，显式显示面板并聚焦面板后，测试窗口有一次未进入最小化，已采集的面板像素均可见。同一环境下，优化前后的测试程序各复跑一轮，均完整通过。
+- Win10 冷启动结果对应此前的修复与重构测试包。事件订阅优化的真实 Shell 对照在 Win11 执行，事件范围与分配次数按代码核对。
+- 本地证据包括 `target/shared-desktop-win10-cold-start.txt`（修复前的冷启动诊断）、`target/desktop-event-efficiency-check.log`、`target/desktop-event-efficiency-tests.log`、`target/desktop-event-efficiency-shell.log`、`target/desktop-event-comparison-before.log` 和 `target/desktop-event-comparison-after.log`。
+
 ## 2026-10-31 CLI 帮助与预览摘要优化
 
 - CLI 回归 35 项通过，覆盖具体帮助主题、未知子命令回退、选项值隔离、摘要忽略未变化项、JSON Pointer 转义、缺失与 null 区分、截断及运行时附加区段。

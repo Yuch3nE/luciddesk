@@ -1,4 +1,15 @@
 use super::*;
+use crate::pane::{PaneApp, handle};
+use luciddesk_core::{Panel, RectDip};
+
+fn open_monitor_fixture(state: &Rc<RefCell<PaneApp>>) {
+    let id = PanelId::new(3);
+    let mut panel = Panel::new(id, "Monitor fixture", RectDip::from_bounds(0.0, 0.0, 360.0, 600.0));
+    panel.set_monitor(true);
+    state.borrow_mut().workspace.add_panel(panel).unwrap();
+    let options = Preferences { enabled: true, ..Preferences::load().unwrap() };
+    handle(state, id, Event::MonitorOptions(options)).unwrap();
+}
 
 #[test]
 fn plugin_content_draws_through_host_context_and_preserves_the_header() {
@@ -86,7 +97,6 @@ fn monitor_window_reuses_native_panel_lifecycle_without_registering_shell_drop()
     let state = Rc::new(RefCell::new(crate::pane::tests::test_state()));
     state.borrow_mut().monitor_child = true;
     if !available() {
-        assert!(super::super::handle(&state, PanelId::new(0), Event::EnableMonitor).is_err());
         let id = state.borrow().workspace.panels()[0].id();
         state
             .borrow_mut()
@@ -99,7 +109,7 @@ fn monitor_window_reuses_native_panel_lifecycle_without_registering_shell_drop()
         assert!(state.borrow().workspace.panel(id).unwrap().is_monitor());
         return;
     }
-    super::super::handle(&state, PanelId::new(0), Event::EnableMonitor).unwrap();
+    open_monitor_fixture(&state);
     let (id, hwnd) = {
         let s = state.borrow();
         let view = s.views.last().unwrap();
@@ -276,7 +286,7 @@ fn single_monitor_releases_resources_after_repeated_close() {
         .map(|s| s.parse().unwrap())
         .unwrap_or(63000);
     for cycle in 1..=cycles {
-        super::super::handle(&state, PanelId::new(0), Event::EnableMonitor).unwrap();
+        open_monitor_fixture(&state);
         let (id, hwnd, model) = {
             let s = state.borrow();
             assert_eq!(s.views.len(), 1);

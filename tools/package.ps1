@@ -81,7 +81,7 @@ try {
     }
     & (Join-Path $PSScriptRoot 'assets/verify-app-icon.ps1') -Executable (Join-Path $productionTarget 'release/luciddesk.exe')
     # All package modes share these exact binaries and build provenance.
-    $binaryFiles = @('luciddesk.exe', 'luciddesk_explorer.dll', 'luciddesk-cli.exe')
+    $binaryFiles = @('luciddesk.exe', 'luciddesk_explorer.dll', 'luciddesk-cli.exe', 'updater.exe')
     $files = @($binaryFiles | ForEach-Object {
         $fileHash = Get-FileHash -LiteralPath (Join-Path $productionTarget "release\$_") -Algorithm SHA256
         [ordered]@{ file = $_; sha256 = $fileHash.Hash.ToLowerInvariant() }

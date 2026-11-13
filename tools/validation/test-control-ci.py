@@ -1,6 +1,7 @@
-"""Run control/layout tests in separate processes to isolate native UI state."""
+"""Batch pure tests; isolate tests that own native UI state."""
 import argparse
 import json
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -19,6 +20,21 @@ FILTERS = (
     "pane::model::performance_tests::",
     "pane::label::cache_tests::",
 )
+BATCHED_FILTERS = (
+    "pane::control::geometry::tests::",
+    "pane::window::scheduling::tests::",
+    "pane::label::cache_tests::",
+)
+
+
+def test_batches(tests):
+    pure = [name for name in tests if name.startswith(BATCHED_FILTERS)]
+    return ([pure] if pure else []) + [[name] for name in tests if name not in pure]
+
+
+def batch_passed(result, expected):
+    summary = re.search(r"test result: ok\. (\d+) passed; 0 failed; (\d+) ignored;", result.stdout)
+    return result.returncode == 0 and summary is not None and tuple(map(int, summary.groups())) == (expected, 0)
 
 
 def select_tests(listing, filters=FILTERS):
@@ -59,20 +75,22 @@ def main():
     listing = subprocess.check_output([executable, "--list"], cwd=ROOT, text=True, timeout=30)
     tests = select_tests(listing)
     failed = []
-    for name in tests:
+    batches = test_batches(tests)
+    for batch in batches:
+        label = ", ".join(batch)
         try:
-            result = subprocess.run([executable, name, "--exact", "--test-threads=1"],
-                                    cwd=ROOT, capture_output=True, text=True, timeout=60)
-            passed = result.returncode == 0 and "1 passed; 0 failed" in result.stdout
+            result = subprocess.run([executable, *batch, "--exact", "--test-threads=1"],
+                                    cwd=ROOT, capture_output=True, text=True, timeout=60 * len(batch))
+            passed = batch_passed(result, len(batch))
             if not passed:
                 print(result.stdout + result.stderr, flush=True)
         except subprocess.TimeoutExpired:
             passed = False
-            print(f"Timed out after 60 seconds: {name}", flush=True)
-        print(f"{'PASS' if passed else 'FAIL'} {name}", flush=True)
+            print(f"Timed out after {60 * len(batch)} seconds: {label}", flush=True)
+        print(f"{'PASS' if passed else 'FAIL'} {label}", flush=True)
         if not passed:
-            failed.append(name)
-    print(f"{len(tests) - len(failed)} passed; {len(failed)} failed", flush=True)
+            failed.extend(batch)
+    print(f"{len(tests) - len(failed)} passed; {len(failed)} not verified; {len(batches)} processes", flush=True)
     return bool(failed)
 
 

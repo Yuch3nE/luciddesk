@@ -264,7 +264,10 @@ fn prepare_host(
     }
     let targets = ResolvedTargets::resolve(names)?;
     if let Some(host) = current.as_mut() {
-        if host.reprepare(&targets, context, cancelled.clone())? {
+        // A transient presenter failure must not pin the session to classic
+        // menus forever. Keep the fallback for this invocation, then retry
+        // creation on the next request. Healthy compact hosts remain cached.
+        if host.presenter.is_some() && host.reprepare(&targets, context, cancelled.clone())? {
             return host.view_hwnd();
         }
     }
@@ -326,6 +329,38 @@ fn pump_messages() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "creates a native Shell view; run separately outside the restricted test sandbox"]
+    fn fallback_host_is_replaced_on_the_next_request() {
+        unsafe {
+            windows::Win32::System::Ole::OleInitialize(None).unwrap();
+            let owner = CreateWindowExW(0, windows_sys::w!("STATIC"), windows_sys::w!(""),
+                WS_POPUP, 0, 0, 640, 480, std::ptr::null_mut(), std::ptr::null_mut(),
+                std::ptr::null_mut(), std::ptr::null());
+            assert!(!owner.is_null());
+            let path = std::env::temp_dir().join(format!("luciddesk-menu-retry-{}.txt", std::process::id()));
+            std::fs::write(&path, b"owned menu retry fixture").unwrap();
+            {
+                let names = vec![path.to_string_lossy().into_owned()];
+                let targets = ResolvedTargets::resolve(&names).unwrap();
+                let context = MenuContext { owner: owner as u64, x: 20, y: 20 };
+                let cancelled = Arc::new(AtomicBool::new(false));
+                let fallback = MenuHost::create_impl(owner, &targets, context, cancelled.clone(), false).unwrap();
+                let marker = windows_sys::w!("LucidDesk.Test.FallbackHost");
+                assert_ne!(SetPropW(fallback.view_hwnd().unwrap() as _, marker, 1usize as _), 0);
+                let mut current = Some(fallback);
+                let mut retired = Vec::new();
+                let hwnd = prepare_host(owner, &mut current, &mut retired, &names, context, &cancelled).unwrap();
+                assert!(GetPropW(hwnd as _, marker).is_null(), "a fallback host must not remain cached");
+                assert!(retired.is_empty());
+                assert_eq!(current.as_ref().unwrap().names, names);
+            }
+            std::fs::remove_file(path).unwrap();
+            DestroyWindow(owner);
+            windows::Win32::System::Ole::OleUninitialize();
+        }
+    }
 
     #[test]
     fn idle_worker_wakes_for_requests_and_shutdown() {

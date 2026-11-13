@@ -58,7 +58,7 @@ pub fn show_many(
 }
 
 fn record_presenter(host: isize) {
-    if luciddesk_diagnostics::level() < luciddesk_diagnostics::Level::Debug {
+    if luciddesk_diagnostics::level() < luciddesk_diagnostics::Level::Warn {
         return;
     }
     use windows_sys::Win32::UI::WindowsAndMessaging::GetPropW;
@@ -68,6 +68,16 @@ fn record_presenter(host: isize) {
             GetPropW(host as _, windows_sys::w!("LucidDesk.Menu.PresenterError")) as usize as u32,
         )
     };
+    if mode == 2 {
+        luciddesk_diagnostics::log(
+            luciddesk_diagnostics::Level::Warn,
+            "shell.menu",
+            &format!("compact_menu_unavailable initialization_hresult=0x{error:08X}; using classic menu; retry on next invocation"),
+        );
+    }
+    if luciddesk_diagnostics::level() < luciddesk_diagnostics::Level::Debug {
+        return;
+    }
     let values = unsafe {
         [
             "PrepareCalled",

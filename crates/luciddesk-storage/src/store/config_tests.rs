@@ -2,6 +2,21 @@ use luciddesk_core::{DesktopItem, DesktopPlacement, GridPosition, ShellIdentity}
 use super::*;
 
 #[test]
+fn classification_settings_validate_and_round_trip() {
+    let (dir, store) = open();
+    let key = "desktop.classification";
+    let valid = SettingValue::Text(r#"{"enabled":true,"rules":[{"target_panel":1,"extensions":["pdf"]}]}"#.into());
+    store.save_settings(&[(key.into(), valid.clone())].into_iter().collect()).unwrap();
+    for invalid in ["{", r#"{"rules":[{"target_panel":1}]}"#, r#"{"enabeld":true}"#] {
+        assert!(store.save_settings(&[(key.into(), SettingValue::Text(invalid.into()))].into_iter().collect()).is_err());
+        assert_eq!(store.settings().unwrap()[key], valid);
+    }
+    drop(store);
+    let reopened = WorkspaceStore::open(&dir.path().join("workspace.db")).unwrap();
+    assert_eq!(reopened.settings().unwrap()[key], valid);
+}
+
+#[test]
 fn desktop_and_show_panels_reject_non_table_sections_without_replacing_valid_config() {
     for section in ["desktop", "show_panels"] {
         for invalid in ["false", "1", "'text'", "[]", "[{ enabled = true }]"] {

@@ -107,6 +107,56 @@ fn disabled_policy_precedes_configuration_and_enable_opens_assigned_directory() 
 }
 
 #[test]
+fn configuration_reload_stops_old_resources_before_opening_again() {
+    let mut runtime = runtime();
+    let root = Some(PathBuf::from("data/plugins"));
+    runtime.initialize(root.clone(), &BTreeSet::new(), "zh-CN");
+    calls();
+    runtime.initialize(root, &BTreeSet::new(), "en-US");
+    assert_eq!(ops(), ["shutdown", "config_open"]);
+    runtime.initialize(Some("other/plugins".into()), &BTreeSet::new(), "en-US");
+    let requests = calls();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[0]["op"], "shutdown");
+    assert_eq!(
+        requests[1]["directory"],
+        json!(PathBuf::from("other/plugins").join("configurable"))
+    );
+    runtime.initialize(None, &BTreeSet::new(), "en-US");
+    assert_eq!(ops(), ["shutdown"]);
+    runtime
+        .request("configurable", json!({"op":"echo"}), "en-US")
+        .unwrap();
+    assert_eq!(ops(), ["echo"]);
+}
+
+#[test]
+fn reload_cleanup_failure_blocks_configuration_until_recovered() {
+    let mut runtime = runtime();
+    runtime.initialize(Some("data/plugins".into()), &BTreeSet::new(), "zh-CN");
+    calls();
+    FAIL_STOP.set(true);
+    runtime.initialize(Some("other/plugins".into()), &BTreeSet::new(), "en-US");
+    assert_eq!(ops(), ["shutdown"]);
+    assert_eq!(runtime.installed()[0].state, PluginState::Faulted);
+    assert_eq!(runtime.take_diagnostics().len(), 1);
+    assert!(
+        runtime
+            .request("configurable", json!({"op":"echo"}), "en-US")
+            .is_err()
+    );
+    runtime
+        .request("independent", json!({"op":"echo"}), "en-US")
+        .unwrap();
+    assert_eq!(ops(), ["echo"]);
+    FAIL_STOP.set(false);
+    runtime.initialize(Some("other/plugins".into()), &BTreeSet::new(), "en-US");
+    assert_eq!(ops(), ["shutdown", "config_open"]);
+    assert_eq!(runtime.installed()[0].state, PluginState::Ready);
+    assert!(runtime.installed()[0].error.is_none());
+}
+
+#[test]
 fn failed_configuration_is_cleaned_up_retained_and_recoverable() {
     let mut runtime = runtime();
     FAIL_CONFIG.set(true);

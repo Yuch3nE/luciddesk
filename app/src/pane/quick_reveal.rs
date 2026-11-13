@@ -12,16 +12,22 @@ pub(super) fn show(hwnd: HWND) {
 /// Shared by the tray and the optional global shortcut. Release the app borrow
 /// before changing window order, because native calls can dispatch messages.
 pub(super) fn show_all(state: &std::rc::Rc<std::cell::RefCell<super::PaneApp>>) {
+    luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Info, "pane.desktop_state",
+        "show_all requested; app_desktop_hidden={}", super::desktop_toggle::hidden());
     match super::desktop_toggle::restore(state) {
-        Ok(true) => return,
         Err(error) => luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Error, "desktop.visibility", "Reveal restore: {error}"),
-        Ok(false) => {}
+        Ok(_) => {}
     }
     let windows: Vec<_> = state.borrow().views.iter().map(|v| v.window.hwnd()).collect();
     let monitors = state.borrow().monitors.windows();
+    // Explicit reveal changes stacking, not the active window. In particular,
+    // do not activate a Shell-owned pane before the user's next Show Desktop.
+    let foreground = unsafe { GetForegroundWindow() };
     for hwnd in monitors { show(hwnd); }
     for &hwnd in &windows { show(hwnd.cast()); }
-    if let Some(&hwnd) = windows.first() { unsafe { SetForegroundWindow(hwnd.cast()); } }
+    luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Info, "pane.desktop_state",
+        "show_all no-activate; foreground_before={foreground:?} foreground_after={:?}",
+        unsafe { GetForegroundWindow() });
 }
 
 #[cfg(test)]
@@ -49,6 +55,11 @@ mod tests {
         }
         show(hwnd);
         assert!(!permanent_topmost(hwnd));
+        unsafe {
+            let mut next = GetWindow(hwnd, GW_HWNDNEXT);
+            while !next.is_null() && next != other_hwnd { next = GetWindow(next, GW_HWNDNEXT); }
+            assert_eq!(next, other_hwnd, "explicit reveal must actually rise above an ordinary window");
+        }
         super::super::window::set_layer(hwnd, true);
         show(hwnd);
         assert!(permanent_topmost(hwnd));

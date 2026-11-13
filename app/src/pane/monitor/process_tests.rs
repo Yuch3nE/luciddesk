@@ -211,8 +211,9 @@ fn isolated_monitor_closes_process_and_keeps_host_sampling_empty() {
         .ok()
         .map(|s| s.parse().unwrap())
         .unwrap_or(63000);
-    handle(&state, PanelId::new(0), Event::EnableMonitor).unwrap();
     let id = PanelId::new(0);
+    let options = Preferences { enabled: true, ..Preferences::load().unwrap() };
+    handle(&state, id, Event::MonitorOptions(options)).unwrap();
     for cycle in 1..=cycles {
         if cycle != 1 {
             handle(&state, id, Event::MonitorOptions(Preferences::default())).unwrap();

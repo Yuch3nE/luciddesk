@@ -8,6 +8,14 @@
 
 独立 Shell 视图需将注册消息 `FILE_EXPLORER_CONTEXTMENU_INVOKEMENUITEM` 转发到菜单 Presenter 的 `Invoke`。消息编号及命令编号由当前运行环境确定，不能硬编码数值。窗口命中只说明输入到达，不代表 Shell 命令已执行；验证时同时检查命令路由与最终操作结果。
 
+## 回退与恢复
+
+精简菜单初始化失败时，本次调用使用常规 Shell 菜单。回退宿主不进入后续精简菜单的复用路径：下一次右键重新创建宿主并尝试 Presenter，避免一次暂时性失败使整个会话一直显示旧菜单。已成功初始化的精简菜单仍复用宿主；有未关闭命令窗口的旧宿主按原有规则保留。
+
+正式版保留 Presenter 状态与初始化 HRESULT；诊断级别为 `warn` 或更详细时，`shell.menu` 记录回退原因及下一次调用重试策略。现有 `error` 级别不会记录这类正常回退警告。系统接口不兼容时仍可使用常规菜单，并不保证每次重试都恢复精简样式。
+
+回退的常规菜单在打开前暂时启用跟随系统的主题策略，再读取 Windows 应用深浅色偏好，避免进程已有的强制浅色／深色影响判断。高对比度仍交给系统绘制；菜单关闭后恢复原有进程策略。
+
 ## 视图与线程分工
 
 Pane 保留现有图标绘制、布局、选择和编辑器。真实桌面持续过滤 Pane 中的项目。菜单使用另一份包含选中项目的原生 Shell 视图，两份视图不共享选择状态；既不临时恢复桌面成员，也不复制真实桌面 ListView。
@@ -121,6 +129,40 @@ Pane 将鼠标或键盘来源传给菜单。Presenter 适配层在 `DoContextMen
 私有 Presenter 创建、初始化或服务安装失败时，同一验证后的 Shell 选择集通过公开 `IContextMenu` 和 `TrackPopupMenuEx` 打开菜单，保留动态消息和 Pane 重命名转发。
 
 原生 HMENU 复用文件夹面板的系统明暗主题与 DPI 留白。每次弹出重新读取主题，高对比度沿用系统绘制；关闭后释放窗口钩子并恢复 Explorer 的主题偏好。Shell 扩展负责自己的项目、分隔线和子菜单。
+
+读取主题前必须临时设置 `AllowDark`：`ShouldAppsUseDarkMode` 同时受进程的 `ForceLight` / `ForceDark` 影响，不能直接把返回值视为用户的系统设置。保存的是切换前的进程偏好，菜单关闭后恢复该值。
+
+文件右键与文件夹背景菜单同样使用作用域主题：取消、创建失败时恢复进程偏好，选中命令时在调用 Shell 动词前恢复，避免菜单配色影响后续对话框。独立 Shell 测试和示例也嵌入 Common Controls v6 清单，以加载菜单子类化 API。对应原生回归命令：
+
+```powershell
+cargo test -p luciddesk-shell --lib native_menus_restore_process_theme_after_cancel_and_failure --locked --offline -- --ignored --test-threads=1
+```
+
+交互式桌面上的真实弹出测试会创建临时文件、调用生产回退路径、采样菜单背景并自动取消；不会执行文件命令。以下示例要求 Windows 10 1903 及以上、关闭高对比度，并先将 Windows 默认应用模式设为浅色：
+
+```powershell
+$env:LUCIDDESK_TEST_EXPECT_DARK = '0'
+$env:LUCIDDESK_TEST_PRIOR_THEME = '2' # 模拟进程残留 ForceDark
+try {
+    cargo test -p luciddesk-explorer --lib fallback_popup_matches_current_windows_theme --locked -- --ignored --test-threads=1 --nocapture
+} finally {
+    Remove-Item Env:LUCIDDESK_TEST_EXPECT_DARK, Env:LUCIDDESK_TEST_PRIOR_THEME
+}
+```
+
+深色验证改为 `EXPECT_DARK=1`、`PRIOR_THEME=3`，验证结束恢复原系统设置。此测试在独立进程中运行真实 Shell 菜单，不能替代安装后在 Explorer 宿主中的端到端验收。Windows 11 构建 26300.9818 上，两种相反进程偏好的实测背景分别为浅色 `#F9F9F9`、深色 `#2C2C2C`。
+
+Explorer 宿主验证使用独立探针，先正常退出 LucidDesk，避免两个控制端争用桌面连接：
+
+```powershell
+cargo build -p luciddesk-shell --example explorer_fallback_theme_probe --features luciddesk-explorer/menu-diagnostics --locked --offline
+cargo build -p luciddesk-explorer --features menu-diagnostics --locked --offline
+& .\target\debug\examples\explorer_fallback_theme_probe.exe "$PWD\target\debug\luciddesk_explorer.dll" dark
+```
+
+手动切换 Windows 默认应用模式后将末尾参数改为 `light`，最后恢复原模式。探针通过生产 `FilterSession` 和菜单调用链路请求 Explorer 打开临时文件菜单，校验菜单 PID 与桌面 PID 一致，采样后自动取消；连续验证两次回退，再移除注入并检查 Win11 Presenter 能重新创建。它不操作真实桌面文件或改变过滤集合。
+
+故障注入仅在 `menu-diagnostics` 构建中读取测试所有者窗口的 `LucidDesk.Test.ForceClassic` 属性；普通发布构建完全不读取此属性。诊断 DLL 不应替换正式安装目录的 DLL。结束后重新启动正常版本的 LucidDesk。2026-11-01 在构建 26300.9818 的同一 Explorer 进程中，深色与浅色各两次采样通过，解除注入后 Presenter 均恢复。
 
 ## 验证入口
 

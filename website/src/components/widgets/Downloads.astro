@@ -12,12 +12,12 @@ const editions = [
 ];
 ---
 <Section id="download">
-  <div class="overflow-hidden rounded-3xl border border-primary/15 bg-primary/5 p-6 sm:p-10 lg:p-12">
+  <div class="overflow-hidden rounded-3xl border border-line bg-surface p-6 sm:p-10 lg:p-12">
     <div class="grid gap-10 lg:grid-cols-[1fr_1.05fr] lg:gap-16">
       <div>
         <p class="mb-4 text-xs font-semibold tracking-widest text-primary dark:text-blue-300">{t("开始使用")}</p>
         <h2 class="text-3xl font-bold leading-snug tracking-tight text-heading sm:text-4xl">{lang === 'en' ? 'A clearer desktop starts here.' : <><span class="block">从今天开始，</span><span class="block">给桌面留点余地。</span></>}</h2>
-        <p class="mt-5 text-sm leading-7 text-muted">Windows 10 / 11 · x64<br/>{lang === 'en' ? 'Free and open source. No account needed.' : '免费、开源，无需注册账号。'}</p>
+        <p class="mt-5 text-sm leading-7 text-muted">{lang === 'en' ? 'Requires Windows 10 1809 (build 17763) or later, or Windows 11 · x64.' : '最低要求：Windows 10 1809（Build 17763）或更新版本，或 Windows 11 · x64。'}<br/>{lang === 'en' ? 'Free and open source. No account needed.' : '免费、开源，无需注册账号。'}</p>
         <Button variant="primary" text={t("前往 GitHub 下载")} icon="download" href="https://github.com/Yuch3nE/luciddesk/releases/latest" class="mt-7"/>
         <p class="mt-4 max-w-sm text-xs leading-6 text-muted">{lang === 'en' ? 'On the release page, open Assets and choose a package using the filename below.' : '在发布页展开 Assets，按文件名后缀选择安装包。'}</p>
       </div>

@@ -866,6 +866,7 @@ fn activation_releases_state_and_model_before_shell_reentry() {
             0
         );
         DispatchMessageW(&message);
+        while !called.get() && PeekMessageW(&mut message, hwnd, window::RUN_POSTED_ACTION, window::RUN_POSTED_ACTION, PM_REMOVE) != 0 { DispatchMessageW(&message); }
     }
     assert!(called.get());
     let root = tempfile::tempdir().unwrap();
@@ -905,6 +906,7 @@ fn activation_releases_state_and_model_before_shell_reentry() {
         let hwnd = state.borrow().views.iter().find(|v| v.id == id).unwrap().window.hwnd().cast();
         assert_ne!(PeekMessageW(&mut message, hwnd, window::RUN_POSTED_ACTION, window::RUN_POSTED_ACTION, PM_REMOVE), 0);
         DispatchMessageW(&message);
+        while !opened.get() && PeekMessageW(&mut message, hwnd, window::RUN_POSTED_ACTION, window::RUN_POSTED_ACTION, PM_REMOVE) != 0 { DispatchMessageW(&message); }
     }
     assert!(opened.get());
     folder::EntryMode::Inline.save(&state.borrow().store).unwrap();

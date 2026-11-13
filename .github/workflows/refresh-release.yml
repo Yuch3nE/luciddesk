@@ -60,6 +60,8 @@ jobs:
           github-token: ${{ github.token }}
       - name: Verify and replace existing release packages
         env:
+          UPDATE_RSA_MODULUS: ${{ vars.UPDATE_RSA_MODULUS }}
+          UPDATE_PRIVATE_KEY: ${{ secrets.UPDATE_PRIVATE_KEY }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ steps.request.outputs.release_tag }}

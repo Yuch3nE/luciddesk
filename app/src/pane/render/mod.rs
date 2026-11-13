@@ -68,6 +68,7 @@ pub struct Renderer {
     frame_cache: std::cell::RefCell<canvas::FrameCache>,
     monitor: Option<super::monitor::Drawing>,
     family: String,
+    font_revision: u64,
     language: &'static str,
     #[cfg(test)]
     offscreen_device: Option<windows_canvas::GpuDevice>,
@@ -305,6 +306,7 @@ impl Renderer {
         Ok(Self {
             monitor: None,
             family: family.clone(),
+            font_revision: assets::font_revision(),
             language: crate::i18n::language(),
             #[cfg(test)]
             offscreen_device: None,
@@ -495,9 +497,13 @@ impl Renderer {
         if model.monitor.is_some() && self.monitor.is_none() {
             self.monitor = Some(super::monitor::Drawing::new()?);
         }
-        if self.family != super::fonts::family() || self.language != crate::i18n::language() {
+        if self.font_revision != assets::font_revision()
+            || self.family != super::fonts::family()
+            || self.language != crate::i18n::language()
+        {
             let fresh = Self::new()?;
             self.family = fresh.family;
+            self.font_revision = fresh.font_revision;
             self.language = fresh.language;
             self.labels = fresh.labels;
             self.title = fresh.title;
@@ -583,7 +589,7 @@ impl Renderer {
                                     ColorF::new(base, base, base, opacity)
                                 }
                             }),
-                            super::theme::panel_border(model.dark, model.backdrop),
+                            super::theme::panel_border(model.backdrop),
                             ColorF::new(ink, ink, ink, 1.0),
                             ColorF::new(ink, ink, ink, 0.85),
                             ColorF::new(ink, ink, ink, 0.08),
@@ -1228,6 +1234,13 @@ impl Renderer {
                         canvas_result(target.cached_solid_brush(ColorF::new(0.3, 0.65, 1.0, 0.9)))?;
                     target.fill_rect(&bounds, &*fill);
                     target.draw_rect(&bounds, &*border, 1.0 / scale);
+                }
+                // The real-desktop regression samples composition content, not
+                // Acrylic's changing background tint or a separate child HWND.
+                #[cfg(test)]
+                if model.title == "Shell visibility regression" {
+                    let marker = canvas_result(target.cached_solid_brush(ColorF::new(1.0, 0.0, 1.0, 1.0)))?;
+                    target.fill_rect(&Rect::from_xywh(10.0, 45.0, 30.0, 25.0), &*marker);
                 }
                 let result = target.finish();
                 // Retain only backgrounds used by this frame, including after resize,

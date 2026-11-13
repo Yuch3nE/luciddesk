@@ -1304,6 +1304,9 @@ desktop-gesture-title = 双击隐藏桌面
 desktop-gesture-description = 双击桌面空白处隐藏所有图标和面板，再次双击恢复。
 
 update-installed-version = 当前版本 { $version }
+update-install = 下载并更新
+update-preparing = 正在准备更新…
+update-restart = 已验证 { $version }。现在退出 LucidDesk、安装更新并重新打开？
 update-download = 下载新版本
 
 
@@ -1370,3 +1373,32 @@ backup-restore-state-changed = 恢复准备期间配置已变化，已取消恢�
 
 ui-search-copy-path = 复制完整路径
 ui-search-more-actions = 更多操作
+
+# Desktop classification
+classification-title = 自动分类
+classification-description = 将未分组图标按规则放入桌面分组。不会移动磁盘文件。
+classification-auto = 自动整理新图标
+classification-auto-description = 规则保存后立即用于新图标；已有图标可点击一键整理。
+classification-rules = 分类规则
+classification-priority = 从上到下匹配，第一个可用规则生效。
+classification-add = 添加规则
+classification-run = 一键整理桌面
+classification-empty = 尚无规则
+classification-add-hint = 添加规则并选择目标桌面分组。
+classification-missing = 目标分组不存在
+classification-extensions = 扩展名
+classification-name = 名称包含（可选）
+classification-edit = 编辑规则
+classification-delete = 删除
+classification-up = 上移
+classification-down = 下移
+classification-result = 已整理图标数量
+classification-no-target = 请先创建并解锁一个桌面分组。
+classification-conflict = 规则已被其他操作修改，请重新打开编辑器。
+classification-target = 目标分组
+classification-extensions-hint = 扩展名（逗号分隔，例如 pdf, docx；至少填写一个条件）
+classification-save = 保存
+classification-cancel = 取消
+
+dialog-confirm = 确定
+dialog-cancel = 取消

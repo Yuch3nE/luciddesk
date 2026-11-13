@@ -47,6 +47,8 @@ test('correct only the requested release, preserving tagged history and excludin
   const tagged = '# Changelog\n\n## 0.23.0 · date\n\nOld notes\n\n## 0.22.2\n\nTagged history\n';
   const main = '# Changelog\n\n## 0.24.0\n\nFuture\n\n## 0.23.0 · date\n\nCorrected notes\n\n## 0.22.2\n\nChanged history\n';
   assert.equal(correctReleaseNotes(tagged, main, '0.23.0'), tagged.replace('Old notes', 'Corrected notes'));
+  const intermediate = tagged.replace('## 0.22.2', '## 0.22.3\n\nIntermediate notes\n\n## 0.22.2');
+  assert.equal(correctReleaseNotes(intermediate, main, '0.23.0'), tagged.replace('Old notes', 'Corrected notes'));
   assert.equal(correctReleaseNotes(tagged, main.replaceAll('\n', '\r\n'), '0.23.0').replaceAll('\r\n', '\n'), tagged.replace('Old notes', 'Corrected notes'));
   for (const invalid of ['## 0.24.0\n\nOther', '## 0.23.0\n\n', main + '\n## 0.23.0\n\nDuplicate', main + '\n## 0.23.0\n']) {
     assert.throws(() => correctReleaseNotes(tagged, invalid, '0.23.0'), /one nonempty/);
@@ -114,6 +116,15 @@ test('import exact release documents and reject mismatched version or commit', a
     assert.match(cliBytes.toString(), /Corrected CLI/);
     assert.equal(docManifest.documents['docs/cli.md'], createHash('sha256').update(cliBytes).digest('hex'));
     assert.doesNotMatch(await readFile(join(source, 'docs/cli.md'), 'utf8'), /Corrected CLI/);
+    // A stale privacy marker must identify the file and leave all build inputs intact.
+    const privacy = await readFile(join(target, 'PRIVACY.en.md'));
+    const manifestBefore = await readFile(join(target, 'website/public/release.json'));
+    await writeFile(join(target, 'PRIVACY.en.md'), '<!-- release-doc-version: 0.22.0 -->\n# Privacy\n## Policy\n');
+    await assert.rejects(syncReleaseDocs(source, target, 'v0.23.0', '', target),
+      /PRIVACY\.en\.md: document version 0\.22\.0 must match release 0\.23\.0/);
+    assert.deepEqual(await readFile(join(target, 'docs/cli.md')), cliBytes);
+    assert.deepEqual(await readFile(join(target, 'website/public/release.json')), manifestBefore);
+    await writeFile(join(target, 'PRIVACY.en.md'), privacy);
     // An invalid translation must not partially overwrite build inputs.
     await writeFile(join(target, 'CHANGELOG.en.md'), '## 0.24.0\n\nWrong version\n');
     const before = await readFile(join(target, 'CHANGELOG.md'));

@@ -1304,6 +1304,9 @@ desktop-gesture-title = 두 번 클릭하여 바탕 화면 숨기기
 desktop-gesture-description = 바탕 화면의 빈 공간을 두 번 클릭하면 모든 아이콘과 패널을 숨기고, 다시 두 번 클릭하면 복원합니다.
 
 update-installed-version = 현재 버전 { $version }
+update-install = 다운로드 및 업데이트
+update-preparing = 업데이트 준비 중…
+update-restart = 버전 { $version } 검증이 완료되었습니다. LucidDesk를 종료하고 업데이트한 뒤 다시 열까요?
 update-download = 업데이트 다운로드
 
 
@@ -1370,3 +1373,32 @@ backup-restore-state-changed = 복원 준비 중 설정이 변경되어 복원�
 
 ui-search-copy-path = 전체 경로 복사
 ui-search-more-actions = 추가 작업
+
+# Desktop classification
+classification-title = Automatic classification
+classification-description = Group unassigned desktop icons using rules. Files stay in place.
+classification-auto = Automatically group new icons
+classification-auto-description = Saved rules apply to new icons. Use Organize now for existing icons.
+classification-rules = Classification rules
+classification-priority = Rules run from top to bottom; the first available match wins.
+classification-add = Add rule
+classification-run = Organize now
+classification-empty = No rules yet
+classification-add-hint = Add a rule and select a desktop group.
+classification-missing = Target group missing
+classification-extensions = Extensions
+classification-name = Name contains (optional)
+classification-edit = Edit rule
+classification-delete = Delete
+classification-up = Move up
+classification-down = Move down
+classification-result = Icons organized
+classification-no-target = Create and unlock a desktop group first.
+classification-conflict = Rules changed elsewhere. Reopen the editor.
+classification-target = Target group
+classification-extensions-hint = Extensions (comma separated, e.g. pdf, docx; enter at least one condition)
+classification-save = Save
+classification-cancel = Cancel
+
+dialog-confirm = 확인
+dialog-cancel = 취소

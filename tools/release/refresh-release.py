@@ -60,8 +60,21 @@ def main():
     release = json.loads(gh("api", f"repos/{{owner}}/{{repo}}/releases/tags/{tag}"))
     assert not release["draft"], "Expected a published release"
     files = verify_packages(Path("artifacts"), tag, sha)
+    feed = Path("update.json")
+    subprocess.run(["pwsh", "-NoProfile", "-File", str(Path(__file__).with_name("sign-update.ps1")),
+                    "artifacts", tag, str(feed)], check=True)
+    if feed.is_file():
+        files.append(feed)
+    elif any(asset["name"] == feed.name for asset in release["assets"]):
+        raise ValueError("Refreshing signed assets requires the release signing key")
     # Replace matching names first; remove obsolete packages only after upload verification.
     gh("release", "upload", tag, *(str(path) for path in files), "--clobber")
+    # A refresh may target an older release than the workspace checkout.
+    version_file = Path("release-metadata/version.json")
+    version_file.parent.mkdir(exist_ok=True)
+    version_file.write_text(json.dumps({"version": tag.removeprefix("v")}, indent=2) + "\n", encoding="utf-8")
+    gh("release", "upload", tag, str(version_file), "--clobber")
+    files.append(version_file)
     published = json.loads(gh("api", f"repos/{{owner}}/{{repo}}/releases/tags/{tag}"))
     by_name = {asset["name"]: asset for asset in published["assets"]}
     for path in files:

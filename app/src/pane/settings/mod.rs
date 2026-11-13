@@ -14,7 +14,7 @@ use luciddesk_core::{Backdrop, PanelTheme};
 use windows_canvas::ID2D1DeviceContext;
 use windows_sys::Win32::{
     Graphics::Gdi::*,
-    UI::{HiDpi::GetDpiForWindow, Input::KeyboardAndMouse::*, WindowsAndMessaging::*},
+    UI::{ Input::KeyboardAndMouse::*, WindowsAndMessaging::*},
 };
 const FONT_LOAD_TIMER: usize = 0x4c5046;
 const UPDATE_TIMER: usize = 0x4c5056;
@@ -56,6 +56,7 @@ use windows_sys::Win32::UI::Controls::WM_MOUSELEAVE;
 
 #[derive(Clone)]
 enum Action {
+    Classification(classification::Command),
     Dropdown(std::sync::Arc<[(String, Action, bool)]>),
     PluginEnabled(String, bool),
     PluginPage(String),
@@ -78,6 +79,7 @@ enum Action {
     ProjectLink(&'static str),
     CopyDiagnostics,
     Update,
+    InstallUpdate,
     AutoCheckUpdates(bool),
     Window(u32),
     Page(usize),
@@ -154,6 +156,7 @@ mod painter;
 use painter::Painter;
 
 mod actions;
+mod classification;
 mod agent;
 mod host;
 pub(super) use host::{show, show_monitor};

@@ -36,11 +36,15 @@ pub struct Surface {
 
 impl Surface {
     #[cfg(test)]
+    pub(super) fn has_host_backdrop(&self) -> bool {
+        self.acrylic.as_ref().is_some_and(super::acrylic::Acrylic::has_host_backdrop)
+    }
+
+    #[cfg(test)]
     pub(super) fn defer_frame_for_test(&self, duration: std::time::Duration) {
         self.retry_at.set(Some(std::time::Instant::now() + duration));
     }
 
-    #[cfg(test)]
     pub fn current_opacity(&self) -> f32 {
         self.opacity.get()
     }

@@ -39,7 +39,7 @@ AppUpdatesURL=https://github.com/Yuch3nE/luciddesk/releases
 DefaultDirName={autopf}\LucidDesk
 DefaultGroupName={#ProductName}
 PrivilegesRequired=lowest
-PrivilegesRequiredOverridesAllowed=dialog
+PrivilegesRequiredOverridesAllowed=dialog commandline
 UsePreviousPrivileges=yes
 ArchitecturesAllowed=x64os
 ArchitecturesInstallIn64BitMode=x64os
@@ -86,6 +86,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "{#SourcePath}\luciddesk.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourcePath}\luciddesk_explorer.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourcePath}\luciddesk-cli.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourcePath}\updater.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourcePath}\plugins\*.dll"; DestDir: "{app}\plugins"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#SourcePath}\skills\luciddesk-control\SKILL.md"; DestDir: "{app}\skills\luciddesk-control"; Flags: ignoreversion
 Source: "{#SourcePath}\skills\luciddesk-control\references\desktop-layout.md"; DestDir: "{app}\skills\luciddesk-control\references"; Flags: ignoreversion

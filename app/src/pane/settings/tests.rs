@@ -2340,7 +2340,7 @@ fn grouped_navigation_keeps_routes_selection_and_scrolling_in_all_languages() {
             let builtin: Vec<_> = entries.iter().filter_map(|entry| match entry.action {
                 Action::Page(id) if id != 15 => Some(id), _ => None,
             }).collect();
-            assert_eq!(builtin, [13, 11, 0, 1, 8, 4, 3, 6, 5]);
+            assert_eq!(builtin, [13, 11, 0, 1, 8, 4, 16, 3, 6, 5]);
             let headings: Vec<_> = entries.iter().filter_map(|entry| {
                 entry.section.and_then(|_| match entry.action { Action::Page(id) => Some(id), _ => None })
             }).collect();
@@ -2410,7 +2410,8 @@ fn available_update_highlights_version_and_download_in_all_languages() {
                 let (title, _, style) = body.text.iter().find(|(_, text, _)| text.contains("99.1.2")).unwrap();
                 assert_eq!(*style, Tokens::STATUS_GOOD);
                 let download = body.controls.iter().find(|c| matches!(c.action,
-                    Action::ProjectLink(url) if url == crate::updates::PAGE)).unwrap();
+                    Action::InstallUpdate)).unwrap();
+                assert!(body.controls.iter().any(|c| matches!(c.action, Action::ProjectLink(url) if url == crate::updates::PAGE)));
                 assert!(download.selected && download.enabled);
                 let check = body.controls.iter().find(|c| matches!(c.action, Action::Update)).unwrap();
                 assert!(!check.selected);

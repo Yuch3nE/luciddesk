@@ -202,6 +202,7 @@ pub(super) fn pages() -> Vec<(usize, &'static str, &'static str)> {
         (1, crate::i18n::text("ui-panel-layout"), "\u{f0e2}"),
         (8, crate::i18n::text("ui-folder-panels"), "\u{e8b7}"),
         (4, crate::i18n::text("ui-everything-search"), "\u{e721}"),
+        (16, crate::i18n::text("classification-title"), "\u{e8b7}"),
         (3, crate::i18n::text("ui-file-preview"), "\u{e890}"),
         (6, crate::i18n::text("ui-backup-restore"), "\u{e81c}"),
         (5, crate::i18n::text("ui-about"), "\u{e946}"),
@@ -795,15 +796,20 @@ pub(super) fn about_updates(
     let status = updates.status();
     let current = crate::i18n::format("update-installed-version",
         &[("version", env!("CARGO_PKG_VERSION").into())]);
+    let installable = available && updates.can_install();
     let download = (
-        crate::i18n::text(if available { "update-download" } else { "update-open-page" }),
-        Action::ProjectLink(crate::updates::PAGE),
+        crate::i18n::text(if installable { "update-install" } else { "update-open-page" }),
+        if installable { Action::InstallUpdate } else { Action::ProjectLink(crate::updates::PAGE) },
     );
     let check = (crate::i18n::text("update-check"), Action::Update);
+    let mut actions = if available { vec![download, check] } else { vec![check, download] };
+    if installable {
+        actions.push((crate::i18n::text("update-open-page"), Action::ProjectLink(crate::updates::PAGE)));
+    }
     form.actions_with_toggle(
         if available { &status } else { crate::i18n::text("update-title") },
         if available { &current } else { &status },
-        if available { vec![download, check] } else { vec![check, download] },
+        actions,
         (crate::i18n::text("update-auto-check"), Action::AutoCheckUpdates(!auto_check), auto_check),
         available,
     );

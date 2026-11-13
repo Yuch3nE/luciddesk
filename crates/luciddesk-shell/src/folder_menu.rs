@@ -84,7 +84,7 @@ pub fn show_folder_menu(owner: HWND, path: &Path, point: POINT) -> Result<Folder
             let _ = with_site.SetSite(&site);
         }
     }
-    luciddesk_menu::apply_theme(owner.0);
+    let theme = luciddesk_menu::apply_scoped_theme(owner.0);
     unsafe {
         let menu = Menu(CreatePopupMenu()?);
         context
@@ -121,6 +121,7 @@ pub fn show_folder_menu(owner: HWND, path: &Path, point: POINT) -> Result<Folder
         .0;
         drop(frame);
         drop(messages);
+        drop(theme);
         if chosen == 0 {
             return Ok(FolderMenuResult::Cancelled);
         }

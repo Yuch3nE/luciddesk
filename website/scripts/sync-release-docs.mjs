@@ -13,11 +13,11 @@ export function validateManualPair(manuals, version) {
   if (manuals.some(text => !/^# .+/m.test(text) || !/^## .+/m.test(text))) throw new Error('Manual content is incomplete');
   return true;
 }
-export function validateReleaseDoc(text, version) {
+export function validateReleaseDoc(text, version, file = 'Document') {
   const marker = text.match(/^<!-- release-doc-version: (\d+\.\d+\.\d+) -->/m);
   if (!marker) return false;
-  if (marker[1] !== version) throw new Error('Document version must match the release');
-  if (!/^# .+/m.test(text) || !/^## .+/m.test(text)) throw new Error('Document content is incomplete');
+  if (marker[1] !== version) throw new Error(`${file}: document version ${marker[1]} must match release ${version}`);
+  if (!/^# .+/m.test(text) || !/^## .+/m.test(text)) throw new Error(`${file}: document content is incomplete`);
   return true;
 }
 // Only the matching release section may be corrected; future releases and older
@@ -34,7 +34,18 @@ export function correctReleaseNotes(original, corrected, version) {
     return matches[0];
   };
   const from = section(original), to = section(corrected);
-  return original.slice(0, from.start) + corrected.slice(to.start, to.end).trimEnd() + '\n\n' + original.slice(from.end);
+  // Main may consolidate unpublished intermediate versions into this release.
+  // Keep tagged history starting at the next retained version, without duplicates.
+  const nextVersion = corrected.slice(to.end).match(/^##[ \t]+(\d+\.\d+\.\d+)\b/m)?.[1];
+  const historyStart = nextVersion ? sectionForVersion(original, nextVersion) : from.end;
+  return original.slice(0, from.start) + corrected.slice(to.start, to.end).trimEnd() + '\n\n' + original.slice(historyStart);
+}
+
+function sectionForVersion(text, version) {
+  const heading = [...text.matchAll(/^##[ \t]+([^\r\n]+)\r?$/gm)]
+    .find(match => match[1].trim().split(/\s/)[0] === version);
+  if (!heading) throw new Error(`Missing retained changelog version ${version}`);
+  return heading.index;
 }
 
 export async function syncReleaseDocs(source, targetRoot, tag, expectedCommit = '', correctionsRoot = '') {
@@ -61,7 +72,7 @@ export async function syncReleaseDocs(source, targetRoot, tag, expectedCommit = 
     if (correctedManuals && manualFiles.includes(file)) bytes = Buffer.from(manuals[manualFiles.indexOf(file)]);
     if (correctionsRoot && !file.startsWith('CHANGELOG') && !manualFiles.includes(file)) {
       const text = await readFile(resolve(correctionsRoot, file), 'utf8');
-      if (validateReleaseDoc(text, version)) {
+      if (validateReleaseDoc(text, version, file)) {
         bytes = Buffer.from(text);
         correctedDocuments.push(file);
       }

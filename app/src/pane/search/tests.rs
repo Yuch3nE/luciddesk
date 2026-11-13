@@ -49,6 +49,9 @@ fn worker_exit_after_delivering_page_preserves_successful_results() {
 #[ignore = "Activates real windows; run alone in an interactive desktop session"]
 fn editor_click_raises_search_among_panes_but_tray_activation_stays_on_desktop() {
     use super::*;
+    use super::super::window::{
+        DesktopPane, attach_desktop, start_desktop, start_desktop_diagnostics,
+    };
     let _sta = crate::pane::test_support::apartment();
     let state = Rc::new(RefCell::new(super::super::tests::test_state()));
     super::super::handle(&state, luciddesk_core::PanelId::new(0), Event::EnableSearch).unwrap();
@@ -77,6 +80,9 @@ fn editor_click_raises_search_among_panes_but_tray_activation_stays_on_desktop()
         assert!(above(app_hwnd, hwnd), "tray activation must retain the desktop layer");
         ShowWindow(peer_hwnd, SW_SHOWNOACTIVATE);
         SetWindowSubclass(peer_hwnd, Some(super::super::window::borderless_proc), 1, 0);
+        attach_desktop(peer_hwnd, DesktopPane::Search);
+        start_desktop(peer_hwnd);
+        start_desktop_diagnostics(peer_hwnd);
         super::super::window::set_layer(peer_hwnd, false);
         SetFocus(edit(hwnd));
         for message in [WM_MOUSEACTIVATE, WM_LBUTTONDOWN] {
@@ -100,6 +106,11 @@ fn editor_click_raises_search_among_panes_but_tray_activation_stays_on_desktop()
         assert_eq!(GetWindowLongW(edit(hwnd), GWL_EXSTYLE) as u32 & WS_EX_TOPMOST, 0,
             "editor must leave the topmost band with its pane");
         assert!(above(app_hwnd, edit(hwnd)));
+        SetFocus(edit(hwnd));
+        SetWindowTextW(edit(hwnd), wide("搜索 regression").as_ptr());
+        assert_eq!(text(edit(hwnd)), "搜索 regression");
+        assert_eq!(GetFocus(), edit(hwnd));
+        assert_ne!(IsWindowVisible(edit(hwnd)), 0);
     }
 }
 

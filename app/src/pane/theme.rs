@@ -12,7 +12,6 @@ pub(super) struct MaterialChrome {
     pub tab_hover: windows_canvas::ColorF,
     pub tab_inactive: windows_canvas::ColorF,
     pub tab_incoming: windows_canvas::ColorF,
-    pub border: windows_canvas::ColorF,
     pub card: windows_canvas::ColorF,
     pub card_border: windows_canvas::ColorF,
 }
@@ -77,7 +76,6 @@ pub(super) fn material_chrome(backdrop: luciddesk_core::Backdrop, dark: bool) ->
         tab_hover: tab_fill(tab_alpha * 0.4),
         tab_inactive: tab_fill(tab_alpha * 0.12),
         tab_incoming: tab_fill(tab_alpha * 0.65),
-        border: panel_border(dark, backdrop),
         card: fill(surface(card)),
         card_border: ColorF::new(
             edge_channel,
@@ -109,7 +107,7 @@ fn stroke_opacity(backdrop: luciddesk_core::Backdrop) -> f32 {
     }
 }
 
-pub fn panel_border(_dark: bool, backdrop: luciddesk_core::Backdrop) -> windows_canvas::ColorF {
+pub(super) fn panel_border(backdrop: luciddesk_core::Backdrop) -> windows_canvas::ColorF {
     // SurfaceStrokeColorDefault is identical in Light and Default (dark).
     stroke_color(0x66757575, stroke_opacity(backdrop))
 }
@@ -370,7 +368,7 @@ mod tests {
                     assert!(chrome.tab_active.a > chrome.tab_hover.a);
                     assert!(chrome.tab_hover.a > chrome.tab_inactive.a);
                     assert!(chrome.card_border.a > 0.0);
-                    let current = [chrome.tab_active.a, chrome.card.a, chrome.border.a];
+                    let current = [chrome.tab_active.a, chrome.card.a];
                     assert!(current.iter().all(|a| (0.0..=1.0).contains(a)));
                     if let Some(previous) = previous {
                         for (now, before) in current.into_iter().zip(previous) {
@@ -386,34 +384,26 @@ mod tests {
     #[test]
     fn border_follows_background_opacity_and_material_strength() {
         use luciddesk_core::Backdrop;
-        for dark in [false, true] {
-            let full = panel_border(
-                dark,
-                Backdrop::Solid {
-                    color: 0x123456,
-                    opacity: 1.0,
-                },
-            );
-            for opacity in [0.0, 0.25, 0.5, 1.0] {
-                let border = panel_border(
-                    dark,
-                    Backdrop::Solid {
-                        color: 0x123456,
-                        opacity,
-                    },
-                );
-                assert!((border.a - full.a * opacity).abs() < 0.00001);
-                assert_eq!((border.r, border.g, border.b), (full.r, full.g, full.b));
-            }
-            for material in [Backdrop::Acrylic, Backdrop::Mica] {
-                let alphas: Vec<_> = [0, 25, 50, 75, 100]
-                    .into_iter()
-                    .map(|strength| panel_border(dark, material.with_strength(strength)).a)
-                    .collect();
-                assert_eq!(alphas[0], 0.0);
-                assert!(alphas.windows(2).all(|pair| pair[0] <= pair[1]));
-                assert_eq!(alphas[2], panel_border(dark, material).a);
-            }
+        let full = panel_border(Backdrop::Solid {
+            color: 0x123456,
+            opacity: 1.0,
+        });
+        for opacity in [0.0, 0.25, 0.5, 1.0] {
+            let border = panel_border(Backdrop::Solid {
+                color: 0x123456,
+                opacity,
+            });
+            assert!((border.a - full.a * opacity).abs() < 0.00001);
+            assert_eq!((border.r, border.g, border.b), (full.r, full.g, full.b));
+        }
+        for material in [Backdrop::Acrylic, Backdrop::Mica] {
+            let alphas: Vec<_> = (0..=100)
+                .map(|strength| panel_border(material.with_strength(strength)).a)
+                .collect();
+            assert!(alphas.iter().all(|alpha| (0.0..=1.0).contains(alpha)));
+            assert!(alphas.is_sorted());
+            assert_eq!(alphas[0], 0.0);
+            assert_eq!(alphas[50], panel_border(material).a);
         }
     }
 

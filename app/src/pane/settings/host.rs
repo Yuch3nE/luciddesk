@@ -92,6 +92,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
     let mut style_input: Option<(bool, String)> = None;
     let mut cached_scene = None;
     let mut scene_key = None;
+    let mut classification_value = None;
     let mut scroll_offset = 0.0f32;
     let mut scroll_drag = None;
     let mut scroll_page = page;
@@ -452,6 +453,11 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     snapshot_changed = true;
                 }
                 let fresh_cli = control::enabled(&state.store);
+                if page == 16 {
+                    let fresh = state.store.settings().ok().and_then(|v| v.get("desktop.classification").cloned());
+                    snapshot_changed |= classification_value != fresh;
+                    classification_value = fresh;
+                }
                 snapshot_changed |= cli_enabled != fresh_cli;
                 cli_enabled = fresh_cli;
                 let fresh_auto_check = crate::updates::automatic_enabled(&state.store);
@@ -497,6 +503,9 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 selected = p.id();
             }
             let dark = theme::is_dark(appearance.0);
+            luciddesk_window::set_message_theme(match appearance.0 {
+                PanelTheme::System => None, PanelTheme::Dark => Some(true), PanelTheme::Light => Some(false),
+            });
             let mut bounds = RECT::default();
             unsafe {
                 GetClientRect(hwnd, &raw mut bounds);
@@ -539,6 +548,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     ) };
                 if let Some(id) = &selected_plugin { plugin_content::draw(&mut body, w, id, plugin_document.clone().unwrap_or_else(|| plugin_content::load(id))); }
                 else if page == 15 { plugin_page::draw(&mut body, w); }
+                else if page == 16 { classification::draw(&mut body, w, &state.borrow()); }
                 if page == 13 {
                     layout::general(&mut body, w, startup.status(), startup.busy(), cli_enabled, skill_prompt_copied, &chosen_language);
                     layout::desktop_gesture(&mut body, w, desktop_double_click);

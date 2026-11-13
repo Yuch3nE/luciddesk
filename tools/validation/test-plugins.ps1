@@ -13,7 +13,8 @@ try {
     $env:LUCIDDESK_TEST_SETTINGS_PLUGIN = $null
     $common = @('--locked', '--target-dir', $TargetDirectory)
     if ($Offline) { $common += '--offline' }
-    & cargo test -p luciddesk-plugin-api -p luciddesk-plugin-host -p luciddesk-monitor @common -- --test-threads=1
+    # Run host unit tests and doctests once, together with the real DLL cases below.
+    & cargo test -p luciddesk-plugin-api -p luciddesk-monitor @common -- --test-threads=1
     if ($LASTEXITCODE -ne 0) { throw 'Plugin unit tests failed.' }
     $artifacts = & cargo test -p luciddesk --bin luciddesk @common --no-run --message-format=json-render-diagnostics
     if ($LASTEXITCODE -ne 0) { throw 'Plugin host build failed.' }
@@ -50,7 +51,9 @@ try {
     Move-Item -LiteralPath $dll -Destination $disabled
     try {
         $env:LUCIDDESK_TEST_MONITOR_PLUGIN = '0'
-        & $executable @filters --test-threads=1 | Out-Host
+        # Controller IPC/lifecycle tests do not load the monitor DLL and already ran above.
+        # Keep the content, panel lifecycle and settings tests that branch on availability.
+        & $executable @filters --skip pane::monitor::process:: --test-threads=1 | Out-Host
         if ($LASTEXITCODE -ne 0) { throw 'Missing-plugin host tests failed.' }
     } finally {
         Move-Item -LiteralPath $disabled -Destination $dll

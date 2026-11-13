@@ -49,7 +49,19 @@ mod tests {
         activate(&state);
         for view in &state.borrow().views { assert_eq!(unsafe { IsWindowVisible(view.window.hwnd().cast()) }, 0); }
         state.borrow().store.save_preference("show_panels_enabled", "1").unwrap();
+        let other = windows_window::Window::new("Reveal foreground regression")
+            .style(WS_POPUP).size(100, 100).create().unwrap();
+        unsafe {
+            ShowWindow(other.hwnd().cast(), SW_SHOW);
+            SetForegroundWindow(other.hwnd().cast());
+        }
+        let foreground = unsafe { GetForegroundWindow() };
+        assert!(!foreground.is_null());
+        assert!(state.borrow().views.iter().all(|view| view.window.hwnd().cast() != foreground),
+            "the pre-existing foreground must not be a pane");
         activate(&state);
+        assert_eq!(unsafe { GetForegroundWindow() }, foreground,
+            "show all must preserve foreground instead of activating a desktop pane");
         for (i, view) in state.borrow().views.iter().enumerate() {
             assert_ne!(unsafe { IsWindowVisible(view.window.hwnd().cast()) }, 0);
             assert_eq!(quick_reveal::permanent_topmost(view.window.hwnd().cast()), i == 1);

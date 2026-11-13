@@ -20,7 +20,7 @@ GitHub API 使用工作流自动提供的 `GITHUB_TOKEN`，无需额外 PAT。Cl
 ## 更新内容与保护
 
 - 官网代码从默认 `main` 分支读取；版本信息读取最新正式 GitHub Release，拒绝草稿、预发布和缺失安装包/校验文件的版本。
-- 从该 Release 的标签检出文档，覆盖构建工作区中的中英文手册、CLI 文档、安装说明、隐私 Markdown 和 changelog。更新日志仅用 main 中对应版本的中英文章节替换，允许发布后修正文案；不会导入 main 的未来版本或其他历史章节。仓库和标签不会被改写。独立的官网 Agent、安装和隐私介绍页仍由网站源码维护。
+- 从该 Release 的标签检出文档，覆盖构建工作区中的中英文手册、CLI 文档、安装说明、隐私 Markdown 和 changelog。更新日志仅用 main 中对应版本的中英文章节替换，允许发布后修正文案；不会导入 main 的未来版本或改写保留的历史章节；未正式发布的中间版本合并到当前章节后，导入时同步移除标签中的重复中间章节。仓库和标签不会被改写。独立的官网 Agent、安装和隐私介绍页仍由网站源码维护。
 - 标签版本必须匹配 Cargo 版本；自动触发还核对发布构建的提交。旧构建不能覆盖新发布。
 - CI API 请求失败时直接失败，禁止使用缓存版本部署。部署前再次检查最新版本。
 - 执行 `npm ci`、网站测试、类型检查、双语生成与手册链接检查，通过后使用固定 Wrangler 版本部署。部署任务串行运行，不中断正在进行的部署。
@@ -28,6 +28,24 @@ GitHub API 使用工作流自动提供的 `GITHUB_TOKEN`，无需额外 PAT。Cl
 
 ## 手动重试
 
-工作流合入并推送 GitHub 默认分支后，在 **Actions → Deploy website → Run workflow** 执行。`release_tag` 留空选择最新正式版，也可填当前最新标签，例如 `v0.23.0`；旧版本会被拒绝。此入口无需重新构建 Windows 安装包。
+工作流合入并推送 GitHub 默认分支后，在 **Actions → Deploy website → Run workflow** 执行。`release_tag` 留空选择最新正式版，也可填当前最新标签，例如 `v0.25.3`；旧版本会被拒绝。此入口无需重新构建 Windows 安装包。
 
-已经完成的发布不会因新增工作流自动补跑，首次可使用手动入口。修正已发布版本的更新日志时，同步修改 main 中的中英文对应章节，推送后手动部署，并用 `tools/release/release-notes.py` 生成同一版本的 GitHub Release 正文。两种语言都必须有唯一且非空的对应章节，否则部署失败。使用手册可通过文件顶部的 `<!-- manual-version: 0.23.0 -->` 标明适用版本：main 的两种语言都必须标注当前发布版本且包含正文，才可覆盖标签手册；版本不一致会阻止部署。更新应用版本时同步更新此标记。`release.json` 的 `manualCorrectionsCommit` 记录修订来源，文档哈希对应实际发布内容。CLI、安装、普通 ZIP、便携版及双语隐私说明可用 `<!-- release-doc-version: 0.23.0 -->` 标明修订对应的发布版本，匹配时使用 main 正文；版本不符或正文缺失时阻止部署。`release.json` 的 `documentCorrections` 记录修订来源和文件清单。无版本标记的文档仍按标签原文导入，不会自动删除“未发布”描述；发布前应整理好内容。本流程不移动已有标签。
+已经完成的发布不会因新增工作流自动补跑，首次可使用手动入口。修正已发布版本的更新日志时，同步修改 main 中的中英文对应章节，推送后手动部署，并用 `tools/release/release-notes.py` 生成同一版本的 GitHub Release 正文。两种语言都必须有唯一且非空的对应章节，否则部署失败。使用手册可通过文件顶部的 `<!-- manual-version: 0.25.3 -->` 标明适用版本：main 的两种语言都必须标注当前发布版本且包含正文，才可覆盖标签手册；版本不一致会阻止部署。更新应用版本时同步更新此标记。`release.json` 的 `manualCorrectionsCommit` 记录修订来源，文档哈希对应实际发布内容。CLI、安装、普通 ZIP、便携版及双语隐私说明可用 `<!-- release-doc-version: 0.25.3 -->` 标明修订对应的发布版本，匹配时使用 main 正文；版本不符或正文缺失时阻止部署。`release.json` 的 `documentCorrections` 记录修订来源和文件清单。无版本标记的文档仍按标签原文导入，不会自动删除“未发布”描述；发布前应整理好内容。本流程不移动已有标签。
+
+## 发布前检查与失败定位
+
+GitHub Release 正文按“上一正式 Release（不含）到当前版本（含）”汇总双语更新，尚未正式发布的中间版本应先按类别合并到当前正式版本章节，仓库 CHANGELOG、官网和 Release 共用该内容。生成正文时先用 `gh api --paginate --slurp repos/Yuch3nE/luciddesk/releases` 保存完整发布列表，再传给 `release-notes.py --releases-json <文件>`；构建发布和正文同步工作流均执行此流程。基线取低于当前版本的最高正式版本，排除草稿和预发布；首次正式发布包含截至当前版本的全部章节。例如 `v0.23.0 → v0.25.3` 的中间改动已统一合并到 0.25.3 章节，文档链接统一指向当前发布标签。
+
+应用发布前运行 `python -m unittest discover -s tools/validation -p test_release_notes.py`。版本标记表示文档已针对该应用版本核对，并不代表隐私条款必须改变；隐私政策正文没有变化时可保留原更新日期，但中英文适用版本标记仍需同步。
+
+按失败步骤处理，避免反复重跑同一个错误：
+
+| 步骤 | 检查内容 |
+| --- | --- |
+| Resolve latest complete release | 最新正式 Release 是否具备完整下载包和校验文件，GitHub API 是否可用 |
+| Import version-matched documentation | 标签与 Cargo 版本、构建 SHA，以及 main 中手册和发布文档标记是否匹配；同时检查两份隐私政策 |
+| Install, test and build | 锁文件安装、脚本测试、类型检查、双语版本集合、手册锚点与链接 |
+| Deploy verified website | Cloudflare Secrets 是否存在、账户及 Token 权限是否匹配；不要把 Token 写入日志 |
+| Verify public version and documentation | `/release.json`、中英文指南和更新日志是否与本次构建一致；此时部署可能已成功，先检查线上再决定重试 |
+
+修复推送到 main 后，手动运行工作流以读取新代码和文档；仅重跑旧失败任务可能仍使用旧的工作流定义。文档导入或构建阶段失败不会覆盖线上网站，也无需移动已发布的应用标签。

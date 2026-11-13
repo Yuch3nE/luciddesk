@@ -4,6 +4,14 @@
 
 本文命令均从仓库根目录执行，适用于 Windows 上的 PowerShell 7（`pwsh`）。安装器测试涉及 junction 清理，使用 PowerShell 7，避免 Windows PowerShell 5 的相关删除异常。
 
+## 应用内更新签名
+
+三个 Windows 发行包都包含独立的 `updater.exe`。应用将更新器复制到临时目录并启动；它完成下载、验签和退出确认后，等待原进程结束，再更新原目录并重启。客户端更新不需要 PowerShell。发布端签名仍使用 PowerShell 7。
+
+首次启用前，在 GitHub Actions 仓库变量 `UPDATE_RSA_MODULUS` 中填写 RSA 公钥模数的十六进制值（不含前缀），在 Secret `UPDATE_PRIVATE_KEY` 中保存对应的 PEM 私钥。使用至少 2048 位的 RSA 密钥，公钥指数为 65537。可在受控环境用 `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out release-private.pem` 生成，用 `openssl rsa -in release-private.pem -noout -modulus` 读取公钥模数。私钥须单独保管，不得提交。构建三个发行包时只需传入公钥变量。
+
+标签发布和刷新附件都会从最终包生成签名清单 `update.json`。两个变量都缺省时可继续手动发布；只配置其一或密钥不匹配会使签名失败。此前未内置公钥的用户需先通过原渠道安装首个支持更新的版本，此后可在“设置 → 关于”更新。同一发布系列须沿用密钥；更换公钥前应先用旧密钥签发带新公钥的过渡版本。
+
 ## 环境
 
 - 主要使用 Windows 11 x64 交互桌面验证，Explorer 正常运行；Windows 10 已由用户完成实机验证，平台边界见[验证与兼容边界](validation.md)。
@@ -123,7 +131,7 @@ EXE 由 `tools/packaging/build-exe.ps1` 编译，MSI 由 `tools/packaging/build-
 
 CI 的 `test_installer_payload.py` 将 EXE 清单与技能源目录比较，新增参考文件时缺项即失败；Windows 上 `test_msi_payload.py` 生成 WiX 清单并验证所有 Skill 文件的安装位置和内容，无需安装到系统。`test_refresh_release.py` 覆盖带/不带 MSI 的附件校验及损坏 MSI 的拒绝。
 
-EXE 默认采用 `lzma2/fast` 固实压缩，以较小的体积增量缩短打包时间。需要更小的安装包时使用 `-ExeCompression Max`，也可选择 `Normal`。CI 按准备脚本版本缓存 Inno 编译器。 Build CI 将 Windows 测试与发布打包放在两个独立 runner 上并行执行，分别使用 `target/ci-tests` 和 `target/production` 缓存；原有测试步骤和进程隔离保持不变。发布任务必须等待 metadata、build 和 package 全部成功，手动替换 Release 仍要求整个源工作流成功。并行打包可能在测试失败时产生供排查的构建附件，但不会因此发布。
+EXE 默认采用 `lzma2/fast` 固实压缩，以较小的体积增量缩短打包时间。需要更小的安装包时使用 `-ExeCompression Max`，也可选择 `Normal`。CI 按准备脚本版本缓存 Inno 编译器。 Build CI 将 Windows 测试与发布打包放在两个独立 runner 上并行执行，分别使用 `target/ci-tests` 和 `target/production` 缓存；需要原生状态隔离的测试仍单独运行。发布任务必须等待 metadata、build 和 package 全部成功，手动替换 Release 仍要求整个源工作流成功。并行打包可能在测试失败时产生供排查的构建附件，但不会因此发布。
 
 拆分主要缩短总等待时间，不保证减少 runner 总分钟数；冷缓存时两个任务需要各自准备依赖。首次运行会建立新的测试/发布缓存。优化前最近成功运行（40012158503）总耗时约 12 分 44 秒，其中发布构建与打包约 4 分 08 秒；实际收益应比较后续同等缓存状态的 Actions 步骤耗时，不能以本地打包速度代替。
 
@@ -133,7 +141,7 @@ EXE 默认采用 `lzma2/fast` 固实压缩，以较小的体积增量缩短打�
 
 ### 应用更新检查
 
-关于页支持自动与手动检查新版本及打开 Release 页面。`config.toml` 的 `[updates].auto_check` 默认为 `true`，启动时及之后每 24 小时检查；关闭开关会取消当前自动检查，手动检查仍可使用。运行时共享检查结果，关闭设置窗口后后台检查继续；每次运行对同一新版只自动提示一次版本号，后台失败不弹窗。检查使用后台 WinHTTP 请求 GitHub Releases API，支持 Windows 代理和显式 `HTTPS_PROXY` HTTP 代理，并比较稳定版本号（标签可有 `v` 前缀）。更新包由用户在浏览器中自行下载。
+关于页支持自动与手动检查新版本及打开 Release 页面。`config.toml` 的 `[updates].auto_check` 默认为 `true`，启动时及之后每 24 小时检查；关闭开关会取消当前自动检查，手动检查仍可使用。运行时共享检查结果，关闭设置窗口后后台检查继续；每次运行对同一新版只自动提示一次版本号，后台失败不弹窗。发布时同步维护仓库根目录的 `version.json` 与 Cargo 工作区版本。标签发布会核对版本并将文件作为 Release 附件上传。客户端通过固定路径 `releases/latest/download/version.json` 检查版本，旧版缺少附件（HTTP 404）时再请求 GitHub Releases API。请求使用后台 WinHTTP，支持 Windows 代理和显式 `HTTPS_PROXY` HTTP 代理，并比较稳定版本号（标签可有 `v` 前缀）。支持的发行版可在关于页下载并验证签名更新包，或打开发行页手动下载。
 
 验证命令（MSI 安装器测试使用随机测试产品名称和 UpgradeCode、快捷方式名称和工作区临时目录，安装与卸载自己的测试注册项）：
 
@@ -272,7 +280,7 @@ Windows 依赖版本在工作区统一管理，API 特性由各 crate 按需声�
 
 CI 运行 `cargo test -p luciddesk-cli -p luciddesk-api --locked -- --test-threads=1`，覆盖 CLI 参数、离线技能与协议，以及通信契约。版本检查同时校验 GUI、CLI、内部 crates 的继承关系和锁文件版本，以及插件的独立版本声明。
 
-布局计划、内容适配、显示器几何和任务调度测试通过 `python tools/validation/test-control-ci.py` 执行。脚本先构建测试程序，再为每项测试启动独立进程，隔离原生窗口状态；单项超时 60 秒，崩溃、失败、零项匹配或未实际执行测试均使检查失败。本地可加 `--offline --target-dir target/cli-layout-build`，CI 沿用 `CARGO_TARGET_DIR` 缓存目录。该检查不启动真实用户的主程序，不替代多显示器和 MSIX 实机验收。
+布局计划、内容适配、显示器几何和任务调度测试通过 `python tools/validation/test-control-ci.py` 执行。脚本先构建测试程序，将显示器几何换算、任务队列调度和标签缓存测试用精确名称合并到一个串行进程；其余测试仍每项启动独立进程，隔离原生窗口状态。每项保留 60 秒预算，批次按项数累加；检查实际通过数必须与选中项数一致，忽略、崩溃、失败和零项匹配均不能通过。本地可加 `--offline --target-dir target/cli-layout-build`，CI 沿用 `CARGO_TARGET_DIR` 缓存目录。该检查不启动真实用户的主程序，不替代多显示器和 MSIX 实机验收。
 
 发布包中的 CLI、协议与 Skill 一致性继续由打包脚本调用 `test-agent-package.ps1` 校验。元数据任务运行 `test_installer_payload.py`，检查 EXE 安装清单的必需文件、源路径和安装位置，拒绝通配符、递归收录及额外文档；这是脚本清单检查，不替代实际安装验收。
 
@@ -289,4 +297,4 @@ CI 使用滚动更新的 `windows-2025-vs2026` 镜像，MSVC 和 Windows SDK 跟
 - app、Shell、Explorer 的诊断 examples；插件 examples 由真实 DLL 验证构建。
 - Explorer、graphics、menu、window 的测试目标；这些 crate 的库虽作为依赖编译，但 `cfg(test)` 代码仍需独立检查。
 
-Rust 文档测试只覆盖实际含代码示例的 core、Shell、plugin-host。plugin-host 的 `compile_fail` 测试已由 `test-plugins.ps1` 中的包测试执行，独立文档步骤只运行 core 与 Shell，避免第三次重复插件文档检查。新增 crate、测试目标或文档代码示例时，需同步复核 CI 清单。诊断 feature 未启用的示例仍按既有 Cargo `required-features` 规则跳过。
+Rust 文档测试只覆盖实际含代码示例的 core、Shell、plugin-host。plugin-host 的 `compile_fail` 测试已由 `test-plugins.ps1` 中的包测试执行，独立文档步骤只运行 core 与 Shell，插件宿主的单元、真实 DLL 和文档测试统一在测试 DLL 部署后执行一次。缺少监控插件的第二轮只重跑内容、面板生命周期与设置测试；不依赖 DLL 的控制器 IPC／生命周期测试仅在第一轮执行。新增 crate、测试目标或文档代码示例时，需同步复核 CI 清单。诊断 feature 未启用的示例仍按既有 Cargo `required-features` 规则跳过。

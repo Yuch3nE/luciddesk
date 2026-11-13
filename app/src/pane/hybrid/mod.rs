@@ -1,5 +1,6 @@
 //! Pane UI with Explorer-owned desktop membership, drawing, layout and input.
 mod audit;
+mod classification;
 mod audit_schedule;
 mod icon_changes;
 mod icons;
@@ -40,6 +41,7 @@ pub(super) struct Session {
     view: isize,
     snapshot: Inventory,
     last_reconcile: Instant,
+    classification_seen: std::collections::HashSet<String>,
     audit: DesktopAudit,
     last_tick: Instant,
     tick_deferred: bool,
@@ -139,6 +141,13 @@ pub fn run(path: &Path, title: Option<String>) -> Result<(), String> {
     interface_flags::TITLE_EMOJI.load(&store)?;
     everything_settings::load(&store)?;
     let mut workspace = store.load_workspace().map_err(|e| e.to_string())?;
+    let message_theme = workspace.appearance().or_else(|| workspace.panels().first().map(|p| (p.theme(), p.backdrop())))
+        .map(|(theme, _)| theme).unwrap_or(luciddesk_core::PanelTheme::System);
+    luciddesk_window::set_message_theme(match message_theme {
+        luciddesk_core::PanelTheme::System => None,
+        luciddesk_core::PanelTheme::Dark => Some(true),
+        luciddesk_core::PanelTheme::Light => Some(false),
+    });
     // Migrate older workspaces that allowed multiple search panes.
     let duplicates: Vec<_> = workspace
         .panels()
@@ -448,6 +457,7 @@ pub(super) fn connect(state: &Rc<RefCell<PaneApp>>, _path: &Path) -> Result<(), 
         view,
         snapshot,
         last_reconcile: Instant::now(),
+        classification_seen: Default::default(),
         audit,
         last_tick: Instant::now() - Duration::from_millis(20),
         tick_deferred: false,
@@ -663,11 +673,29 @@ fn reconcile_inventory(s: &mut PaneApp) -> Result<(), String> {
     h.requested.retain(|key| live.contains(key));
     h.icon_failures.retain(|key, _| live.contains(key));
     h.last_reconcile = Instant::now();
+    classification::apply(s)?;
     queue_pane_icons(s, true);
     s.session.as_mut().unwrap().pending_workspace_save = true;
     // Persistence is retried by tick before any new membership is published.
     refresh_views(s);
     Ok(())
+}
+
+pub(super) fn organize_now(s: &mut PaneApp) -> Result<usize, String> {
+    let session = s.session.as_ref().ok_or("Desktop integration is disconnected")?;
+    if !is_alive(session) || session.menu_active.get() { return Err("Desktop integration is busy or disconnected".into()); }
+    let before = s.workspace.clone();
+    let seen = session.classification_seen.clone();
+    let count = classification::apply_mode(s, true)?;
+    if let Err(error) = s.store.save_workspace(&s.workspace) {
+        s.workspace = before;
+        s.session.as_mut().unwrap().classification_seen = seen;
+        return Err(error.to_string());
+    }
+    queue_pane_icons(s, true);
+    refresh_views(s);
+    s.wake.notify();
+    Ok(count)
 }
 
 fn persist_pending(

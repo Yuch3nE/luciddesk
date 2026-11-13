@@ -220,7 +220,7 @@ mod tests {
     }
 
     #[test]
-    fn soft_shadow_is_centered_and_does_not_duplicate_glyph_edges() {
+    fn soft_shadow_preserves_glyph_alpha_and_centered_edges() {
         let mut mask = vec![0; 81];
         mask[40] = 255;
         let pixels = compose_shadow(&mask, 9, 9, 2);
@@ -235,13 +235,6 @@ mod tests {
                 }
             }
         }
-    }
-
-    #[test]
-    fn shadow_retains_opaque_glyph_and_transparent_background() {
-        let mut mask = vec![0; 81];
-        mask[40] = 255;
-        let pixels = compose_shadow(&mask, 9, 9, 2);
         assert_eq!(&pixels[160..164], &[255, 255, 255, 255]);
         assert_eq!(&pixels[..4], &[0, 0, 0, 0]);
         assert!(
@@ -286,29 +279,24 @@ mod cache_tests {
     }
 
     #[test]
-    fn replacing_existing_entry_at_capacity_does_not_evict_another() {
-        let mut cache = LayoutCache::new();
-        for key in 0..1024 { cache.insert(key, key); }
-        cache.insert(0, 99);
-        assert_eq!(cache.entries.len(), 1024);
-        assert_eq!(cache.get(&0), Some(99));
-        assert_eq!(cache.get(&1), Some(1));
-        cache.insert(1024, 1024);
-        assert_eq!(cache.get(&2), None);
-        assert_eq!(cache.get(&0), Some(99));
-        assert_eq!(cache.entries.len(), 1024);
-    }
-    #[test]
-    fn evicts_one_least_recent_entry_and_preserves_hot_entries() {
-        let mut cache = LayoutCache::new();
-        for key in 0..1024 {
-            cache.insert(key, key);
+    fn capacity_updates_preserve_hot_entries_and_evict_only_the_oldest() {
+        for (replacement, evicted) in [(None, 1), (Some(99), 2)] {
+            let mut cache = LayoutCache::new();
+            for key in 0..1024 { cache.insert(key, key); }
+            if let Some(value) = replacement {
+                cache.insert(0, value);
+                assert_eq!(cache.entries.len(), 1024, "replacement must not evict");
+            }
+            let expected = replacement.unwrap_or(0);
+            assert_eq!(cache.get(&0), Some(expected));
+            if replacement.is_some() {
+                assert_eq!(cache.get(&1), Some(1), "replacement must preserve other entries");
+            }
+            cache.insert(1024, 1024);
+            assert_eq!(cache.entries.len(), 1024);
+            assert_eq!(cache.get(&evicted), None, "replacement={replacement:?}");
+            assert_eq!(cache.get(&0), Some(expected));
+            assert_eq!(cache.get(&1023), Some(1023));
         }
-        assert_eq!(cache.get(&0), Some(0));
-        cache.insert(1024, 1024);
-        assert_eq!(cache.entries.len(), 1024);
-        assert_eq!(cache.get(&1), None);
-        assert_eq!(cache.get(&0), Some(0));
-        assert_eq!(cache.get(&1023), Some(1023));
     }
 }

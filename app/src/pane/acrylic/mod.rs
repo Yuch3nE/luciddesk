@@ -66,11 +66,9 @@ pub struct Acrylic {
 }
 
 impl Acrylic {
-    #[allow(dead_code)] // Used by the standalone backdrop probe.
-    pub fn new(hwnd: HWND) -> Result<Self> {
-        let material = Self::new_with_opacity(hwnd, 1.0)?;
-        material.material(luciddesk_core::Backdrop::Acrylic, true)?;
-        Ok(material)
+    #[cfg(test)]
+    pub(super) fn has_host_backdrop(&self) -> bool {
+        self.host_backdrop.borrow().is_some()
     }
 
     pub fn new_with_opacity(hwnd: HWND, initial_opacity: f32) -> Result<Self> {

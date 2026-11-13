@@ -40,7 +40,7 @@ const faqs = [
     <Fragment slot="subtitle">{t("把零散图标收进面板，让常用文件触手可及。")}</Fragment>
     <div slot="content" class="mt-5 flex flex-wrap items-center justify-center lg:justify-start gap-x-3 gap-y-2 text-xs text-muted">
       <a href="/changelog/" aria-label={lang === 'en' ? `Current version ${repository.version}, view changelog` : `当前版本 ${repository.version}，查看更新日志`} class="rounded-full outline-offset-4 transition-opacity hover:opacity-80"><Badge variant="outline" className="rounded-full border-primary/20 bg-primary/5 px-3 py-1 font-medium text-primary dark:text-blue-300">{`${lang === 'en' ? 'Current version' : '当前版本'} ${repository.version}`}</Badge></a>
-      <span>{t("Windows 10 / 11 x64 · 无需账号 · MIT 开源许可")}</span>
+      <span>{lang === 'en' ? 'Windows 10 1809+ / Windows 11 · x64' : 'Windows 10 1809 及以上 / Windows 11 · x64'}</span>
     </div>
     <figure slot="image" class="mx-auto max-w-5xl"><WorkspaceIllustration/></figure>
   </HomeHero>

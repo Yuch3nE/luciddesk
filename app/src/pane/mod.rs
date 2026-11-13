@@ -225,7 +225,6 @@ enum Event {
     Sizing(*mut RECT, RECT, u32),
     Material(luciddesk_core::Backdrop),
     New,
-    EnableMonitor,
     MonitorOptions(monitor::Preferences),
     EnableSearch,
     ToggleSearch,

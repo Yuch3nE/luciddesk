@@ -120,11 +120,15 @@ fn configure(owner: HWND) -> Option<(bool, i32)> {
         {
             return None;
         }
-        (api.refresh)();
         let high_contrast = contrast.dwFlags & HCF_HIGHCONTRASTON != 0;
+        // ShouldAppsUseDarkMode also observes the process preference. Clear a
+        // previous ForceLight/ForceDark before querying the user's current mode,
+        // and retain the original preference for the Explorer-scoped caller.
+        let preferred = (api.preferred)(if high_contrast { 0 } else { 1 });
+        (api.refresh)();
         let dark = !high_contrast && (api.should_use_dark)();
         // Default in high contrast lets the accessibility theme draw the menu.
-        let preferred = (api.preferred)(if high_contrast {
+        (api.preferred)(if high_contrast {
             0
         } else if dark {
             2
@@ -134,5 +138,35 @@ fn configure(owner: HWND) -> Option<(bool, i32)> {
         (api.allow_window)(owner, dark);
         (api.flush)();
         Some((dark, preferred))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "changes only the test process theme; run in a standalone native test process"]
+    fn scoped_theme_reads_system_preference_and_restores_previous_process_mode() {
+        let Some(api) = api() else { return };
+        unsafe {
+            let _restore = ScopedTheme { preferred: (api.preferred)(1) };
+            let mut contrast = HIGHCONTRASTW {
+                cbSize: size_of::<HIGHCONTRASTW>() as u32,
+                ..Default::default()
+            };
+            assert_ne!(SystemParametersInfoW(SPI_GETHIGHCONTRAST, contrast.cbSize,
+                (&raw mut contrast).cast(), 0), 0);
+            (api.refresh)();
+            let expected = contrast.dwFlags & HCF_HIGHCONTRASTON == 0 && (api.should_use_dark)();
+            for prior in [2, 3] {
+                (api.preferred)(prior);
+                let (dark, previous) = configure(std::ptr::null_mut()).unwrap();
+                assert_eq!(dark, expected, "process mode {prior} must not override Windows preference");
+                assert_eq!(previous, prior);
+                drop(ScopedTheme { preferred: previous });
+                assert_eq!((api.preferred)(1), prior, "popup cleanup must restore the original process mode");
+            }
+        }
     }
 }

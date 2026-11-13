@@ -19,28 +19,24 @@ const files = [pick('设计素材','Design'),pick('项目资料','Projects'),pic
   <div class="scene-footnote">{pick('界面示意 · 效果随系统与设置变化','UI illustration · Appearance varies by system and settings')}</div>
 </div>
 <style>
-.desktop-scene { position:relative; isolation:isolate; width:100%; aspect-ratio:1.4; overflow:hidden; border-radius:24px; border:1px solid var(--aw-color-line); background:radial-gradient(ellipse at 90% 5%,#9acacb 0%,transparent 55%),radial-gradient(ellipse at 0% 95%,#697eb3 0%,transparent 60%),linear-gradient(135deg,#dbe5ec,#b5cbd9); color:#26384b; }
+.desktop-scene { position:relative; isolation:isolate; width:100%; aspect-ratio:1.4; overflow:hidden; border-radius:24px; border:1px solid var(--aw-color-line); background:linear-gradient(135deg,var(--illustration-base),var(--illustration-tint)); color:var(--aw-color-text-heading); }
 .scene-caption { position:absolute; top:7%; left:7%; right:7%; font-size:clamp(11px,1.15vw,14px); letter-spacing:.04em; }
-.scene-panel { position:absolute; background:linear-gradient(135deg,#f7fafbd9,#e2edf2bf); border:1px solid #ffffff99; border-radius:10px; box-shadow:0 12px 28px -20px #102c56aa; }
+.scene-panel { position:absolute; background:var(--illustration-panel); border:1px solid var(--aw-color-line); border-radius:10px; box-shadow:0 12px 28px -20px rgb(0 0 0 / .25); }
 .main-panel { left:7%; top:17%; width:72%; }
-.panel-heading { position:relative; margin:0 8px; height:43px; border-bottom:1px solid #70869b26; display:flex; align-items:center; justify-content:center; }
+.panel-heading { position:relative; margin:0 8px; height:43px; border-bottom:1px solid var(--aw-color-line); display:flex; align-items:center; justify-content:center; }
 .panel-heading strong { font-size:13px; font-weight:600; }
 .panel-heading > span { position:absolute; right:2px; display:flex; gap:9px; }
 .panel-heading > .folder-navigation { left:2px; right:auto; gap:6px; opacity:.65; }
 .panel-files { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:22px 4px; padding:22px 8px 26px; }
 .panel-file { display:flex; flex-direction:column; gap:7px; align-items:center; font-size:11px; }
-.folder-icon { color:#d49b26; fill:#f5cd62; }
-.document-icon { color:#5681b4; fill:#f1f6fc; }
-.folder-panel { width:66%; right:5%; bottom:12%; background:linear-gradient(120deg,#eef5f9f5,#dce9f0ed); }
-.folder-columns { display:flex; justify-content:space-between; padding:7px 14px; margin:0 8px; border-bottom:1px solid #70869b26; font-size:10px; opacity:.7; }
+.folder-icon { color:var(--illustration-folder-stroke); fill:var(--illustration-folder-fill); }
+.document-icon { color:var(--illustration-document-stroke); fill:var(--illustration-document-fill); }
+.folder-panel { width:66%; right:5%; bottom:12%; }
+.folder-columns { display:flex; justify-content:space-between; padding:7px 14px; margin:0 8px; border-bottom:1px solid var(--aw-color-line); font-size:10px; opacity:.7; }
 .folder-row { display:flex; align-items:center; gap:8px; padding:7px 16px; font-size:11px; }
 .folder-row:last-child { padding-bottom:13px; }
 .folder-row small { margin-left:auto; font-size:10px; opacity:.65; }
 .scene-footnote { position:absolute; bottom:4%; left:7%; right:5%; font-size:10px; opacity:.75; }
-:global(.dark) .desktop-scene { background:radial-gradient(ellipse at 90% 5%,#355f70,transparent 55%),radial-gradient(ellipse at 0% 95%,#494369,transparent 60%),#172537; color:#e0e8f1; }
-:global(.dark) .scene-panel { background:linear-gradient(130deg,#283746ee,#2e3c4bd9); border-color:#ffffff24; }
-:global(.dark) .folder-panel { background:linear-gradient(120deg,#344351fa,#273745f5); }
-:global(.dark) .panel-heading, :global(.dark) .folder-columns { border-color:#ffffff20; }
 /* Scale panel details together while keeping the compact, overlapping composition. */
 .desktop-scene { container-type:inline-size; }
 .panel-heading { height:7cqw; }
