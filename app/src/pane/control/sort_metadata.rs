@@ -79,7 +79,7 @@ impl Cache {
             self.jobs.remove(request_id);
         }
         if self.jobs.contains_key(request_id) { return Ok(None); }
-        if self.jobs.len() >= MAX_WORKERS || self.active.fetch_update(Ordering::AcqRel, Ordering::Acquire,
+        if self.jobs.len() >= MAX_WORKERS || self.active.try_update(Ordering::AcqRel, Ordering::Acquire,
             |n| (n < MAX_WORKERS).then_some(n + 1)).is_err() {
             return Err(("BUSY", "sort metadata workers are busy; retry preview later".into()));
         }

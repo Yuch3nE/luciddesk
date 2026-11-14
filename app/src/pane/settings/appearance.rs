@@ -58,8 +58,7 @@ pub(super) fn edited_solid(backdrop: Backdrop, percentage: bool, text: &str) -> 
         }
         opacity = f32::from(value) / 100.0;
     } else {
-        let text = text.trim();
-        let text = text.strip_prefix('#').unwrap_or(text);
+        let text = text.trim().trim_prefix('#');
         if text.len() != 6 || !text.is_ascii() {
             return None;
         }

@@ -4,7 +4,7 @@ pub(super) mod image;
 pub(super) mod target;
 
 use luciddesk_core::{PanelId, PointDip, ShellIdentity};
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, mem::DropGuard, rc::Rc};
 use windows::{
     Win32::{Foundation::E_UNEXPECTED, System::Com::IDataObject},
     core::{Error, IUnknown, Interface, Result},
@@ -28,13 +28,6 @@ pub(super) fn with_pane_drag(
     drag: PaneDrag,
     run: impl FnOnce() -> Result<()>,
 ) -> Result<()> {
-    struct Reset;
-    impl Drop for Reset {
-        fn drop(&mut self) {
-            let active = ACTIVE_DRAG.with(|slot| slot.borrow_mut().take());
-            drop(active);
-        }
-    }
     let identity = data.cast::<IUnknown>()?;
     ACTIVE_DRAG.with(|slot| {
         let mut active = slot.borrow_mut();
@@ -44,7 +37,10 @@ pub(super) fn with_pane_drag(
         *active = Some((identity, Rc::new(drag)));
         Ok(())
     })?;
-    let _reset = Reset;
+    let _reset = DropGuard::new((), |()| {
+        let active = ACTIVE_DRAG.with(|slot| slot.borrow_mut().take());
+        drop(active);
+    });
     run()
 }
 

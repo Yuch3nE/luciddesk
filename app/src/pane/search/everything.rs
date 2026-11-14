@@ -1,5 +1,8 @@
 //! Everything IPC2. Queries run on a worker with its own reply window/message pump.
 use std::{
+    ffi::OsString,
+    mem::DropGuard,
+    os::windows::ffi::OsStringExt,
     path::PathBuf,
     time::{Duration, Instant},
 };
@@ -8,6 +11,7 @@ use windows_sys::Win32::{
 };
 
 pub(super) const PAGE_SIZE: u32 = 200;
+const MAX_QUERY_UNITS: usize = 16_384;
 const TOKEN: usize = 0x4c504556;
 const REQUEST: u32 = 0x4; // FULL_PATH_AND_NAME
 
@@ -24,9 +28,12 @@ pub(super) struct Page {
 }
 
 fn word(bytes: &[u8], offset: usize) -> Result<u32, String> {
+    let end = offset
+        .checked_add(4)
+        .ok_or_else(|| crate::i18n::text("ui-data-overflow"))?;
     let data = bytes
-        .get(offset..offset.checked_add(4).ok_or(crate::i18n::text("ui-data-overflow"))?)
-        .ok_or(crate::i18n::text("ui-incomplete-data-from-everything"))?;
+        .get(offset..end)
+        .ok_or_else(|| crate::i18n::text("ui-incomplete-data-from-everything"))?;
     Ok(u32::from_le_bytes(data.try_into().unwrap()))
 }
 
@@ -45,6 +52,7 @@ fn parse(bytes: &[u8]) -> Result<Page, String> {
         return Err(crate::i18n::text("ui-incomplete-data-from-everything").into());
     }
     let mut entries = Vec::with_capacity(count as usize);
+    let mut wide = Vec::new();
     for i in 0..count as usize {
         let flags = word(bytes, 20 + i * 8)?;
         let start = word(bytes, 24 + i * 8)? as usize;
@@ -60,22 +68,20 @@ fn parse(bytes: &[u8]) -> Result<Page, String> {
                     .and_then(|l| l.checked_mul(2))
                     .and_then(|l| v.checked_add(l))
             })
-            .ok_or(crate::i18n::text("ui-path-from-everything-is-too-long"))?;
+            .ok_or_else(|| crate::i18n::text("ui-path-from-everything-is-too-long"))?;
         let text = bytes
             .get(start + 4..end)
-            .ok_or(crate::i18n::text("ui-incomplete-path-from-everything"))?;
-        if text.len() < 2 || text[text.len() - 2..] != [0, 0] {
-            return Err(crate::i18n::text("ui-invalid-path-from-everything").into());
-        }
-        let wide: Vec<u16> = text[..text.len() - 2]
-            .chunks_exact(2)
-            .map(|c| u16::from_le_bytes([c[0], c[1]]))
-            .collect();
+            .ok_or_else(|| crate::i18n::text("ui-incomplete-path-from-everything"))?;
+        let text = text
+            .strip_suffix(&[0, 0])
+            .ok_or_else(|| crate::i18n::text("ui-invalid-path-from-everything"))?;
+        wide.clear();
+        let (units, _) = text.as_chunks::<2>();
+        wide.extend(units.iter().copied().map(u16::from_le_bytes));
         if wide.contains(&0) {
             return Err(crate::i18n::text("ui-invalid-path-from-everything").into());
         }
-        use std::os::windows::ffi::OsStringExt;
-        let path = PathBuf::from(std::ffi::OsString::from_wide(&wide));
+        let path = PathBuf::from(OsString::from_wide(&wide));
         if !path.is_absolute() {
             return Err(crate::i18n::text("ui-everything-returned-a-relative-path").into());
         }
@@ -145,7 +151,8 @@ fn instance() -> HWND {
 }
 
 pub(super) fn query(search: &str, offset: u32) -> Result<Page, String> {
-    if search.encode_utf16().count() > 16_384 || search.contains('\0') {
+    let search_len = search.encode_utf16().take(MAX_QUERY_UNITS + 1).count();
+    if search_len > MAX_QUERY_UNITS || search.contains('\0') {
         return Err(crate::i18n::text("ui-search-query-is-too-long-or-invalid").into());
     }
     let target = instance();
@@ -172,15 +179,9 @@ pub(super) fn query(search: &str, offset: u32) -> Result<Page, String> {
     if hwnd.is_null() {
         return Err(std::io::Error::last_os_error().to_string());
     }
-    struct ReplyWindow(HWND);
-    impl Drop for ReplyWindow {
-        fn drop(&mut self) {
-            unsafe {
-                DestroyWindow(self.0);
-            }
-        }
-    }
-    let _window = ReplyWindow(hwnd);
+    let _window = DropGuard::new(hwnd, |window| unsafe {
+        DestroyWindow(window);
+    });
     unsafe {
         if windows_sys::Win32::UI::Shell::SetWindowSubclass(
             hwnd,
@@ -193,8 +194,7 @@ pub(super) fn query(search: &str, offset: u32) -> Result<Page, String> {
         }
         ChangeWindowMessageFilterEx(hwnd, WM_COPYDATA, MSGFLT_ALLOW, std::ptr::null_mut());
     }
-    let mut payload = Vec::new();
-    for value in [
+    let header = [
         hwnd as usize as u32,
         TOKEN as u32,
         0,
@@ -202,7 +202,9 @@ pub(super) fn query(search: &str, offset: u32) -> Result<Page, String> {
         PAGE_SIZE,
         REQUEST,
         1,
-    ] {
+    ];
+    let mut payload = Vec::with_capacity(size_of_val(&header) + (search_len + 1) * 2);
+    for value in header {
         payload.extend_from_slice(&value.to_le_bytes());
     }
     for value in search.encode_utf16().chain(Some(0)) {

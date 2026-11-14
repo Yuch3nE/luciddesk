@@ -39,9 +39,7 @@ pub fn build(root: &Path) -> Result<Build> {
 }
 
 fn parse_build(bytes: &[u8]) -> Result<Build> {
-    Ok(serde_json::from_slice(
-        bytes.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(bytes),
-    )?)
+    Ok(serde_json::from_slice(bytes.trim_prefix(&[0xef, 0xbb, 0xbf]))?)
 }
 
 pub struct StagedFile {
@@ -132,7 +130,7 @@ pub fn extract(
     let mut staged_build = None;
     for i in 0..zip.len() {
         let entry = zip.by_index(i)?;
-        let name = entry.name().replace('\\', "/");
+        let name = entry.name()?.replace('\\', "/");
         if name.ends_with('/') {
             continue;
         }

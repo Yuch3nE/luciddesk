@@ -68,7 +68,7 @@ fn parse_release(bytes: &[u8], current: &str) -> Result<Option<String>, String> 
     if release.draft || release.prerelease {
         return Ok(None);
     }
-    newer_version(release.tag_name.strip_prefix('v').unwrap_or(&release.tag_name), current)
+    newer_version(release.tag_name.trim_prefix('v'), current)
 }
 
 fn parse_manifest(bytes: &[u8], current: &str) -> Result<Option<String>, String> {
