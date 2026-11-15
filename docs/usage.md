@@ -1,4 +1,4 @@
-<!-- manual-version: 0.26.0 -->
+<!-- manual-version: 0.26.1 -->
 
 # LucidDesk 使用手册
 
@@ -8,7 +8,7 @@
 
 ## 五分钟开始使用
 
-适用于 LucidDesk 0.26.0。需要 **Windows 10 1809（Build 17763）x64 或更新版本**；云母材质需要 Windows 11。
+适用于 LucidDesk 0.26.1。需要 **Windows 10 1809（Build 17763）x64 或更新版本**；云母材质需要 Windows 11。
 
 <a id="启动"></a>
 

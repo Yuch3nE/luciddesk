@@ -2,11 +2,11 @@
 
 [简体中文](CHANGELOG.md) · English
 
-Current version: **0.26.0**. Features and fixes by release.
+Current version: **0.26.1**. Features and fixes by release.
 
 Exit the app before upgrading a portable installation and preserve its `data` folder. See the [portable guide](docs/portable.md) (Chinese).
 
-## 0.26.0 · 2026-11-14
+## 0.26.1 · 2026-11-15
 
 ### Desktop organization and drag and drop
 
@@ -27,6 +27,11 @@ Exit the app before upgrading a portable installation and preserve its `data` fo
 ### CLI
 
 - Keep the destination window's position, size, and lock state when a single plan merges tab groups and selects a newly joined tab.
+
+### Search and maintenance
+
+- Reduce temporary allocations when sending Everything search requests and parsing results, especially for pages with many paths.
+- Build with Rust 1.100.0 and update the dependencies used for database storage, signed update packages, and the System Monitor plugin.
 
 ## 0.25.3 · 2026-10-31
 

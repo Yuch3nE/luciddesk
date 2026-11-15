@@ -1,4 +1,4 @@
-<!-- release-doc-version: 0.26.0 -->
+<!-- release-doc-version: 0.26.1 -->
 
 # CLI 使用
 
@@ -6,7 +6,7 @@
 
 使用安装目录中的 `luciddesk-cli.exe` 控制正在运行的 LucidDesk。无需安装 Rust，也无需编译。主程序、CLI 和 Skill 应来自同一套发布包；命令不会替你启动主程序。
 
-适用于 LucidDesk 0.26.0。使用前可通过 `capabilities --json` 确认正在运行的程序支持哪些操作。
+适用于 LucidDesk 0.26.1。使用前可通过 `capabilities --json` 确认正在运行的程序支持哪些操作。
 
 ## 先确认连接
 

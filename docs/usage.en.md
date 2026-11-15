@@ -1,4 +1,4 @@
-<!-- manual-version: 0.26.0 -->
+<!-- manual-version: 0.26.1 -->
 
 # LucidDesk User Manual
 
@@ -8,7 +8,7 @@ Start with your first panel, then find the task you need below.
 
 ## Start in five minutes
 
-For LucidDesk 0.26.0. Requires **Windows 10 1809 (build 17763), x64, or later**. Mica requires Windows 11.
+For LucidDesk 0.26.1. Requires **Windows 10 1809 (build 17763), x64, or later**. Mica requires Windows 11.
 
 1. Install and start LucidDesk. Find its tray icon near the Windows clock; expand hidden icons if needed.
 2. Right-click the tray icon and choose New panel.

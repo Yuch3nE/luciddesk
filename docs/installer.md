@@ -1,4 +1,4 @@
-<!-- release-doc-version: 0.26.0 -->
+<!-- release-doc-version: 0.26.1 -->
 
 # 安装与更新
 
