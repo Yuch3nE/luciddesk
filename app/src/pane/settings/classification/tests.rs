@@ -317,6 +317,7 @@ fn classification_stages_align_and_render() {
     let (_sender, receiver) = std::sync::mpsc::channel();
     let stages = [
         ("rules", Editor::default(), false),
+        ("rule-details", Editor { expanded: Some(1), ..Editor::default() }, false),
         ("edit", draft, false),
         ("preview", Editor {
             preview: Some(hybrid::OrganizePreview::fixture(entries.clone(), None)),
@@ -354,10 +355,28 @@ fn classification_stages_align_and_render() {
             ..Editor::default()
         }, false),
     ];
-    let (panels, settings) = {
+    let (mut panels, mut settings) = {
         let state = state.borrow();
         (state.workspace.panels().to_vec(), state.store.settings().unwrap())
     };
+    let mut rules = decode(settings.get(KEY)).unwrap();
+    panels.iter_mut().find(|panel| panel.id() == PanelId::new(1)).unwrap().set_title("文档");
+    panels.iter_mut().find(|panel| panel.id() == PanelId::new(2)).unwrap().set_title("项目素材");
+    rules.rules[0].item_type = Some(ClassificationItemType::File);
+    rules.rules[0].extensions = ["pdf", "docx", "xlsx"].map(str::to_owned).into();
+    rules.rules[0].name_contains = Some("报告".into());
+    rules.rules[1].target_panel = 2;
+    rules.rules[1].extensions = ["png", "jpg", "webp"].map(str::to_owned).into();
+    rules.rules[1].name_regex = Some("^(screenshot|capture)-[0-9]{8}-[0-9]{6}$".into());
+    rules.rules.push(ClassificationRule {
+        target_panel: 99,
+        enabled: false,
+        item_type: Some(ClassificationItemType::Shortcut),
+        extensions: Vec::new(),
+        name_contains: None,
+        name_regex: None,
+    });
+    settings.insert(KEY.into(), SettingValue::Text(encode(&rules).unwrap()));
     let device = windows_canvas::GpuDevice::new_warp().unwrap();
     let export = std::env::var_os("LUCIDDESK_TEST_EXPORT_SNAPSHOTS").is_some();
     for locale in 0..crate::i18n::LANGUAGES.len() - 1 {
@@ -368,7 +387,7 @@ fn classification_stages_align_and_render() {
                 (800.0, 560.0, 1.0, true), (940.0, 620.0, 1.5, true),
             ] {
                 for (name, editor, undo_available) in &stages {
-                    let tab = if matches!(*name, "rules" | "edit") { Tab::Rules } else { Tab::Organize };
+                    let tab = if matches!(*name, "rules" | "rule-details" | "edit") { Tab::Rules } else { Tab::Organize };
                     let layout = |height| window_scene(
                         (width, height), Backdrop::Mica, tab, &panels,
                         settings.get(KEY), editor, *undo_available,
@@ -681,54 +700,95 @@ fn classification_templates_prefill_editable_rules_and_require_a_target() {
 
 #[test]
 fn classification_details_show_one_rule_without_writing_settings() {
+    let _sta = crate::pane::test_support::apartment();
     let (_directory, state) = test_state();
     let mut config = load(&state.borrow()).unwrap();
+    config.rules[0].item_type = Some(ClassificationItemType::File);
+    config.rules[0].extensions.extend(["presentation", "spreadsheet", "technical-drawing", "document-template"].map(str::to_owned));
     config.rules[0].name_contains = Some("报告".into());
     config.rules[1].name_regex = Some("^Screenshot-.*$".into());
+    config.rules[1].target_panel = 99;
+    config.rules[1].enabled = false;
     save(&state.borrow(), &config).unwrap();
     let revision = state.borrow().store.change_count();
     let mut editor = Editor::default();
     let render = |editor: &Editor| {
-        let mut body = scene(
-            800.0,
-            560.0,
-            16,
-            false,
-            (PanelTheme::Light, Backdrop::Mica),
-            Default::default(),
-        );
+        let mut body = Scene::empty(Backdrop::Mica, Tokens::MARGIN, TITLE_HEIGHT);
         table::draw(
             &mut body,
-            Rect::from_xywh(220.0, 0.0, 540.0, 0.0),
+            Rect::from_xywh(Tokens::MARGIN, 0.0, 480.0 - 2.0 * Tokens::MARGIN, 0.0),
             state.borrow().workspace.panels(),
             &config.rules,
             editor,
         );
         body
     };
-    let contains = |body: &Scene, value: &str| body.text.iter().any(|(_, text, _)| text == value);
+    let contains = |body: &Scene, value: &str, format: usize| body.text.iter().any(|(_, text, style)| text == value && *style == format);
     let hwnd = std::ptr::null_mut();
     let collapsed = render(&editor);
-    assert!(contains(&collapsed, "pdf · 报告"));
-    assert!(contains(&collapsed, "png · ^Screenshot-.*$"));
+    let extensions = config.rules[0].extensions.join(", ");
+    let condition_values = [extensions.as_str(), "报告", "png", "^Screenshot-.*$"];
+    assert!(!collapsed.text.iter().any(|(_, value, _)| {
+        condition_values.contains(&value.as_str())
+    }));
+    let second_top = |body: &Scene| body.controls.iter().find(|control|
+        Command::ToggleDetails(1).is_control(&control.action)).unwrap().bounds.top;
+    let unavailable = collapsed.controls.iter().find(|control| Command::ToggleDetails(1).is_control(&control.action)).unwrap();
+    assert_eq!(unavailable.label, t("classification-missing"));
+    assert!(matches!(unavailable.kind, ControlKind::RuleDisclosure { missing_target: true }));
+    assert!(collapsed.controls.iter().any(|control| Command::Toggle(1).is_control(&control.action) && !control.selected));
+    for (bounds, _, _) in &collapsed.text {
+        assert!(bounds.left >= Tokens::MARGIN && bounds.right <= 480.0 - Tokens::MARGIN);
+    }
 
     editor.execute(&state, hwnd, Command::ToggleDetails(0));
     let first = render(&editor);
-    assert!(contains(&first, "pdf"));
-    assert!(contains(&first, "报告"));
-    assert!(!contains(&first, "png"));
+    assert!(contains(&first, &extensions, 1));
+    assert!(contains(&first, "报告", 1));
+    assert!(!first.text.iter().any(|(_, value, _)| value == "png"));
     assert!(first.controls.iter().any(|control| {
         Command::ToggleDetails(0).is_control(&control.action) && control.selected
     }));
 
+    editor.detail_motions.insert(0, Motion::settled(0.5, Instant::now()));
+    let expanding = render(&editor);
+    let (_, clip) = &expanding.rule_detail_clips[0];
+    let (extension_index, _) = expanding.text.iter().enumerate()
+        .find(|(_, (_, value, _))| value == &extensions).unwrap();
+    assert!(expanding.rule_detail_clip(extension_index).is_some());
+    assert!(second_top(&collapsed) < second_top(&expanding));
+    assert!(second_top(&expanding) < second_top(&first));
+    assert!(clip.bottom <= second_top(&expanding));
+    editor.finish_rule_animations();
+
     editor.execute(&state, hwnd, Command::ToggleDetails(1));
     let second = render(&editor);
-    assert!(!contains(&second, "pdf"));
-    assert!(contains(&second, "png"));
-    assert!(contains(&second, "^Screenshot-.*$"));
+    assert!(!contains(&second, &extensions, 1));
+    assert!(contains(&second, "png", 1));
+    assert!(contains(&second, "^Screenshot-.*$", 1));
     editor.execute(&state, hwnd, Command::ToggleDetails(1));
-    assert!(!contains(&render(&editor), "png"));
+    assert!(!contains(&render(&editor), "png", 1));
     assert_eq!(state.borrow().store.change_count(), revision);
+}
+
+#[test]
+fn rule_animations_reverse_and_clear_after_the_transition() {
+    let _sta = crate::pane::test_support::apartment();
+    let start = Instant::now();
+    let mut editor = Editor { expanded: Some(0), ..Editor::default() };
+    editor.animate_details(None, start);
+    assert_eq!(editor.detail_fraction(0, start), 0.0);
+    let halfway = start + SETTINGS_DURATION / 2;
+    let fraction = editor.detail_fraction(0, halfway);
+    assert!(fraction > 0.0 && fraction < 1.0);
+
+    editor.expanded = None;
+    editor.animate_details(Some(0), halfway);
+    assert_eq!(editor.detail_fraction(0, halfway), fraction);
+    assert!(editor.tick_rule_animations(halfway));
+    let finished = halfway + SETTINGS_DURATION;
+    assert!(!editor.tick_rule_animations(finished));
+    assert_eq!(editor.detail_fraction(0, finished), 0.0);
 }
 
 #[test]
@@ -762,7 +822,7 @@ fn classification_editing_survives_tab_switch_and_only_saves_valid_input() {
                 control.label == "Group 1"
                     && control.bounds.top == order_bounds.top
                     && control.bounds.left > order_bounds.right
-                    && matches!(control.kind, ControlKind::Disclosure)
+                    && matches!(control.kind, ControlKind::RuleDisclosure { missing_target: false })
             }));
         }
         assert!(body.controls.iter().any(|control| {

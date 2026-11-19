@@ -35,6 +35,7 @@ impl Tokens {
     pub const CAPTION_TEXT: usize = 13;
     pub const CAPTION_ICON: usize = 14;
     pub const SECTION_TITLE: usize = 15;
+    pub const SECTION_TITLE_SIZE: f32 = 16.0;
     pub const SECONDARY_VALUE: usize = 16;
     pub const GROUP_TITLE: usize = 17;
 }
@@ -886,17 +887,22 @@ impl Scene {
             || matches!(c.action, Action::Classification(command) if command.is_footer())
     }
     pub fn content_bottom(&self) -> f32 {
-        self.text.iter()
-            .filter(|(_, _, style)| *style != Tokens::CAPTION_TEXT)
-            .map(|(r, _, _)| r)
-            .chain(self.cards.iter())
+        let text_bottom = self.text.iter().enumerate()
+            .filter(|(_, (bounds, _, style))| *style != Tokens::CAPTION_TEXT && bounds.left >= self.content_left)
+            .map(|(index, (bounds, _, _))| self.rule_detail_clip(index).map_or(bounds.bottom, |clip| bounds.bottom.min(clip.bottom)))
+            .fold(self.content_top, f32::max);
+        self.cards.iter()
             .chain(self.section_headers.iter().map(|header| &header.bounds))
             .chain(self.destination_changes.iter().map(|change| &change.bounds))
             .chain(self.controls.iter().filter(|control| !Self::fixed_control(control)).map(|control| &control.bounds))
             .filter(|r| r.left >= self.content_left)
             .map(|r| r.bottom)
             .chain(self.app_icon.iter().map(|r| r.bottom))
-            .fold(self.content_top, f32::max)
+            .fold(text_bottom, f32::max)
+    }
+
+    pub fn rule_detail_clip(&self, text_index: usize) -> Option<&Rect> {
+        self.rule_detail_clips.iter().find(|(text, _)| text.contains(&text_index)).map(|(_, clip)| clip)
     }
     pub fn scroll_to(&mut self, width: f32, height: f32, offset: &mut f32) {
         if self.fixed_list() {
@@ -948,6 +954,7 @@ impl Scene {
         for r in self.cards.iter_mut().chain(&mut self.separators)
             .chain(self.section_headers.iter_mut().map(|header| &mut header.bounds))
             .chain(self.destination_changes.iter_mut().map(|change| &mut change.bounds))
+            .chain(self.rule_detail_clips.iter_mut().map(|(_, clip)| clip))
         {
             translate(r);
         }
@@ -983,6 +990,11 @@ pub(super) struct ContentClip<'a, 'b> {
     active: bool,
 }
 impl<'a, 'b> ContentClip<'a, 'b> {
+    pub fn rect(pass: &'a canvas::DrawPass<'b>, rect: &Rect) -> Self {
+        pass.push_clip(rect);
+        Self { pass, active: true }
+    }
+
     pub fn navigation(pass: &'a canvas::DrawPass<'b>, scene: &Scene) -> Self {
         if let Some(viewport) = &scene.navigation_viewport { pass.push_clip(viewport); }
         Self { pass, active: scene.navigation_viewport.is_some() }

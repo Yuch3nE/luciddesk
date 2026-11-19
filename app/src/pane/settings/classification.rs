@@ -1,7 +1,9 @@
 //! In-place editing and persistence for the ordered classification rules.
 use super::*;
+use super::super::animation::{Motion, SETTINGS_DURATION};
 use luciddesk_core::{Classification, ClassificationError, ClassificationItemType, ClassificationRule};
 use luciddesk_storage::SettingValue;
+use std::time::Instant;
 use windows_sys::Win32::Foundation::HWND;
 
 mod editor;
@@ -180,6 +182,7 @@ pub(super) struct Editor {
     draft: Option<Draft>,
     deleted: Option<DeletedRule>,
     expanded: Option<usize>,
+    detail_motions: HashMap<usize, Motion>,
     preview: Option<hybrid::OrganizePreview>,
     show_skipped: Option<bool>,
     applying: Option<PendingOrganize>,
@@ -278,6 +281,31 @@ impl Editor {
 
     pub(super) fn collapse_details(&mut self) {
         self.expanded = None;
+        self.detail_motions.clear();
+    }
+
+    fn animate_details(&mut self, previous: Option<usize>, now: Instant) {
+        for (index, target) in [(previous, 0.0), (self.expanded, 1.0)] {
+            if let Some(index) = index {
+                self.detail_motions.entry(index).or_insert_with(|| Motion::settled(1.0 - target, now))
+                    .retarget_with_duration(target, now, true, SETTINGS_DURATION);
+            }
+        }
+    }
+
+    fn detail_fraction(&self, index: usize, now: Instant) -> f32 {
+        self.detail_motions.get(&index).and_then(|motion| motion.sample(now).ok())
+            .unwrap_or_else(|| if self.expanded == Some(index) { 1.0 } else { 0.0 })
+            .clamp(0.0, 1.0)
+    }
+
+    fn tick_rule_animations(&mut self, now: Instant) -> bool {
+        self.detail_motions.retain(|_, motion| motion.sample(now).is_ok_and(|value| value != motion.to));
+        !self.detail_motions.is_empty()
+    }
+
+    fn finish_rule_animations(&mut self) {
+        self.detail_motions.clear();
     }
 
     pub fn focus(&mut self, field: Field) {

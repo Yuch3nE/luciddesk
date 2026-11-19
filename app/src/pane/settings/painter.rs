@@ -101,7 +101,7 @@ impl Painter {
             11.0,
             13.0,
             12.0,
-            16.0,
+            Tokens::SECTION_TITLE_SIZE,
             12.0,
             SectionHeader::TITLE_SIZE,
         ]
@@ -506,7 +506,15 @@ impl Painter {
                         ControlKind::IconButton(glyph) => Some(InlineControl::Icon {
                             glyph, open: controls::dropdown_is_open(c.bounds),
                         }),
-                        ControlKind::Disclosure => Some(InlineControl::Disclosure { expanded: c.selected, tinted: true }),
+                        ControlKind::RuleDisclosure { missing_target } => {
+                            let mut section_canvas = WidgetCanvas { section_summary_width: Some(0.0), ..widget_canvas };
+                            let color = if missing_target { red } else { brush(Tone::AccentInk) };
+                            section_canvas.brushes[Tone::Ink as usize] = color;
+                            section_canvas.brushes[Tone::AccentInk as usize] = color;
+                            InlineControl::Disclosure { expanded: c.selected, tinted: false }
+                                .paint(&mut section_canvas, bounds, &c.label, state);
+                            continue;
+                        }
                         ControlKind::SectionDisclosure { summary_width } => {
                             let mut section_canvas = WidgetCanvas { section_summary_width: Some(summary_width), ..widget_canvas };
                             InlineControl::Disclosure { expanded: c.selected, tinted: false }
@@ -830,6 +838,7 @@ impl Painter {
                 for (index, (r, text, size)) in s.text.iter().enumerate() {
                     let _navigation_clip = s.navigation_text.contains(&index).then(|| ContentClip::navigation(&t, s));
                     let _clip = ContentClip::new(&t, s, *size != Tokens::CAPTION_TEXT && r.left >= s.content_left && !s.fixed_list());
+                    let _detail_clip = s.rule_detail_clip(index).map(|clip| ContentClip::rect(&t, clip));
                     if *size == Tokens::TITLE_BADGE {
                         t.clipped_icon(style::INFO, &self.formats[4],
                             &Rect::from_xywh(r.left + 8.0, r.top, Style::ICON_SLOT, r.bottom - r.top), blue);

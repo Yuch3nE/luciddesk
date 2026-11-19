@@ -6,6 +6,7 @@ use std::sync::mpsc::{self, Sender};
 use windows_sys::Win32::UI::HiDpi::GetDpiForWindow;
 
 pub(super) const SELECT_TAB: u32 = WM_APP + 100;
+const RULE_MOTION_TIMER: usize = 0x4c4f4d;
 #[cfg(test)]
 pub(super) const INSPECT_TAB: u32 = WM_APP + 101;
 
@@ -110,6 +111,7 @@ pub(super) fn show(state: &Rc<RefCell<PaneApp>>, tab: Tab) -> Result<(), String>
                     organizer.tip = None;
                     unsafe {
                         KillTimer(hwnd, ORGANIZE_TIMER);
+                        KillTimer(hwnd, RULE_MOTION_TIMER);
                     }
                     drop(closing);
                 }
@@ -125,8 +127,21 @@ pub(super) fn show(state: &Rc<RefCell<PaneApp>>, tab: Tab) -> Result<(), String>
                         redraw(hwnd);
                     }
                 }
+                WM_TIMER if wp == RULE_MOTION_TIMER => {
+                    let now = Instant::now();
+                    if !organizer.editor.tick_rule_animations(now) {
+                        unsafe { KillTimer(hwnd, RULE_MOTION_TIMER); }
+                    }
+                    redraw(hwnd);
+                }
                 WM_PAINT => organizer.paint(&state, hwnd, scale),
-                WM_SETTINGCHANGE | WM_THEMECHANGED => redraw(hwnd),
+                WM_SETTINGCHANGE => {
+                    if !scrollbar::animations_enabled() {
+                        organizer.finish_rule_animations(hwnd);
+                    }
+                    redraw(hwnd);
+                }
+                WM_THEMECHANGED => redraw(hwnd),
                 WM_SIZING => {
                     organizer.auto_fit_preview = false;
                     return None;
@@ -279,6 +294,7 @@ impl Organizer {
             return;
         }
         if self.tab != tab {
+            self.finish_rule_animations(hwnd);
             self.tab_scroll[self.tab as usize] = self.scroll;
             self.editor.hide_inputs();
             self.tab = tab;
@@ -450,7 +466,14 @@ impl Organizer {
         if self.tab != command.tab() || state.try_borrow_mut().is_err() {
             return;
         }
+        let previous = self.editor.expanded;
         self.editor.execute(state, hwnd, command);
+        if matches!(command, Command::ToggleDetails(_)) && previous != self.editor.expanded
+            && scrollbar::animations_enabled()
+        {
+            self.editor.animate_details(previous, Instant::now());
+            self.schedule_rule_animations(hwnd);
+        }
         if self.tab == Tab::Organize {
             if matches!(command, Command::Run | Command::CancelPreview)
                 || self.editor.applying.is_some()
@@ -484,6 +507,17 @@ impl Organizer {
             self.clear_hover();
             redraw(hwnd);
         }
+    }
+
+    fn schedule_rule_animations(&mut self, hwnd: HWND) {
+        if unsafe { SetTimer(hwnd, RULE_MOTION_TIMER, USER_TIMER_MINIMUM, None) } == 0 {
+            self.editor.finish_rule_animations();
+        }
+    }
+
+    fn finish_rule_animations(&mut self, hwnd: HWND) {
+        self.editor.finish_rule_animations();
+        unsafe { KillTimer(hwnd, RULE_MOTION_TIMER); }
     }
 
     fn pointer(&mut self, hwnd: HWND, msg: u32, point: POINT, scale: f32) -> Option<Control> {
@@ -556,7 +590,15 @@ impl Organizer {
                 }
                 let target = hit
                     .and_then(|index| scene.controls.get(index))
-                    .filter(|control| matches!(control.kind, ControlKind::IconButton(_)))
+                    .filter(|control| match control.kind {
+                        ControlKind::IconButton(_) => true,
+                        ControlKind::RuleDisclosure { .. } => {
+                            let inset = luciddesk_window::controls::InlineControl::DISCLOSURE_LABEL_INSET + Style::ICON_GAP;
+                            components::text_width_with_weight(&control.label, Tokens::SECTION_TITLE_SIZE, windows_canvas::FontWeight(600))
+                                > control.bounds.right - control.bounds.left - inset
+                        }
+                        _ => false,
+                    })
                     .map(|icon| (icon.bounds, icon.label.as_str()))
                     .or_else(|| destination.map(|(_, bounds, name)| (bounds, name)));
                 if let Some((bounds, label)) = target {

@@ -1,6 +1,7 @@
 //! Layout for classification rules, the editor, and organization summaries.
 use super::*;
 use components::{text_height, text_width};
+use std::borrow::Cow;
 
 const CONTROL: f32 = Tokens::CONTROL_HEIGHT;
 const GAP: f32 = Tokens::GAP;
@@ -9,8 +10,14 @@ const SWITCH_WIDTH: f32 = 46.0;
 const SWITCH_HEIGHT: f32 = 24.0;
 const SWITCH_ACTION_GAP: f32 = INSET;
 const BUTTON_GAP: f32 = GAP;
-
 const COLUMN_GAPS: [f32; 4] = [INSET, INSET, SWITCH_ACTION_GAP, 0.0];
+
+const CONDITION_LABELS: [&str; 4] = [
+    "classification-item-type",
+    "classification-extensions",
+    "classification-keyword",
+    "classification-pattern",
+];
 
 const ITEM_TYPES: [Option<ClassificationItemType>; 4] = [
     None,
@@ -91,6 +98,7 @@ pub(super) fn draw(
         scene.text(cell, label, 6);
     }
     let mut y = header_top + heading + GAP / 2.0;
+    let now = Instant::now();
     for (index, rule) in rules.iter().enumerate() {
         scene.separators.push(Rect::from_xywh(left, y, width, 1.0));
         y = saved_row(
@@ -100,7 +108,7 @@ pub(super) fn draw(
             rule,
             index,
             rules.len(),
-            editor.expanded == Some(index),
+            (editor.expanded == Some(index), editor.detail_fraction(index, now)),
         ) + GAP;
     }
     scene.cards.push(Rect {
@@ -555,15 +563,15 @@ fn saved_row(
     rule: &ClassificationRule,
     index: usize,
     count: usize,
-    expanded: bool,
+    (expanded, expansion): (bool, f32),
 ) -> f32 {
-    let label = panels
+    let destination = panels
         .iter()
-        .find(|panel| panel.id().get() == rule.target_panel)
-        .map_or(t("classification-missing"), Panel::title);
+        .find(|panel| panel.id().get() == rule.target_panel && panel.supports_tabs());
+    let label = destination.map_or(t("classification-missing"), Panel::title);
     scene.text(order, (index + 1).to_string(), 6);
     scene.control(
-        ControlKind::Disclosure,
+        ControlKind::RuleDisclosure { missing_target: destination.is_none() },
         target,
         label,
         Command::ToggleDetails(index).action(),
@@ -614,41 +622,37 @@ fn saved_row(
         false,
         true,
     );
-    if expanded {
+    if expansion == 0.0 {
+        return actions.bottom;
+    }
+    let first_detail = scene.text.len();
+    let full_bottom = draw_details(scene, target.left, actions.right, actions.bottom + INSET, rule);
+    let bottom = actions.bottom + (full_bottom - actions.bottom) * expansion;
+    if expansion < 1.0 {
+        let clip = Rect::from_xywh(target.left, actions.bottom, actions.right - target.left, bottom - actions.bottom);
+        scene.rule_detail_clips.push((first_detail..scene.text.len(), clip));
+    }
+    if bottom >= actions.bottom + GAP + 1.0 {
         scene.separators.push(Rect::from_xywh(
-            order.left,
+            target.left,
             actions.bottom + GAP,
-            actions.right - order.left,
+            actions.right - target.left,
             1.0,
         ));
-        draw_details(
-            scene,
-            target.left,
-            actions.right,
-            actions.bottom + INSET,
-            rule,
-        )
-    } else {
-        let summary = [
-            rule.item_type
-                .map(|value| item_type_label(Some(value)).to_owned()),
-            (!rule.extensions.is_empty()).then(|| rule.extensions.join(", ")),
-            rule.name_contains.clone(),
-            rule.name_regex.clone(),
-        ]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>()
-        .join(" · ");
-        let summary_bounds = Rect::from_xywh(
-            target.left,
-            actions.bottom,
-            actions.right - target.left,
-            20.0,
-        );
-        scene.text(summary_bounds, summary, 0);
-        summary_bounds.bottom
     }
+    bottom
+}
+
+fn rule_conditions(rule: &ClassificationRule) -> impl Iterator<Item = (&'static str, Cow<'_, str>)> {
+    CONDITION_LABELS
+        .into_iter()
+        .zip([
+            rule.item_type.map(|value| Cow::Borrowed(item_type_label(Some(value)))),
+            (!rule.extensions.is_empty()).then(|| Cow::Owned(rule.extensions.join(", "))),
+            rule.name_contains.as_deref().map(Cow::Borrowed),
+            rule.name_regex.as_deref().map(Cow::Borrowed),
+        ])
+        .filter_map(|(label, value)| value.map(|value| (t(label), value)))
 }
 
 fn draw_details(
@@ -658,35 +662,20 @@ fn draw_details(
     mut top: f32,
     rule: &ClassificationRule,
 ) -> f32 {
-    let extensions = (!rule.extensions.is_empty()).then(|| rule.extensions.join(", "));
-    let labels = [
-        "classification-item-type",
-        "classification-extensions",
-        "classification-keyword",
-        "classification-pattern",
-    ];
     let width = (right - left).max(1.0);
-    let label_width = labels
+    let label_width = CONDITION_LABELS
         .iter()
         .map(|key| text_width(t(key), 12.0))
         .fold(0.0, f32::max)
         .ceil()
         .min(width * 0.35);
     let value_left = left + label_width + INSET;
-    for (label, value) in labels.into_iter().zip([
-        rule.item_type
-            .map(|item_type| item_type_label(Some(item_type))),
-        extensions.as_deref(),
-        rule.name_contains.as_deref(),
-        rule.name_regex.as_deref(),
-    ]) {
-        let Some(value) = value else {
-            continue;
-        };
+    for (label, value) in rule_conditions(rule) {
+        let value = value.as_ref();
         let height = text_height(value, 14.0, (right - value_left).max(1.0))
-            .max(text_height(t(label), 12.0, label_width))
+            .max(text_height(label, 12.0, label_width))
             .max(24.0);
-        scene.text(Rect::from_xywh(left, top, label_width, height), t(label), 6);
+        scene.text(Rect::from_xywh(left, top, label_width, height), label, 6);
         scene.text(
             Rect::from_xywh(value_left, top, (right - value_left).max(1.0), height),
             value,

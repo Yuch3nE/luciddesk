@@ -100,7 +100,7 @@ pub(super) enum ControlKind {
     Tab(&'static str),
     QuietButton(&'static str),
     IconButton(&'static str),
-    Disclosure,
+    RuleDisclosure { missing_target: bool },
     SectionDisclosure { summary_width: f32 },
     BackButton,
     Row,
