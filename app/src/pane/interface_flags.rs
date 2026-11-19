@@ -10,6 +10,29 @@ pub(super) static TAB_LEFT_ALIGNED: Flag = Flag::new("pane_tab_left_aligned", fa
 pub(super) static HEADER_DIVIDER: Flag = Flag::new("pane_header_divider", true);
 
 pub(super) static PANEL_SHADOW: Flag = Flag::new("pane_shadow", false);
+
+pub(super) fn load_for_workspace(store: &WorkspaceStore) -> Result<(), String> {
+    load_layout_preferences(store)?;
+    COMPACT_MENU.load(store)?;
+    TITLE_EMOJI.load(store)
+}
+
+pub(super) fn load_for_settings(store: &WorkspaceStore) -> Result<(), String> {
+    TITLE_EMOJI.load(store)?;
+    COMPACT_MENU.load(store)?;
+    load_layout_preferences(store)
+}
+
+fn load_layout_preferences(store: &WorkspaceStore) -> Result<(), String> {
+    HEADER_DIVIDER.load(store)?;
+    TAB_LEFT_ALIGNED.load(store)?;
+    ICON_ONLY.load(store)?;
+    load_icon_size(store)?;
+    PANEL_SHADOW.load(store)?;
+    load_system_corners(store)?;
+    super::snap::load_gap(store)
+}
+
 pub(super) use luciddesk_core::IconSize;
 static ICON_SIZE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(2);
 pub(super) fn icon_size() -> IconSize {

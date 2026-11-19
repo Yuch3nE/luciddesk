@@ -93,15 +93,7 @@ pub(super) fn present(state: &Rc<RefCell<PaneApp>>) -> Result<(), String> {
         everything_settings::load(&s.store)?;
         let language_changed = crate::i18n::initialize(&s.store)?;
         fonts::load(&s.store)?;
-        interface_flags::TITLE_EMOJI.load(&s.store)?;
-        interface_flags::COMPACT_MENU.load(&s.store)?;
-        interface_flags::HEADER_DIVIDER.load(&s.store)?;
-        interface_flags::TAB_LEFT_ALIGNED.load(&s.store)?;
-        interface_flags::ICON_ONLY.load(&s.store)?;
-        interface_flags::load_icon_size(&s.store)?;
-        interface_flags::PANEL_SHADOW.load(&s.store)?;
-        interface_flags::load_system_corners(&s.store)?;
-        snap::load_gap(&s.store)?;
+        interface_flags::load_for_settings(&s.store)?;
         for view in &s.views {
             if let Some(panel) = s.workspace.panel(view.id) {
                 let mut model = view.model.borrow_mut();

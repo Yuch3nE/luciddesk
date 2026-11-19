@@ -132,15 +132,7 @@ pub fn run(path: &Path, title: Option<String>) -> Result<(), String> {
     crate::i18n::initialize(&store)?;
     super::peek::load(&store)?;
     fonts::load(&store)?;
-    interface_flags::HEADER_DIVIDER.load(&store)?;
-    interface_flags::TAB_LEFT_ALIGNED.load(&store)?;
-    interface_flags::ICON_ONLY.load(&store)?;
-    interface_flags::load_icon_size(&store)?;
-    interface_flags::PANEL_SHADOW.load(&store)?;
-    interface_flags::load_system_corners(&store)?;
-    snap::load_gap(&store)?;
-    interface_flags::COMPACT_MENU.load(&store)?;
-    interface_flags::TITLE_EMOJI.load(&store)?;
+    interface_flags::load_for_workspace(&store)?;
     everything_settings::load(&store)?;
     let mut workspace = store.load_workspace().map_err(|e| e.to_string())?;
     let message_theme = workspace.appearance().or_else(|| workspace.panels().first().map(|p| (p.theme(), p.backdrop())))

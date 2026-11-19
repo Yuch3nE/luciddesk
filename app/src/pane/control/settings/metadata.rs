@@ -131,31 +131,19 @@ fn encode(values: &BTreeMap<String, SettingValue>) -> BTreeMap<String, String> {
         "folder_entry_mode".into(),
         text("folder_defaults.entry_mode"),
     );
-    let columns = 1
-        | (u8::from(flag("folder_defaults.show_modified")) << 1)
-        | (u8::from(flag("folder_defaults.show_type")) << 2)
-        | (u8::from(flag("folder_defaults.show_size")) << 3);
-    result.insert(
-        "folder_panel_defaults".into(),
-        format!(
-            "{},{}",
-            if flag("folder_defaults.list_view") {
-                "list"
-            } else {
-                "icons"
-            },
-            columns
-        ),
-    );
-    result.insert(
-        "backup_policy".into(),
-        format!(
-            "{},{},{}",
-            u8::from(flag("backup.enabled")),
-            number("backup.interval_minutes"),
-            number("backup.keep")
-        ),
-    );
+    let defaults = folder::Defaults {
+        list: flag("folder_defaults.list_view"),
+        columns: (u8::from(flag("folder_defaults.show_modified")) << 1)
+            | (u8::from(flag("folder_defaults.show_type")) << 2)
+            | (u8::from(flag("folder_defaults.show_size")) << 3),
+    };
+    result.insert(folder::Defaults::KEY.into(), defaults.encode());
+    let policy = recovery::Policy {
+        enabled: flag("backup.enabled"),
+        minutes: number("backup.interval_minutes"),
+        keep: number("backup.keep") as usize,
+    };
+    result.insert(recovery::Policy::KEY.into(), policy.encode());
     result
 }
 pub(super) fn encode_changes(

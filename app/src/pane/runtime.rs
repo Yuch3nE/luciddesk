@@ -354,16 +354,8 @@ pub(super) fn reload(state: &Rc<RefCell<PaneApp>>) -> Result<(), String> {
         let mut s = state.borrow_mut();
         let workspace = s.store.load_workspace().map_err(|e| e.to_string())?;
         peek::load(&s.store)?;
-    fonts::load(&s.store)?;
-    interface_flags::HEADER_DIVIDER.load(&s.store)?;
-    interface_flags::TAB_LEFT_ALIGNED.load(&s.store)?;
-    interface_flags::ICON_ONLY.load(&s.store)?;
-    interface_flags::load_icon_size(&s.store)?;
-    interface_flags::PANEL_SHADOW.load(&s.store)?;
-    interface_flags::load_system_corners(&s.store)?;
-    snap::load_gap(&s.store)?;
-    interface_flags::COMPACT_MENU.load(&s.store)?;
-    interface_flags::TITLE_EMOJI.load(&s.store)?;
+        fonts::load(&s.store)?;
+        interface_flags::load_for_workspace(&s.store)?;
         everything_settings::load(&s.store)?;
         s.session.take();
         s.drops.clear();

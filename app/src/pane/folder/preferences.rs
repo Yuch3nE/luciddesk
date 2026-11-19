@@ -51,10 +51,10 @@ impl Default for Defaults {
     }
 }
 impl Defaults {
+    pub const KEY: &'static str = "folder_panel_defaults";
+
     pub fn load(store: &WorkspaceStore) -> Result<Self, String> {
-        let saved = store
-            .preference("folder_panel_defaults")
-            .map_err(|e| e.to_string())?;
+        let saved = store.preference(Self::KEY).map_err(|e| e.to_string())?;
         Ok(saved
             .and_then(|value| {
                 let (view, columns) = value.split_once(',')?;
@@ -70,16 +70,13 @@ impl Defaults {
             })
             .unwrap_or_default())
     }
+    pub fn encode(self) -> String {
+        let view = if self.list { "list" } else { "icons" };
+        format!("{view},{}", normalized_columns(self.columns))
+    }
     pub fn save(self, store: &WorkspaceStore) -> Result<(), String> {
         store
-            .save_preference(
-                "folder_panel_defaults",
-                &format!(
-                    "{},{}",
-                    if self.list { "list" } else { "icons" },
-                    normalized_columns(self.columns)
-                ),
-            )
+            .save_preference(Self::KEY, &self.encode())
             .map_err(|e| e.to_string())
     }
     pub fn apply(self, store: &WorkspaceStore, panel: &mut Panel) -> Result<(), String> {

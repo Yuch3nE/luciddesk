@@ -22,8 +22,10 @@ impl Default for Policy {
     }
 }
 impl Policy {
+    pub const KEY: &'static str = "backup_policy";
+
     pub fn load(store: &WorkspaceStore) -> Result<Self, String> {
-        Self::decode(store.preference("backup_policy").map_err(|e| e.to_string()))
+        Self::decode(store.preference(Self::KEY).map_err(|e| e.to_string()))
     }
     fn decode(raw: Result<Option<String>, String>) -> Result<Self, String> {
         let raw = raw?;
@@ -39,12 +41,12 @@ impl Policy {
             _ => Err("Invalid backup policy".into()),
         }
     }
+    pub fn encode(self) -> String {
+        format!("{},{},{}", u8::from(self.enabled), self.minutes, self.keep)
+    }
     pub fn save(self, store: &WorkspaceStore) -> Result<(), String> {
         store
-            .save_preference(
-                "backup_policy",
-                &format!("{},{},{}", u8::from(self.enabled), self.minutes, self.keep),
-            )
+            .save_preference(Self::KEY, &self.encode())
             .map_err(|e| e.to_string())
     }
 }

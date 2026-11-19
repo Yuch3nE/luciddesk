@@ -96,15 +96,7 @@ pub(super) fn handle(
                 ("desktop_panel_layout", "compact"),
             ])
             .map_err(|e| e.to_string())?;
-        interface_flags::TITLE_EMOJI.load(&s.store)?;
-        interface_flags::COMPACT_MENU.load(&s.store)?;
-        interface_flags::HEADER_DIVIDER.load(&s.store)?;
-        interface_flags::TAB_LEFT_ALIGNED.load(&s.store)?;
-        interface_flags::ICON_ONLY.load(&s.store)?;
-        interface_flags::load_icon_size(&s.store)?;
-        interface_flags::PANEL_SHADOW.load(&s.store)?;
-        interface_flags::load_system_corners(&s.store)?;
-        snap::load_gap(&s.store)?;
+        interface_flags::load_for_settings(&s.store)?;
         s.workspace.set_icon_defaults(luciddesk_core::IconDisplay::DEFAULT);
         for view in &s.views {
             unsafe {
