@@ -11,6 +11,7 @@ use super::native_graphics::canvas_result;
 use super::search::everything_settings;
 use super::*;
 use luciddesk_core::{Backdrop, PanelTheme};
+use luciddesk_window::controls::NavigationItem;
 use windows_canvas::ID2D1DeviceContext;
 use windows_sys::Win32::{
     Graphics::Gdi::*,
@@ -59,6 +60,8 @@ use windows_sys::Win32::UI::Controls::WM_MOUSELEAVE;
 #[derive(Clone)]
 enum Action {
     Classification(classification::Command),
+    OrganizeTab(classification::Tab),
+    OpenOrganizer,
     Dropdown(std::sync::Arc<[(String, Action, bool)]>),
     PluginEnabled(String, bool),
     PluginPage(String),
@@ -125,23 +128,55 @@ mod components;
 mod controls;
 mod preview;
 use components::{ContentClip, SettingsForm, Tokens};
-use controls::{Control, ControlKind, Slider, Style};
+use controls::{Control, ControlKind, DestinationChange, SectionHeader, Slider, Style};
 struct Scene {
+    content_left: f32,
+    content_top: f32,
     navigation_viewport: Option<Rect>,
     navigation_text: std::ops::Range<usize>,
     navigation_max: f32,
     navigation_offset: f32,
     material: Backdrop,
     viewport: Option<Rect>,
+    footer_height: f32,
     scroll_max: f32,
     scroll_offset: f32,
     text: Vec<(Rect, String, usize)>,
     cards: Vec<Rect>,
+    section_headers: Vec<SectionHeader>,
+    destination_changes: Vec<DestinationChange>,
     separators: Vec<Rect>,
     controls: Vec<Control>,
     previews: Vec<(Rect, Backdrop)>,
     app_icon: Option<Rect>,
     caption_icon: Option<Rect>,
+}
+
+impl Scene {
+    fn empty(material: Backdrop, content_left: f32, content_top: f32) -> Self {
+        Self {
+            content_left,
+            content_top,
+            navigation_viewport: None,
+            navigation_text: 0..0,
+            navigation_max: 0.0,
+            navigation_offset: 0.0,
+            material,
+            viewport: None,
+            footer_height: 0.0,
+            scroll_max: 0.0,
+            scroll_offset: 0.0,
+            text: Vec::new(),
+            cards: Vec::new(),
+            section_headers: Vec::new(),
+            destination_changes: Vec::new(),
+            separators: Vec::new(),
+            controls: Vec::new(),
+            previews: Vec::new(),
+            app_icon: None,
+            caption_icon: None,
+        }
+    }
 }
 
 fn contains(r: &Rect, x: f32, y: f32) -> bool {
@@ -162,6 +197,7 @@ mod classification;
 mod agent;
 mod host;
 pub(super) use host::{show, show_monitor};
+pub(super) use classification::show_organize_preview;
 
 #[cfg(test)]
 pub(super) mod tests;

@@ -35,6 +35,8 @@ use windows_sys::Win32::{
 #[allow(clippy::struct_excessive_bools)]
 pub struct ShellAttributes {
     pub folder: bool,
+    /// Physical directory status when available. Shell folders may include browsable files.
+    pub filesystem_directory: Option<bool>,
     pub file_system: bool,
     pub link: bool,
     pub hidden: bool,
@@ -188,6 +190,7 @@ pub fn enumerate_folder(path: &Path) -> Result<Vec<ShellEntry>, ShellError> {
                 display_name: name.to_string_lossy().into_owned(),
                 attributes: ShellAttributes {
                     folder, hidden: data.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN != 0,
+                    filesystem_directory: Some(folder),
                     file_system: true, link: child.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("lnk")),
                     can_rename: true, can_delete: true,
                 },
@@ -322,6 +325,7 @@ pub(crate) fn shell_entry_with_display_fallback(
     let attributes = ShellAttributes {
         folder: raw_attributes & SFGAO_FOLDER.0 != 0
             || metadata.as_ref().is_some_and(fs::Metadata::is_dir),
+        filesystem_directory: metadata.as_ref().map(fs::Metadata::is_dir),
         file_system: raw_attributes & SFGAO_FILESYSTEM.0 != 0
             || identity.file_system_path().is_some(),
         link: raw_attributes & SFGAO_LINK.0 != 0 || path_is_link,

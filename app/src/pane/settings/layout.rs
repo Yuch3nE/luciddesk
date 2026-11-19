@@ -253,7 +253,6 @@ pub(super) fn plugin_scene(
     appearance: (PanelTheme, Backdrop),
     options: luciddesk_core::PaneOptions,
 ) -> Scene {
-    let version = windows_version::OsVersion::current();
     scene_with_mica(
         width,
         height,
@@ -261,7 +260,7 @@ pub(super) fn plugin_scene(
         false,
         appearance,
         options,
-        version.major > 10 || (version.major == 10 && version.build >= 22000),
+        supports_mica(),
         Some(id),
     )
 }
@@ -274,7 +273,6 @@ pub(super) fn scene(
     appearance: (PanelTheme, Backdrop),
     options: luciddesk_core::PaneOptions,
 ) -> Scene {
-    let version = windows_version::OsVersion::current();
     scene_with_mica(
         width,
         _height,
@@ -282,7 +280,7 @@ pub(super) fn scene(
         search_enabled,
         appearance,
         options,
-        version.major > 10 || (version.major == 10 && version.build >= 22000),
+        supports_mica(),
         None,
     )
 }
@@ -300,36 +298,16 @@ fn scene_with_mica(
     // A portable configuration may have been saved on Windows 11. Reflect the
     // downlevel acrylic fallback without rewriting the persisted preference.
     let material_strength = appearance.1.strength();
-    let appearance =
-        if !show_mica && matches!(appearance.1.base(), Backdrop::Mica | Backdrop::MicaAlt) {
-            (
-                appearance.0,
-                Backdrop::Acrylic.with_strength(appearance.1.strength().unwrap_or(50)),
-            )
-        } else {
-            appearance
-        };
-    let mut s = Scene {
-        navigation_viewport: None, navigation_text: 0..0, navigation_max: 0.0, navigation_offset: 0.0,
-        material: appearance.1,
-        viewport: None,
-        scroll_max: 0.0,
-        scroll_offset: 0.0,
-        text: vec![],
-        cards: vec![],
-        separators: vec![],
-        controls: vec![],
-        previews: vec![],
-        app_icon: None,
-        caption_icon: None,
-    };
-    s.text(Rect::from_xywh(28.0, 26.0, 172.0, 32.0), "LucidDesk", 2);
-    let entries = navigation();
+    let appearance = (appearance.0, visible_material(appearance.1, show_mica));
     let content_x = Tokens::content_x();
+    let mut s = Scene::empty(appearance.1, content_x, TITLE_HEIGHT);
+    let entries = navigation();
     let heading_height = 28.0;
-    let stride = Style::NAV_HEIGHT + 4.0;
+    let stride = NavigationItem::HEIGHT + 4.0;
     let start = s.text.len();
-    let mut y = 78.0;
+    let top = 28.0;
+    let left = Tokens::MARGIN / 2.0;
+    let mut y = top;
     for entry in &entries {
         if let Some(section) = entry.section {
             s.text(Rect::from_xywh(28.0, y + 4.0, content_x - 52.0, 20.0), section, 8);
@@ -340,12 +318,11 @@ fn scene_with_mica(
             Action::Page(id) => plugin.is_none() && (page == *id || (page == 7 && *id == 0) || (matches!(page, 9 | 10) && *id == 6)),
             _ => false,
         };
-        s.control(ControlKind::Navigation, Rect::from_xywh(12.0, y, content_x-48.0, Style::NAV_HEIGHT), &entry.label, entry.action.clone(), selected);
-        s.text(Rect::from_xywh(30.0, y, Style::NAV_ICON_SLOT, Style::NAV_HEIGHT), entry.icon, 5);
+        s.control(ControlKind::Navigation(entry.icon), Rect::from_xywh(left, y, content_x - 2.0 * Tokens::MARGIN, NavigationItem::HEIGHT), &entry.label, entry.action.clone(), selected);
         y += stride;
     }
     s.navigation_text = start..s.text.len();
-    s.navigation_viewport = Some(Rect::from_xywh(12.0, 70.0, content_x-36.0, (_height-78.0).max(0.0)));
+    s.navigation_viewport = Some(Rect::from_xywh(left, top, content_x - Tokens::MARGIN - left, (_height - top - Tokens::GAP).max(0.0)));
     let x = content_x;
     let w = (width - x - Tokens::MARGIN).min(Tokens::MAX_WIDTH);
     s.text(
@@ -356,7 +333,9 @@ fn scene_with_mica(
         3,
     );
     if plugin.is_some() { return s; }
-    if page == 7 {
+    if page == 16 {
+        classification::settings_entry(&mut s, width);
+    } else if page == 7 {
         let Backdrop::Solid { color, opacity } = appearance.1 else {
             return s;
         };

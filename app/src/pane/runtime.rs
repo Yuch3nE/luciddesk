@@ -84,6 +84,7 @@ fn desktop_connection_log(database: &std::path::Path, error: Option<&str>) -> st
 }
 
 fn notify_connection(state: &Rc<RefCell<PaneApp>>) {
+    state.borrow().invalidate_organizer();
     let (path, error, generation, notify) = {
         let mut s = state.borrow_mut();
         let Some(runtime) = &mut s.runtime else { return; };
@@ -367,6 +368,8 @@ pub(super) fn reload(state: &Rc<RefCell<PaneApp>>) -> Result<(), String> {
             window::prepare_close(v.window.hwnd().cast());
         }
         s.workspace = workspace;
+        s.last_organize = None;
+        s.invalidate_organizer();
         s.runtime.as_mut().unwrap().layouts = Default::default();
         display_layout::initialize(&mut s, luciddesk_window::enumerate_monitors())?;
         std::mem::take(&mut s.views)

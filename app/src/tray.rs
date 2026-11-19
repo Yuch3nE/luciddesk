@@ -17,6 +17,7 @@ const NIN_KEYSELECT: u32 = NIN_SELECT | 1;
 pub enum Action {
     Settings,
     Search,
+    Organize,
     Refresh,
     OpenConfig,
     Show,
@@ -214,6 +215,10 @@ fn menu(
             Shell_NotifyIconW(NIM_SETFOCUS, &data(hwnd, null_mut()));
         }
     }
+    menu_action(command)
+}
+
+fn menu_action(command: i32) -> Option<Action> {
     match command {
         1 => Some(Action::Show),
         2 => Some(Action::New),
@@ -223,6 +228,7 @@ fn menu(
         6 => Some(Action::Search),
         7 => Some(Action::Refresh),
         8 => Some(Action::OpenConfig),
+        9 => Some(Action::Organize),
         _ => None,
     }
 }
@@ -238,6 +244,7 @@ fn menu_entries(search_enabled: bool) -> Vec<crate::pane::menu::Entry> {
         rows.push(entry(6, crate::i18n::text("tray-search"), "\u{e721}", ""));
     }
     rows.extend([
+        entry(9, crate::i18n::text("classification-run"), "\u{e8b7}", ""),
         entry(7, crate::i18n::text("tray-refresh-all"), "\u{e72c}", ""),
         entry(0, "", "", ""),
         entry(2, crate::i18n::text("ui-new-group"), "\u{e710}", ""),
@@ -298,6 +305,8 @@ mod tests {
     fn common_actions_follow_search_setting_and_exit_is_separate() {
         for enabled in [false, true] {
             let rows = menu_entries(enabled);
+            assert!(rows.iter().any(|row| row.id == 9));
+            assert!(matches!(menu_action(9), Some(Action::Organize)));
             assert_eq!(
                 rows.iter().filter(|r| r.id == 6).count(),
                 usize::from(enabled)

@@ -79,7 +79,8 @@ pub(super) unsafe extern "system" fn font_search_colors(
                 std::ptr::null_mut(),
             );
             let dc = wp as HDC;
-            SetTextColor(dc, if key == 0x202020 { 0xf0f0f0 } else { 0x202020 });
+            let palette = components::Palette::for_theme(key == 0x202020);
+            SetTextColor(dc, luciddesk_window::control_style::colorref(palette.ink));
             SetBkColor(dc, key);
             SetDCBrushColor(dc, key);
             return GetStockObject(DC_BRUSH) as isize;
@@ -253,7 +254,7 @@ impl Editor {
                     if self.style != font_style {
                         let face: Vec<u16> = font_style.0.encode_utf16().chain(Some(0)).collect();
                         let font = CreateFontW(
-                            -(14.0 * scale).round() as i32,
+                            -(Style::TEXT_SIZE * scale).round() as i32,
                             0,
                             0,
                             0,

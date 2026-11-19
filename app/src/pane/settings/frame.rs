@@ -1,20 +1,5 @@
-//! Settings caption, resize hit testing and toggle geometry.
+//! Settings caption and resize hit testing.
 use super::*;
-
-pub(super) fn toggle_thumb(bounds: Rect, progress: f32) -> Ellipse {
-    let height = bounds.bottom - bounds.top;
-    let radius = (height / 2.0 - 4.0).max(1.0);
-    let left = bounds.left + height / 2.0;
-    let right = bounds.right - height / 2.0;
-    Ellipse {
-        center: Vector2 {
-            x: left + (right - left) * progress.clamp(0.0, 1.0),
-            y: (bounds.top + bounds.bottom) / 2.0,
-        },
-        radius_x: radius,
-        radius_y: radius,
-    }
-}
 
 pub(super) const TITLE_HEIGHT: f32 = 40.0;
 pub(super) fn frame_hit(x: f32, y: f32, width: f32, height: f32, maximized: bool) -> u32 {
@@ -38,7 +23,11 @@ pub(super) fn frame_hit(x: f32, y: f32, width: f32, height: f32, maximized: bool
         HTCLIENT
     }
 }
-pub(super) fn with_titlebar(mut scene: Scene, width: f32, maximized: bool) -> Scene {
+pub(super) fn with_titlebar(scene: Scene, width: f32, maximized: bool) -> Scene {
+    with_named_titlebar(scene, width, maximized, crate::i18n::text("ui-luciddesk-settings"))
+}
+
+pub(super) fn with_named_titlebar(mut scene: Scene, width: f32, maximized: bool, title: &str) -> Scene {
     if let Some(viewport) = &mut scene.navigation_viewport {
         viewport.top += TITLE_HEIGHT;
         viewport.bottom += TITLE_HEIGHT;
@@ -51,7 +40,10 @@ pub(super) fn with_titlebar(mut scene: Scene, width: f32, maximized: bool) -> Sc
         r.top += TITLE_HEIGHT;
         r.bottom += TITLE_HEIGHT;
     }
-    for r in scene.cards.iter_mut().chain(&mut scene.separators) {
+    for r in scene.cards.iter_mut().chain(&mut scene.separators)
+        .chain(scene.section_headers.iter_mut().map(|header| &mut header.bounds))
+        .chain(scene.destination_changes.iter_mut().map(|change| &mut change.bounds))
+    {
         r.top += TITLE_HEIGHT;
         r.bottom += TITLE_HEIGHT;
     }
@@ -65,9 +57,9 @@ pub(super) fn with_titlebar(mut scene: Scene, width: f32, maximized: bool) -> Sc
     }
     scene.caption_icon = Some(Rect::from_xywh(28.0, (TITLE_HEIGHT - 18.0) * 0.5, 18.0, 18.0));
     scene.text(
-        // Align with the sidebar brand and keep localized titles clear of caption buttons.
+        // Keep localized titles clear of the caption buttons.
         Rect::from_xywh(56.0, 0.0, (width - 56.0 - 138.0 - 16.0).max(1.0), TITLE_HEIGHT),
-        crate::i18n::text("ui-luciddesk-settings"),
+        title,
         Tokens::CAPTION_TEXT,
     );
     for (i, (glyph, command)) in [

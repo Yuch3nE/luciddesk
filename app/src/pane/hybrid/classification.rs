@@ -1,6 +1,6 @@
 //! Desktop classification over accepted inventories and explicit manual previews.
 use super::*;
-use luciddesk_core::{Classification, CompiledClassificationRule};
+use luciddesk_core::{Classification, ClassificationItemType, CompiledClassificationRule};
 use luciddesk_storage::SettingValue;
 use std::collections::HashSet;
 use std::time::SystemTime;
@@ -84,7 +84,7 @@ impl Automatic {
     fn candidates<'a>(
         &mut self,
         items: &'a [DesktopItem],
-        times: &TemporaryTimes<'_>,
+        times: &InventoryMetadata<'_>,
         now: Instant,
         renaming: bool,
     ) -> Vec<&'a DesktopItem> {
@@ -184,12 +184,13 @@ fn is_tmp(path: &Path) -> bool {
         .is_some_and(|extension| extension.eq_ignore_ascii_case("tmp"))
 }
 
-pub(super) struct TemporaryTimes<'a> {
+pub(super) struct InventoryMetadata<'a> {
+    entries: &'a [luciddesk_shell::ShellEntry],
     latest: HashMap<&'a Path, SystemTime>,
     wall_now: SystemTime,
 }
 
-impl<'a> TemporaryTimes<'a> {
+impl<'a> InventoryMetadata<'a> {
     pub(super) fn new(entries: &'a [luciddesk_shell::ShellEntry], wall_now: SystemTime) -> Self {
         let latest = entries
             .iter()
@@ -202,74 +203,169 @@ impl<'a> TemporaryTimes<'a> {
                 Some((path, timestamp))
             })
             .collect();
-        Self { latest, wall_now }
+        Self { entries, latest, wall_now }
+    }
+
+    fn item_types(
+        &self,
+        rules: &[CompiledClassificationRule<'_>],
+    ) -> HashMap<&'a Path, ClassificationItemType> {
+        if !rules.iter().any(CompiledClassificationRule::requires_item_type) {
+            return HashMap::new();
+        }
+        self.entries
+            .iter()
+            .filter_map(|entry| {
+                let path = entry.identity.file_system_path()?;
+                let directory = entry.attributes.filesystem_directory?;
+                let item_type = if directory {
+                    ClassificationItemType::Folder
+                } else if entry.attributes.link
+                    || path.extension().is_some_and(|extension| {
+                        ["lnk", "url", "website"]
+                            .iter()
+                            .any(|suffix| extension.eq_ignore_ascii_case(suffix))
+                    })
+                {
+                    ClassificationItemType::Shortcut
+                } else {
+                    ClassificationItemType::File
+                };
+                Some((path, item_type))
+            })
+            .collect()
     }
 
     /// Zero means ready. Unknown timestamps and unfinished names wait for a later inventory.
     fn ready_in(&self, item: &DesktopItem) -> Option<Duration> {
+        self.readiness(item).ok()
+    }
+
+    fn readiness(&self, item: &DesktopItem) -> Result<Duration, SkipReason> {
         let Some(path) = item.identity().file_system_path() else {
-            return Some(Duration::ZERO);
+            return Ok(Duration::ZERO);
         };
         if download_or_lock(path) {
-            return None;
+            return Err(SkipReason::DownloadOrLock);
         }
         if !is_tmp(path) {
-            return Some(Duration::ZERO);
+            return Ok(Duration::ZERO);
         }
-        let ready_at = self.latest.get(path)?.checked_add(TMP_SETTLE)?;
-        Some(ready_at.duration_since(self.wall_now).unwrap_or_default())
+        let ready_at = self.latest.get(path).and_then(|time| time.checked_add(TMP_SETTLE))
+            .ok_or(SkipReason::UnknownTime)?;
+        Ok(ready_at.duration_since(self.wall_now).unwrap_or_default())
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub(super) struct Move {
-    pub(super) identity: ShellIdentity,
-    pub(super) item_name: String,
-    pub(super) target: PanelId,
-    pub(super) target_name: String,
-    pub(super) rule: usize,
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(in crate::pane) struct Move {
+    pub(in crate::pane) identity: ShellIdentity,
+    pub(in crate::pane) item_name: String,
+    pub(in crate::pane) target: PanelId,
+    pub(in crate::pane) target_name: String,
+    pub(in crate::pane) rule: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::pane) enum SkipReason {
+    DownloadOrLock,
+    TemporaryFile,
+    UnknownTime,
+    VirtualIcon,
+    MissingTarget,
+    NoMatch,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(in crate::pane) enum PreviewEntry {
+    Move(Move),
+    Skip { identity: ShellIdentity, item_name: String, reason: SkipReason },
+}
+
+impl PreviewEntry {
+    pub(super) fn identity(&self) -> &ShellIdentity {
+        match self {
+            Self::Move(entry) => &entry.identity,
+            Self::Skip { identity, .. } => identity,
+        }
+    }
+}
+
+fn targets<'a>(workspace: &'a Workspace, rules: &[CompiledClassificationRule<'_>]) -> Vec<Option<&'a Panel>> {
+    rules.iter().map(|rule| {
+        workspace.panel(PanelId::new(rule.target_panel())).filter(|panel| panel.supports_tabs())
+    }).collect()
+}
+
+fn matching_move(
+    item: &DesktopItem,
+    item_type: Option<ClassificationItemType>,
+    rules: &[CompiledClassificationRule<'_>],
+    targets: &[Option<&Panel>],
+) -> Option<Move> {
+    let (index, target) = rules.iter().zip(targets).enumerate().find_map(|(index, (rule, target))| {
+        target.filter(|_| rule.matches_with_type(item, item_type)).map(|panel| (index, panel))
+    })?;
+    Some(Move {
+        identity: item.identity().clone(),
+        item_name: item.display_name().into(),
+        target: target.id(),
+        target_name: target.title().into(),
+        rule: index + 1,
+    })
+}
+
+pub(super) fn preview(
+    workspace: &Workspace,
+    rules: &[CompiledClassificationRule<'_>],
+    metadata: &InventoryMetadata<'_>,
+) -> Vec<PreviewEntry> {
+    let targets = targets(workspace, rules);
+    let item_types = metadata.item_types(rules);
+    workspace.desktop_items().iter().filter(|item| unassigned(item)).map(|item| {
+        let reason = match metadata.readiness(item) {
+            Err(reason) => reason,
+            Ok(wait) if !wait.is_zero() => SkipReason::TemporaryFile,
+            Ok(_) if item.identity().file_system_path().is_none() => SkipReason::VirtualIcon,
+            Ok(_) => {
+                let item_type = item.identity().file_system_path()
+                    .and_then(|path| item_types.get(path).copied());
+                if let Some(entry) = matching_move(item, item_type, rules, &targets) {
+                    return PreviewEntry::Move(entry);
+                }
+                if rules.iter().zip(&targets).any(|(rule, target)| {
+                    target.is_none() && rule.matches_with_type(item, item_type)
+                }) {
+                    SkipReason::MissingTarget
+                } else {
+                    SkipReason::NoMatch
+                }
+            }
+        };
+        PreviewEntry::Skip { identity: item.identity().clone(), item_name: item.display_name().into(), reason }
+    }).collect()
 }
 
 pub(super) fn moves<'a>(
     workspace: &Workspace,
     items: impl IntoIterator<Item = &'a DesktopItem>,
     rules: &[CompiledClassificationRule<'_>],
-    times: &TemporaryTimes<'_>,
+    metadata: &InventoryMetadata<'_>,
 ) -> Vec<Move> {
-    let targets: Vec<_> = rules
-        .iter()
-        .map(|rule| {
-            workspace
-                .panel(PanelId::new(rule.target_panel()))
-                .filter(|panel| panel.supports_tabs())
-        })
-        .collect();
+    let targets = targets(workspace, rules);
+    let item_types = metadata.item_types(rules);
     items
         .into_iter()
-        .filter(|item| unassigned(item) && times.ready_in(item) == Some(Duration::ZERO))
+        .filter(|item| unassigned(item) && metadata.ready_in(item) == Some(Duration::ZERO))
         .filter_map(|item| {
-            let (index, target) =
-                rules
-                    .iter()
-                    .zip(&targets)
-                    .enumerate()
-                    .find_map(|(index, (rule, target))| {
-                        target
-                            .filter(|_| rule.matches(item))
-                            .map(|panel| (index, panel))
-                    })?;
-            Some(Move {
-                identity: item.identity().clone(),
-                item_name: item.display_name().into(),
-                target: target.id(),
-                target_name: target.title().into(),
-                rule: index + 1,
-            })
+            let item_type = item.identity().file_system_path()
+                .and_then(|path| item_types.get(path).copied());
+            matching_move(item, item_type, rules, &targets)
         })
         .collect()
 }
 
-pub(super) fn apply_moves(workspace: &mut Workspace, moves: &[Move]) {
+pub(super) fn apply_moves<'a>(workspace: &mut Workspace, moves: impl IntoIterator<Item = &'a Move>) {
     for entry in moves {
         if workspace.panel(entry.target).is_some_and(Panel::fixed_grid) {
             fixed_grid::place(
@@ -322,12 +418,12 @@ fn desktop_renaming(view: isize) -> bool {
 pub(super) fn apply(s: &mut PaneApp) -> Result<bool, String> {
     let (_, config) = load(&s.store)?;
     let session = s.session.as_mut().unwrap();
-    let times = TemporaryTimes::new(&session.snapshot.items, SystemTime::now());
+    let metadata = InventoryMetadata::new(&session.snapshot.items, SystemTime::now());
     let automatic = &mut session.classification;
     automatic.set_enabled(config.enabled);
     let candidates = automatic.candidates(
         s.workspace.desktop_items(),
-        &times,
+        &metadata,
         Instant::now(),
         desktop_renaming(session.view),
     );
@@ -335,7 +431,7 @@ pub(super) fn apply(s: &mut PaneApp) -> Result<bool, String> {
         return Ok(false);
     }
     let rules = config.compile().map_err(|error| error.to_string())?;
-    let planned = moves(&s.workspace, candidates, &rules, &times);
+    let planned = moves(&s.workspace, candidates, &rules, &metadata);
     // Preserve deliberate releases even if they happen before the next inventory.
     for entry in &planned {
         automatic.remember(&entry.identity);
@@ -364,7 +460,7 @@ mod tests {
         items: &'a [DesktopItem],
     ) -> Vec<&'a DesktopItem> {
         let now = Instant::now();
-        let times = TemporaryTimes::new(&[], SystemTime::now());
+        let times = InventoryMetadata::new(&[], SystemTime::now());
         let mut result = automatic.candidates(items, &times, now, false);
         result.extend(automatic.candidates(items, &times, now + NAME_SETTLE, false));
         result
@@ -414,7 +510,7 @@ mod tests {
         let mut automatic = Automatic::default();
         automatic.set_enabled(true);
         let start = Instant::now();
-        let times = TemporaryTimes::new(&[], SystemTime::now());
+        let times = InventoryMetadata::new(&[], SystemTime::now());
         let old = [item("existing.pdf", 1)];
         assert!(automatic.candidates(&old, &times, start, false).is_empty());
         let first = [item("existing.pdf", 1), item("draft.txt", 2)];
@@ -451,7 +547,7 @@ mod tests {
         let mut automatic = Automatic::default();
         automatic.set_enabled(true);
         let now = Instant::now();
-        let times = TemporaryTimes::new(&[], SystemTime::now());
+        let times = InventoryMetadata::new(&[], SystemTime::now());
         automatic.candidates(&[item("old.txt", 1)], &times, now, false);
         let items = [item("old.txt", 1), item("draft.unknown", 2)];
         automatic.candidates(&items, &times, now, false);
@@ -469,7 +565,7 @@ mod tests {
             let mut automatic = Automatic::default();
             automatic.set_enabled(true);
             let start = Instant::now();
-            let times = TemporaryTimes::new(&[], SystemTime::now());
+            let times = InventoryMetadata::new(&[], SystemTime::now());
             automatic.candidates(&[], &times, start, false);
             let draft = [item("new.txt", 2)];
             assert!(automatic.candidates(&draft, &times, start, true).is_empty());
@@ -498,7 +594,7 @@ mod tests {
         let mut automatic = Automatic::default();
         automatic.set_enabled(true);
         let start = Instant::now();
-        let times = TemporaryTimes::new(&[], SystemTime::now());
+        let times = InventoryMetadata::new(&[], SystemTime::now());
         automatic.candidates(&[], &times, start, false);
         let mut items = [item("new.txt", 2)];
         automatic.candidates(&items, &times, start, false);
@@ -531,7 +627,7 @@ mod tests {
         let mut automatic = Automatic::default();
         automatic.set_enabled(true);
         let now = Instant::now();
-        let times = TemporaryTimes::new(&[], SystemTime::now());
+        let times = InventoryMetadata::new(&[], SystemTime::now());
         automatic.candidates(&[], &times, now, false);
         let id = PanelId::new(1);
         let mut workspace = Workspace::from_panels(vec![Panel::new(id, "Target", RectDip::default())]).unwrap();
@@ -575,7 +671,7 @@ mod tests {
         };
         let scan = |automatic: &mut Automatic, entry: &luciddesk_shell::ShellEntry, seconds| {
             let offset = Duration::from_secs(seconds);
-            let times = TemporaryTimes::new(std::slice::from_ref(entry), wall + offset);
+            let times = InventoryMetadata::new(std::slice::from_ref(entry), wall + offset);
             automatic.candidates(&items, &times, start + offset, false)
         };
         assert!(scan(&mut automatic, &entry, 0).is_empty());
@@ -612,7 +708,7 @@ mod tests {
         )
         .unwrap();
         let rules = config.compile().unwrap();
-        let times = TemporaryTimes::new(&[], SystemTime::now());
+        let times = InventoryMetadata::new(&[], SystemTime::now());
         let preview = moves(&workspace, workspace.desktop_items(), &rules, &times);
         assert_eq!(preview.len(), 1);
         assert_eq!(preview[0].item_name, "report.pdf");
@@ -626,5 +722,200 @@ mod tests {
         assert!(matches!(workspace.desktop_items()[1].placement(),
             DesktopPlacement::Pane { pane_id, .. } if *pane_id == target));
         assert!(unassigned(&workspace.desktop_items()[2]));
+    }
+
+    #[test]
+    fn preview_explains_skips_and_keeps_the_first_available_matching_rule() {
+        let now = SystemTime::now();
+        let mut workspace = Workspace::from_panels(vec![Panel::new(
+            PanelId::new(1), "Available", RectDip::default(),
+        )]).unwrap();
+        let pending = item("pending.tmp", 4);
+        let pending_entry = luciddesk_shell::ShellEntry {
+            identity: pending.identity().clone(),
+            display_name: pending.display_name().into(),
+            attributes: Default::default(),
+            created: None,
+            modified: Some(now),
+            size: None,
+        };
+        workspace.reconcile_desktop_items([
+            item("report.pdf", 1),
+            item("missing.png", 2),
+            item("download.pdf.part", 3),
+            pending,
+            item("unknown.tmp", 5),
+            item("unmatched.docx", 6),
+            DesktopItem::new(ShellIdentity::Namespace { parsing_name: "test:virtual".into() }, "Virtual"),
+        ]);
+        let config: Classification = serde_json::from_str(
+            r#"{"rules":[{"target_panel":2,"extensions":["pdf","png"]},{"target_panel":1,"extensions":["pdf"]},{"target_panel":1,"extensions":["docx"],"enabled":false}]}"#,
+        ).unwrap();
+        let rules = config.compile().unwrap();
+        let entries = [pending_entry];
+        let times = InventoryMetadata::new(&entries, now);
+        let decisions = preview(&workspace, &rules, &times);
+        assert!(matches!(decisions.as_slice(), [
+            PreviewEntry::Move(entry),
+            PreviewEntry::Skip { reason: SkipReason::MissingTarget, .. },
+            PreviewEntry::Skip { reason: SkipReason::DownloadOrLock, .. },
+            PreviewEntry::Skip { reason: SkipReason::TemporaryFile, .. },
+            PreviewEntry::Skip { reason: SkipReason::UnknownTime, .. },
+            PreviewEntry::Skip { reason: SkipReason::NoMatch, .. },
+            PreviewEntry::Skip { reason: SkipReason::VirtualIcon, .. },
+        ] if entry.rule == 2 && entry.target == PanelId::new(1)));
+        assert!(matches!(moves(&workspace, workspace.desktop_items(), &rules, &times).as_slice(),
+            [entry] if entry.rule == 2 && entry.target == PanelId::new(1)));
+    }
+
+    #[test]
+    fn preview_and_automatic_share_types_and_keep_untyped_rule_matching() {
+        let mut workspace = Workspace::from_panels(
+            (1..=4).map(|id| Panel::new(PanelId::new(id), format!("Group {id}"), RectDip::default())).collect(),
+        ).unwrap();
+        let specifications = [
+            ("Report.PDF", Some(false), false, false),
+            ("Archive.pdf", Some(true), true, false),
+            ("Folder shortcut.lnk", Some(false), true, true),
+            ("Web.URL", Some(false), false, false),
+            ("Site.website", Some(false), false, false),
+            ("Real directory.lnk", Some(true), true, true),
+            ("Browsable.pdf", Some(false), true, false),
+            ("Unknown type.pdf", None, true, false),
+        ];
+        let entries: Vec<_> = specifications.into_iter().enumerate().map(
+            |(index, (name, directory, folder, link))| luciddesk_shell::ShellEntry {
+                identity: item(name, index as u128 + 1).identity().clone(),
+                display_name: name.into(),
+                attributes: luciddesk_shell::ShellAttributes {
+                    filesystem_directory: directory,
+                    folder,
+                    link,
+                    ..Default::default()
+                },
+                created: None,
+                modified: None,
+                size: None,
+            },
+        ).collect();
+        workspace.reconcile_desktop_items(entries.iter().map(|entry| {
+            DesktopItem::new(entry.identity.clone(), &entry.display_name)
+        }).chain([item("Without metadata.pdf", 9)]));
+        let config: Classification = serde_json::from_str(
+            r#"{"rules":[
+                {"target_panel":1,"item_type":"file","extensions":["pdf"]},
+                {"target_panel":2,"item_type":"folder"},
+                {"target_panel":3,"item_type":"shortcut"},
+                {"target_panel":4,"extensions":["pdf"]}
+            ]}"#,
+        ).unwrap();
+        let rules = config.compile().unwrap();
+        let metadata = InventoryMetadata::new(&entries, SystemTime::now());
+        let decisions = preview(&workspace, &rules, &metadata);
+        let preview_moves: Vec<_> = decisions.iter().filter_map(|decision| match decision {
+            PreviewEntry::Move(entry) => Some(entry.clone()),
+            PreviewEntry::Skip { .. } => None,
+        }).collect();
+        assert_eq!(preview_moves.iter().map(|entry| entry.target.get()).collect::<Vec<_>>(),
+            [1, 2, 3, 3, 3, 2, 1, 4, 4]);
+
+        let mut automatic = Automatic::default();
+        automatic.set_enabled(true);
+        let start = Instant::now();
+        assert!(automatic.candidates(&[], &metadata, start, false).is_empty());
+        assert!(automatic.candidates(workspace.desktop_items(), &metadata, start, false).is_empty());
+        let candidates = automatic.candidates(workspace.desktop_items(), &metadata, start + NAME_SETTLE, false);
+        assert_eq!(moves(&workspace, candidates, &rules, &metadata), preview_moves);
+
+        let legacy = moves(&workspace, workspace.desktop_items(), &rules[3..], &metadata);
+        assert!(legacy.iter().any(|entry| entry.item_name == "Archive.pdf"));
+    }
+
+    #[test]
+    fn automatic_organize_groups_new_files_from_a_windows_inventory_and_persists_membership() {
+        let fixture = tempfile::tempdir().unwrap();
+        let desktop = fixture.path().join("desktop");
+        std::fs::create_dir(&desktop).unwrap();
+        std::fs::write(desktop.join("Existing.pdf"), b"existing").unwrap();
+        let database = fixture.path().join("workspace.db");
+        let mut store = WorkspaceStore::open(&database).unwrap();
+        let rules_json = r#"{"enabled":true,"rules":[
+            {"target_panel":99,"item_type":"file","extensions":["pdf"]},
+            {"target_panel":1,"item_type":"file","extensions":["pdf"]},
+            {"target_panel":2,"item_type":"folder"},
+            {"target_panel":3,"item_type":"shortcut"},
+            {"target_panel":2,"extensions":["pdf"]}
+        ]}"#;
+        store.save_settings(&[(KEY.into(), SettingValue::Text(rules_json.into()))].into())
+            .unwrap();
+        let (_, config) = load(&store).unwrap();
+        let rules = config.compile().unwrap();
+        let mut workspace = Workspace::from_panels(vec![
+            Panel::new(PanelId::new(1), "Documents", RectDip::default()),
+            Panel::new(PanelId::new(2), "Folders", RectDip::default()),
+            Panel::new(PanelId::new(3), "Shortcuts", RectDip::default()),
+        ]).unwrap();
+        let scan = |workspace: &mut Workspace| {
+            let entries = luciddesk_shell::enumerate_folder(&desktop).unwrap();
+            workspace.reconcile_desktop_items(entries.iter().map(|entry| {
+                DesktopItem::new(entry.identity.clone(), &entry.display_name)
+            }));
+            entries
+        };
+        let group_of = |workspace: &Workspace, name| {
+            match workspace.desktop_items().iter().find(|item| item.display_name() == name).unwrap().placement() {
+                DesktopPlacement::Pane { pane_id, .. } => Some(pane_id.get()),
+                _ => None,
+            }
+        };
+        let mut automatic = Automatic::default();
+        automatic.set_enabled(config.enabled);
+        let start = Instant::now();
+        let baseline = scan(&mut workspace);
+        let metadata = InventoryMetadata::new(&baseline, SystemTime::now());
+        assert!(automatic.candidates(workspace.desktop_items(), &metadata, start, false).is_empty());
+
+        std::fs::write(desktop.join("Report.PDF"), b"report").unwrap();
+        std::fs::create_dir(desktop.join("Project.pdf")).unwrap();
+        std::fs::write(desktop.join("Quick.url"), b"[InternetShortcut]\r\nURL=file:///C:/\r\n").unwrap();
+        std::fs::write(desktop.join("Download.pdf.crdownload"), b"download").unwrap();
+        let next = scan(&mut workspace);
+        let metadata = InventoryMetadata::new(&next, SystemTime::now());
+        assert!(automatic.candidates(workspace.desktop_items(), &metadata, start, false).is_empty());
+        let ready = automatic.candidates(workspace.desktop_items(), &metadata, start + NAME_SETTLE, false);
+        let planned = moves(&workspace, ready, &rules, &metadata);
+        assert_eq!(planned.len(), 3);
+        assert!(planned.iter().any(|entry| entry.item_name == "Report.PDF" && entry.rule == 2));
+        apply_moves(&mut workspace, &planned);
+        assert_eq!(group_of(&workspace, "Report.PDF"), Some(1));
+        assert_eq!(group_of(&workspace, "Project.pdf"), Some(2));
+        assert_eq!(group_of(&workspace, "Quick.url"), Some(3));
+        assert_eq!(group_of(&workspace, "Existing.pdf"), None);
+        assert_eq!(group_of(&workspace, "Download.pdf.crdownload"), None);
+
+        std::fs::rename(desktop.join("Download.pdf.crdownload"), desktop.join("Download.pdf")).unwrap();
+        let finished = scan(&mut workspace);
+        let metadata = InventoryMetadata::new(&finished, SystemTime::now());
+        let renamed_at = start + 2 * NAME_SETTLE;
+        assert!(automatic.candidates(workspace.desktop_items(), &metadata, renamed_at, false).is_empty());
+        let ready = automatic.candidates(workspace.desktop_items(), &metadata, renamed_at + NAME_SETTLE, false);
+        let planned = moves(&workspace, ready, &rules, &metadata);
+        assert!(matches!(planned.as_slice(), [entry] if entry.item_name == "Download.pdf"));
+        apply_moves(&mut workspace, &planned);
+        assert_eq!(group_of(&workspace, "Download.pdf"), Some(1));
+        assert!(matches!(preview(&workspace, &rules, &metadata).as_slice(),
+            [PreviewEntry::Move(entry)] if entry.item_name == "Existing.pdf"));
+
+        store.save_workspace(&workspace).unwrap();
+        drop(store);
+        let reopened = WorkspaceStore::open(&database).unwrap();
+        let saved_workspace = reopened.load_workspace().unwrap();
+        assert_eq!(saved_workspace.desktop_items().len(), workspace.desktop_items().len());
+        for item in workspace.desktop_items() {
+            assert_eq!(saved_workspace.desktop_item(item.identity()), Some(item));
+        }
+        assert_eq!(std::fs::read(desktop.join("Report.PDF")).unwrap(), b"report");
+        assert_eq!(std::fs::read(desktop.join("Download.pdf")).unwrap(), b"download");
+        assert!(desktop.join("Project.pdf").is_dir());
     }
 }

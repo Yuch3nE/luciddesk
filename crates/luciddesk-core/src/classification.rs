@@ -17,12 +17,22 @@ pub struct ClassificationRule {
     pub target_panel: u64,
     #[serde(default = "enabled")]
     pub enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub item_type: Option<ClassificationItemType>,
     #[serde(default)]
     pub extensions: Vec<String>,
     #[serde(default)]
     pub name_contains: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name_regex: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClassificationItemType {
+    File,
+    Folder,
+    Shortcut,
 }
 
 const fn enabled() -> bool {
@@ -77,7 +87,10 @@ impl ClassificationRule {
         let literal = self.name_contains.as_deref();
         let pattern = self.name_regex.as_deref();
         if self.target_panel == 0
-            || (self.extensions.is_empty() && literal.is_none() && pattern.is_none())
+            || (self.item_type.is_none()
+                && self.extensions.is_empty()
+                && literal.is_none()
+                && pattern.is_none())
         {
             return Err(ClassificationError::InvalidRule(
                 "classification rules require a target panel and a condition",
@@ -125,11 +138,28 @@ impl CompiledClassificationRule<'_> {
         self.rule.target_panel
     }
 
+    pub fn requires_item_type(&self) -> bool {
+        self.rule.enabled && self.rule.item_type.is_some()
+    }
+
+    /// Preserves matching without type metadata for rules that omit the type condition.
     pub fn matches(&self, item: &DesktopItem) -> bool {
+        self.matches_with_type(item, None)
+    }
+
+    pub fn matches_with_type(
+        &self,
+        item: &DesktopItem,
+        item_type: Option<ClassificationItemType>,
+    ) -> bool {
         let ShellIdentity::FileSystem { path, .. } = item.identity() else {
             return false;
         };
         self.rule.enabled
+            && self
+                .rule
+                .item_type
+                .is_none_or(|required| item_type == Some(required))
             && (self.rule.extensions.is_empty()
                 || path
                     .extension()
@@ -167,6 +197,7 @@ mod tests {
         let mut rule = ClassificationRule {
             target_panel: 1,
             enabled: true,
+            item_type: None,
             extensions: vec![".pdf".into()],
             name_contains: Some("REPORT".into()),
             name_regex: None,
@@ -185,6 +216,7 @@ mod tests {
         let mut rule = ClassificationRule {
             target_panel: 1,
             enabled: true,
+            item_type: None,
             extensions: vec!["pdf".into()],
             name_contains: None,
             name_regex: Some("^REPORT$".into()),
@@ -217,6 +249,7 @@ mod tests {
                 rules: vec![ClassificationRule {
                     target_panel: 1,
                     enabled: true,
+                    item_type: None,
                     extensions: vec![],
                     name_contains: None,
                     name_regex: None,
@@ -225,5 +258,50 @@ mod tests {
             .validate()
             .is_err()
         );
+    }
+
+    #[test]
+    fn item_type_is_optional_and_combines_with_the_other_conditions() {
+        let item = report();
+        let mut config = ClassificationRule {
+            target_panel: 1,
+            enabled: true,
+            item_type: None,
+            extensions: vec!["pdf".into()],
+            name_contains: Some("report".into()),
+            name_regex: None,
+        };
+        assert!(
+            config
+                .compile()
+                .unwrap()
+                .matches_with_type(&item, Some(ClassificationItemType::Folder))
+        );
+
+        config.item_type = Some(ClassificationItemType::File);
+        let rule = config.compile().unwrap();
+        assert!(rule.matches_with_type(&item, Some(ClassificationItemType::File)));
+        assert!(!rule.matches_with_type(&item, Some(ClassificationItemType::Folder)));
+        assert!(!rule.matches_with_type(&item, Some(ClassificationItemType::Shortcut)));
+        assert!(!rule.matches(&item));
+        let mut other_name = item;
+        other_name.set_display_name("Invoice");
+        assert!(!rule.matches_with_type(&other_name, Some(ClassificationItemType::File)));
+
+        let virtual_item = DesktopItem::new(
+            ShellIdentity::Namespace {
+                parsing_name: "test:report".into(),
+            },
+            "Report",
+        );
+        let just_type = ClassificationRule {
+            item_type: Some(ClassificationItemType::Folder),
+            extensions: Vec::new(),
+            name_contains: None,
+            ..config
+        };
+        let compiled = just_type.compile().unwrap();
+        assert!(compiled.matches_with_type(&other_name, Some(ClassificationItemType::Folder)));
+        assert!(!compiled.matches_with_type(&virtual_item, Some(ClassificationItemType::Folder)));
     }
 }

@@ -151,9 +151,11 @@ struct PaneApp {
     folders: HashMap<PanelId, folder::Source>,
     tab_models: HashMap<PanelId, GroupModel>,
     settings: Option<windows_window::Window>,
+    organizer: Option<windows_window::Window>,
     // Desktop membership is suspended while Explorer/its compatible Hook is unavailable.
     session: Option<hybrid::Session>,
     pending_desktop_renames: Vec<hybrid::rename_transaction::PendingRename>,
+    last_organize: Option<hybrid::OrganizeUndo>,
     drops: Vec<drag_drop::target::Registration>,
     runtime: Option<runtime::State>,
     workspace: Workspace,
@@ -166,6 +168,14 @@ struct PaneApp {
 struct Loaded {
     requested: Vec<String>,
     images: Vec<(String, assets::Pixels)>,
+}
+
+impl PaneApp {
+    fn invalidate_organizer(&self) {
+        if let Some(window) = &self.organizer {
+            unsafe { InvalidateRect(window.hwnd().cast(), std::ptr::null(), 0); }
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -565,6 +575,10 @@ fn refresh_views(state: &mut PaneApp) {
 }
 
 fn refresh_changed_views(state: &mut PaneApp, force: bool) {
+    state.invalidate_organizer();
+    if let Some(undo) = &mut state.last_organize {
+        undo.retain_unchanged(&state.workspace);
+    }
     sorting::maintain(state);
     for view in &state.views {
         if state.workspace.panel(view.id).is_some_and(Panel::is_search) {

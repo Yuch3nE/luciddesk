@@ -77,6 +77,19 @@ pub(super) fn settings_backdrop(backdrop: Backdrop, dark: bool) -> Backdrop {
     }
 }
 
+pub(super) fn supports_mica() -> bool {
+    let version = windows_version::OsVersion::current();
+    version.major > 10 || (version.major == 10 && version.build >= 22000)
+}
+
+pub(super) fn visible_material(backdrop: Backdrop, mica_supported: bool) -> Backdrop {
+    if !mica_supported && matches!(backdrop.base(), Backdrop::Mica | Backdrop::MicaAlt) {
+        Backdrop::Acrylic.with_strength(backdrop.strength().unwrap_or(50))
+    } else {
+        backdrop
+    }
+}
+
 pub(super) fn material_style(
     store: &luciddesk_storage::WorkspaceStore,
     backdrop: Backdrop,

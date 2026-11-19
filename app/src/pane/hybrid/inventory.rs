@@ -83,6 +83,8 @@ pub(super) fn same(a: &Inventory, b: &Inventory) -> bool {
         && a.items.iter().zip(&b.items).all(|(a, b)| {
             a.identity == b.identity
                 && a.display_name == b.display_name
+                && a.attributes.filesystem_directory == b.attributes.filesystem_directory
+                && a.attributes.link == b.attributes.link
                 && a.created == b.created
                 && a.modified == b.modified
         })
@@ -111,6 +113,23 @@ mod tests {
         let renamed = item("new.lnk", 1).identity;
         assert_eq!(old.persistent_key(), renamed.persistent_key());
         assert_ne!(revision_keys(&[old]), revision_keys(&[renamed]));
+    }
+    #[test]
+    fn inventory_refreshes_when_only_classification_attributes_change() {
+        let capture = |entry| Inventory {
+            icon_size: 32,
+            spacing: (64, 64),
+            dpi: 96,
+            items: vec![entry],
+        };
+        let original = item("Share.pdf", 1);
+        let mut known_directory = original.clone();
+        known_directory.attributes.filesystem_directory = Some(true);
+        assert!(!same(&capture(original.clone()), &capture(known_directory)));
+
+        let mut shortcut = original.clone();
+        shortcut.attributes.link = true;
+        assert!(!same(&capture(original), &capture(shortcut)));
     }
     #[test]
     fn filtered_members_survive_and_rename_while_deleted_members_do_not() {

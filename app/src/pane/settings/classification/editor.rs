@@ -23,9 +23,10 @@ impl Field {
         INPUT_ID + self as i32
     }
 
-    fn label_key(self) -> &'static str {
+    pub(super) fn label_key(self, regex: bool) -> &'static str {
         match self {
             Self::Extensions => "classification-extensions",
+            Self::Keyword if regex => "classification-pattern",
             Self::Keyword => "classification-keyword",
         }
     }
@@ -77,7 +78,7 @@ pub(super) struct Inputs {
     requested_focus: Option<Field>,
     font: Option<font_search::SearchFont>,
     font_style: (String, i32),
-    language: &'static str,
+    cue_context: (&'static str, bool),
 }
 
 impl Inputs {
@@ -89,7 +90,7 @@ impl Inputs {
             requested_focus: None,
             font: None,
             font_style: (String::new(), 0),
-            language: "",
+            cue_context: ("", false),
         };
         for (field, value) in Field::ALL.into_iter().zip([
             rule.extensions.join(", "),
@@ -164,20 +165,20 @@ impl Inputs {
         }
     }
 
-    pub fn sync(&mut self, scene: &Scene, scale: f32, dark: bool) {
-        let language = crate::i18n::language();
-        if self.language != language {
+    pub fn sync(&mut self, scene: &Scene, scale: f32, dark: bool, regex: bool) {
+        let context = (crate::i18n::language(), regex);
+        if self.cue_context != context {
             for field in Field::ALL {
                 unsafe {
                     SendMessageW(
                         self.handles[field as usize],
                         EM_SETCUEBANNER,
                         0,
-                        crate::i18n::wide(field.label_key()) as isize,
+                        crate::i18n::wide(field.label_key(regex)) as isize,
                     );
                 }
             }
-            self.language = language;
+            self.cue_context = context;
         }
         let style = (fonts::family(), (Style::TEXT_SIZE * scale).round() as i32);
         if self.font_style != style {
@@ -318,10 +319,10 @@ pub(in crate::pane::settings) fn input_colors(dc: HDC, hwnd: HWND) -> Option<isi
         Field::from_id(GetDlgCtrlID(hwnd))?;
         let dark = GetWindowLongPtrW(hwnd, GWLP_USERDATA) & DARK != 0;
         let palette = components::Palette::for_theme(dark);
-        let colorref = |rgb: u32| ((rgb & 0xff) << 16) | (rgb & 0xff00) | ((rgb >> 16) & 0xff);
+        let colorref = luciddesk_window::control_style::colorref;
         SetTextColor(dc, colorref(palette.ink));
-        SetBkColor(dc, colorref(palette.background));
-        SetDCBrushColor(dc, colorref(palette.background));
+        SetBkColor(dc, colorref(palette.button));
+        SetDCBrushColor(dc, colorref(palette.button));
         Some(GetStockObject(DC_BRUSH) as isize)
     }
 }

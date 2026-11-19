@@ -215,7 +215,7 @@ mod tests {
     }
 
     #[test]
-    fn overflowing_navigation_scrolls_without_moving_the_brand_or_accepting_clipped_hits() {
+    fn overflowing_navigation_keeps_the_caption_fixed_and_rejects_clipped_hits() {
         let mut scene = with_titlebar(
             layout::scene(
                 900.0,
@@ -228,25 +228,26 @@ mod tests {
             900.0,
             false,
         );
-        let brand = scene.text[0].0;
+        let caption = scene.text.iter().position(|(_, _, style)| *style == Tokens::CAPTION_TEXT).unwrap();
+        let caption_bounds = scene.text[caption].0;
         let mut offset = f32::MAX;
         scene.scroll_navigation(&mut offset);
         assert!(scene.navigation_max > 0.0);
-        assert!(scene.navigation_thumb().is_some());
-        assert_eq!(scene.text[0].0.top, brand.top);
-        assert_eq!(scene.text[0].0.bottom, brand.bottom);
+        assert!(scene.navigation_scrollbar().is_some());
+        assert_eq!(scene.text[caption].0.top, caption_bounds.top);
+        assert_eq!(scene.text[caption].0.bottom, caption_bounds.bottom);
         let viewport = scene.navigation_viewport.unwrap();
         let last = scene
             .controls
             .iter()
-            .filter(|c| matches!(c.kind, ControlKind::Navigation))
+            .filter(|c| matches!(c.kind, ControlKind::Navigation(_)))
             .last()
             .unwrap();
         assert!(last.bounds.bottom <= viewport.bottom);
         let first = scene
             .controls
             .iter()
-            .find(|c| matches!(c.kind, ControlKind::Navigation))
+            .find(|c| matches!(c.kind, ControlKind::Navigation(_)))
             .unwrap();
         assert!(!scene.accepts_pointer(
             first,

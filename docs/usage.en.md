@@ -41,9 +41,9 @@ Choose Icons only in View to hide filenames; hover to read the full name. Choose
 
 ### Automatic classification
 
-Create the desktop panels you want to use as destinations. In Settings → Automatic classification, choose Add rule, select a group, and enter extensions, a keyword, or a regular expression. Rules run from top to bottom. The first matching rule with an available group applies.
+Create the desktop panels you want to use as destinations. In Settings → Automatic classification, choose Open desktop organization. On the Manage rules tab, choose Add rule, select a group, and specify an icon type, extensions, a keyword, or a regular expression. The icon type can be File, Folder, Shortcut, or Any type. Rules run from top to bottom. The first matching rule with an available group applies.
 
-Choose Organize now to preview where existing unassigned icons will go, then choose Apply. Enable Automatically group new icons to apply the rules to new unassigned icons. Files stay in their original locations.
+Choose Organize now from the tray menu or open the corresponding tab in the Desktop organization window to preview where unassigned icons will go. Expand Skipped icons to see the reasons. Use the buttons at the bottom of the window to refresh the preview or apply it. Enable Automatically group new icons to apply the rules to new unassigned icons. Files stay in their original locations.
 
 ### Find or hide panels
 

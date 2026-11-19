@@ -93,8 +93,6 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
     let mut style_input: Option<(bool, String)> = None;
     let mut cached_scene = None;
     let mut scene_key = None;
-    let mut classification_value = None;
-    let mut classification_editor = classification::Editor::default();
     let mut scroll_offset = 0.0f32;
     let mut scroll_drag = None;
     let mut scroll_page = page;
@@ -131,11 +129,6 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
             let Some(state) = weak.upgrade() else {
                 return Some(0);
             };
-            let classification_field = if page == 16 && msg == CLASSIFICATION_KEY {
-                let Some(field) = classification_editor.field_for(lp as _) else { return Some(0); };
-                Some(field)
-            } else { None };
-            let msg = if classification_field.is_some() { WM_KEYDOWN } else { msg };
             if matches!(
                 msg,
                 WM_LBUTTONDOWN | WM_MOUSELEAVE | WM_NCMOUSEMOVE | WM_MOUSEWHEEL
@@ -164,13 +157,6 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 if !startup.busy() { unsafe { KillTimer(hwnd, STARTUP_TIMER); } }
                 scene_key = None;
                 unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
-                return Some(0);
-            }
-            if msg == WM_TIMER && wp == ORGANIZE_TIMER {
-                if classification_editor.poll_organize() {
-                    unsafe { KillTimer(hwnd, ORGANIZE_TIMER); InvalidateRect(hwnd, std::ptr::null(), 0); }
-                    scene_key = None;
-                }
                 return Some(0);
             }
             if msg == WM_TIMER && wp == FONT_LOAD_TIMER {
@@ -310,7 +296,6 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 return Some(0);
             }
             if msg == SELECT_PLUGIN {
-                classification_editor.suspend();
                 selected_plugin = PLUGIN_SELECTION.with(|pending| pending.borrow_mut().take());
                 page = 15; scene_key = None; scroll_offset = 0.0; focus = None; reveal_navigation = true;
                 recording_peek = false; recording_show_panels = false; style_input = None;
@@ -319,7 +304,6 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
             }
             #[cfg(test)]
             if msg == SELECT_TEST_PAGE {
-                if wp != 16 { classification_editor.suspend(); } else { classification_editor.resume(); }
                 page = wp;
                 scene_key = None;
                 scroll_offset = 0.0;
@@ -339,8 +323,6 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
             }
             if msg == WM_CLOSE {
                 icon_tip = None;
-                classification_editor.discard();
-                unsafe { KillTimer(hwnd, ORGANIZE_TIMER); }
                 if !lifecycle::close(&state, hwnd, &mut pending_styles) {
                     unsafe { PostMessageW(hwnd, WM_CLOSE, 0, 0); }
                 }
@@ -480,14 +462,6 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     snapshot_changed = true;
                 }
                 let fresh_cli = control::enabled(&state.store);
-                if page == 16 {
-                    let fresh = state.store.settings().ok().and_then(|v| v.get(classification::KEY).cloned());
-                    if classification_value != fresh {
-                        classification_editor.collapse_details();
-                        classification_value = fresh;
-                        snapshot_changed = true;
-                    }
-                }
                 snapshot_changed |= cli_enabled != fresh_cli;
                 cli_enabled = fresh_cli;
                 let fresh_auto_check = crate::updates::automatic_enabled(&state.store);
@@ -581,9 +555,6 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     ) };
                 if let Some(id) = &selected_plugin { plugin_content::draw(&mut body, w, id, plugin_document.clone().unwrap_or_else(|| plugin_content::load(id))); }
                 else if page == 15 { plugin_page::draw(&mut body, w); }
-                else if page == 16 {
-                    classification::draw(&mut body, w, &panels, classification_value.as_ref(), &classification_editor);
-                }
                 if page == 13 {
                     layout::general(&mut body, w, startup.status(), startup.busy(), cli_enabled, skill_prompt_copied, &chosen_language);
                     layout::desktop_gesture(&mut body, w, desktop_double_click);
@@ -602,26 +573,6 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     layout::about_updates(&mut body, w, desktop_connected, diagnostics_copied, &updates.borrow(), auto_check_updates);
                 }
                 let mut full = with_titlebar(body, w, key.9);
-                if let Some(command) = classification_editor.take_reveal() {
-                    focus = full.controls.iter().position(|c| command.is_control(&c.action));
-                    if let Some(control) = focus.and_then(|i| full.controls.get(i)) {
-                        let input = matches!(command, classification::Command::Input(_));
-                        let bottom = if input {
-                            full.controls.iter()
-                                .filter(|c| matches!(c.action, Action::Classification(classification::Command::Save | classification::Command::DraftRegex)))
-                                .map(|c| c.bounds.bottom)
-                                .fold(control.bounds.bottom, f32::max) + Tokens::ROW_HEIGHT
-                        } else { control.bounds.bottom };
-                        let top_margin = if input { Tokens::ROW_HEIGHT + Tokens::GAP } else { Tokens::GAP };
-                        let maximum = (control.bounds.top - TITLE_HEIGHT - top_margin).max(0.0);
-                        scroll_offset = scroll_offset.clamp(
-                            (bottom - h + Tokens::GAP).clamp(0.0, maximum),
-                            maximum,
-                        );
-                    }
-                    hover = None;
-                    pressed = None;
-                }
                 full.scroll_to(w, h, &mut scroll_offset);
                 if std::mem::take(&mut reveal_navigation) { full.reveal_navigation(&mut navigation_offset); }
                 full.scroll_navigation(&mut navigation_offset);
@@ -682,11 +633,6 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     return Some(0);
                 }
                 WM_PAINT => {
-                    classification_editor.sync(scene, scale, dark);
-                    let input_focus = classification_editor.field_for(unsafe { GetFocus() })
-                        .and_then(|field| scene.controls.iter().position(|c| {
-                            matches!(c.action, Action::Classification(classification::Command::Input(value)) if value == field)
-                        }));
                     let now = std::time::Instant::now();
                     let mut enabled = 1i32;
                     unsafe {
@@ -744,7 +690,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                                 dark,
                                 surface.native,
                                 hover,
-                                input_focus.or(if keyboard_focus { focus } else { None }),
+                                if keyboard_focus { focus } else { None },
                                 &positions,
                             )?;
                             surface.end_frame()?;
@@ -812,18 +758,17 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                         }
                         return Some(0);
                     }
-                    for (navigation, thumb, viewport, maximum) in [
-                        (false, scene.scroll_thumb(), scene.viewport, scene.scroll_max),
-                        (true, scene.navigation_thumb(), scene.navigation_viewport, scene.navigation_max),
+                    for (navigation, scrollbar, viewport) in [
+                        (false, scene.scrollbar(), scene.viewport),
+                        (true, scene.navigation_scrollbar(), scene.navigation_viewport),
                     ] {
-                        if let (Some(thumb), Some(viewport)) = (thumb, viewport) {
-                            if msg == WM_LBUTTONDOWN && x >= viewport.right-16.0 && x <= viewport.right && y >= viewport.top && y <= viewport.bottom {
-                                scroll_drag = Some((navigation, if y >= thumb.top && y <= thumb.bottom { y-thumb.top } else { (thumb.bottom-thumb.top)/2.0 }));
+                        if let (Some(scrollbar), Some(viewport)) = (scrollbar, viewport) {
+                            if msg == WM_LBUTTONDOWN && x >= viewport.right - luciddesk_window::controls::Scrollbar::GUTTER && contains(&viewport, x, y) {
+                                scroll_drag = Some((navigation, scrollbar.grab(y)));
                                 unsafe { SetCapture(hwnd); }
                             }
                             if let Some((_, grab)) = scroll_drag.filter(|(kind, _)| *kind == navigation) {
-                                let travel = viewport.bottom-viewport.top-16.0-(thumb.bottom-thumb.top);
-                                let offset = ((y-grab-viewport.top-8.0)/travel.max(1.0)*maximum).clamp(0.0, maximum);
+                                let offset = scrollbar.drag_to(y, grab);
                                 if navigation { navigation_offset = offset; } else { scroll_offset = offset; }
                                 if msg == WM_LBUTTONUP { scroll_drag = None; unsafe { ReleaseCapture(); } }
                                 scene_key = None; hover = None; pressed = None;
@@ -902,30 +847,6 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     pressed = None;
                 }
                 WM_KEYDOWN | WM_SYSKEYDOWN => {
-                    let escape = wp == VK_ESCAPE as usize;
-                    if page == 16 && ((classification_editor.previewing() && escape)
-                        || (classification_editor.editing() && (escape
-                            || (classification_field.is_some() && wp == VK_RETURN as usize))))
-                    {
-                        let command = if classification_editor.previewing() {
-                            classification::Command::CancelPreview
-                        } else if escape {
-                            classification::Command::Cancel
-                        } else {
-                            classification::Command::Save
-                        };
-                        if available {
-                            classification_editor.execute(&state, hwnd, command);
-                            if !classification_editor.editing() { unsafe { SetFocus(hwnd); } }
-                            scene_key = None;
-                            unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
-                        }
-                        return Some(0);
-                    }
-                    if let Some(field) = classification_field {
-                        focus = scene.controls.iter().position(|c| matches!(c.action, Action::Classification(classification::Command::Input(value)) if value == field));
-                        unsafe { SetFocus(hwnd); }
-                    }
                     if recording_show_panels {
                         if lp & (1 << 30) != 0 { return Some(0); }
                         let key = wp as u16;
@@ -1026,7 +947,6 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                         let n = scene.controls.len();
                         let backwards = wp == VK_UP as usize
                             || (wp == VK_TAB as usize
-                                && classification_field.is_none()
                                 && unsafe { GetKeyState(VK_SHIFT as i32) } < 0);
                         focus = Some(match focus {
                             Some(i) if backwards => (i + n - 1) % n,
@@ -1046,10 +966,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                         }
                         if let (Some(index), Some(viewport)) = (focus, scene.viewport) {
                             let c = &scene.controls[index];
-                            if let Action::Classification(classification::Command::Input(field)) = c.action {
-                                classification_editor.focus(field);
-                            }
-                            if matches!(c.kind, ControlKind::Navigation) && let Some(viewport) = scene.navigation_viewport {
+                            if matches!(c.kind, ControlKind::Navigation(_)) && let Some(viewport) = scene.navigation_viewport {
                                 let delta = if c.bounds.top < viewport.top { c.bounds.top-viewport.top }
                                     else if c.bounds.bottom > viewport.bottom { c.bounds.bottom-viewport.bottom } else { 0.0 };
                                 if delta != 0.0 { navigation_offset = (navigation_offset+delta).clamp(0.0, scene.navigation_max); scene_key = None; }
@@ -1157,7 +1074,6 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     folder_defaults: &mut folder_defaults,
                     layout_defaults: &mut layout_defaults,
                     style_input: &mut style_input,
-                    classification_editor: &mut classification_editor,
                     startup: &mut startup,
                     diagnostics_copied: &mut diagnostics_copied,
                     skill_prompt_copied: &mut skill_prompt_copied,
@@ -1170,7 +1086,6 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     font_load_failed: &mut font_load_failed,
                     toggle_motion: &mut toggle_motion,
                 }, c) { scene_key = None; }
-                if page != 16 { classification_editor.suspend(); }
             }
             if msg != WM_PAINT
                 && (scene_changed

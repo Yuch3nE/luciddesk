@@ -1,5 +1,6 @@
 //! Shared settings controls. Appearance is independent of the action a page binds.
-use super::{Action, Rect, Scene};
+use super::components::{text_height_with_weight, text_width, text_width_with_weight};
+use super::{Action, Rect, Scene, Tokens};
 
 thread_local! { static OPEN_DROPDOWN: std::cell::Cell<Option<Rect>> = const { std::cell::Cell::new(None) }; }
 pub(super) fn dropdown_is_open(bounds: Rect) -> bool {
@@ -33,7 +34,7 @@ impl Drop for OpenDropdown {
     }
 }
 
-fn screen_anchor(
+pub(super) fn screen_anchor(
     hwnd: windows_sys::Win32::Foundation::HWND,
     bounds: Rect,
     scale: f32,
@@ -55,15 +56,11 @@ fn screen_anchor(
 
 pub(super) struct Style;
 impl Style {
-    pub const ICON: f32 = 12.0;
+    pub const ICON: f32 = super::super::control_style::ICON_SIZE;
     pub const NAV_ICON: f32 = 16.0;
-    pub const NAV_TEXT: f32 = 14.0;
     pub const NAV_HEADING: f32 = 11.0;
-    pub const NAV_HEIGHT: f32 = 40.0;
-    pub const NAV_ICON_SLOT: f32 = 20.0;
-    pub const ICON_SLOT: f32 = 16.0;
-    pub const ICON_GAP: f32 = 8.0;
-    pub const NAV_TEXT_INSET: f32 = 48.0;
+    pub const ICON_SLOT: f32 = super::super::control_style::ICON_SLOT;
+    pub const ICON_GAP: f32 = super::super::control_style::ICON_GAP;
     pub const ROW_INSET: f32 = 16.0;
     pub const ROW_HEIGHT: f32 = 38.0;
     pub const CONTROL_HEIGHT: f32 = super::super::control_style::HEIGHT;
@@ -99,13 +96,17 @@ impl Slider {
 #[derive(Clone, Copy)]
 pub(super) enum ControlKind {
     Button,
+    PrimaryButton,
+    Tab(&'static str),
+    QuietButton(&'static str),
     IconButton(&'static str),
     Disclosure,
+    SectionDisclosure { summary_width: f32 },
     BackButton,
     Row,
     ForwardRow,
     FooterLink,
-    Navigation,
+    Navigation(&'static str),
     Caption,
     Toggle,
     Checkbox,
@@ -147,6 +148,121 @@ impl Control {
             (Action::BackupPolicy(a), Action::BackupPolicy(b)) => a == b,
             (a, b) => std::mem::discriminant(a) == std::mem::discriminant(b),
         }
+    }
+}
+
+pub(super) struct SectionHeader {
+    pub bounds: Rect,
+    pub icon: &'static str,
+    pub title: String,
+    pub summary: String,
+    summary_width: f32,
+}
+
+impl SectionHeader {
+    pub const TITLE_INSET: f32 = Style::ICON_SLOT + Style::ICON_GAP;
+    pub const TITLE_SIZE: f32 = Style::TEXT_SIZE;
+    pub const TITLE_WEIGHT: windows_canvas::FontWeight = windows_canvas::FontWeight(600);
+
+    pub fn measure_summary(summary: &str, width: f32) -> f32 {
+        (text_width(summary, 12.0).ceil() + 1.0).min(width / 3.0)
+    }
+
+    pub fn new(mut bounds: Rect, icon: &'static str, title: &str, summary: String) -> Self {
+        let width = bounds.right - bounds.left;
+        let summary_width = Self::measure_summary(&summary, width);
+        let title_width = width - Self::TITLE_INSET - Tokens::GAP - summary_width;
+        let title_height = text_height_with_weight(title, Self::TITLE_SIZE, title_width, Self::TITLE_WEIGHT);
+        bounds.bottom = bounds.top + (title_height + Tokens::GAP).max(28.0);
+        Self {
+            bounds,
+            icon,
+            title: title.into(),
+            summary,
+            summary_width,
+        }
+    }
+
+    pub fn cells(&self) -> [Rect; 3] {
+        let height = self.bounds.bottom - self.bounds.top;
+        let icon = Rect::from_xywh(self.bounds.left, self.bounds.top, Style::ICON_SLOT, height);
+        let summary = Rect::from_xywh(
+            self.bounds.right - self.summary_width, self.bounds.top, self.summary_width, height,
+        );
+        let title_left = self.bounds.left + Self::TITLE_INSET;
+        let title = Rect::from_xywh(title_left, self.bounds.top, summary.left - Tokens::GAP - title_left, height);
+        [icon, title, summary]
+    }
+}
+
+pub(super) struct Destination {
+    pub group: String,
+    pub rule: String,
+    group_width: f32,
+    rule_width: f32,
+    pub truncated: bool,
+}
+
+impl Destination {
+    fn new((group, rule): (&str, String), weight: windows_canvas::FontWeight) -> Self {
+        Self {
+            group: group.into(),
+            group_width: text_width_with_weight(group, Style::TEXT_SIZE, weight).ceil() + 1.0,
+            rule_width: text_width(&rule, 12.0).ceil() + 1.0,
+            rule,
+            truncated: false,
+        }
+    }
+
+    fn fit_group(&mut self, available: f32) {
+        self.truncated = self.group_width > available;
+        self.group_width = self.group_width.min(available);
+    }
+
+    pub fn cells(&self, side: Rect) -> [Rect; 2] {
+        let height = side.bottom - side.top;
+        let group = Rect::from_xywh(side.left, side.top, self.group_width, height);
+        let rule = Rect::from_xywh(group.right + Tokens::GAP, side.top, self.rule_width, height);
+        [group, rule]
+    }
+}
+
+pub(super) struct DestinationChange {
+    pub bounds: Rect,
+    pub before: Destination,
+    pub after: Destination,
+}
+
+impl DestinationChange {
+    pub const HEIGHT: f32 = 28.0;
+    const ARROW_WIDTH: f32 = 20.0;
+    pub const NEW_GROUP_WEIGHT: windows_canvas::FontWeight = windows_canvas::FontWeight::BOLD;
+
+    pub fn new(mut bounds: Rect, before: (&str, String), after: (&str, String)) -> Self {
+        let mut before = Destination::new(before, windows_canvas::FontWeight::NORMAL);
+        let mut after = Destination::new(after, Self::NEW_GROUP_WEIGHT);
+        let spacing = Self::ARROW_WIDTH + 2.0 * Tokens::GAP;
+        let reserved = before.rule_width + after.rule_width + spacing;
+        let available = (bounds.right - bounds.left - reserved).max(0.0);
+        before.fit_group((available / 2.0).max(available - after.group_width));
+        after.fit_group(available - before.group_width);
+        bounds.right = bounds.left + before.group_width + after.group_width + reserved;
+        bounds.bottom = bounds.top + Self::HEIGHT;
+        Self { bounds, before, after }
+    }
+
+    pub fn cells(&self) -> [Rect; 3] {
+        let top = self.bounds.top;
+        let before_width = self.before.group_width + Tokens::GAP + self.before.rule_width;
+        let before = Rect::from_xywh(self.bounds.left, top, before_width, Self::HEIGHT);
+        let arrow = Rect::from_xywh(before.right, top, Self::ARROW_WIDTH, Self::HEIGHT);
+        let after = Rect::from_xywh(arrow.right, top, self.bounds.right - arrow.right, Self::HEIGHT);
+        [before, arrow, after]
+    }
+
+    pub fn destinations(&self) -> [(Rect, &Destination); 2] {
+        let [before, _, after] = self.cells();
+        [(before, &self.before), (after, &self.after)]
     }
 }
 
@@ -252,7 +368,7 @@ pub(super) fn choose(
             super::super::menu::entry(
                 index as i32 + 1,
                 *label,
-                if *value == selected { "\u{e73e}" } else { "" },
+                if *value == selected { super::super::control_style::CHECK_MARK } else { "" },
                 "",
             )
         })
@@ -301,7 +417,7 @@ pub(super) fn open_dropdown(
                 super::super::menu::entry(
                     index as i32 + 1,
                     label.clone(),
-                    if *selected { "\u{e73e}" } else { "" },
+                    if *selected { super::super::control_style::CHECK_MARK } else { "" },
                     "",
                 )
             })

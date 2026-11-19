@@ -5,13 +5,18 @@ use super::*;
 fn classification_settings_validate_and_round_trip() {
     let (dir, store) = open();
     let key = "desktop.classification";
-    let valid = SettingValue::Text(r#"{"enabled":true,"rules":[{"target_panel":1,"extensions":["pdf"]},{"target_panel":2,"name_regex":"^Report[0-9]+$"}]}"#.into());
+    let valid = r#"{"enabled":true,"rules":[{"target_panel":1,"extensions":["pdf"]},{"target_panel":2,"name_regex":"^Report[0-9]+$","item_type":"file"},{"target_panel":3,"item_type":"folder"},{"target_panel":4,"item_type":"shortcut"}]}"#;
+    let config: luciddesk_core::Classification = serde_json::from_str(valid).unwrap();
+    assert!(config.rules[0].item_type.is_none());
+    assert!(serde_json::to_value(&config).unwrap()["rules"][0].get("item_type").is_none());
+    let valid = SettingValue::Text(valid.into());
     store.save_settings(&[(key.into(), valid.clone())].into_iter().collect()).unwrap();
     for invalid in [
         "{",
         r#"{"rules":[{"target_panel":1}]}"#,
         r#"{"enabeld":true}"#,
         r#"{"rules":[{"target_panel":1,"name_regex":"["}]}"#,
+        r#"{"rules":[{"target_panel":1,"item_type":"document","extensions":["pdf"]}]}"#,
         r#"{"rules":[{"target_panel":1,"name_contains":"Report","name_regex":"^Report"}]}"#,
         r#"{"rules":[{"target_panel":9223372036854775807,"extensions":["pdf"]}]}"#,
         r#"{"rules":[{"target_panel":18446744073709551615,"extensions":["pdf"]}]}"#,

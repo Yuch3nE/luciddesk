@@ -1,6 +1,27 @@
 use super::*;
 
 #[test]
+fn reorder_uses_icon_fonts_and_preserves_enabled_actions() {
+    use luciddesk_window::control_style::{ARROW_DOWN, ARROW_UP};
+
+    let mut scene = Scene::empty(Backdrop::Mica, 24.0, 0.0);
+    SettingsForm::continuation(&mut scene, 640.0, 24.0).reorder("Rows", vec![
+        ("One".into(), None, Some(Action::Page(8))),
+        ("Two".into(), Some(Action::Page(9)), None),
+    ]);
+
+    let [first_up, first_down, second_up, second_down] = scene.controls.as_slice() else {
+        panic!("Expected one button per direction and row");
+    };
+    assert!(matches!(first_up.kind, ControlKind::IconButton(ARROW_UP)) && !first_up.enabled);
+    assert!(matches!(first_down.kind, ControlKind::IconButton(ARROW_DOWN)) && first_down.enabled);
+    assert!(matches!(first_down.action, Action::Page(8)));
+    assert!(matches!(second_up.kind, ControlKind::IconButton(ARROW_UP)) && second_up.enabled);
+    assert!(matches!(second_up.action, Action::Page(9)));
+    assert!(matches!(second_down.kind, ControlKind::IconButton(ARROW_DOWN)) && !second_down.enabled);
+}
+
+#[test]
 #[ignore = "Requires an operator to inspect and navigate a real settings window"]
 fn sidebar_interactive_validation() {
     let _sta = crate::pane::test_support::apartment();
@@ -756,22 +777,18 @@ fn solid_inputs_validate_color_and_opacity_without_changing_other_channels() {
 
 #[test]
 fn switch_thumb_stays_centered_with_equal_end_insets() {
+    use luciddesk_window::controls::Toggle;
     for (width, height) in [(42.0, 22.0), (48.0, 24.0)] {
-        let bounds = Rect::from_xywh(100.0, 50.0, width, height);
+        let bounds = components::widget_bounds(Rect::from_xywh(100.0, 50.0, width, height));
         for position in [0.0, 0.25, 0.5, 0.75, 1.0] {
-            let thumb = toggle_thumb(bounds, position);
-            assert_eq!(thumb.center.y, 50.0 + height / 2.0);
-            assert!(thumb.center.x - thumb.radius_x >= bounds.left + 4.0);
-            assert!(thumb.center.x + thumb.radius_x <= bounds.right - 4.0);
+            let thumb = Toggle::thumb(bounds, position);
+            assert_eq!(thumb.y + thumb.height / 2.0, 50.0 + height / 2.0);
+            assert!(thumb.x >= bounds.x + 4.0);
+            assert!(thumb.x + thumb.width <= bounds.x + bounds.width - 4.0);
         }
-        assert_eq!(
-            toggle_thumb(bounds, 0.0).center.x - toggle_thumb(bounds, 0.0).radius_x,
-            bounds.left + 4.0
-        );
-        assert_eq!(
-            toggle_thumb(bounds, 1.0).center.x + toggle_thumb(bounds, 1.0).radius_x,
-            bounds.right - 4.0
-        );
+        assert_eq!(Toggle::thumb(bounds, 0.0).x, bounds.x + 4.0);
+        let right = Toggle::thumb(bounds, 1.0);
+        assert_eq!(right.x + right.width, bounds.x + bounds.width - 4.0);
     }
 }
 
@@ -925,7 +942,7 @@ fn settings_layout_and_rendering_at_multiple_scales() {
                                 &mut if at_bottom { f32::MAX } else { 0.0 },
                             );
                             for c in &s.controls {
-                                let scroll_max = if matches!(c.kind, ControlKind::Navigation) {
+                                let scroll_max = if matches!(c.kind, ControlKind::Navigation(_)) {
                                     s.navigation_max
                                 } else { s.scroll_max };
                                 assert!(
@@ -1291,7 +1308,7 @@ fn pagination_disables_unavailable_directions_and_short_pages_do_not_scroll() {
     s.scroll_to(940.0, 1000.0, &mut 100.0);
     assert_eq!(s.scroll_max, 0.0);
     assert_eq!(s.scroll_offset, 0.0);
-    assert!(s.scroll_thumb().is_none());
+    assert!(s.scrollbar().is_none());
 }
 
 #[test]
@@ -1780,19 +1797,19 @@ fn all_languages_layout_and_render_without_control_overflow() {
                 let navigation: Vec<_> = scene
                     .controls
                     .iter()
-                    .filter(|c| matches!(c.kind, ControlKind::Navigation))
+                    .filter(|c| matches!(c.kind, ControlKind::Navigation(_)))
                     .collect();
                 for pair in navigation.windows(2) {
                     assert!(pair[0].bounds.bottom <= pair[1].bounds.top);
                 }
                 for c in &scene.controls {
-                    if matches!(c.kind, ControlKind::Navigation) {
+                    if matches!(c.kind, ControlKind::Navigation(_)) {
                         assert!(
                             painter.label_width(&c.label).unwrap()
                                 <= c.bounds.right
                                     - c.bounds.left
-                                    - controls::Style::NAV_TEXT_INSET
-                                    - 8.0,
+                                    - NavigationItem::LABEL_INSET
+                                    - NavigationItem::END_INSET,
                             "Navigation truncated: {}",
                             c.label
                         );
@@ -2354,29 +2371,29 @@ fn grouped_navigation_keeps_routes_selection_and_scrolling_in_all_languages() {
                     let mut scene = layout::scene(1000.0, height, page, false,
                         (PanelTheme::Dark, Backdrop::Acrylic), Default::default());
                     let selected: Vec<_> = scene.controls.iter().filter(|control|
-                        matches!(control.kind, ControlKind::Navigation) && control.selected).collect();
+                        matches!(control.kind, ControlKind::Navigation(_)) && control.selected).collect();
                     assert_eq!(selected.len(), 1);
                     assert!(matches!(selected[0].action, Action::Page(id) if id == selected_page));
                     for (bounds, _, style) in &scene.text[scene.navigation_text.clone()] {
                         if *style == 8 {
-                            for control in scene.controls.iter().filter(|c| matches!(c.kind, ControlKind::Navigation)) {
+                            for control in scene.controls.iter().filter(|c| matches!(c.kind, ControlKind::Navigation(_))) {
                                 assert!(bounds.bottom <= control.bounds.top || bounds.top >= control.bounds.bottom);
                             }
                         }
                     }
-                    for control in scene.controls.iter().filter(|c| matches!(c.kind, ControlKind::Navigation)) {
-                        assert_eq!(control.bounds.bottom - control.bounds.top, Style::NAV_HEIGHT);
-                        let icon = scene.text[scene.navigation_text.clone()].iter()
-                            .find(|(bounds, _, style)| *style == 5 && bounds.top == control.bounds.top).unwrap();
-                        assert_eq!(icon.0.bottom, control.bounds.bottom);
-                        assert!(icon.0.right + 8.0 <= control.bounds.left + Style::NAV_TEXT_INSET);
-                    }
-                    let brand = scene.text[0].0;
+                    let icons: Vec<_> = scene.controls.iter().filter_map(|control| {
+                        let ControlKind::Navigation(icon) = control.kind else { return None; };
+                        assert_eq!(control.bounds.bottom - control.bounds.top, NavigationItem::HEIGHT);
+                        Some(icon)
+                    }).collect();
+                    assert!(icons.into_iter().eq(entries.iter().map(|entry| entry.icon)));
+                    let heading = scene.text.iter().position(|(_, _, style)| *style == 3).unwrap();
+                    let heading_top = scene.text[heading].0.top;
                     scene.reveal_navigation(&mut offset);
                     scene.scroll_navigation(&mut offset);
-                    assert_eq!(scene.text[0].0.top, brand.top);
+                    assert_eq!(scene.text[heading].0.top, heading_top);
                     let viewport = scene.navigation_viewport.unwrap();
-                    let selected = scene.controls.iter().find(|c| matches!(c.kind, ControlKind::Navigation) && c.selected).unwrap();
+                    let selected = scene.controls.iter().find(|c| matches!(c.kind, ControlKind::Navigation(_)) && c.selected).unwrap();
                     assert!(selected.bounds.top >= viewport.top && selected.bounds.bottom <= viewport.bottom);
                 }
             }

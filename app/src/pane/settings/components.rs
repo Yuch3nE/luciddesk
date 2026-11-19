@@ -1,12 +1,20 @@
 //! Reusable settings layout primitives; pages supply values and actions, never coordinates.
 use super::*;
+use super::super::control_style as style;
+pub(super) use super::super::control_style::Palette;
+use luciddesk_window::controls::{Bounds, Scrollbar};
+
+pub(super) fn widget_bounds(rect: Rect) -> Bounds {
+    Bounds::new(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top)
+}
 
 pub(super) struct Tokens;
 impl Tokens {
     pub fn content_x() -> f32 {
         super::layout::navigation()
             .iter()
-            .map(|entry| (text_width(&entry.label, Style::NAV_TEXT) + 108.0)
+            .map(|entry| (text_width(&entry.label, Style::TEXT_SIZE) + 2.0 * Self::MARGIN
+                + NavigationItem::LABEL_INSET + NavigationItem::END_INSET)
                 .max(entry.section.map_or(0.0, |title| text_width(title, Style::NAV_HEADING) + 52.0)))
             .fold(248.0_f32, f32::max)
             .min(344.0)
@@ -16,52 +24,19 @@ impl Tokens {
     pub const INSET: f32 = 16.0;
     pub const CARD_RADIUS: f32 = 8.0;
     pub const CONTROL_HEIGHT: f32 = Style::CONTROL_HEIGHT;
+    pub const CHECKBOX_INSET: f32 = 40.0;
     pub const ROW_HEIGHT: f32 = 40.0;
     pub const MAX_WIDTH: f32 = 1000.0;
     pub const VALUE_TEXT: usize = 7;
+    pub const CONTROL_TEXT: usize = 9;
     pub const STATUS_GOOD: usize = 10;
     pub const STATUS_ERROR: usize = 11;
     pub const TITLE_BADGE: usize = 12;
     pub const CAPTION_TEXT: usize = 13;
     pub const CAPTION_ICON: usize = 14;
-}
-
-pub(super) struct Palette {
-    pub background: u32,
-    pub ink: u32,
-    pub muted: u32,
-    pub border: u32,
-    pub accent: u32,
-    pub slider_track: u32,
-    pub slider_border: u32,
-    pub scroll_thumb: u32,
-}
-impl Palette {
-    pub fn for_theme(dark: bool) -> Self {
-        if dark {
-            Self {
-                background: 0x202020,
-                ink: 0xf5f5f5,
-                muted: 0xadadad,
-                border: 0x424242,
-                accent: 0x76b9ed,
-                slider_track: 0x424242,
-                slider_border: 0x424242,
-                scroll_thumb: 0xadadad,
-            }
-        } else {
-            Self {
-                background: 0xe9edf2,
-                ink: 0x202833,
-                muted: 0x566170,
-                border: 0xb7c0cc,
-                accent: 0x0969b8,
-                slider_track: 0x8995a4,
-                slider_border: 0xa3aebb,
-                scroll_thumb: 0x758293,
-            }
-        }
-    }
+    pub const SECTION_TITLE: usize = 15;
+    pub const SECONDARY_VALUE: usize = 16;
+    pub const GROUP_TITLE: usize = 17;
 }
 
 pub(super) struct SettingsForm<'a> {
@@ -103,26 +78,28 @@ pub(super) fn navigation_colors(material: Backdrop, dark: bool) -> [ColorF; 3] {
 }
 impl<'a> SettingsForm<'a> {
     pub fn continuation(scene: &'a mut Scene, width: f32, y: f32) -> Self {
+        let x = scene.content_left;
         Self {
             scene,
             title_badge: None,
-            x: Tokens::content_x(),
-            width: (width - Tokens::content_x() - Tokens::MARGIN).min(Tokens::MAX_WIDTH),
+            x,
+            width: (width - x - Tokens::MARGIN).min(Tokens::MAX_WIDTH),
             y,
         }
     }
     pub fn new(scene: &'a mut Scene, width: f32, description: &str) -> Self {
-        let width = (width - Tokens::content_x() - Tokens::MARGIN).min(Tokens::MAX_WIDTH);
+        let x = scene.content_left;
+        let width = (width - x - Tokens::MARGIN).min(Tokens::MAX_WIDTH);
         let description_height = text_height(description, 12.0, width).max(36.0);
         scene.text(
-            Rect::from_xywh(Tokens::content_x(), 76.0, width, description_height),
+            Rect::from_xywh(x, 76.0, width, description_height),
             description,
             6,
         );
         Self {
             scene,
             title_badge: None,
-            x: Tokens::content_x(),
+            x,
             width,
             y: 84.0 + description_height,
         }
@@ -285,6 +262,34 @@ impl<'a> SettingsForm<'a> {
     pub fn actions(&mut self, title: &str, description: &str, actions: Vec<(&str, Action)>) {
         self.action_group(title, description, actions, false);
     }
+    pub fn primary_actions(
+        &mut self,
+        title: &str,
+        description: &str,
+        secondary: (&str, Action),
+        primary: (&str, Action),
+        enabled: bool,
+    ) {
+        let start = self.scene.controls.len();
+        self.actions(title, description, vec![secondary, primary]);
+        for control in &mut self.scene.controls[start..] {
+            control.enabled = enabled;
+            if matches!(control.action, Action::Dropdown(_)) {
+                control.kind = ControlKind::Combo;
+            } else {
+                control.kind = ControlKind::PrimaryButton;
+            }
+        }
+    }
+    pub fn status(&mut self, message: &str, style: usize, action: Option<(&str, Action)>) {
+        let title = self.scene.text.len();
+        if let Some(action) = action {
+            self.actions(message, "", vec![action]);
+        } else {
+            self.info(message, "");
+        }
+        self.scene.text[title].2 = style;
+    }
     pub fn actions_enabled(
         &mut self,
         title: &str,
@@ -415,9 +420,13 @@ impl<'a> SettingsForm<'a> {
     ) {
         let cell = actions
             .iter()
-            .map(|(label, _)| text_width(label, 14.0) + 32.0)
+            .map(|(label, action)| {
+                let arrow = if matches!(action, Action::Dropdown(_)) { 20.0 } else { 0.0 };
+                text_width(label, style::TEXT) + 2.0 * style::BUTTON_PADDING + arrow
+            })
             .fold(112.0_f32, f32::max);
-        let width = (cell + Tokens::GAP) * actions.len() as f32 - Tokens::GAP;
+        let gap = style::BUTTON_GAP;
+        let width = (cell + gap) * actions.len() as f32 - gap;
         if width > self.width - 32.0 {
             self.info(title, description);
             for (label, action) in actions {
@@ -427,11 +436,11 @@ impl<'a> SettingsForm<'a> {
         }
         let r = self.card_layout(title, description, width, stacked);
         let count = actions.len();
-        let cell = (width - Tokens::GAP * (count - 1) as f32) / count as f32;
+        let cell = (width - gap * (count - 1) as f32) / count as f32;
         for (i, (label, action)) in actions.into_iter().enumerate() {
             self.scene.button(
                 Rect::from_xywh(
-                    r.left + i as f32 * (cell + Tokens::GAP),
+                    r.left + i as f32 * (cell + gap),
                     r.top,
                     cell,
                     Tokens::CONTROL_HEIGHT,
@@ -515,15 +524,19 @@ impl<'a> SettingsForm<'a> {
                 format!("{} · {label}", index + 1),
                 1,
             );
-            for (offset, label, action) in [(84.0, "↑", up), (44.0, "↓", down)] {
+            for (offset, glyph, label, action) in [
+                (84.0, style::ARROW_UP, "classification-up", up),
+                (44.0, style::ARROW_DOWN, "classification-down", down),
+            ] {
                 let enabled = action.is_some();
-                self.scene.button(
+                self.scene.icon_button(
                     Rect::from_xywh(self.x + self.width - offset, top + 2.0, 32.0, 32.0),
-                    label,
+                    glyph,
+                    crate::i18n::text(label),
                     action.unwrap_or(Action::Page(15)),
                     false,
+                    enabled,
                 );
-                self.scene.controls.last_mut().unwrap().enabled = enabled;
             }
         }
         self.y += height + Tokens::GAP;
@@ -697,7 +710,7 @@ impl<'a> SettingsForm<'a> {
         self.card(title, description, 0.0);
         let card = *self.scene.cards.last().unwrap();
         let inner = self.width - 2.0 * Tokens::INSET;
-        let min_cell = options.iter().map(|(label, _, _)| text_width(label, 14.0) + 40.0)
+        let min_cell = options.iter().map(|(label, _, _)| text_width(label, 14.0) + Tokens::CHECKBOX_INSET)
             .fold(160.0_f32, f32::max);
         let columns = ((inner + Tokens::GAP) / (min_cell + Tokens::GAP)).floor().max(1.0) as usize;
         let columns = columns.min(options.len());
@@ -775,11 +788,15 @@ impl<'a> SettingsForm<'a> {
         let r = self.card(
             title,
             description,
-            (text_width(label, 14.0) + 32.0)
+            (text_width(label, style::TEXT) + 2.0 * style::BUTTON_PADDING)
                 .max(112.0)
                 .min(self.width - 32.0),
         );
         self.scene.button(r, label, action, false);
+    }
+    pub fn primary_button(&mut self, title: &str, description: &str, label: &str, action: Action) {
+        self.button(title, description, label, action);
+        self.scene.controls.last_mut().unwrap().kind = ControlKind::PrimaryButton;
     }
     pub fn preview(&mut self, name: &str, color: u32, opacity: f32) {
         self.material_preview(name, Backdrop::Solid { color, opacity });
@@ -829,33 +846,28 @@ impl<'a> SettingsForm<'a> {
 impl Scene {
     pub fn reveal_navigation(&self, offset: &mut f32) {
         if let (Some(viewport), Some(control)) = (self.navigation_viewport,
-            self.controls.iter().find(|c| matches!(c.kind, ControlKind::Navigation) && c.selected)) {
+            self.controls.iter().find(|c| matches!(c.kind, ControlKind::Navigation(_)) && c.selected)) {
             if control.bounds.top - *offset < viewport.top { *offset = control.bounds.top - viewport.top; }
             if control.bounds.bottom - *offset > viewport.bottom { *offset = control.bounds.bottom - viewport.bottom; }
         }
     }
     pub fn scroll_navigation(&mut self, offset: &mut f32) {
         let Some(viewport) = self.navigation_viewport else { return; };
-        let bottom = self.controls.iter().filter(|c| matches!(c.kind, ControlKind::Navigation))
+        let bottom = self.controls.iter().filter(|c| matches!(c.kind, ControlKind::Navigation(_)))
             .map(|c| c.bounds.bottom).fold(viewport.top, f32::max);
         self.navigation_max = (bottom + 8.0 - viewport.bottom).max(0.0);
         *offset = offset.clamp(0.0, self.navigation_max);
         self.navigation_offset = *offset;
         for c in &mut self.controls {
-            if matches!(c.kind, ControlKind::Navigation) { c.bounds.top -= *offset; c.bounds.bottom -= *offset; }
+            if matches!(c.kind, ControlKind::Navigation(_)) { c.bounds.top -= *offset; c.bounds.bottom -= *offset; }
         }
         for index in self.navigation_text.clone() {
             self.text[index].0.top -= *offset;
             self.text[index].0.bottom -= *offset;
         }
     }
-    pub fn navigation_thumb(&self) -> Option<Rect> {
-        let viewport = self.navigation_viewport?;
-        if self.navigation_max <= 0.0 { return None; }
-        let track = viewport.bottom - viewport.top - 16.0;
-        let height = (track * track / (track + self.navigation_max)).max(28.0);
-        let top = viewport.top + 8.0 + (track-height)*self.navigation_offset/self.navigation_max;
-        Some(Rect::from_xywh(viewport.right-10.0, top, 4.0, height))
+    pub fn navigation_scrollbar(&self) -> Option<Scrollbar> {
+        Scrollbar::new(widget_bounds(self.navigation_viewport?), self.navigation_max, self.navigation_offset)
     }
     pub fn fixed_list(&self) -> bool {
         self.controls
@@ -864,6 +876,24 @@ impl Scene {
     }
     pub fn list_row(c: &Control) -> bool {
         matches!(c.action, Action::Font(_)) && c.kind.is_row()
+    }
+    pub fn fixed_control(c: &Control) -> bool {
+        matches!(c.kind, ControlKind::Navigation(_) | ControlKind::Caption)
+            || matches!(c.action, Action::OrganizeTab(_))
+            || matches!(c.action, Action::Classification(command) if command.is_footer())
+    }
+    pub fn content_bottom(&self) -> f32 {
+        self.text.iter()
+            .filter(|(_, _, style)| *style != Tokens::CAPTION_TEXT)
+            .map(|(r, _, _)| r)
+            .chain(self.cards.iter())
+            .chain(self.section_headers.iter().map(|header| &header.bounds))
+            .chain(self.destination_changes.iter().map(|change| &change.bounds))
+            .chain(self.controls.iter().filter(|control| !Self::fixed_control(control)).map(|control| &control.bounds))
+            .filter(|r| r.left >= self.content_left)
+            .map(|r| r.bottom)
+            .chain(self.app_icon.iter().map(|r| r.bottom))
+            .fold(self.content_top, f32::max)
     }
     pub fn scroll_to(&mut self, width: f32, height: f32, offset: &mut f32) {
         if self.fixed_list() {
@@ -881,9 +911,9 @@ impl Scene {
                 .map(|c| c.bounds.bottom)
                 .fold(top, f32::max);
             self.viewport = Some(Rect::from_xywh(
-                Tokens::content_x(),
+                self.content_left,
                 top,
-                (width - Tokens::content_x() - Tokens::MARGIN).min(Tokens::MAX_WIDTH),
+                (width - self.content_left - Tokens::MARGIN).min(Tokens::MAX_WIDTH),
                 bottom - top,
             ));
             self.scroll_max = (content_bottom - bottom).max(0.0);
@@ -896,41 +926,26 @@ impl Scene {
             }
             return;
         }
-        let viewport = Rect::from_xywh(
-            Tokens::content_x(),
-            TITLE_HEIGHT,
-            width - Tokens::content_x(),
-            height - TITLE_HEIGHT,
-        );
-        let bottom = self
-            .text
-            .iter()
-            .map(|(r, _, _)| r)
-            .chain(self.cards.iter())
-            .chain(
-                self.controls
-                    .iter()
-                    .filter(|c| !matches!(c.kind, ControlKind::Caption))
-                    .map(|c| &c.bounds),
-            )
-            .filter(|r| r.left >= Tokens::content_x())
-            .map(|r| r.bottom)
-            .chain(self.app_icon.iter().map(|r| r.bottom))
-            .fold(viewport.top, f32::max);
+        let left = self.content_left;
+        let viewport = Rect::from_xywh(left, self.content_top, width - left, (height - self.footer_height - self.content_top).max(0.0));
+        let bottom = self.content_bottom();
         self.scroll_max = (bottom + Tokens::MARGIN - viewport.bottom).max(0.0);
         *offset = offset.clamp(0.0, self.scroll_max);
         self.scroll_offset = *offset;
         self.viewport = Some(viewport);
         let translate = |r: &mut Rect| {
-            if r.left >= Tokens::content_x() {
+            if r.left >= left {
                 r.top -= *offset;
                 r.bottom -= *offset;
             }
         };
-        for (r, _, _) in &mut self.text {
-            translate(r);
+        for (r, _, style) in &mut self.text {
+            if *style != Tokens::CAPTION_TEXT { translate(r); }
         }
-        for r in self.cards.iter_mut().chain(self.separators.iter_mut()) {
+        for r in self.cards.iter_mut().chain(&mut self.separators)
+            .chain(self.section_headers.iter_mut().map(|header| &mut header.bounds))
+            .chain(self.destination_changes.iter_mut().map(|change| &mut change.bounds))
+        {
             translate(r);
         }
         for (r, _) in &mut self.previews {
@@ -940,28 +955,21 @@ impl Scene {
             translate(r);
         }
         for c in &mut self.controls {
-            if !matches!(c.kind, ControlKind::Caption) {
+            if !Self::fixed_control(c) {
                 translate(&mut c.bounds);
             }
         }
     }
-    pub fn scroll_thumb(&self) -> Option<Rect> {
-        let viewport = self.viewport?;
-        if self.scroll_max <= 0.0 {
-            return None;
-        }
-        let track = viewport.bottom - viewport.top - 16.0;
-        let height = (track * track / (track + self.scroll_max)).max(28.0);
-        let top = viewport.top + 8.0 + (track - height) * self.scroll_offset / self.scroll_max;
-        Some(Rect::from_xywh(viewport.right - 10.0, top, 4.0, height))
+    pub fn scrollbar(&self) -> Option<Scrollbar> {
+        Scrollbar::new(widget_bounds(self.viewport?), self.scroll_max, self.scroll_offset)
     }
     pub fn accepts_pointer(&self, c: &Control, x: f32, y: f32) -> bool {
-        if matches!(c.kind, ControlKind::Navigation) {
+        if matches!(c.kind, ControlKind::Navigation(_)) {
             return contains(&c.bounds, x, y) && self.navigation_viewport.is_none_or(|v| contains(&v, x, y));
         }
         contains(&c.bounds, x, y)
-            && (matches!(c.kind, ControlKind::Caption)
-                || c.bounds.left < Tokens::content_x()
+            && (Self::fixed_control(c)
+                || c.bounds.left < self.content_left
                 || (self.fixed_list() && !Self::list_row(c))
                 || self.viewport.is_none_or(|v| contains(&v, x, y)))
     }
@@ -993,12 +1001,18 @@ impl Drop for ContentClip<'_, '_> {
 }
 
 pub(super) fn text_width(text: &str, size: f32) -> f32 {
-    measured_text(text, size, 10000.0).0
+    text_width_with_weight(text, size, windows_canvas::FontWeight::NORMAL)
+}
+pub(super) fn text_width_with_weight(text: &str, size: f32, weight: windows_canvas::FontWeight) -> f32 {
+    measured_text(text, size, 10000.0, weight).0
 }
 pub(super) fn text_height(text: &str, size: f32, width: f32) -> f32 {
-    measured_text(text, size, width).1.ceil()
+    text_height_with_weight(text, size, width, windows_canvas::FontWeight::NORMAL)
 }
-type MetricsKey = (String, String, String, u32, u32);
+pub(super) fn text_height_with_weight(text: &str, size: f32, width: f32, weight: windows_canvas::FontWeight) -> f32 {
+    measured_text(text, size, width, weight).1.ceil()
+}
+type MetricsKey = (String, String, String, u32, u32, i32);
 thread_local! { static METRICS: std::cell::RefCell<std::collections::HashMap<MetricsKey, (f32, f32)>> = std::cell::RefCell::new(std::collections::HashMap::new()); }
 
 pub(super) fn release_text_metrics() {
@@ -1006,7 +1020,7 @@ pub(super) fn release_text_metrics() {
     let _ = METRICS.try_with(|cache| *cache.borrow_mut() = std::collections::HashMap::new());
 }
 
-fn measured_text(text: &str, size: f32, width: f32) -> (f32, f32) {
+fn measured_text(text: &str, size: f32, width: f32, weight: windows_canvas::FontWeight) -> (f32, f32) {
     let family = super::super::fonts::family();
     let key = (
         family.clone(),
@@ -1014,11 +1028,12 @@ fn measured_text(text: &str, size: f32, width: f32) -> (f32, f32) {
         text.to_owned(),
         size.to_bits(),
         width.to_bits(),
+        weight.0,
     );
     if let Some(metrics) = METRICS.with(|cache| cache.borrow().get(&key).copied()) {
         return metrics;
     }
-    let Ok(format) = windows_canvas::TextFormat::new(&family, size) else {
+    let Ok(format) = windows_canvas::TextFormat::with_weight(&family, size, weight) else {
         return (text.chars().count() as f32 * size, size * 2.0);
     };
     let _ = super::super::canvas::apply_fallback(&format);
@@ -1045,7 +1060,7 @@ mod cache_tests {
     fn dropping_settings_painter_releases_text_metrics_and_capacity() {
         let _sta = crate::pane::test_support::apartment();
         let painter = super::super::Painter::new().unwrap();
-        measured_text("Settings cache lifetime", 14.0, 300.0);
+        text_width("Settings cache lifetime", 14.0);
         assert!(METRICS.with(|cache| !cache.borrow().is_empty()));
         drop(painter);
         METRICS.with(|cache| {
@@ -1053,7 +1068,7 @@ mod cache_tests {
             assert!(cache.is_empty());
             assert_eq!(cache.capacity(), 0);
         });
-        assert!(measured_text("Reopened settings", 14.0, 300.0).0 > 0.0);
+        assert!(text_width("Reopened settings", 14.0) > 0.0);
         release_text_metrics();
     }
 }

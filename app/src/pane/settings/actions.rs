@@ -23,7 +23,6 @@ pub(super) struct Context<'a> {
     pub folder_defaults: &'a mut folder::Defaults,
     pub layout_defaults: &'a mut layout_defaults::Mode,
     pub style_input: &'a mut Option<(bool, String)>,
-    pub classification_editor: &'a mut classification::Editor,
     pub startup: &'a mut crate::startup::Controller,
     pub diagnostics_copied: &'a mut bool,
     pub skill_prompt_copied: &'a mut bool,
@@ -49,10 +48,12 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
     let all_fonts = context.all_fonts;
     let mut invalidate = false;
     match &c.action {
-        Action::Classification(command) => {
-            context.classification_editor.execute(state, hwnd, *command);
-            invalidate = true;
+        Action::OpenOrganizer => {
+            if let Err(error) = classification::show_rules(state) {
+                window::error_for(hwnd, &error);
+            }
         }
+        Action::Classification(_) | Action::OrganizeTab(_) => {}
         Action::Dropdown(_) => {
             controls::open_dropdown(hwnd, appearance, scale, c, context.dropdown_sender.clone());
         }
@@ -471,7 +472,6 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
             invalidate = true;
         }
         Action::Page(value) => {
-            if *value == 16 { context.classification_editor.resume(); }
             *context.selected_plugin = None;
             if *value == 13 {
                 if let Err(error) = start_login_operation(&mut *context.startup, hwnd, None) {

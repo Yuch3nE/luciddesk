@@ -90,7 +90,7 @@ mod tests {
         }
         let mut offset = f32::MAX;
         scene.scroll_navigation(&mut offset);
-        let last = scene.controls.iter().filter(|c| matches!(c.kind, ControlKind::Navigation)).last().unwrap();
+        let last = scene.controls.iter().filter(|c| matches!(c.kind, ControlKind::Navigation(_))).last().unwrap();
         let viewport = scene.navigation_viewport.unwrap();
         assert!(last.bounds.top >= viewport.top && last.bounds.bottom <= viewport.bottom);
         draw(&mut scene, 900.0);

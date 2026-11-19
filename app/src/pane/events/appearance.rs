@@ -93,6 +93,7 @@ pub(in crate::pane) fn preview_material(state: &mut PaneApp, backdrop: luciddesk
             InvalidateRect(window.hwnd().cast(), std::ptr::null(), 0);
         }
     }
+    state.invalidate_organizer();
 }
 
 pub(in crate::pane) fn commit_material(
@@ -207,5 +208,6 @@ pub(super) fn material(state: &Rc<RefCell<PaneApp>>, event: Event) -> Result<boo
             InvalidateRect(window.hwnd().cast(), std::ptr::null(), 0);
         }
     }
+    s.invalidate_organizer();
     return Ok(false);
 }

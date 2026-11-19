@@ -1,5 +1,63 @@
 //! Shared rendering for the explicit settings control types.
 use super::*;
+use super::super::control_style as style;
+use luciddesk_window::controls as widgets;
+use widgets::{InlineControl, Tone};
+
+const WINDOW_BRUSH_COUNT: usize = 12;
+const WIDGET_BRUSH_COUNT: usize = Tone::ALL.len();
+
+struct WidgetCanvas<'a, 'b> {
+    pass: &'a canvas::DrawPass<'b>,
+    painter: &'a Painter,
+    brushes: [&'a windows_canvas::Brush; WIDGET_BRUSH_COUNT],
+    section_summary_width: Option<f32>,
+}
+
+impl WidgetCanvas<'_, '_> {
+    fn frame(bounds: widgets::Bounds, radius: f32) -> RoundedRect {
+        RoundedRect { rect: Rect::from_xywh(bounds.x, bounds.y, bounds.width, bounds.height), radius_x: radius, radius_y: radius }
+    }
+}
+
+impl widgets::Canvas for WidgetCanvas<'_, '_> {
+    type Error = windows::core::Error;
+
+    fn fill(&mut self, bounds: widgets::Bounds, radius: f32, tone: widgets::Tone) {
+        self.pass.fill_rounded_rect(&Self::frame(bounds, radius), self.brushes[tone as usize]);
+    }
+
+    fn fill_rgb(&mut self, bounds: widgets::Bounds, radius: f32, [r, g, b]: [f32; 3]) -> Result<(), Self::Error> {
+        let brush = canvas_result(self.pass.create_solid_brush(ColorF { r, g, b, a: 1.0 }))?;
+        self.pass.fill_rounded_rect(&Self::frame(bounds, radius), &brush);
+        Ok(())
+    }
+
+    fn stroke(&mut self, bounds: widgets::Bounds, radius: f32, thickness: f32, tone: widgets::Tone) {
+        self.pass.draw_rounded_rect(&Self::frame(bounds, radius), self.brushes[tone as usize], thickness);
+    }
+
+    fn text(&mut self, bounds: widgets::Bounds, label: &str, alignment: widgets::Alignment, tone: widgets::Tone) {
+        let mut bounds = Rect::from_xywh(bounds.x, bounds.y, bounds.width, bounds.height);
+        let brush = self.brushes[tone as usize];
+        match alignment {
+            widgets::Alignment::Center => self.pass.clipped_text(label, &self.painter.button_format, &bounds, brush),
+            widgets::Alignment::Leading => {
+                let format = if let Some(width) = self.section_summary_width {
+                    bounds.right = (bounds.right - width).max(bounds.left + 1.0);
+                    &self.painter.formats[Tokens::SECTION_TITLE]
+                } else {
+                    &self.painter.formats[Tokens::CONTROL_TEXT]
+                };
+                self.pass.clipped_text(label, format, &bounds, brush);
+            }
+            widgets::Alignment::Icon => self.pass.clipped_icon(label, &self.painter.formats[4], &bounds, brush),
+            widgets::Alignment::ActionIcon => self.pass.clipped_icon(label, &self.painter.formats[5], &bounds, brush),
+            widgets::Alignment::Supporting => self.pass.clipped_text(label, &self.painter.formats[6], &bounds, brush),
+        }
+    }
+
+}
 
 struct CachedPreview {
     context: ID2D1DeviceContext,
@@ -10,13 +68,13 @@ struct CachedPreview {
 
 pub(super) struct Painter {
     preview: RefCell<Option<CachedPreview>>,
-    brushes: RefCell<super::super::canvas::Brushes<19>>,
+    brushes: RefCell<super::super::canvas::Brushes<{ WINDOW_BRUSH_COUNT + WIDGET_BRUSH_COUNT }>>,
     icon_bitmap: RefCell<Option<(ID2D1DeviceContext, windows_canvas::Bitmap)>>,
     #[cfg(test)]
     icon_uploads: std::cell::Cell<usize>,
     formats: Vec<windows_canvas::TextFormat>,
     button_format: windows_canvas::TextFormat,
-    combo_format: windows_canvas::TextFormat,
+    new_group_format: windows_canvas::TextFormat,
 }
 impl Drop for Painter {
     fn drop(&mut self) { super::components::release_text_metrics(); }
@@ -37,12 +95,15 @@ impl Painter {
             12.0,
             14.0,
             Style::NAV_HEADING,
-            Style::NAV_TEXT,
+            Style::TEXT_SIZE,
             14.0,
             14.0,
             11.0,
             13.0,
             12.0,
+            16.0,
+            12.0,
+            SectionHeader::TITLE_SIZE,
         ]
         .iter()
         .enumerate()
@@ -54,17 +115,23 @@ impl Painter {
                     &family
                 },
                 *size,
-                FontWeight(if i == 2 || i == 3 { 600 } else { 400 }),
+                match i {
+                    Tokens::GROUP_TITLE => SectionHeader::TITLE_WEIGHT,
+                    2 | 3 | Tokens::SECTION_TITLE => FontWeight(600),
+                    _ => FontWeight::NORMAL,
+                },
             ))?
             .with_paragraph_alignment(ParagraphAlignment::Center)
-            .with_word_wrapping(if matches!(i, 1 | 6 | Tokens::STATUS_GOOD | Tokens::STATUS_ERROR | Tokens::TITLE_BADGE) {
+            .with_word_wrapping(if matches!(i, 1 | 6 | Tokens::STATUS_GOOD | Tokens::STATUS_ERROR | Tokens::TITLE_BADGE | Tokens::SECTION_TITLE | Tokens::GROUP_TITLE) {
                 WordWrapping::Wrap
             } else {
                 WordWrapping::NoWrap
             });
             let format = if matches!(i, 4 | 5 | Tokens::CAPTION_ICON) {
                 format.with_alignment(windows_canvas::TextAlignment::Center)
-            } else if i == Tokens::VALUE_TEXT {
+            } else if i == Tokens::CONTROL_TEXT {
+                format.with_alignment(windows_canvas::TextAlignment::Leading)
+            } else if matches!(i, Tokens::VALUE_TEXT | Tokens::SECONDARY_VALUE) {
                 format.with_alignment(windows_canvas::TextAlignment::Trailing)
             } else {
                 format
@@ -72,16 +139,16 @@ impl Painter {
             super::super::canvas::ellipsis(&format)?;
             formats.push(format);
         }
-        let control_format = |alignment| -> windows::core::Result<TextFormat> {
-            let format = canvas_result(TextFormat::new(&family, Style::TEXT_SIZE))?
+        let control_format = |alignment, weight| -> windows::core::Result<TextFormat> {
+            let format = canvas_result(TextFormat::with_weight(&family, Style::TEXT_SIZE, weight))?
                 .with_paragraph_alignment(ParagraphAlignment::Center)
                 .with_word_wrapping(WordWrapping::NoWrap)
                 .with_alignment(alignment);
             super::super::canvas::ellipsis(&format)?;
             Ok(format)
         };
-        let button_format = control_format(windows_canvas::TextAlignment::Center)?;
-        let combo_format = control_format(windows_canvas::TextAlignment::Leading)?;
+        let button_format = control_format(windows_canvas::TextAlignment::Center, FontWeight::NORMAL)?;
+        let new_group_format = control_format(windows_canvas::TextAlignment::Leading, DestinationChange::NEW_GROUP_WEIGHT)?;
         Ok(Self {
             preview: RefCell::new(None),
             brushes: Default::default(),
@@ -90,7 +157,7 @@ impl Painter {
             icon_uploads: std::cell::Cell::new(0),
             formats,
             button_format,
-            combo_format,
+            new_group_format,
         })
     }
     pub(super) fn label_width(&self, text: &str) -> windows::core::Result<f32> {
@@ -164,26 +231,39 @@ impl Painter {
                 }
                 let [nav_selection, nav_hover, nav_selection_hover] =
                     components::navigation_colors(s.material, dark);
-                let [card, card_border, ink, muted, disabled, border, accent, slider_track,
-                    slider_border, slider_surface, scroll_thumb, nav_selected, nav_hovered,
-                    nav_selected_hovered, page_background, red, green, blue, checkbox_mark] = canvas_result(brushes.get(context, &t, [
+                let window_colors = [
                         chrome.card, chrome.card_border,
-                        color(palette.ink), color(palette.muted),
-                        ColorF { a: 0.55, ..color(palette.muted) },
-                        ColorF { a: if native && dark { 0.45 } else { 1.0 }, ..color(palette.border) },
-                        color(palette.accent),
                         // Light sliders need opaque strokes on translucent cards.
-                        ColorF { a: if dark && native { 0.45 } else { 1.0 }, ..color(palette.slider_track) },
-                        ColorF { a: if dark && native { 0.45 } else { 1.0 }, ..color(palette.slider_border) },
+                        ColorF { a: if dark && native { 0.45 } else { 1.0 }, ..color(if dark { 0x424242 } else { 0x8995a4 }) },
+                        ColorF { a: if dark && native { 0.45 } else { 1.0 }, ..color(if dark { 0x424242 } else { 0xa3aebb }) },
                         if dark { chrome.card } else { color(0xffffff) },
-                        color(palette.scroll_thumb), nav_selection, nav_hover, nav_selection_hover,
+                        nav_selection, nav_hover, nav_selection_hover,
                         ColorF { a: if native { if dark { 0.12 } else { 0.55 } } else { 1.0 },
-                            ..color(if dark { 0x242424 } else { 0xf0f3f7 }) },
+                            ..color(palette.page_background) },
                         color(if dark { 0xef8d8d } else { 0xb83d42 }),
                         color(if dark { 0x8dccaa } else { 0x287b50 }),
                         color(if dark { 0x88baf0 } else { 0x266eae }),
-                        color(if dark { 0x202020 } else { 0xffffff }),
-                    ]))?;
+                ];
+                let colors = std::array::from_fn(|index| {
+                    if index < WINDOW_BRUSH_COUNT {
+                        window_colors[index]
+                    } else {
+                        color(Tone::ALL[index - WINDOW_BRUSH_COUNT].rgb(&palette))
+                    }
+                });
+                let brushes = canvas_result(brushes.get(context, &t, colors))?;
+                let [card, card_border, slider_track, slider_border, slider_surface, nav_selected,
+                    nav_hovered, nav_selected_hovered, page_background, red, green, blue] =
+                    std::array::from_fn(|index| &brushes[index]);
+                let widget_brushes: [_; WIDGET_BRUSH_COUNT] = std::array::from_fn(|index| &brushes[WINDOW_BRUSH_COUNT + index]);
+                let brush = |tone: Tone| widget_brushes[tone as usize];
+                let (ink, muted, disabled, border, accent, button, button_hover) = (
+                    brush(Tone::Ink), brush(Tone::Muted), brush(Tone::Disabled), brush(Tone::Border),
+                    brush(Tone::Accent), brush(Tone::Surface), brush(Tone::Hover),
+                );
+                let mut widget_canvas = WidgetCanvas {
+                    pass: &t, painter: self, brushes: widget_brushes, section_summary_width: None,
+                };
                 let selected = nav_selected;
                 let hovered = nav_hovered;
 
@@ -197,16 +277,31 @@ impl Painter {
                 } else {
                     bg
                 });
+                let page_left = s.content_left - Tokens::MARGIN;
+                let page_top = s.content_top.min(height);
                 t.fill_rounded_rect(
                     &RoundedRect {
-                        rect: Rect::from_xywh(Tokens::content_x() - 24.0, 0.0, width - Tokens::content_x() + 24.0, height),
-                        radius_x: 8.0,
-                        radius_y: 8.0,
+                        rect: Rect::from_xywh(page_left, page_top, width - page_left, height - page_top),
+                        radius_x: Tokens::CARD_RADIUS,
+                        radius_y: Tokens::CARD_RADIUS,
                     },
                     page_background,
                 );
+                if s.footer_height > 0.0 {
+                    t.fill_rect(
+                        &Rect::from_xywh(s.content_left, height - s.footer_height, (width - s.content_left - Tokens::MARGIN).min(Tokens::MAX_WIDTH), 1.0),
+                        if dark { border } else { card_border },
+                    );
+                }
+                if s.controls.iter().any(|control| matches!(control.kind, ControlKind::Tab(_))) {
+                    t.fill_rect(
+                        &Rect::from_xywh(s.content_left, page_top - 1.0,
+                            (width - s.content_left - Tokens::MARGIN).min(Tokens::MAX_WIDTH), 1.0),
+                        card_border,
+                    );
+                }
                 for r in &s.cards {
-                    let _clip = ContentClip::new(&t, s, r.left >= Tokens::content_x() && !s.fixed_list());
+                    let _clip = ContentClip::new(&t, s, r.left >= s.content_left && !s.fixed_list());
                     let rr = RoundedRect {
                         rect: *r,
                         radius_x: Tokens::CARD_RADIUS,
@@ -216,8 +311,28 @@ impl Painter {
                     t.draw_rounded_rect(&rr, card_border, 1.0);
                 }
                 for r in &s.separators {
-                    let _clip = ContentClip::new(&t, s, r.left >= Tokens::content_x() && !s.fixed_list());
+                    let _clip = ContentClip::new(&t, s, r.left >= s.content_left && !s.fixed_list());
                     t.fill_rect(r, if dark { border } else { card_border });
+                }
+                for header in &s.section_headers {
+                    let _clip = ContentClip::new(&t, s, true);
+                    let [icon, title, summary] = header.cells();
+                    let accent_ink = brush(Tone::AccentInk);
+                    t.clipped_icon(header.icon, &self.formats[4], &icon, accent_ink);
+                    t.clipped_text(&header.title, &self.formats[Tokens::GROUP_TITLE], &title, accent_ink);
+                    t.clipped_text(&header.summary, &self.formats[Tokens::SECONDARY_VALUE], &summary, muted);
+                }
+                for change in &s.destination_changes {
+                    let _clip = ContentClip::new(&t, s, true);
+                    let [_, arrow, _] = change.cells();
+                    for ((bounds, destination), (format, color)) in change.destinations().into_iter()
+                        .zip([(&self.formats[Tokens::CONTROL_TEXT], ink), (&self.new_group_format, brush(Tone::AccentInk))])
+                    {
+                        let [group, rule] = destination.cells(bounds);
+                        t.clipped_text(&destination.group, format, &group, color);
+                        t.clipped_text(&destination.rule, &self.formats[0], &rule, muted);
+                    }
+                    t.clipped_icon(style::CHEVRON_RIGHT, &self.formats[4], &arrow, muted);
                 }
                 for (bounds, content) in s.app_icon.iter().map(|r| (r, true))
                     .chain(s.caption_icon.iter().map(|r| (r, false))) {
@@ -242,7 +357,7 @@ impl Painter {
                     t.draw_bitmap(&cached.as_ref().unwrap().1, bounds, 1.0);
                 }
                 for (r, material) in &s.previews {
-                    let _clip = ContentClip::new(&t, s, r.left >= Tokens::content_x() && !s.fixed_list());
+                    let _clip = ContentClip::new(&t, s, r.left >= s.content_left && !s.fixed_list());
                     // Keep only the current image. Theme, strength, custom color or
                     // device/context changes invalidate it; hover and scroll do not.
                     let mut cached = self.preview.borrow_mut();
@@ -294,8 +409,8 @@ impl Painter {
                     );
                     for i in 0..3 {
                         let left = panel.left + 18.0 + i as f32 * 52.0;
-                        let glyph = if i < 2 { "\u{e8b7}" } else { "\u{e8a5}" };
-                        t.clipped_text(glyph, &self.formats[5],
+                        let glyph = if i < 2 { style::FOLDER } else { style::DOCUMENT };
+                        t.clipped_icon(glyph, &self.formats[5],
                             &Rect::from_xywh(left, panel.top + 39.0, 28.0, 32.0), accent);
                         t.fill_rounded_rect(
                             &RoundedRect {
@@ -311,143 +426,102 @@ impl Painter {
                     t.draw_rounded_rect(&RoundedRect { rect: r, radius_x: Tokens::CARD_RADIUS, radius_y: Tokens::CARD_RADIUS }, card_border, 1.0);
                 }
                 for (i, c) in s.controls.iter().enumerate() {
-                    let _navigation_clip = matches!(c.kind, ControlKind::Navigation).then(|| ContentClip::navigation(&t, s));
+                    let _navigation_clip = matches!(c.kind, ControlKind::Navigation(_)).then(|| ContentClip::navigation(&t, s));
                     if s.fixed_list() && Scene::list_row(c) && s.viewport.is_some_and(|v| c.bounds.bottom <= v.top || c.bounds.top >= v.bottom) { continue; }
                     let _clip = ContentClip::new(
                         &t,
                         s,
-                        c.bounds.left >= Tokens::content_x()
-                            && !matches!(c.kind, ControlKind::Caption)
+                        c.bounds.left >= s.content_left
+                            && !Scene::fixed_control(c)
                             && (!s.fixed_list() || Scene::list_row(c)),
                     );
-                    if matches!(c.action, Action::FontSearch) {
-                        let r = c.bounds;
-                        let background = canvas_result(t.create_solid_brush(ColorF {
-                            a: if dark { 0.04 } else { 0.45 }, ..color(0xffffff)
-                        }))?;
-                        let frame = RoundedRect { rect: r, radius_x: 8.0, radius_y: 8.0 };
-                        t.fill_rounded_rect(&frame, &background);
-                        t.draw_rounded_rect(&frame, border, 1.0);
-                        let hint = canvas_result(t.create_solid_brush(ColorF {
-                            a: 1.0, ..color(if dark { 0xb8b8b8 } else { 0x606060 })
-                        }))?;
-                        t.clipped_text(&c.label, &self.formats[1],
-                            &Rect::from_xywh(r.left + 40.0, r.top, r.right - r.left - 80.0, r.bottom - r.top), &hint);
-                        t.clipped_icon("\u{e721}", &self.formats[4],
-                            &Rect::from_xywh(r.left + 16.0, r.top, 16.0, r.bottom - r.top), &hint);
-                        if c.selected {
-                            t.clipped_icon("\u{e711}", &self.formats[4],
-                                &Rect::from_xywh(r.right - 32.0, r.top, 16.0, r.bottom - r.top), &hint);
-                        }
-                        let focused = unsafe {
-                            let focus = windows_sys::Win32::UI::Input::KeyboardAndMouse::GetFocus();
-                            let owner = windows_sys::Win32::UI::WindowsAndMessaging::GetWindow(focus,
-                                windows_sys::Win32::UI::WindowsAndMessaging::GW_OWNER);
-                            !focus.is_null() && windows_sys::Win32::UI::WindowsAndMessaging::GetPropW(owner,
-                                windows_sys::w!("LucidDesk.FontSearch")) == focus
-                        };
-                        if focused {
-                            t.draw_line(Vector2::new(r.left + 8.0, r.bottom - 1.0),
-                                Vector2::new(r.right - 8.0, r.bottom - 1.0), accent, 2.0);
-                        }
-                        continue;
-                    }
-                    if matches!(c.action, Action::Classification(classification::Command::Input(_))) {
-                        let frame = RoundedRect { rect: c.bounds, radius_x: Style::RADIUS, radius_y: Style::RADIUS };
-                        let fill = canvas_result(t.create_solid_brush(color(palette.background)))?;
-                        t.fill_rounded_rect(&frame, &fill);
-                        if focus == Some(i) {
-                            t.draw_rounded_rect(&frame, accent, super::super::control_style::FOCUS_STROKE);
+                    let state = widgets::State { enabled: c.enabled, active: hover == Some(i), focused: focus == Some(i) };
+                    let bounds = components::widget_bounds(c.bounds);
+                    if let ControlKind::Navigation(icon) | ControlKind::Tab(icon) = c.kind {
+                        let mut navigation = WidgetCanvas { ..widget_canvas };
+                        navigation.brushes[Tone::Hover as usize] = nav_hovered;
+                        navigation.brushes[Tone::Selection as usize] = if state.active {
+                            nav_selected_hovered
                         } else {
-                            t.draw_rounded_rect(&frame, border, 1.0);
-                        }
+                            nav_selected
+                        };
+                        NavigationItem { icon, selected: c.selected }.paint(&mut navigation, bounds, &c.label, state);
                         continue;
                     }
-                    if matches!(c.kind, ControlKind::IconButton(_) | ControlKind::Disclosure) {
-                        let frame = RoundedRect { rect: c.bounds, radius_x: Style::RADIUS, radius_y: Style::RADIUS };
-                        let open = controls::dropdown_is_open(c.bounds);
-                        if c.enabled && (hover == Some(i) || open) { t.fill_rounded_rect(&frame, hovered); }
-                        if c.enabled && focus == Some(i) {
-                            t.draw_rounded_rect(&frame, accent, super::super::control_style::FOCUS_STROKE);
-                        }
-                        let text = if c.enabled { ink } else { disabled };
-                        match c.kind {
-                            ControlKind::IconButton(glyph) => t.clipped_icon(glyph, &self.formats[5], &c.bounds, text),
-                            ControlKind::Disclosure => {
-                                let glyph = Rect::from_xywh(c.bounds.left + 4.0, c.bounds.top, 16.0, c.bounds.bottom - c.bounds.top);
-                                t.clipped_icon(if c.selected { "\u{e70d}" } else { "\u{e76c}" }, &self.formats[4], &glyph, text);
-                                let mut label = c.bounds;
-                                label.left += 28.0;
-                                label.right -= Tokens::GAP;
-                                t.clipped_text(&c.label, &self.formats[1], &label, text);
+                    if matches!(c.action, Action::FontSearch | Action::Classification(classification::Command::Input(_))) {
+                        let r = c.bounds;
+                        let font_search = matches!(c.action, Action::FontSearch);
+                        let focused = if font_search {
+                            unsafe {
+                                let edit = windows_sys::Win32::UI::Input::KeyboardAndMouse::GetFocus();
+                                let owner = windows_sys::Win32::UI::WindowsAndMessaging::GetWindow(edit,
+                                    windows_sys::Win32::UI::WindowsAndMessaging::GW_OWNER);
+                                !edit.is_null() && windows_sys::Win32::UI::WindowsAndMessaging::GetPropW(owner,
+                                    windows_sys::w!("LucidDesk.FontSearch")) == edit
                             }
-                            _ => unreachable!(),
+                        } else { state.focused };
+                        widgets::TextField::paint(&mut widget_canvas, bounds, widgets::State { focused, ..state });
+                        if font_search {
+                            t.clipped_text(&c.label, &self.formats[1],
+                                &Rect::from_xywh(r.left + 40.0, r.top, r.right - r.left - 80.0, r.bottom - r.top), muted);
+                            t.clipped_icon("\u{e721}", &self.formats[4],
+                                &Rect::from_xywh(r.left + 16.0, r.top, 16.0, r.bottom - r.top), muted);
+                            if c.selected {
+                                t.clipped_icon("\u{e711}", &self.formats[4],
+                                    &Rect::from_xywh(r.right - 32.0, r.top, 16.0, r.bottom - r.top), muted);
+                            }
                         }
                         continue;
                     }
-                    if matches!(c.kind, ControlKind::FooterLink) {
-                        let frame = RoundedRect { rect: c.bounds, radius_x: 4.0, radius_y: 4.0 };
-                        if c.enabled && hover == Some(i) { t.fill_rounded_rect(&frame, hovered); }
-                        if c.enabled && focus == Some(i) {
-                            t.draw_rounded_rect(&frame, accent, super::super::control_style::FOCUS_STROKE);
+                    let material = matches!(c.action, Action::Change(Event::Material(_))) && bounds.height >= 80.0;
+                    match c.kind {
+                        ControlKind::PrimaryButton => {
+                            widgets::ButtonKind::Primary.paint(&mut widget_canvas, bounds, &c.label, state);
+                            continue;
                         }
-                        let mut label = c.bounds;
-                        label.left += 8.0;
-                        label.right -= 32.0;
-                        t.clipped_text(&c.label, &self.formats[6], &label, if c.enabled { blue } else { disabled });
-                        let icon = match c.action {
+                        ControlKind::Button if !c.label.is_empty() && !material => {
+                            let button = if c.selected { widgets::ButtonKind::Selected } else { widgets::ButtonKind::Secondary };
+                            button.paint(&mut widget_canvas, bounds, &c.label, state);
+                            continue;
+                        }
+                        ControlKind::Combo => {
+                            widgets::ComboBox::paint(&mut widget_canvas, bounds, &c.label, state, controls::dropdown_is_open(c.bounds));
+                            continue;
+                        }
+                        ControlKind::Checkbox => {
+                            widgets::CheckBox::paint(&mut widget_canvas, bounds, &c.label, state, c.selected);
+                            continue;
+                        }
+                        ControlKind::Toggle => {
+                            let selected = c.selected;
+                            let progress = toggles.get(&i).copied().filter(|_| state.enabled)
+                                .unwrap_or(if selected { 1.0 } else { 0.0 });
+                            widgets::Toggle { selected, progress }.paint(&mut widget_canvas, bounds, state, dark, &palette)?;
+                            continue;
+                        }
+                        _ => {}
+                    }
+                    let inline = match c.kind {
+                        ControlKind::QuietButton(icon) => Some(InlineControl::Quiet(icon)),
+                        ControlKind::IconButton(glyph) => Some(InlineControl::Icon {
+                            glyph, open: controls::dropdown_is_open(c.bounds),
+                        }),
+                        ControlKind::Disclosure => Some(InlineControl::Disclosure { expanded: c.selected, tinted: true }),
+                        ControlKind::SectionDisclosure { summary_width } => {
+                            let mut section_canvas = WidgetCanvas { section_summary_width: Some(summary_width), ..widget_canvas };
+                            InlineControl::Disclosure { expanded: c.selected, tinted: false }
+                                .paint(&mut section_canvas, bounds, &c.label, state);
+                            continue;
+                        }
+                        ControlKind::FooterLink => Some(InlineControl::Link(match c.action {
                             Action::SolidReset | Action::StrengthReset => "\u{e777}",
                             Action::BackupAdvanced => "\u{e76c}",
                             _ => "\u{e8a7}",
-                        };
-                        t.clipped_icon(icon, &self.formats[4],
-                            &Rect::from_xywh(c.bounds.right - 24.0, c.bounds.top, 16.0, c.bounds.bottom - c.bounds.top),
-                            if c.enabled { blue } else { disabled });
-                        continue;
-                    }
-                    if matches!(c.kind, ControlKind::Checkbox) {
-                        let r = c.bounds;
-                        let frame = RoundedRect { rect: r, radius_x: 4.0, radius_y: 4.0 };
-                        if c.enabled && hover == Some(i) {
-                            t.fill_rounded_rect(&frame, hovered);
-                        }
-                        if c.enabled && focus == Some(i) {
-                            t.draw_rounded_rect(&frame, accent, super::super::control_style::FOCUS_STROKE);
-                        }
-                        let box_rect = Rect::from_xywh(r.left + 4.0, (r.top + r.bottom - 18.0) / 2.0, 18.0, 18.0);
-                        let box_shape = RoundedRect { rect: box_rect, radius_x: 3.0, radius_y: 3.0 };
-                        if c.selected {
-                            t.fill_rounded_rect(&box_shape, if c.enabled { accent } else { disabled });
-                            let check = checkbox_mark;
-                            t.draw_line(Vector2::new(box_rect.left + 4.0, box_rect.top + 9.0),
-                                Vector2::new(box_rect.left + 7.5, box_rect.top + 12.5), check, 1.8);
-                            t.draw_line(Vector2::new(box_rect.left + 7.5, box_rect.top + 12.5),
-                                Vector2::new(box_rect.left + 14.0, box_rect.top + 5.5), check, 1.8);
-                        } else {
-                            t.draw_rounded_rect(&box_shape, if c.enabled { muted } else { disabled }, 1.0);
-                        }
-                        let mut label = r;
-                        label.left += 30.0;
-                        label.right -= 4.0;
-                        t.clipped_text(&c.label, &self.combo_format,
-                            &label, if c.enabled { ink } else { disabled });
-                        continue;
-                    }
-                    if !c.enabled && c.is_toggle() {
-                        let r = c.bounds;
-                        t.draw_rounded_rect(
-                            &RoundedRect {
-                                rect: r,
-                                radius_x: 12.0,
-                                radius_y: 12.0,
-                            },
-                            border,
-                            1.0,
-                        );
-                        t.fill_ellipse(
-                            &toggle_thumb(r, if c.selected { 1.0 } else { 0.0 }),
-                            muted,
-                        );
+                        })),
+                        _ => None,
+                    };
+                    if let Some(inline) = inline {
+                        inline.paint(&mut widget_canvas, bounds, &c.label, state);
                         continue;
                     }
                     if let ControlKind::Slider(slider) = c.kind {
@@ -513,67 +587,33 @@ impl Painter {
                             t.draw_rounded_rect(
                                 &RoundedRect {
                                     rect: r,
-                                    radius_x: 5.0,
-                                    radius_y: 5.0,
+                                    radius_x: Style::RADIUS,
+                                    radius_y: Style::RADIUS,
                                 },
                                 accent,
-                                2.0,
+                                style::FOCUS_STROKE,
                             );
                         }
                         continue;
                     }
-                    let navigation = matches!(c.kind, ControlKind::Navigation);
                     let caption = matches!(c.kind, ControlKind::Caption);
                     let plain = c.kind.is_row();
+                    let standard = matches!(c.kind, ControlKind::Button | ControlKind::Combo);
 
-                    let material = matches!(c.action, Action::Change(Event::Material(_)))
-                        && c.bounds.bottom - c.bounds.top >= 80.0;
                     let rr = RoundedRect {
                         rect: c.bounds,
-                        radius_x: if c.is_toggle() {
-                            (c.bounds.bottom - c.bounds.top) / 2.0
-                        } else if caption {
-                            0.0
-                        } else {
-                            Style::RADIUS
-                        },
-                        radius_y: if c.is_toggle() {
-                            (c.bounds.bottom - c.bounds.top) / 2.0
-                        } else if caption {
-                            0.0
-                        } else {
-                            Style::RADIUS
-                        },
+                        radius_x: if caption { 0.0 } else { Style::RADIUS },
+                        radius_y: if caption { 0.0 } else { Style::RADIUS },
                     };
-                    let progress =
-                        toggles
-                            .get(&i)
-                            .copied()
-                            .unwrap_or(if c.selected { 1.0 } else { 0.0 });
-                    if c.is_toggle() {
-                        let off = color(if dark { 0x383838 } else { 0xffffff });
-                        let on = color(palette.accent);
-                        let brush = canvas_result(t.create_solid_brush(ColorF {
-                            r: off.r + (on.r - off.r) * progress,
-                            g: off.g + (on.g - off.g) * progress,
-                            b: off.b + (on.b - off.b) * progress,
-                            a: 1.0,
-                        }))?;
-                        t.fill_rounded_rect(&rr, &brush);
-                    } else if (!navigation && !caption && !plain) || c.selected || hover == Some(i)
-                    {
+                    if (!caption && !plain) || c.selected || hover == Some(i) {
                         t.fill_rounded_rect(
                             &rr,
-                            if navigation && c.selected && c.enabled && hover == Some(i) {
-                                nav_selected_hovered
-                            } else if navigation && c.selected {
-                                nav_selected
-                            } else if navigation && c.enabled && hover == Some(i) {
-                                nav_hovered
-                            } else if c.selected && c.enabled && hover == Some(i) {
+                            if c.selected && c.enabled && hover == Some(i) {
                                 nav_selected_hovered
                             } else if c.selected {
                                 selected
+                            } else if standard {
+                                if c.enabled && hover == Some(i) { button_hover } else { button }
                             } else if c.enabled && hover == Some(i) {
                                 hovered
                             } else if !dark {
@@ -583,62 +623,15 @@ impl Painter {
                             },
                         );
                     }
-                    let combo_open = matches!(c.kind, ControlKind::Combo)
-                        && controls::dropdown_is_open(c.bounds);
-                    if (!navigation && !caption && !plain) || focus == Some(i) {
+                    if (!caption && !plain) || focus == Some(i) {
                         t.draw_rounded_rect(
                             &rr,
-                            if focus == Some(i) || c.selected || combo_open {
+                            if focus == Some(i) || c.selected {
                                 accent
                             } else {
                                 border
                             },
-                            if focus == Some(i) || combo_open { super::super::control_style::FOCUS_STROKE } else { 1.0 },
-                        );
-                    }
-                    if matches!(c.kind, ControlKind::Combo) {
-                        let text = if c.enabled { ink } else { disabled };
-                        let width = c.bounds.right - c.bounds.left;
-                        let compact = width < 112.0;
-                        let inset = if compact { Tokens::GAP } else { 12.0 };
-                        let chevron = c.bounds.right - Style::ICON_SLOT - inset;
-                        t.clipped_text(
-                            &c.label,
-                            &self.combo_format,
-                            &Rect::from_xywh(
-                                c.bounds.left + inset,
-                                c.bounds.top,
-                                (chevron - c.bounds.left - inset - Style::ICON_GAP / 2.0).max(1.0),
-                                c.bounds.bottom - c.bounds.top,
-                            ),
-                            text,
-                        );
-                        t.clipped_icon(
-                            if combo_open { "\u{e70e}" } else { "\u{e70d}" },
-                            &self.formats[4],
-                            &Rect::from_xywh(
-                                chevron,
-                                c.bounds.top,
-                                Style::ICON_SLOT,
-                                c.bounds.bottom - c.bounds.top,
-                            ),
-                            text,
-                        );
-                        continue;
-                    }
-                    if navigation && c.selected {
-                        t.fill_rounded_rect(
-                            &RoundedRect {
-                                rect: Rect::from_xywh(
-                                    c.bounds.left + 3.0,
-                                    (c.bounds.top + c.bounds.bottom - 18.0) / 2.0,
-                                    3.0,
-                                    18.0,
-                                ),
-                                radius_x: 1.5,
-                                radius_y: 1.5,
-                            },
-                            accent,
+                            if focus == Some(i) { style::FOCUS_STROKE } else { 1.0 },
                         );
                     }
                     let swatch = match c.action {
@@ -729,44 +722,19 @@ impl Painter {
                             },
                             muted,
                         );
-                        for j in 0..3 {
-                            t.fill_rounded_rect(
-                                &RoundedRect {
-                                    rect: Rect::from_xywh(
-                                        preview.left + 8.0 + j as f32 * 18.0,
-                                        preview.top + 20.0,
-                                        12.0,
-                                        12.0,
-                                    ),
-                                    radius_x: 3.0,
-                                    radius_y: 3.0,
-                                },
+                        for (index, glyph) in [style::FOLDER, style::DOCUMENT, style::PHOTO].into_iter().enumerate() {
+                            t.clipped_icon(glyph, &self.formats[4],
+                                &Rect::from_xywh(preview.left + 8.0 + index as f32 * 18.0,
+                                    preview.top + 18.0, 14.0, 16.0),
                                 accent,
                             );
                         }
-                        let center = Vector2 {
-                            x: r.left + 23.0,
-                            y: r.bottom - 18.0,
-                        };
-                        t.draw_ellipse(
-                            &Ellipse {
-                                center,
-                                radius_x: 8.0,
-                                radius_y: 8.0,
-                            },
+                        t.clipped_icon(
+                            if c.selected { style::RADIO_ON } else { style::RADIO_OFF },
+                            &self.formats[5],
+                            &Rect::from_xywh(r.left + 15.0, r.bottom - 33.0, 16.0, 30.0),
                             if c.selected { accent } else { muted },
-                            1.5,
                         );
-                        if c.selected {
-                            t.fill_ellipse(
-                                &Ellipse {
-                                    center,
-                                    radius_x: 4.0,
-                                    radius_y: 4.0,
-                                },
-                                accent,
-                            );
-                        }
                         t.clipped_text(
                             &c.label,
                             &self.formats[1],
@@ -778,16 +746,6 @@ impl Painter {
                             ),
                             ink,
                         );
-                    } else if c.is_toggle() {
-                        let off = color(if dark { 0xf5f5f5 } else { 0x666666 });
-                        let on = color(if dark { 0x202020 } else { 0xffffff });
-                        let brush = canvas_result(t.create_solid_brush(ColorF {
-                            r: off.r + (on.r - off.r) * progress,
-                            g: off.g + (on.g - off.g) * progress,
-                            b: off.b + (on.b - off.b) * progress,
-                            a: 1.0,
-                        }))?;
-                        t.fill_ellipse(&toggle_thumb(c.bounds, progress), &brush);
                     } else if caption {
                         if hover == Some(i) && matches!(c.action, Action::Window(SC_CLOSE)) {
                             let red = canvas_result(t.create_solid_brush(color(0xc42b1c)))?;
@@ -812,14 +770,12 @@ impl Painter {
                         }
                     } else {
                         let mut bounds = c.bounds;
-                        if navigation {
-                            bounds.left += Style::NAV_TEXT_INSET;
-                        } else if plain {
+                        if plain {
                             bounds.left += Style::ROW_INSET;
                             if let Action::Font(name) = &c.action {
                                 bounds.right -= 32.0;
                                 if c.selected {
-                                    t.clipped_icon("\u{e73e}", &self.formats[4],
+                                    t.clipped_icon(style::CHECK_MARK, &self.formats[4],
                                         &Rect::from_xywh(c.bounds.right - 28.0, c.bounds.top, 16.0, c.bounds.bottom - c.bounds.top), accent);
                                 }
                                 if name == crate::i18n::default_font() {
@@ -831,44 +787,37 @@ impl Painter {
                                 }
                             }
                         }
-                        if !navigation {
-                            let back = c.kind.is_back();
-                            let forward = matches!(c.kind, ControlKind::ForwardRow);
-                            if back || forward {
-                                // Center the compact back button's icon and label as one group.
-                                let left = if back && !plain {
-                                    controls::centered_icon_left(
-                                        c.bounds,
-                                        self.label_width(&c.label)?,
-                                    )
-                                } else if back {
-                                    bounds.left
-                                } else {
-                                    c.bounds.right - 28.0
-                                };
-                                t.clipped_icon(
-                                    if back { "\u{e72b}" } else { "\u{e76c}" },
-                                    &self.formats[4],
-                                    &Rect::from_xywh(
-                                        left,
-                                        c.bounds.top,
-                                        16.0,
-                                        c.bounds.bottom - c.bounds.top,
-                                    ),
-                                    if c.enabled { ink } else { disabled },
-                                );
-                                if back {
-                                    bounds.left = left + Style::ICON_SLOT + Style::ICON_GAP;
-                                } else {
-                                    bounds.right -= 40.0;
-                                }
+                        let back = c.kind.is_back();
+                        let forward = matches!(c.kind, ControlKind::ForwardRow);
+                        if back || forward {
+                            // Center the compact back button's icon and label as one group.
+                            let left = if back && !plain {
+                                controls::centered_icon_left(c.bounds, self.label_width(&c.label)?)
+                            } else if back {
+                                bounds.left
+                            } else {
+                                c.bounds.right - 28.0
+                            };
+                            t.clipped_icon(
+                                if back { "\u{e72b}" } else { "\u{e76c}" },
+                                &self.formats[4],
+                                &Rect::from_xywh(
+                                    left,
+                                    c.bounds.top,
+                                    16.0,
+                                    c.bounds.bottom - c.bounds.top,
+                                ),
+                                if c.enabled { ink } else { disabled },
+                            );
+                            if back {
+                                bounds.left = left + Style::ICON_SLOT + Style::ICON_GAP;
+                            } else {
+                                bounds.right -= 40.0;
                             }
                         }
                         t.clipped_text(
                             &c.label,
-                            if navigation {
-                                &self.formats[9]
-                            } else if plain || c.kind.is_back() {
+                            if plain || c.kind.is_back() {
                                 &self.formats[1]
                             } else {
                                 &self.button_format
@@ -880,15 +829,10 @@ impl Painter {
                 }
                 for (index, (r, text, size)) in s.text.iter().enumerate() {
                     let _navigation_clip = s.navigation_text.contains(&index).then(|| ContentClip::navigation(&t, s));
-                    let _clip = ContentClip::new(&t, s, r.left >= Tokens::content_x() && !s.fixed_list());
+                    let _clip = ContentClip::new(&t, s, *size != Tokens::CAPTION_TEXT && r.left >= s.content_left && !s.fixed_list());
                     if *size == Tokens::TITLE_BADGE {
-                        let center = Vector2 { x: r.left + 16.0, y: (r.top + r.bottom) / 2.0 };
-                        t.draw_ellipse(&Ellipse { center, radius_x: 6.0, radius_y: 6.0 }, blue, 1.0);
-                        t.fill_rect(&Rect::from_xywh(center.x - 0.6, center.y - 3.5, 1.2, 4.0), blue);
-                        t.fill_ellipse(&Ellipse {
-                            center: Vector2 { x: center.x, y: center.y + 2.5 },
-                            radius_x: 0.8, radius_y: 0.8,
-                        }, blue);
+                        t.clipped_icon(style::INFO, &self.formats[4],
+                            &Rect::from_xywh(r.left + 8.0, r.top, Style::ICON_SLOT, r.bottom - r.top), blue);
                         let mut label = *r;
                         label.left += 28.0;
                         label.right -= 8.0;
@@ -906,20 +850,13 @@ impl Painter {
                         match *size {
                             Tokens::STATUS_GOOD => green,
                             Tokens::STATUS_ERROR => red,
-                            0 | 6 | 8 => muted,
+                            0 | 6 | 8 | Tokens::SECONDARY_VALUE => muted,
                             _ => ink,
                         },
                     );
                 }
-                for thumb in [s.scroll_thumb(), s.navigation_thumb()].into_iter().flatten() {
-                    t.fill_rounded_rect(
-                        &RoundedRect {
-                            rect: thumb,
-                            radius_x: 2.0,
-                            radius_y: 2.0,
-                        },
-                        scroll_thumb,
-                    );
+                for bar in [s.scrollbar(), s.navigation_scrollbar()].into_iter().flatten() {
+                    widgets::Scrollbar::paint_thumb(&mut widget_canvas, bar.thumb);
                 }
                 t.finish()
             })

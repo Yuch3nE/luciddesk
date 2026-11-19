@@ -706,9 +706,12 @@ fn enumeration_preserves_native_type_hidden_and_size_attributes() {
     let hidden = entries.iter().find(|e| e.display_name == "hidden.txt").unwrap();
     assert!(hidden.attributes.hidden);
     assert!(!hidden.attributes.folder);
+    assert_eq!(hidden.attributes.filesystem_directory, Some(false));
     assert_eq!(hidden.size, Some(4));
     assert!(hidden.modified.is_some());
-    assert!(entries.iter().find(|e| e.display_name == "dir").unwrap().attributes.folder);
+    let directory = entries.iter().find(|e| e.display_name == "dir").unwrap();
+    assert!(directory.attributes.folder);
+    assert_eq!(directory.attributes.filesystem_directory, Some(true));
     assert_eq!(entries.len(), 2);
     assert!(luciddesk_shell::enumerate_folder(&root.path().join("missing")).is_err());
 }
