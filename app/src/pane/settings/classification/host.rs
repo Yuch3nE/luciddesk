@@ -6,9 +6,12 @@ use std::sync::mpsc::{self, Sender};
 use windows_sys::Win32::UI::HiDpi::GetDpiForWindow;
 
 pub(super) const SELECT_TAB: u32 = WM_APP + 100;
+const RULE_DRAG_TIMER: usize = 0x4c4f44;
 const RULE_MOTION_TIMER: usize = 0x4c4f4d;
 #[cfg(test)]
 pub(super) const INSPECT_TAB: u32 = WM_APP + 101;
+#[cfg(test)]
+pub(super) const HAS_CONTROL_FOCUS: u32 = WM_APP + 102;
 
 pub(super) fn show(state: &Rc<RefCell<PaneApp>>, tab: Tab) -> Result<(), String> {
     let existing = state
@@ -92,6 +95,8 @@ pub(super) fn show(state: &Rc<RefCell<PaneApp>>, tab: Tab) -> Result<(), String>
                         )
                     });
                 }
+                #[cfg(test)]
+                HAS_CONTROL_FOCUS => return Some(isize::from(organizer.focus.is_some())),
                 crate::i18n::CHANGED => {
                     unsafe {
                         SetWindowTextW(hwnd, crate::i18n::wide("organizer-window-title"));
@@ -99,6 +104,7 @@ pub(super) fn show(state: &Rc<RefCell<PaneApp>>, tab: Tab) -> Result<(), String>
                     redraw(hwnd);
                 }
                 WM_CLOSE => {
+                    let _ = organizer.stop_rule_drag(hwnd);
                     let Ok(mut owner) = state.try_borrow_mut() else {
                         unsafe {
                             PostMessageW(hwnd, WM_CLOSE, 0, 0);
@@ -127,9 +133,10 @@ pub(super) fn show(state: &Rc<RefCell<PaneApp>>, tab: Tab) -> Result<(), String>
                         redraw(hwnd);
                     }
                 }
+                WM_TIMER if wp == RULE_DRAG_TIMER => organizer.scroll_rule_drag(hwnd),
                 WM_TIMER if wp == RULE_MOTION_TIMER => {
                     let now = Instant::now();
-                    if !organizer.editor.tick_rule_animations(now) {
+                    if !organizer.editor.tick_rule_animations(now) && !organizer.rule_motion.playing(now) {
                         unsafe { KillTimer(hwnd, RULE_MOTION_TIMER); }
                     }
                     redraw(hwnd);
@@ -154,6 +161,7 @@ pub(super) fn show(state: &Rc<RefCell<PaneApp>>, tab: Tab) -> Result<(), String>
                     redraw(hwnd);
                 }
                 WM_ACTIVATE if wp & 0xffff == WA_INACTIVE as usize => {
+                    let _ = organizer.stop_rule_drag(hwnd);
                     organizer.clear_hover();
                     organizer.pressed = None;
                     redraw(hwnd);
@@ -171,19 +179,44 @@ pub(super) fn show(state: &Rc<RefCell<PaneApp>>, tab: Tab) -> Result<(), String>
                     if msg == WM_LBUTTONDOWN {
                         organizer.layout(&state, hwnd, client_bounds(hwnd), scale);
                     }
-                    if let Some(control) = organizer.pointer(hwnd, msg, client_point(lp), scale) {
+                    let point = client_point(lp);
+                    if organizer.rule_drag_pointer(&state, hwnd, msg, point, scale) {
+                        return Some(0);
+                    }
+                    if let Some(control) = organizer.pointer(hwnd, msg, point, scale) {
                         organizer.invoke(&state, hwnd, &control, scale, &dropdown_sender);
                     }
+                }
+                WM_SETCURSOR if lp as u16 == HTCLIENT as u16 => {
+                    let mut pointer = POINT::default();
+                    unsafe {
+                        if organizer.rule_drag.is_some()
+                            || (GetCursorPos(&raw mut pointer) != 0
+                                && ScreenToClient(hwnd, &raw mut pointer) != 0
+                                && organizer.rule_grip_at(pointer.x as f32 / scale, pointer.y as f32 / scale).is_some())
+                        {
+                            SetCursor(LoadCursorW(std::ptr::null_mut(), IDC_SIZEALL));
+                            return Some(1);
+                        }
+                    }
+                    return None;
                 }
                 WM_MOUSELEAVE => {
                     organizer.clear_hover();
                     redraw(hwnd);
                 }
                 WM_CAPTURECHANGED | WM_CANCELMODE => {
+                    let _ = organizer.stop_rule_drag(hwnd);
                     organizer.pressed = None;
                     organizer.scroll_grab = None;
                 }
                 WM_KEYDOWN | WM_SYSKEYDOWN | CLASSIFICATION_KEY => {
+                    if organizer.rule_drag.is_some() {
+                        if wp as u16 == VK_ESCAPE {
+                            let _ = organizer.stop_rule_drag(hwnd);
+                        }
+                        return Some(0);
+                    }
                     organizer.layout(&state, hwnd, client_bounds(hwnd), scale);
                     if !organizer.key(&state, hwnd, (msg, wp as u16, lp), scale, &dropdown_sender) {
                         return None;
@@ -242,6 +275,111 @@ unsafe fn activate(hwnd: HWND, tab: Tab) {
     }
 }
 
+struct RuleDrag {
+    from: usize,
+    start_y: f32,
+    grab_offset: f32,
+    pointer: (f32, f32),
+    active: bool,
+}
+
+impl RuleDrag {
+    fn drop_target(&self, scene: &Scene) -> Option<usize> {
+        let (x, y) = self.pointer;
+        let viewport = scene.viewport.filter(|viewport| contains(viewport, x, y))?;
+        let first = scene.rule_rows.first()?.bounds;
+        let last = scene.rule_rows.last()?.bounds;
+        if !self.active || x < first.left || x >= first.right || y < first.top || y > last.bottom {
+            return None;
+        }
+        // Use the layout positions so the animated rows do not move their drop thresholds.
+        let slot = scene.rule_rows.partition_point(|row| y >= (row.bounds.top + row.bounds.bottom) * 0.5);
+        let to = slot - usize::from(slot > self.from);
+        (to != self.from).then_some(to)
+    }
+}
+
+#[derive(Default)]
+struct RuleReorderMotion {
+    offsets: HashMap<usize, Motion>,
+    // The visible row tops in the new order before the layout catches up.
+    release: Option<Vec<f32>>,
+    floating: Option<usize>,
+}
+
+impl RuleReorderMotion {
+    fn playing(&self, now: Instant) -> bool {
+        self.offsets.values().any(|motion| motion.sample(now).is_ok_and(|value| value != motion.to))
+    }
+
+    fn place(&mut self, scene: &mut Scene, drag: Option<&RuleDrag>, now: Instant, animate: bool) {
+        if !animate {
+            *self = Self::default();
+        }
+        if let Some(tops) = self.release.take() {
+            for (index, (row, top)) in scene.rule_rows.iter().zip(tops).enumerate() {
+                let mut offset = Motion::settled(top - (row.bounds.top + scene.scroll_offset), now);
+                offset.retarget_with_duration(0.0, now, animate, SETTINGS_DURATION);
+                self.offsets.insert(index, offset);
+            }
+        }
+        let displacement = drag.map(|drag| {
+            let to = drag.drop_target(scene).unwrap_or(drag.from);
+            let source = scene.rule_rows[drag.from].bounds;
+            let height = source.bottom - source.top;
+            let y = scene.viewport.map_or(drag.pointer.1, |viewport| drag.pointer.1.clamp(viewport.top, viewport.bottom));
+            (drag.from, to, height, y - drag.grab_offset - source.top)
+        });
+        for index in 0..scene.rule_rows.len() {
+            let mut goal = 0.0;
+            if let Some((from, to, height, dragged)) = displacement {
+                if index == from {
+                    scene.set_rule_row_offset(index, dragged);
+                    continue;
+                }
+                if from < index && index <= to {
+                    goal = -height;
+                } else if to <= index && index < from {
+                    goal = height;
+                }
+            }
+            let offset = if animate && (goal != 0.0 || self.offsets.contains_key(&index)) {
+                self.offsets.entry(index).or_insert_with(|| Motion::settled(0.0, now))
+                    .retarget_with_duration(goal, now, true, SETTINGS_DURATION)
+            } else {
+                goal
+            };
+            scene.set_rule_row_offset(index, offset);
+        }
+        self.offsets.retain(|_, motion| motion.to != 0.0 || motion.sample(now).is_ok_and(|value| value != 0.0));
+        self.floating = self.floating.filter(|index| self.offsets.contains_key(index));
+        scene.floating_rule = drag.map(|drag| drag.from).or(self.floating);
+    }
+}
+
+impl Scene {
+    fn floating_rule_at(&self, x: f32, y: f32) -> Option<usize> {
+        self.floating_rule.filter(|&index| {
+            self.viewport.is_some_and(|viewport| contains(&viewport, x, y))
+                && contains(&self.rule_rows[index].visual_bounds(), x, y)
+        })
+    }
+
+    fn set_rule_row_offset(&mut self, index: usize, offset: f32) {
+        if offset == 0.0 { return; }
+        let row = &mut self.rule_rows[index];
+        row.offset = offset;
+        for bounds in self.controls[row.controls.clone()].iter_mut().map(|control| &mut control.bounds)
+            .chain(self.text[row.text.clone()].iter_mut().map(|(bounds, _, _)| bounds))
+            .chain(&mut self.separators[row.separators.clone()])
+            .chain(self.rule_detail_clips[row.detail_clips.clone()].iter_mut().map(|(_, clip)| clip))
+        {
+            bounds.top += offset;
+            bounds.bottom += offset;
+        }
+    }
+}
+
 struct Organizer {
     tab: Tab,
     editor: Editor,
@@ -257,6 +395,9 @@ struct Organizer {
     opened_preview: bool,
     auto_fit_preview: bool,
     scroll_grab: Option<f32>,
+    rule_drag: Option<RuleDrag>,
+    rule_motion: RuleReorderMotion,
+    grip_hover: Option<usize>,
     hover: Option<usize>,
     hovered_destination: Option<(usize, usize)>,
     pressed: Option<usize>,
@@ -281,6 +422,9 @@ impl Organizer {
             opened_preview: false,
             auto_fit_preview: true,
             scroll_grab: None,
+            rule_drag: None,
+            rule_motion: RuleReorderMotion::default(),
+            grip_hover: None,
             hover: None,
             hovered_destination: None,
             pressed: None,
@@ -294,6 +438,7 @@ impl Organizer {
             return;
         }
         if self.tab != tab {
+            let _ = self.stop_rule_drag(hwnd);
             self.finish_rule_animations(hwnd);
             self.tab_scroll[self.tab as usize] = self.scroll;
             self.editor.hide_inputs();
@@ -331,6 +476,10 @@ impl Organizer {
                 .ok()
                 .and_then(|mut values| values.remove(KEY));
             if self.rules != rules {
+                let _ = self.stop_rule_drag(hwnd);
+                if self.rule_motion.release.is_none() {
+                    self.rule_motion = RuleReorderMotion::default();
+                }
                 self.rules = rules;
                 self.editor.collapse_details();
                 self.pressed = None;
@@ -369,6 +518,18 @@ impl Organizer {
                 }
             }
             scene.scroll_to(width, height, &mut self.scroll);
+            if !scene.rule_rows.is_empty() {
+                let drag = self.rule_drag.as_ref().filter(|drag| drag.active);
+                if drag.is_some() || self.rule_motion.release.is_some() || !self.rule_motion.offsets.is_empty() {
+                    let now = Instant::now();
+                    self.rule_motion.place(&mut scene, drag, now, scrollbar::animations_enabled());
+                    if self.rule_motion.playing(now) {
+                        self.schedule_rule_animations(hwnd);
+                    }
+                }
+                scene.rule_grip_pressed = self.rule_drag.as_ref().map(|drag| drag.from);
+                scene.rule_grip_hover = self.grip_hover;
+            }
             self.scene = Some(scene);
         }
         preferred_height
@@ -495,6 +656,7 @@ impl Organizer {
 
     fn clear_hover(&mut self) {
         self.hover = None;
+        self.grip_hover = None;
         self.hovered_destination = None;
         if let Some(tip) = &mut self.tip {
             tip.hide();
@@ -509,15 +671,116 @@ impl Organizer {
         }
     }
 
+    fn rule_grip_at(&self, x: f32, y: f32) -> Option<(usize, Rect)> {
+        let scene = self.scene.as_ref()?;
+        if scene.rule_rows.len() < 2 || !scene.viewport.is_some_and(|viewport| contains(&viewport, x, y)) {
+            return None;
+        }
+        let floating = scene.floating_rule_at(x, y);
+        scene.rule_rows.iter().enumerate().find_map(|(index, row)| {
+            let grip = row.grip();
+            (floating.is_none_or(|raised| raised == index) && contains(&grip, x, y)).then_some((index, grip))
+        })
+    }
+
+    fn rule_drag_pointer(
+        &mut self, state: &Rc<RefCell<PaneApp>>, hwnd: HWND, msg: u32, point: POINT, scale: f32,
+    ) -> bool {
+        let pointer = (point.x as f32 / scale, point.y as f32 / scale);
+        if let Some(drag) = &mut self.rule_drag {
+            drag.pointer = pointer;
+            if !drag.active && (drag.start_y - pointer.1).abs() >= 4.0 {
+                drag.active = true;
+                unsafe { SetTimer(hwnd, RULE_DRAG_TIMER, 50, None); }
+            }
+            if msg == WM_LBUTTONUP {
+                self.layout(state, hwnd, client_bounds(hwnd), scale);
+                if let Some(drag) = self.stop_rule_drag(hwnd)
+                    && let (Some(scene), Some(expected)) = (&self.scene, &self.rules)
+                    && drag.active
+                {
+                    let saved = drag.drop_target(scene).filter(|&to| {
+                        state.try_borrow().is_ok_and(|owner| self.editor.drop_rule(&owner, drag.from, to, expected))
+                    });
+                    if scrollbar::animations_enabled() {
+                        let mut tops: Vec<_> = scene.rule_rows.iter()
+                            .map(|row| row.visual_bounds().top + scene.scroll_offset).collect();
+                        let mut floating = drag.from;
+                        if let Some(to) = saved {
+                            let top = tops.remove(drag.from);
+                            tops.insert(to, top);
+                            floating = to;
+                        }
+                        self.rule_motion.release = Some(tops);
+                        self.rule_motion.floating = Some(floating);
+                        if saved.is_some() {
+                            self.editor.collapse_details();
+                        }
+                    }
+                }
+            }
+            redraw(hwnd);
+            return true;
+        }
+        if msg != WM_LBUTTONDOWN {
+            return false;
+        }
+        let Some((from, grip)) = self.rule_grip_at(pointer.0, pointer.1) else { return false; };
+        let grab_offset = pointer.1 - grip.top + Tokens::GAP;
+        self.clear_hover();
+        self.pressed = None;
+        self.focus = None;
+        unsafe {
+            SetFocus(hwnd);
+            SetCapture(hwnd);
+        }
+        if unsafe { GetCapture() } == hwnd {
+            self.rule_motion = RuleReorderMotion::default();
+            self.rule_drag = Some(RuleDrag { from, start_y: pointer.1, grab_offset, pointer, active: false });
+        }
+        redraw(hwnd);
+        true
+    }
+
+    fn stop_rule_drag(&mut self, hwnd: HWND) -> Option<RuleDrag> {
+        let drag = self.rule_drag.take()?;
+        self.rule_motion = RuleReorderMotion::default();
+        unsafe {
+            KillTimer(hwnd, RULE_DRAG_TIMER);
+            if GetCapture() == hwnd {
+                ReleaseCapture();
+            }
+        }
+        redraw(hwnd);
+        Some(drag)
+    }
+
     fn schedule_rule_animations(&mut self, hwnd: HWND) {
         if unsafe { SetTimer(hwnd, RULE_MOTION_TIMER, USER_TIMER_MINIMUM, None) } == 0 {
             self.editor.finish_rule_animations();
+            self.rule_motion = RuleReorderMotion::default();
         }
     }
 
     fn finish_rule_animations(&mut self, hwnd: HWND) {
         self.editor.finish_rule_animations();
+        self.rule_motion = RuleReorderMotion::default();
         unsafe { KillTimer(hwnd, RULE_MOTION_TIMER); }
+    }
+
+    fn scroll_rule_drag(&mut self, hwnd: HWND) {
+        let Some(drag) = self.rule_drag.as_ref().filter(|drag| drag.active) else { return; };
+        let Some(scene) = &self.scene else { return; };
+        let (Some(viewport), Some(row)) = (scene.viewport, scene.rule_rows.first()) else { return; };
+        let (x, y) = drag.pointer;
+        if !contains(&viewport, x, y) || x < row.bounds.left || x >= row.bounds.right {
+            return;
+        }
+        if y - viewport.top < Tokens::MARGIN && self.scroll > 0.0 {
+            self.scroll_by(hwnd, -Tokens::INSET);
+        } else if viewport.bottom - y < Tokens::MARGIN && self.scroll < scene.scroll_max {
+            self.scroll_by(hwnd, Tokens::INSET);
+        }
     }
 
     fn pointer(&mut self, hwnd: HWND, msg: u32, point: POINT, scale: f32) -> Option<Control> {
@@ -545,16 +808,24 @@ impl Organizer {
                 return None;
             }
         }
+        let floating = scene.floating_rule_at(x, y).map(|index| &scene.rule_rows[index]);
         let hit = scene
             .controls
             .iter()
-            .position(|control| control.enabled && scene.accepts_pointer(control, x, y));
+            .enumerate()
+            .find(|(index, control)| {
+                floating.is_none_or(|row| row.controls.contains(index))
+                    && control.enabled && scene.accepts_pointer(control, x, y)
+            })
+            .map(|(index, _)| index);
         let destination = if msg == WM_MOUSEMOVE && hit.is_none() {
             destination_tooltip(scene, x, y)
         } else {
             None
         };
         let destination_hit = destination.map(|(hit, _, _)| hit);
+        let grip = (msg == WM_MOUSEMOVE).then(|| self.rule_grip_at(x, y)).flatten();
+        let grip_hover = grip.map(|(index, _)| index);
         match msg {
             WM_LBUTTONDOWN => {
                 self.pressed = hit;
@@ -578,7 +849,7 @@ impl Organizer {
                 }
                 return picked;
             }
-            WM_MOUSEMOVE if hit != self.hover || destination_hit != self.hovered_destination => {
+            WM_MOUSEMOVE if hit != self.hover || destination_hit != self.hovered_destination || grip_hover != self.grip_hover => {
                 let mut track = TRACKMOUSEEVENT {
                     cbSize: size_of::<TRACKMOUSEEVENT>() as u32,
                     dwFlags: TME_LEAVE,
@@ -600,7 +871,8 @@ impl Organizer {
                         _ => false,
                     })
                     .map(|icon| (icon.bounds, icon.label.as_str()))
-                    .or_else(|| destination.map(|(_, bounds, name)| (bounds, name)));
+                    .or_else(|| destination.map(|(_, bounds, name)| (bounds, name)))
+                    .or_else(|| grip.map(|(_, bounds)| (bounds, t("classification-reorder"))));
                 if let Some((bounds, label)) = target {
                     if self.tip.is_none() {
                         self.tip = Tooltip::new(hwnd);
@@ -618,7 +890,8 @@ impl Organizer {
                 }
                 self.hovered_destination = destination_hit;
                 if self.hover != hit {
-                    self.hover = hit;
+                self.hover = hit;
+                self.grip_hover = grip_hover;
                     redraw(hwnd);
                 }
             }
@@ -904,6 +1177,85 @@ fn preview_resize_keeps_window_width_and_fits_the_monitor() {
         assert!(after.top >= work.top && after.bottom <= work.bottom);
     }
     assert!(!resize_preview(hwnd, preferred, scale));
+}
+
+#[test]
+fn rule_drag_advances_insertion_when_scrolled_at_the_viewport_edge() {
+    let _sta = crate::pane::test_support::apartment();
+    let window = windows_window::Window::new("Rule drag test")
+        .on_message(|_, message, _, _| (message == WM_DESTROY).then_some(0))
+        .create().unwrap();
+    let hwnd = window.hwnd().cast();
+    let mut organizer = Organizer::new().unwrap();
+    let mut scene = Scene::empty(Backdrop::Mica, Tokens::MARGIN, 96.0);
+    scene.rule_rows = (0..16)
+        .map(|index| RuleRow {
+            bounds: Rect::from_xywh(40.0, 240.0 + index as f32 * 70.0, 400.0, 70.0),
+            ..RuleRow::default()
+        })
+        .collect();
+    scene.cards.push(Rect::from_xywh(24.0, 240.0, 432.0, 16.0 * 70.0));
+    scene.scroll_to(480.0, 380.0, &mut 0.0);
+    let drag = RuleDrag { from: 0, start_y: 260.0, grab_offset: 20.0, pointer: (52.0, 374.0), active: true };
+    assert_eq!(drag.drop_target(&scene), Some(1));
+    organizer.rule_drag = Some(drag);
+    organizer.scene = Some(scene);
+    for _ in 0..10 {
+        organizer.scroll_rule_drag(hwnd);
+    }
+    assert_eq!(organizer.scroll, 10.0 * Tokens::INSET);
+    let scene = organizer.scene.as_mut().unwrap();
+    scene.scroll_to(480.0, 380.0, &mut organizer.scroll);
+    let drag = organizer.rule_drag.as_ref().unwrap();
+    assert_eq!(drag.drop_target(scene), Some(3));
+}
+
+#[test]
+fn rule_drag_opens_the_gap_and_settles_from_the_last_visible_positions() {
+    let _sta = crate::pane::test_support::apartment();
+    let make_scene = || {
+        let mut scene = Scene::empty(Backdrop::Mica, 16.0, 100.0);
+        scene.viewport = Some(Rect::from_xywh(16.0, 100.0, 480.0, 200.0));
+        scene.rule_rows = (0..3).map(|index| RuleRow {
+            bounds: Rect::from_xywh(32.0, 100.0 + index as f32 * 48.0, 440.0, 48.0),
+            ..RuleRow::default()
+        }).collect();
+        scene
+    };
+    let mut motion = RuleReorderMotion::default();
+    let drag = RuleDrag { from: 0, start_y: 124.0, grab_offset: 24.0, pointer: (48.0, 226.0), active: true };
+    let now = Instant::now();
+    let mut scene = make_scene();
+    motion.place(&mut scene, Some(&drag), now, true);
+    assert_eq!(scene.floating_rule, Some(0));
+    assert_eq!(scene.rule_rows[0].visual_bounds().top, 202.0);
+    assert_eq!(scene.rule_rows[1].offset, 0.0);
+
+    let halfway = now + SETTINGS_DURATION / 2;
+    let mut scene = make_scene();
+    motion.place(&mut scene, Some(&drag), halfway, true);
+    let first_shift = scene.rule_rows[1].offset;
+    assert!(first_shift < 0.0 && first_shift > -48.0);
+    assert_eq!(scene.rule_rows[2].offset, first_shift);
+    let old_tops: Vec<_> = [1, 2, 0].into_iter().map(|index| scene.rule_rows[index].visual_bounds().top).collect();
+
+    let mut scene = make_scene();
+    let mut motion = RuleReorderMotion { release: Some(old_tops.clone()), floating: Some(2), ..Default::default() };
+    motion.place(&mut scene, None, halfway, true);
+    assert_eq!(scene.floating_rule, Some(2));
+    for (row, old) in scene.rule_rows.iter().zip(old_tops) {
+        assert!((row.visual_bounds().top - old).abs() < 0.01);
+    }
+    let mut scene = make_scene();
+    motion.place(&mut scene, None, halfway + SETTINGS_DURATION, true);
+    assert!(scene.floating_rule.is_none());
+    assert!(scene.rule_rows.iter().all(|row| row.offset == 0.0));
+
+    motion.place(&mut scene, Some(&drag), halfway + SETTINGS_DURATION, false);
+    assert_eq!(scene.floating_rule, Some(0));
+    assert_eq!(scene.rule_rows[1].offset, -48.0);
+    assert_eq!(scene.rule_rows[2].offset, -48.0);
+    assert!(motion.offsets.is_empty());
 }
 
 #[test]

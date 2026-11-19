@@ -425,9 +425,10 @@ impl Painter {
                 if s.fixed_list() && let Some(r) = s.viewport {
                     t.draw_rounded_rect(&RoundedRect { rect: r, radius_x: Tokens::CARD_RADIUS, radius_y: Tokens::CARD_RADIUS }, card_border, 1.0);
                 }
-                for (i, c) in s.controls.iter().enumerate() {
+                let floating = s.floating_rule.map(|index| &s.rule_rows[index]);
+                let mut paint_control = |i: usize, c: &Control, raised: bool| -> windows::core::Result<()> {
                     let _navigation_clip = matches!(c.kind, ControlKind::Navigation(_)).then(|| ContentClip::navigation(&t, s));
-                    if s.fixed_list() && Scene::list_row(c) && s.viewport.is_some_and(|v| c.bounds.bottom <= v.top || c.bounds.top >= v.bottom) { continue; }
+                    if s.fixed_list() && Scene::list_row(c) && s.viewport.is_some_and(|v| c.bounds.bottom <= v.top || c.bounds.top >= v.bottom) { return Ok(()); }
                     let _clip = ContentClip::new(
                         &t,
                         s,
@@ -435,7 +436,7 @@ impl Painter {
                             && !Scene::fixed_control(c)
                             && (!s.fixed_list() || Scene::list_row(c)),
                     );
-                    let state = widgets::State { enabled: c.enabled, active: hover == Some(i), focused: focus == Some(i) };
+                    let state = widgets::State { enabled: c.enabled, active: !raised && hover == Some(i), focused: !raised && focus == Some(i) };
                     let bounds = components::widget_bounds(c.bounds);
                     if let ControlKind::Navigation(icon) | ControlKind::Tab(icon) = c.kind {
                         let mut navigation = WidgetCanvas { ..widget_canvas };
@@ -446,7 +447,7 @@ impl Painter {
                             nav_selected
                         };
                         NavigationItem { icon, selected: c.selected }.paint(&mut navigation, bounds, &c.label, state);
-                        continue;
+                        return Ok(());
                     }
                     if matches!(c.action, Action::FontSearch | Action::Classification(classification::Command::Input(_))) {
                         let r = c.bounds;
@@ -471,33 +472,33 @@ impl Painter {
                                     &Rect::from_xywh(r.right - 32.0, r.top, 16.0, r.bottom - r.top), muted);
                             }
                         }
-                        continue;
+                        return Ok(());
                     }
                     let material = matches!(c.action, Action::Change(Event::Material(_))) && bounds.height >= 80.0;
                     match c.kind {
                         ControlKind::PrimaryButton => {
                             widgets::ButtonKind::Primary.paint(&mut widget_canvas, bounds, &c.label, state);
-                            continue;
+                            return Ok(());
                         }
                         ControlKind::Button if !c.label.is_empty() && !material => {
                             let button = if c.selected { widgets::ButtonKind::Selected } else { widgets::ButtonKind::Secondary };
                             button.paint(&mut widget_canvas, bounds, &c.label, state);
-                            continue;
+                            return Ok(());
                         }
                         ControlKind::Combo => {
                             widgets::ComboBox::paint(&mut widget_canvas, bounds, &c.label, state, controls::dropdown_is_open(c.bounds));
-                            continue;
+                            return Ok(());
                         }
                         ControlKind::Checkbox => {
                             widgets::CheckBox::paint(&mut widget_canvas, bounds, &c.label, state, c.selected);
-                            continue;
+                            return Ok(());
                         }
                         ControlKind::Toggle => {
                             let selected = c.selected;
                             let progress = toggles.get(&i).copied().filter(|_| state.enabled)
                                 .unwrap_or(if selected { 1.0 } else { 0.0 });
                             widgets::Toggle { selected, progress }.paint(&mut widget_canvas, bounds, state, dark, &palette)?;
-                            continue;
+                            return Ok(());
                         }
                         _ => {}
                     }
@@ -513,13 +514,13 @@ impl Painter {
                             section_canvas.brushes[Tone::AccentInk as usize] = color;
                             InlineControl::Disclosure { expanded: c.selected, tinted: false }
                                 .paint(&mut section_canvas, bounds, &c.label, state);
-                            continue;
+                            return Ok(());
                         }
                         ControlKind::SectionDisclosure { summary_width } => {
                             let mut section_canvas = WidgetCanvas { section_summary_width: Some(summary_width), ..widget_canvas };
                             InlineControl::Disclosure { expanded: c.selected, tinted: false }
                                 .paint(&mut section_canvas, bounds, &c.label, state);
-                            continue;
+                            return Ok(());
                         }
                         ControlKind::FooterLink => Some(InlineControl::Link(match c.action {
                             Action::SolidReset | Action::StrengthReset => "\u{e777}",
@@ -530,7 +531,7 @@ impl Painter {
                     };
                     if let Some(inline) = inline {
                         inline.paint(&mut widget_canvas, bounds, &c.label, state);
-                        continue;
+                        return Ok(());
                     }
                     if let ControlKind::Slider(slider) = c.kind {
                         let r = c.bounds;
@@ -602,7 +603,7 @@ impl Painter {
                                 style::FOCUS_STROKE,
                             );
                         }
-                        continue;
+                        return Ok(());
                     }
                     let caption = matches!(c.kind, ControlKind::Caption);
                     let plain = c.kind.is_row();
@@ -834,8 +835,9 @@ impl Painter {
                             if c.enabled { ink } else { disabled },
                         );
                     }
-                }
-                for (index, (r, text, size)) in s.text.iter().enumerate() {
+                    Ok(())
+                };
+                let paint_text = |index: usize, (r, text, size): &(Rect, String, usize)| {
                     let _navigation_clip = s.navigation_text.contains(&index).then(|| ContentClip::navigation(&t, s));
                     let _clip = ContentClip::new(&t, s, *size != Tokens::CAPTION_TEXT && r.left >= s.content_left && !s.fixed_list());
                     let _detail_clip = s.rule_detail_clip(index).map(|clip| ContentClip::rect(&t, clip));
@@ -846,11 +848,11 @@ impl Painter {
                         label.left += 28.0;
                         label.right -= 8.0;
                         t.clipped_text(text, &self.formats[*size], &label, blue);
-                        continue;
+                        return;
                     }
                     if matches!(*size, 4 | 5) {
                         t.clipped_icon(text, &self.formats[*size], r, ink);
-                        continue;
+                        return;
                     }
                     t.clipped_text(
                         text,
@@ -863,6 +865,51 @@ impl Painter {
                             _ => ink,
                         },
                     );
+                };
+                let paint_grip = |index: usize, row: &RuleRow| {
+                    let bounds = row.grip();
+                    let pressed = s.rule_grip_pressed == Some(index) || s.floating_rule == Some(index);
+                    let hot = s.rule_grip_hover == Some(index);
+                    let _clip = ContentClip::new(&t, s, true);
+                    let surface = RoundedRect {
+                        rect: Rect::from_xywh(bounds.left + 3.0, bounds.top + 3.0,
+                            bounds.right - bounds.left - 6.0, bounds.bottom - bounds.top - 6.0),
+                        radius_x: Style::RADIUS,
+                        radius_y: Style::RADIUS,
+                    };
+                    t.fill_rounded_rect(&surface, if pressed { brush(Tone::Selection) } else if hot { button_hover } else { button });
+                    t.clipped_icon(RuleRow::GRIP_ICON, &self.formats[5], &bounds,
+                        if pressed || hot { brush(Tone::AccentInk) } else { muted });
+                };
+                for (index, control) in s.controls.iter().enumerate() {
+                    if floating.is_none_or(|row| !row.controls.contains(&index)) {
+                        paint_control(index, control, false)?;
+                    }
+                }
+                for (index, text) in s.text.iter().enumerate() {
+                    if floating.is_none_or(|row| !row.text.contains(&index)) {
+                        paint_text(index, text);
+                    }
+                }
+                if s.rule_rows.len() > 1 {
+                    for (index, row) in s.rule_rows.iter().enumerate() {
+                        if s.floating_rule != Some(index) {
+                            paint_grip(index, row);
+                        }
+                    }
+                }
+                if let (Some(index), Some(row)) = (s.floating_rule, floating) {
+                    let _clip = ContentClip::new(&t, s, true);
+                    let surface = RoundedRect { rect: row.visual_bounds(), radius_x: Style::RADIUS, radius_y: Style::RADIUS };
+                    t.fill_rounded_rect(&surface, brush(Tone::Selection));
+                    t.draw_rounded_rect(&surface, accent, 1.0);
+                    for index in row.controls.clone() {
+                        paint_control(index, &s.controls[index], true)?;
+                    }
+                    for index in row.text.clone() {
+                        paint_text(index, &s.text[index]);
+                    }
+                    paint_grip(index, row);
                 }
                 for bar in [s.scrollbar(), s.navigation_scrollbar()].into_iter().flatten() {
                     widgets::Scrollbar::paint_thumb(&mut widget_canvas, bar.thumb);

@@ -145,7 +145,11 @@ struct Scene {
     cards: Vec<Rect>,
     section_headers: Vec<SectionHeader>,
     destination_changes: Vec<DestinationChange>,
+    rule_rows: Vec<RuleRow>,
     rule_detail_clips: Vec<(std::ops::Range<usize>, Rect)>,
+    rule_grip_hover: Option<usize>,
+    rule_grip_pressed: Option<usize>,
+    floating_rule: Option<usize>,
     separators: Vec<Rect>,
     controls: Vec<Control>,
     previews: Vec<(Rect, Backdrop)>,
@@ -171,13 +175,41 @@ impl Scene {
             cards: Vec::new(),
             section_headers: Vec::new(),
             destination_changes: Vec::new(),
+            rule_rows: Vec::new(),
             rule_detail_clips: Vec::new(),
+            rule_grip_hover: None,
+            rule_grip_pressed: None,
+            floating_rule: None,
             separators: Vec::new(),
             controls: Vec::new(),
             previews: Vec::new(),
             app_icon: None,
             caption_icon: None,
         }
+    }
+}
+
+#[derive(Default)]
+struct RuleRow {
+    bounds: Rect,
+    offset: f32,
+    controls: std::ops::Range<usize>,
+    text: std::ops::Range<usize>,
+    separators: std::ops::Range<usize>,
+    detail_clips: std::ops::Range<usize>,
+}
+
+impl RuleRow {
+    const GRIP_ICON: &str = "\u{e76f}";
+    const GRIP_WIDTH: f32 = Tokens::CONTROL_HEIGHT;
+
+    fn visual_bounds(&self) -> Rect {
+        Rect { top: self.bounds.top + self.offset, bottom: self.bounds.bottom + self.offset, ..self.bounds }
+    }
+
+    fn grip(&self) -> Rect {
+        Rect::from_xywh(self.bounds.left, self.bounds.top + self.offset + Tokens::GAP,
+            Self::GRIP_WIDTH, Tokens::CONTROL_HEIGHT)
     }
 }
 

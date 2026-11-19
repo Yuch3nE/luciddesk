@@ -954,6 +954,7 @@ impl Scene {
         for r in self.cards.iter_mut().chain(&mut self.separators)
             .chain(self.section_headers.iter_mut().map(|header| &mut header.bounds))
             .chain(self.destination_changes.iter_mut().map(|change| &mut change.bounds))
+            .chain(self.rule_rows.iter_mut().map(|row| &mut row.bounds))
             .chain(self.rule_detail_clips.iter_mut().map(|(_, clip)| clip))
         {
             translate(r);

@@ -10,8 +10,6 @@ const SWITCH_WIDTH: f32 = 46.0;
 const SWITCH_HEIGHT: f32 = 24.0;
 const SWITCH_ACTION_GAP: f32 = INSET;
 const BUTTON_GAP: f32 = GAP;
-const COLUMN_GAPS: [f32; 4] = [INSET, INSET, SWITCH_ACTION_GAP, 0.0];
-
 const CONDITION_LABELS: [&str; 4] = [
     "classification-item-type",
     "classification-extensions",
@@ -38,20 +36,20 @@ fn item_type_label(item_type: Option<ClassificationItemType>) -> &'static str {
 struct Columns {
     left: f32,
     widths: [f32; 4],
+    gaps: [f32; 4],
 }
 
 impl Columns {
-    fn new(left: f32, width: f32, enabled_label: &str) -> Self {
+    fn new(left: f32, width: f32, enabled_label: &str, show_grip: bool) -> Self {
         let actions = CONTROL + CONTROL + BUTTON_GAP;
         let status = text_width(enabled_label, 14.0).ceil().max(SWITCH_WIDTH);
-        let order = text_width(t("classification-order"), 14.0)
-            .max(text_width("256", 14.0))
-            .ceil()
-            .max(28.0);
-        let target = (width - order - actions - status - COLUMN_GAPS.iter().sum::<f32>()).max(1.0);
+        let grip = if show_grip { RuleRow::GRIP_WIDTH } else { 0.0 };
+        let gaps = [if show_grip { GAP } else { 0.0 }, INSET, SWITCH_ACTION_GAP, 0.0];
+        let target = (width - grip - actions - status - gaps.iter().sum::<f32>()).max(1.0);
         Self {
             left,
-            widths: [order, target, status, actions],
+            widths: [grip, target, status, actions],
+            gaps,
         }
     }
 
@@ -60,7 +58,7 @@ impl Columns {
         std::array::from_fn(|index| {
             let width = self.widths[index];
             let cell = Rect::from_xywh(left, top, width, height);
-            left += width + COLUMN_GAPS[index];
+            left += width + self.gaps[index];
             cell
         })
     }
@@ -77,13 +75,12 @@ pub(super) fn draw(
     let right = bounds.right - INSET;
     let width = right - left;
     let enabled_label = t("classification-enabled");
-    let columns = Columns::new(left, width, enabled_label);
+    let columns = Columns::new(left, width, enabled_label, rules.len() > 1);
     let header_top = bounds.top + GAP / 2.0;
-    let [order, target, status, actions] = columns.cells(header_top, CONTROL);
+    let [_, target, status, actions] = columns.cells(header_top, CONTROL);
     let target = summary_target(target);
-    let header_cells = [order, target, switch_label(status, enabled_label), actions];
+    let header_cells = [target, switch_label(status, enabled_label), actions];
     let labels = [
-        t("classification-order"),
         t("classification-target"),
         enabled_label,
         t("classification-actions"),
@@ -100,8 +97,11 @@ pub(super) fn draw(
     let mut y = header_top + heading + GAP / 2.0;
     let now = Instant::now();
     for (index, rule) in rules.iter().enumerate() {
+        let (controls, text, separators, clips) = (
+            scene.controls.len(), scene.text.len(), scene.separators.len(), scene.rule_detail_clips.len(),
+        );
         scene.separators.push(Rect::from_xywh(left, y, width, 1.0));
-        y = saved_row(
+        let bottom = saved_row(
             scene,
             columns.cells(y + GAP, CONTROL),
             panels,
@@ -110,6 +110,15 @@ pub(super) fn draw(
             rules.len(),
             (editor.expanded == Some(index), editor.detail_fraction(index, now)),
         ) + GAP;
+        scene.rule_rows.push(RuleRow {
+            bounds: Rect::from_xywh(left, y, width, bottom - y),
+            offset: 0.0,
+            controls: controls..scene.controls.len(),
+            text: text..scene.text.len(),
+            separators: separators..scene.separators.len(),
+            detail_clips: clips..scene.rule_detail_clips.len(),
+        });
+        y = bottom;
     }
     scene.cards.push(Rect {
         bottom: y,
@@ -558,7 +567,7 @@ fn action_buttons(cell: Rect) -> [Rect; 2] {
 
 fn saved_row(
     scene: &mut Scene,
-    [order, target, status, actions]: [Rect; 4],
+    [_, target, status, actions]: [Rect; 4],
     panels: &[Panel],
     rule: &ClassificationRule,
     index: usize,
@@ -569,7 +578,6 @@ fn saved_row(
         .iter()
         .find(|panel| panel.id().get() == rule.target_panel && panel.supports_tabs());
     let label = destination.map_or(t("classification-missing"), Panel::title);
-    scene.text(order, (index + 1).to_string(), 6);
     scene.control(
         ControlKind::RuleDisclosure { missing_target: destination.is_none() },
         target,
@@ -899,15 +907,15 @@ mod tests {
     fn classification_action_spacing_stays_fixed_with_long_headers() {
         for (width, enabled_label) in [(360.0, "启用"), (620.0, "Enabled for this rule")] {
             let left = 16.0;
-            let columns = Columns::new(left, width, enabled_label);
-            let [order, target, status, actions] = columns.cells(100.0, CONTROL);
+            let columns = Columns::new(left, width, enabled_label, true);
+            let [grip, target, status, actions] = columns.cells(100.0, CONTROL);
             let toggle = switch_bounds(status);
             let [first, second] = action_buttons(actions);
             let close = |actual: f32, expected: f32| {
                 assert!((actual - expected).abs() < 0.01, "{actual} != {expected}");
             };
 
-            assert!(order.right < target.left);
+            assert!(grip.right < target.left);
             assert!(target.right <= toggle.left);
             close(first.left - toggle.right, SWITCH_ACTION_GAP);
             close(second.left - first.right, BUTTON_GAP);

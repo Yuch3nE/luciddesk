@@ -112,6 +112,93 @@ fn classification_controls_persist_order_toggle_delete_and_enable() {
 }
 
 #[test]
+fn rule_drag_saves_insertion_on_release_and_cancels_other_drops() {
+    let _sta = crate::pane::test_support::apartment();
+    let (directory, state) = test_state();
+    let mut config = load(&state.borrow()).unwrap();
+    for extension in ["zip", "lnk"] {
+        let mut rule = config.rules[0].clone();
+        rule.extensions = vec![extension.into()];
+        config.rules.push(rule);
+    }
+    save(&state.borrow(), &config).unwrap();
+    host::show(&state, Tab::Rules).unwrap();
+    let hwnd: HWND = state.borrow().organizer.as_ref().unwrap().hwnd().cast();
+    let mut bounds = RECT::default();
+    let scale = unsafe { GetDpiForWindow(hwnd) }.max(96) as f32 / 96.0;
+    assert_ne!(unsafe { GetClientRect(hwnd, &raw mut bounds) }, 0);
+    let render = || {
+        let (width, height) = (bounds.right as f32 / scale, bounds.bottom as f32 / scale);
+        let owner = state.borrow();
+        let scene = window_scene((width, height), Backdrop::Mica, Tab::Rules, owner.workspace.panels(),
+            owner.store.settings().unwrap().get(KEY), &Editor::default(), false);
+        let mut scene = organizer_titlebar(scene, width, false);
+        scene.scroll_to(width, height, &mut 0.0);
+        scene
+    };
+    let order = || load(&state.borrow()).unwrap().rules.into_iter()
+        .map(|rule| rule.extensions[0].clone()).collect::<Vec<_>>();
+    let mouse = |message, x: f32, y: f32| {
+        let x = (x * scale).round() as i16 as u16;
+        let y = (y * scale).round() as i16 as u16;
+        let point = (u32::from(x) | (u32::from(y) << 16)) as isize;
+        unsafe { SendMessageW(hwnd, message, if message == WM_LBUTTONUP { 0 } else { 1 }, point) };
+    };
+    let snapshot = render();
+    let first = snapshot.rule_rows[0].grip();
+    let (x, y) = ((first.left + first.right) / 2.0, (first.top + first.bottom) / 2.0);
+    let third = snapshot.rule_rows[2].bounds;
+    let below_third = third.bottom - 4.0;
+    let initial = ["pdf", "png", "zip", "lnk"];
+    mouse(WM_LBUTTONDOWN, x, y);
+    mouse(WM_LBUTTONUP, x, y);
+    assert_eq!(order(), initial);
+
+    mouse(WM_LBUTTONDOWN, x, y);
+    mouse(WM_MOUSEMOVE, x, below_third);
+    assert_eq!(order(), initial);
+    unsafe { SendMessageW(hwnd, WM_KEYDOWN, VK_ESCAPE.into(), 0); }
+    mouse(WM_LBUTTONUP, x, below_third);
+    assert_eq!(order(), initial);
+    assert_ne!(unsafe { IsWindow(hwnd) }, 0);
+
+    mouse(WM_LBUTTONDOWN, x, y);
+    mouse(WM_MOUSEMOVE, x, below_third);
+    mouse(WM_LBUTTONUP, 4.0, below_third);
+    assert_eq!(order(), initial);
+    unsafe { SendMessageW(hwnd, WM_PAINT, 0, 0); }
+    std::thread::sleep(SETTINGS_DURATION);
+
+    mouse(WM_LBUTTONDOWN, x, y);
+    mouse(WM_MOUSEMOVE, x, below_third);
+    config.rules[3].enabled = false;
+    save(&state.borrow(), &config).unwrap();
+    mouse(WM_LBUTTONUP, x, below_third);
+    assert_eq!(order(), initial);
+    assert!(!load(&state.borrow()).unwrap().rules[3].enabled);
+
+    mouse(WM_LBUTTONDOWN, x, y);
+    mouse(WM_MOUSEMOVE, x, below_third);
+    assert_eq!(order(), initial);
+    mouse(WM_LBUTTONUP, x, below_third);
+    assert_eq!(order(), ["png", "zip", "pdf", "lnk"]);
+    unsafe {
+        SendMessageW(hwnd, WM_PAINT, 0, 0);
+        assert_eq!(SendMessageW(hwnd, host::HAS_CONTROL_FOCUS, 0, 0), 0);
+    }
+
+    let mut editor = Editor::default();
+    editor.execute(&state, hwnd, Command::Move(2, -1));
+    assert_eq!(order(), ["png", "pdf", "zip", "lnk"]);
+    editor.execute(&state, hwnd, Command::Move(1, 1));
+    assert_eq!(order(), ["png", "zip", "pdf", "lnk"]);
+    let persisted = WorkspaceStore::open(&directory.path().join("workspace.db")).unwrap();
+    let restored = decode(persisted.settings().unwrap().get(KEY)).unwrap();
+    assert_eq!(restored.rules[2].extensions, ["pdf"]);
+    unsafe { SendMessageW(hwnd, WM_CLOSE, 0, 0); }
+}
+
+#[test]
 fn classification_shows_saved_batch_undo_and_reports_the_outcome() {
     let _sta = crate::pane::test_support::apartment();
     let (_directory, state) = test_state();
@@ -731,8 +818,10 @@ fn classification_details_show_one_rule_without_writing_settings() {
     assert!(!collapsed.text.iter().any(|(_, value, _)| {
         condition_values.contains(&value.as_str())
     }));
-    let second_top = |body: &Scene| body.controls.iter().find(|control|
-        Command::ToggleDetails(1).is_control(&control.action)).unwrap().bounds.top;
+    assert_eq!(
+        collapsed.rule_rows[0].bounds.bottom - collapsed.rule_rows[0].bounds.top,
+        collapsed.rule_rows[1].bounds.bottom - collapsed.rule_rows[1].bounds.top,
+    );
     let unavailable = collapsed.controls.iter().find(|control| Command::ToggleDetails(1).is_control(&control.action)).unwrap();
     assert_eq!(unavailable.label, t("classification-missing"));
     assert!(matches!(unavailable.kind, ControlKind::RuleDisclosure { missing_target: true }));
@@ -756,9 +845,9 @@ fn classification_details_show_one_rule_without_writing_settings() {
     let (extension_index, _) = expanding.text.iter().enumerate()
         .find(|(_, (_, value, _))| value == &extensions).unwrap();
     assert!(expanding.rule_detail_clip(extension_index).is_some());
-    assert!(second_top(&collapsed) < second_top(&expanding));
-    assert!(second_top(&expanding) < second_top(&first));
-    assert!(clip.bottom <= second_top(&expanding));
+    assert!(collapsed.rule_rows[1].bounds.top < expanding.rule_rows[1].bounds.top);
+    assert!(expanding.rule_rows[1].bounds.top < first.rule_rows[1].bounds.top);
+    assert!(clip.bottom <= expanding.rule_rows[1].bounds.top);
     editor.finish_rule_animations();
 
     editor.execute(&state, hwnd, Command::ToggleDetails(1));
@@ -816,12 +905,13 @@ fn classification_editing_survives_tab_switch_and_only_saves_valid_input() {
                 .iter()
                 .any(|(_, text, _)| text == t("classification-enabled"))
         );
-        for order in ["1", "2"] {
-            let (order_bounds, _, _) = body.text.iter().find(|(_, text, _)| text == order).unwrap();
+        assert!(!body.text.iter().any(|(_, text, _)| matches!(text.as_str(), "1" | "2")));
+        for row in &body.rule_rows {
+            let grip = row.grip();
             assert!(body.controls.iter().any(|control| {
                 control.label == "Group 1"
-                    && control.bounds.top == order_bounds.top
-                    && control.bounds.left > order_bounds.right
+                    && control.bounds.top == grip.top
+                    && control.bounds.left > grip.right
                     && matches!(control.kind, ControlKind::RuleDisclosure { missing_target: false })
             }));
         }

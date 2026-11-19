@@ -308,6 +308,35 @@ impl Editor {
         self.detail_motions.clear();
     }
 
+    fn drop_rule(&mut self, state: &PaneApp, from: usize, to: usize, expected: &SettingValue) -> bool {
+        self.error = (|| {
+            let settings = state.store.settings().map_err(|error| error.to_string())?;
+            let current = settings.get(KEY);
+            if current != Some(expected) {
+                return Err(t("classification-conflict").into());
+            }
+            self.move_rule(state, &mut decode(current)?, from, to)
+        })().err();
+        self.error.is_none()
+    }
+
+    fn move_rule(
+        &mut self,
+        state: &PaneApp,
+        config: &mut Classification,
+        from: usize,
+        to: usize,
+    ) -> Result<(), String> {
+        if from == to || from >= config.rules.len() || to >= config.rules.len() {
+            return Ok(());
+        }
+        let rule = config.rules.remove(from);
+        config.rules.insert(to, rule);
+        save(state, config)?;
+        self.deleted = None;
+        Ok(())
+    }
+
     pub fn focus(&mut self, field: Field) {
         if let Some(draft) = &mut self.draft {
             draft.inputs.focus(field);
@@ -517,13 +546,13 @@ impl Editor {
                 }
             }
             Command::Move(i, delta) => {
-                if let Some(to) = i
-                    .checked_add_signed(delta)
-                    .filter(|to| *to < config.rules.len() && i < config.rules.len())
+                if let Some(to) = i.checked_add_signed(delta)
+                    && i < config.rules.len() && to < config.rules.len() && i != to
                 {
-                    config.rules.swap(i, to);
+                    self.move_rule(&state.borrow(), &mut config, i, to)?;
                     self.reveal(Command::Edit(to));
                 }
+                return Ok(());
             }
             _ => return Ok(()),
         }
