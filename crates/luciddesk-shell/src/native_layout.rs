@@ -15,16 +15,15 @@ const SNAPSHOT_CHANGED: windows::core::HRESULT =
 fn retry_snapshot<T>(
     mut capture: impl FnMut() -> windows::core::Result<T>,
 ) -> windows::core::Result<T> {
-    for attempt in 0..3 {
+    for _ in 0..2 {
         match capture() {
             Err(error)
-                if attempt < 2
-                    && (error.code() == windows::Win32::Foundation::E_BOUNDS
-                        || error.code() == SNAPSHOT_CHANGED) => {}
+                if error.code() == windows::Win32::Foundation::E_BOUNDS
+                    || error.code() == SNAPSHOT_CHANGED => {}
             result => return result,
         }
     }
-    unreachable!()
+    capture()
 }
 
 #[track_caller]

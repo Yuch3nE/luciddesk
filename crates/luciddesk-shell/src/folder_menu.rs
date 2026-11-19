@@ -1,5 +1,5 @@
 //! The actual directory's Explorer classic background menu.
-use super::file_command::{Menu, MenuMessages, menu_messages};
+use super::file_command::{Menu, MenuMessages};
 use std::{
     cell::RefCell,
     path::{Path, PathBuf},
@@ -90,19 +90,7 @@ pub fn show_folder_menu(owner: HWND, path: &Path, point: POINT) -> Result<Folder
         context
             .QueryContextMenu(menu.0, 0, 1, 0x7fff, CMF_NORMAL | CMF_SYNCCASCADEMENU)
             .ok()?;
-        let messages = Box::new(MenuMessages {
-            context: context.clone(),
-            owner,
-        });
-        if windows_sys::Win32::UI::Shell::SetWindowSubclass(
-            owner.0,
-            Some(menu_messages),
-            0x4c50464d,
-            (&raw const *messages) as usize,
-        ) == 0
-        {
-            return Err(windows::core::Error::from_thread());
-        }
+        let messages = MenuMessages::install(owner, &context)?;
         let frame = luciddesk_menu::MenuFrame::install(
             owner.0,
             windows_sys::Win32::Foundation::POINT {

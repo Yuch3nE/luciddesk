@@ -51,199 +51,212 @@ pub(in crate::pane) fn activate_item_with(
     }
 }
 
-#[allow(clippy::too_many_lines)]
-pub(super) fn route(
+pub(super) fn drag_files(
     state: &Rc<RefCell<PaneApp>>,
     id: PanelId,
-    event: Event,
+    grabbed: ShellIdentity,
+    offset: luciddesk_core::PointDip,
+    image: Option<luciddesk_shell::FileDragImage>,
 ) -> Result<bool, String> {
-    if let Event::FileDrag { grabbed, offset, image } = event {
-        let target = {
-            let s = state.borrow();
-            s.views.iter().find(|v| v.id == id).map(|v| {
-                let model = v.model.borrow();
-                (
-                    v.window.hwnd() as isize,
-                    model.selected_identities(),
-                    model.folder.is_some(),
-                )
-            })
-        };
-        if let Some((owner, items, is_folder)) = target.filter(|(_, items, _)| !items.is_empty()) {
-            window::post_action(owner as _, move || {
-                let hwnd = windows::Win32::Foundation::HWND(owner as _);
-                let result = if is_folder {
-                    luciddesk_shell::drag_file_items(hwnd, &items, image.as_ref())
-                } else {
-                    luciddesk_shell::FileDrag::new(&items).and_then(|data| {
-                        let drag = drag_drop::PaneDrag { source: id, grabbed, items, offset };
-                        drag_drop::with_pane_drag(data.data(), drag, || data.run(hwnd, image.as_ref()))
-                    })
-                };
-                if let Err(error) = result {
-                    window::error_for(owner as _, &crate::i18n::format("ui-file-operation-failed", &[("error", error.to_string())]));
-                }
-            });
-        }
-        return Ok(false);
-    }
-    if matches!(event, Event::NewFolder | Event::ChangeFolder) {
-        folder::request_picker(state, id, matches!(event, Event::ChangeFolder))?;
-        return Ok(false);
-    }
-    if let Event::SetFolder(path) = &event {
-        let mut s = state.borrow_mut();
-        let old = s.workspace.clone();
-        let panel = s
-            .workspace
-            .panel_mut(id)
-            .ok_or(crate::i18n::text("ui-panel-closed"))?;
-        if panel.folder().is_none() {
-            return Err(crate::i18n::text("ui-this-is-not-a-folder-panel").into());
-        }
-        panel.set_folder(Some(path.clone()));
-        let title = path
-            .file_name()
-            .unwrap_or(path.as_os_str())
-            .to_string_lossy()
-            .into_owned();
-        panel.set_title(title.clone());
-        if let Err(error) = save(&mut s) {
-            s.workspace = old;
-            return Err(error);
-        }
-        folder::ensure(&mut s, id)?;
-        folder::home(&mut s, id)?;
-        if let Some(view) = s.views.iter().find(|v| v.id == id) {
-            let mut model = view.model.borrow_mut();
-            model.folder = Some(path.clone());
-            model.title = title;
-            unsafe {
-                InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0);
+    let target = {
+        let s = state.borrow();
+        s.views.iter().find(|v| v.id == id).map(|v| {
+            let model = v.model.borrow();
+            (
+                v.window.hwnd() as isize,
+                model.selected_identities(),
+                model.folder.is_some(),
+            )
+        })
+    };
+    if let Some((owner, items, is_folder)) = target.filter(|(_, items, _)| !items.is_empty()) {
+        window::post_action(owner as _, move || {
+            let hwnd = windows::Win32::Foundation::HWND(owner as _);
+            let result = if is_folder {
+                luciddesk_shell::drag_file_items(hwnd, &items, image.as_ref())
+            } else {
+                luciddesk_shell::FileDrag::new(&items).and_then(|data| {
+                    let drag = drag_drop::PaneDrag { source: id, grabbed, items, offset };
+                    drag_drop::with_pane_drag(data.data(), drag, || data.run(hwnd, image.as_ref()))
+                })
+            };
+            if let Err(error) = result {
+                window::error_for(owner as _, &crate::i18n::format("ui-file-operation-failed", &[("error", error.to_string())]));
             }
-            model.clear_selection();
-            model.scroll = 0;
-        }
-        refresh_views(&mut s);
-        return Ok(false);
+        });
     }
-    if matches!(event, Event::OpenFolder) {
-        let target = {
-            let s = state.borrow();
-            s.folders.get(&id).map(|source| &source.path).map(|path| {
-                (
-                    s.views
-                        .iter()
-                        .find(|v| v.id == id)
-                        .map_or(0, |v| v.window.hwnd() as isize),
-                    folder::identity(path.to_path_buf()),
-                )
-            })
-        };
-        if let Some((owner, identity)) = target {
-            window::defer_action(move || {
-                if let Err(error) = open_shell_identity(owner, &identity) {
-                    window::error_for(owner as _, &crate::i18n::format("error-open-item", &[
-                        ("path", identity.activation_name().to_string_lossy().into_owned()),
-                        ("error", error.to_string()),
-                    ]));
-                }
-            });
-        }
-        return Ok(false);
+    Ok(false)
+}
+
+pub(super) fn set_folder(
+    state: &Rc<RefCell<PaneApp>>,
+    id: PanelId,
+    path: std::path::PathBuf,
+) -> Result<bool, String> {
+    let mut s = state.borrow_mut();
+    let old = s.workspace.clone();
+    let panel = s
+        .workspace
+        .panel_mut(id)
+        .ok_or(crate::i18n::text("ui-panel-closed"))?;
+    if panel.folder().is_none() {
+        return Err(crate::i18n::text("ui-this-is-not-a-folder-panel").into());
     }
-    if let Event::Peek = event {
-        let index = {
-            let s = state.borrow();
-            s.views.iter().find(|view| view.id == id).and_then(|view| {
-                let model = view.model.borrow();
-                if model.collapsed {
-                    return None;
-                }
-                model
-                    .selected
-                    .filter(|index| model.selection.contains(index))
-                    .or_else(|| model.selection.iter().next().copied())
-            })
-        };
-        if let Some(index) = index {
-            let weak = Rc::downgrade(state);
-            activate_with(state, id, index, move |owner, identity| {
-                let Some(state) = weak.upgrade() else {
-                    return Ok(());
-                };
-                if peek::settings().provider == peek::Provider::QuickLook
-                    || state
-                        .borrow()
-                        .workspace
-                        .panel(id)
-                        .is_some_and(|p| p.folder().is_some())
-                {
-                    return peek::open_path(identity);
-                }
-                hybrid::with_desktop_preview(&state, || peek::open(owner, identity))
-            })?;
-        }
-        return Ok(false);
+    panel.set_folder(Some(path.clone()));
+    let title = path
+        .file_name()
+        .unwrap_or(path.as_os_str())
+        .to_string_lossy()
+        .into_owned();
+    panel.set_title(title.clone());
+    if let Err(error) = save(&mut s) {
+        s.workspace = old;
+        return Err(error);
     }
-    if let Event::FileCommand(command) = event {
-        let target = {
-            let s = state.borrow();
-            s.views.iter().find(|view| view.id == id).map(|view| {
-                let model = view.model.borrow();
-                let destination = (command == luciddesk_shell::FileCommand::Paste)
-                    .then(|| s.folders.get(&id).map(|source| source.path.clone()))
-                    .flatten();
-                (view.window.hwnd(), model.selected_identities(), destination)
-            })
-        };
-        if let Some((owner, identity, destination)) = target {
-            if !window::post_action(owner.cast(), move || {
-                if unsafe { IsWindow(owner.cast()) } == 0 {
-                    return;
-                }
-                let result = if let Some(path) = destination {
-                    luciddesk_shell::paste_into_folder(
-                        windows::Win32::Foundation::HWND(owner.cast()),
-                        &path,
-                    )
-                } else {
-                    luciddesk_shell::invoke_file_commands(
-                        windows::Win32::Foundation::HWND(owner.cast()),
-                        &identity,
-                        command,
-                    )
-                };
-                if let Err(error) = result {
-                    window::error_for(owner.cast(), &crate::i18n::format(
-                        "ui-file-operation-failed",
-                        &[("error", format!("{}", error))],
-                    ));
-                }
-            }) {
-                return Err(crate::i18n::text("ui-could-not-schedule-file-operation").into());
+    folder::ensure(&mut s, id)?;
+    folder::home(&mut s, id)?;
+    if let Some(view) = s.views.iter().find(|v| v.id == id) {
+        let mut model = view.model.borrow_mut();
+        model.folder = Some(path);
+        model.title = title;
+        unsafe {
+            InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0);
+        }
+        model.clear_selection();
+        model.scroll = 0;
+    }
+    refresh_views(&mut s);
+    Ok(false)
+}
+
+pub(super) fn open_folder(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result<bool, String> {
+    let target = {
+        let s = state.borrow();
+        s.folders.get(&id).map(|source| &source.path).map(|path| {
+            (
+                s.views
+                    .iter()
+                    .find(|v| v.id == id)
+                    .map_or(0, |v| v.window.hwnd() as isize),
+                folder::identity(path.to_path_buf()),
+            )
+        })
+    };
+    if let Some((owner, identity)) = target {
+        window::defer_action(move || {
+            if let Err(error) = open_shell_identity(owner, &identity) {
+                window::error_for(owner as _, &crate::i18n::format("error-open-item", &[
+                    ("path", identity.activation_name().to_string_lossy().into_owned()),
+                    ("error", error.to_string()),
+                ]));
             }
-        }
-        return Ok(false);
+        });
     }
-    if let Event::ActivateSelection = event {
-        let indices: Vec<_> = {
-            let s = state.borrow();
-            s.views
-                .iter()
-                .find(|view| view.id == id)
-                .map(|view| view.model.borrow().selection.iter().copied().collect())
-                .unwrap_or_default()
-        };
-        if indices.len() == 1 {
-            return handle(state, id, Event::Activate(indices[0]));
-        }
-        for index in indices {
-            activate_with(state, id, index, |owner, identity| {
-                open_shell_identity(owner, identity).map_err(|error| error.to_string())
-            })?;
-        }
-        return Ok(false);
+    Ok(false)
+}
+
+pub(super) fn preview_selection(
+    state: &Rc<RefCell<PaneApp>>,
+    id: PanelId,
+) -> Result<bool, String> {
+    let index = {
+        let s = state.borrow();
+        s.views.iter().find(|view| view.id == id).and_then(|view| {
+            let model = view.model.borrow();
+            if model.collapsed {
+                return None;
+            }
+            model
+                .selected
+                .filter(|index| model.selection.contains(index))
+                .or_else(|| model.selection.iter().next().copied())
+        })
+    };
+    if let Some(index) = index {
+        let weak = Rc::downgrade(state);
+        activate_with(state, id, index, move |owner, identity| {
+            let Some(state) = weak.upgrade() else {
+                return Ok(());
+            };
+            if peek::settings().provider == peek::Provider::QuickLook
+                || state
+                    .borrow()
+                    .workspace
+                    .panel(id)
+                    .is_some_and(|p| p.folder().is_some())
+            {
+                return peek::open_path(identity);
+            }
+            hybrid::with_desktop_preview(&state, || peek::open(owner, identity))
+        })?;
     }
-    unreachable!("only Shell commands are routed here")
+    Ok(false)
+}
+
+pub(super) fn file_command(
+    state: &Rc<RefCell<PaneApp>>,
+    id: PanelId,
+    command: luciddesk_shell::FileCommand,
+) -> Result<bool, String> {
+    let target = {
+        let s = state.borrow();
+        s.views.iter().find(|view| view.id == id).map(|view| {
+            let model = view.model.borrow();
+            let destination = (command == luciddesk_shell::FileCommand::Paste)
+                .then(|| s.folders.get(&id).map(|source| source.path.clone()))
+                .flatten();
+            (view.window.hwnd(), model.selected_identities(), destination)
+        })
+    };
+    if let Some((owner, identity, destination)) = target {
+        if !window::post_action(owner.cast(), move || {
+            if unsafe { IsWindow(owner.cast()) } == 0 {
+                return;
+            }
+            let result = if let Some(path) = destination {
+                luciddesk_shell::paste_into_folder(
+                    windows::Win32::Foundation::HWND(owner.cast()),
+                    &path,
+                )
+            } else {
+                luciddesk_shell::invoke_file_commands(
+                    windows::Win32::Foundation::HWND(owner.cast()),
+                    &identity,
+                    command,
+                )
+            };
+            if let Err(error) = result {
+                window::error_for(owner.cast(), &crate::i18n::format(
+                    "ui-file-operation-failed",
+                    &[("error", format!("{}", error))],
+                ));
+            }
+        }) {
+            return Err(crate::i18n::text("ui-could-not-schedule-file-operation").into());
+        }
+    }
+    Ok(false)
+}
+
+pub(super) fn activate_selection(
+    state: &Rc<RefCell<PaneApp>>,
+    id: PanelId,
+) -> Result<bool, String> {
+    let indices: Vec<_> = {
+        let s = state.borrow();
+        s.views
+            .iter()
+            .find(|view| view.id == id)
+            .map(|view| view.model.borrow().selection.iter().copied().collect())
+            .unwrap_or_default()
+    };
+    if indices.len() == 1 {
+        return handle(state, id, Event::Activate(indices[0]));
+    }
+    for index in indices {
+        activate_with(state, id, index, |owner, identity| {
+            open_shell_identity(owner, identity).map_err(|error| error.to_string())
+        })?;
+    }
+    Ok(false)
 }

@@ -1064,13 +1064,13 @@ pub(super) fn end_item_menu(s: &PaneApp) {
     }
 }
 
-pub(super) fn tick(s: &mut PaneApp) -> Result<(), String> {
+pub(super) fn tick(s: &mut PaneApp) {
     clear_pane_selection_on_desktop_input(s);
     let h = s.session.as_ref().unwrap();
     if h.retry_after
         .is_some_and(|deadline| Instant::now() < deadline)
     {
-        return Ok(());
+        return;
     }
     match tick_once(s) {
         Ok(()) => {
@@ -1094,7 +1094,6 @@ pub(super) fn tick(s: &mut PaneApp) -> Result<(), String> {
             h.retry_after = Some(Instant::now() + Duration::from_millis(250));
         }
     }
-    Ok(())
 }
 
 // Failed optional subscriptions retry on a bounded deadline. Callers also refresh

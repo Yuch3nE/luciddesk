@@ -528,9 +528,7 @@ pub(super) fn supervisor(state: &Rc<RefCell<PaneApp>>) -> Result<windows_window:
                         sorting::poll(&mut s);
                         let folder_renames = folder::poll(&mut s);
                         if s.session.is_some() {
-                            if let Err(error) = hybrid::tick(&mut s) {
-                                luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Error, "pane.runtime", &format!("Desktop synchronization: {error}"));
-                            }
+                            hybrid::tick(&mut s);
                         }
                         folder_renames
                     };

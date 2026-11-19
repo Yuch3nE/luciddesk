@@ -291,19 +291,21 @@ pub(super) fn handle(
         refresh_changed_views(&mut s, true);
         return Ok(false);
     }
-    if matches!(
-        event,
-        Event::FileDrag { .. }
-            | Event::NewFolder
-            | Event::ChangeFolder
-            | Event::SetFolder(_)
-            | Event::OpenFolder
-            | Event::Peek
-            | Event::FileCommand(_)
-            | Event::ActivateSelection
-    ) {
-        return shell::route(state, id, event);
-    }
+    let event = match event {
+        Event::FileDrag { grabbed, offset, image } => {
+            return shell::drag_files(state, id, grabbed, offset, image);
+        }
+        Event::NewFolder | Event::ChangeFolder => {
+            folder::request_picker(state, id, matches!(event, Event::ChangeFolder))?;
+            return Ok(false);
+        }
+        Event::SetFolder(path) => return shell::set_folder(state, id, path),
+        Event::OpenFolder => return shell::open_folder(state, id),
+        Event::Peek => return shell::preview_selection(state, id),
+        Event::FileCommand(command) => return shell::file_command(state, id, command),
+        Event::ActivateSelection => return shell::activate_selection(state, id),
+        event => event,
+    };
     if matches!(event, Event::RenameTitle | Event::SetTitle(_))
         && state
             .borrow()

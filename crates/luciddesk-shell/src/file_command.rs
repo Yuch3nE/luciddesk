@@ -172,21 +172,46 @@ pub fn drag_file_items(
 }
 
 pub(super) struct MenuMessages {
-    pub(super) context: IContextMenu,
-    pub(super) owner: HWND,
+    context: IContextMenu,
+    owner: HWND,
 }
+
+impl MenuMessages {
+    const SUBCLASS_ID: usize = 0x4c50464d;
+
+    pub(super) fn install(owner: HWND, context: &IContextMenu) -> Result<Box<Self>> {
+        let messages = Box::new(Self {
+            context: context.clone(),
+            owner,
+        });
+        // The box keeps callback data at a stable address until Drop detaches it.
+        if unsafe {
+            windows_sys::Win32::UI::Shell::SetWindowSubclass(
+                owner.0,
+                Some(menu_messages),
+                Self::SUBCLASS_ID,
+                (&raw const *messages) as usize,
+            )
+        } == 0
+        {
+            return Err(windows::core::Error::from_thread());
+        }
+        Ok(messages)
+    }
+}
+
 impl Drop for MenuMessages {
     fn drop(&mut self) {
         unsafe {
             windows_sys::Win32::UI::Shell::RemoveWindowSubclass(
                 self.owner.0,
                 Some(menu_messages),
-                0x4c50464d,
+                Self::SUBCLASS_ID,
             );
         }
     }
 }
-pub(super) unsafe extern "system" fn menu_messages(
+unsafe extern "system" fn menu_messages(
     hwnd: windows_sys::Win32::Foundation::HWND,
     msg: u32,
     wp: usize,
@@ -239,19 +264,7 @@ pub fn show_file_items_menu(
             .QueryContextMenu(menu.0, 0, 1, 0x7fff, CMF_NORMAL | CMF_CANRENAME)
             .ok()?;
         add_location_command(menu.0, selected)?;
-        let messages = Box::new(MenuMessages {
-            context: context.clone(),
-            owner,
-        });
-        if windows_sys::Win32::UI::Shell::SetWindowSubclass(
-            owner.0,
-            Some(menu_messages),
-            0x4c50464d,
-            (&raw const *messages) as usize,
-        ) == 0
-        {
-            return Err(windows::core::Error::from_thread());
-        }
+        let messages = MenuMessages::install(owner, &context)?;
         let frame = luciddesk_menu::MenuFrame::install(owner.0, windows_sys::Win32::Foundation::POINT { x: point.x, y: point.y });
         let chosen = TrackPopupMenuEx(
             menu.0,
