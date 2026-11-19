@@ -7,15 +7,16 @@ pub(crate) fn show(owner: isize, title: &str, message: &str, kind: MessageKind) 
         let level = if kind == MessageKind::Warning { luciddesk_diagnostics::Level::Warn } else { luciddesk_diagnostics::Level::Error };
         luciddesk_diagnostics::log(level, "ui.error", message);
     }
-    labels();
+    prepare();
     luciddesk_window::show_message(owner, title, message.trim(), kind);
 }
 
-fn labels() {
+fn prepare() {
     luciddesk_window::set_message_labels(crate::i18n::text("dialog-confirm"), crate::i18n::text("dialog-cancel"), crate::i18n::text("ui-copy"));
+    crate::pane::with_interface_font(luciddesk_window::set_message_font);
 }
 pub(crate) fn confirm(owner: isize, title: &str, message: &str) -> bool {
-    labels();
+    prepare();
     luciddesk_window::confirm_message(owner, title, message, MessageKind::Warning)
 }
 

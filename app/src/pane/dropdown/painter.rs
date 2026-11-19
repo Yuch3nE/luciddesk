@@ -1,6 +1,7 @@
 use super::{Entry, Model, PADDING, RECT, ROW_HEIGHT};
 use crate::pane::{
     canvas,
+    control_style as style,
     native_graphics::{canvas_result, native_interface},
 };
 use windows_canvas::{
@@ -27,9 +28,9 @@ impl Painter {
         .with_paragraph_alignment(ParagraphAlignment::Center)
         .with_word_wrapping(WordWrapping::NoWrap);
         canvas::ellipsis(&format)?;
-        let icons = canvas_result(TextFormat::new(crate::pane::fonts::icon_family(), 12.0))?
+        let icons = canvas_result(TextFormat::new(crate::pane::fonts::icon_family(), style::ICON_SIZE))?
             .with_paragraph_alignment(ParagraphAlignment::Center);
-        let check = canvas_result(TextLayout::new("\u{e73e}", &icons, 16.0, ROW_HEIGHT))?;
+        let check = canvas_result(TextLayout::new(style::CHECK_MARK, &icons, style::ICON_SLOT, ROW_HEIGHT))?;
         let check_offset = canvas::text_ink_center_offset(&check)?;
         let layouts: Vec<_> = rows
             .iter()

@@ -1,6 +1,11 @@
 //! Shared, themed dialog used by the desktop client and the standalone updater.
 //! Native controls retain keyboard navigation, selection and accessibility names.
 use super::MessageKind;
+use crate::control_style::{self as style, Palette, colorref};
+use crate::controls::{
+    ButtonKind, State,
+    gdi::{self, GdiCanvas},
+};
 use std::{
     cell::{Cell, RefCell},
     mem::size_of,
@@ -17,15 +22,22 @@ use windows_sys::Win32::{
 const COPY: i32 = 100;
 const HEADING: i32 = 101;
 const BODY: i32 = 102;
+const BODY_SCROLLBAR: i32 = 103;
+const PADDING: i32 = 24;
+const HEADING_ICON_SIZE: i32 = 20;
 static THEME: AtomicI8 = AtomicI8::new(-1);
 thread_local! {
     static LABELS: RefCell<[String; 3]> = RefCell::new(["OK".into(), "Cancel".into(), "Copy".into()]);
+    static FONT_FAMILY: RefCell<Vec<u16>> = RefCell::new(wide("Segoe UI"));
 }
 pub fn set_message_labels(ok: &str, cancel: &str, copy: &str) {
     LABELS.with(|labels| *labels.borrow_mut() = [ok.into(), cancel.into(), copy.into()]);
 }
 pub fn set_message_theme(dark: Option<bool>) {
     THEME.store(dark.map_or(-1, i8::from), Ordering::Relaxed);
+}
+pub fn set_message_font(family: &str) {
+    FONT_FAMILY.with(|font| *font.borrow_mut() = wide(family));
 }
 pub fn message_is_dark() -> bool {
     match THEME.load(Ordering::Relaxed) {
@@ -54,15 +66,12 @@ pub fn message_is_dark() -> bool {
 fn wide(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(Some(0)).collect()
 }
-fn rgb(r: u32, g: u32, b: u32) -> u32 {
-    r | g << 8 | b << 16
-}
-
 struct Dialog {
     title: Vec<u16>,
     body: Vec<u16>,
     copy_text: Vec<u16>,
     labels: [String; 3],
+    family: Vec<u16>,
     confirmation: bool,
     dark: bool,
     kind: MessageKind,
@@ -73,46 +82,23 @@ struct Dialog {
 }
 impl Dialog {
     fn background_color(&self) -> u32 {
-        if self.dark {
-            rgb(32, 32, 32)
-        } else {
-            rgb(249, 249, 249)
-        }
+        colorref(Palette::for_theme(self.dark).page_background)
     }
-    fn text_color(&self) -> u32 {
-        if self.dark {
-            rgb(245, 245, 245)
-        } else {
-            rgb(27, 27, 27)
-        }
-    }
-    fn accent(&self) -> u32 {
+    fn heading_icon(&self) -> (&'static str, u32) {
         match self.kind {
-            MessageKind::Error => {
-                if self.dark {
-                    rgb(255, 153, 164)
-                } else {
-                    rgb(170, 38, 50)
-                }
-            }
-            MessageKind::Warning => {
-                if self.dark {
-                    rgb(244, 196, 104)
-                } else {
-                    rgb(141, 92, 0)
-                }
-            }
-            MessageKind::Information => {
-                if self.dark {
-                    rgb(118, 185, 224)
-                } else {
-                    rgb(0, 104, 153)
-                }
-            }
+            MessageKind::Error => (
+                style::ERROR_BADGE,
+                if self.dark { 0xff99a4 } else { 0xaa2632 },
+            ),
+            MessageKind::Warning => (style::WARNING, if self.dark { 0xf4c468 } else { 0x8d5c00 }),
+            MessageKind::Information => (style::INFO, Palette::for_theme(self.dark).accent),
         }
     }
     fn px(&self, value: i32) -> i32 {
-        (value as f32 * self.scale.get()).round() as i32
+        self.dip(value as f32)
+    }
+    fn dip(&self, value: f32) -> i32 {
+        (value * self.scale.get()).round() as i32
     }
 }
 impl Drop for Dialog {
@@ -145,6 +131,7 @@ pub(super) fn show(
         body: wide(body),
         copy_text: wide(&format!("{title}\r\n\r\n{body}")),
         labels: LABELS.with(|labels| labels.borrow().clone()),
+        family: FONT_FAMILY.with(|family| family.borrow().clone()),
         confirmation,
         dark: message_is_dark(),
         kind,
@@ -268,7 +255,27 @@ unsafe extern "system" fn control_proc(
             return 0;
         }
     }
-    unsafe { DefSubclassProc(hwnd, msg, wp, lp) }
+    let result = unsafe { DefSubclassProc(hwnd, msg, wp, lp) };
+    unsafe {
+        if GetDlgCtrlID(hwnd) == BODY
+            && matches!(
+                msg,
+                WM_NCPAINT | WM_VSCROLL | WM_NCLBUTTONDOWN | WM_MOUSEWHEEL | WM_KEYDOWN
+            )
+        {
+            invalidate_scrollbar(parent as HWND);
+        }
+    }
+    result
+}
+
+unsafe fn invalidate_scrollbar(dialog: HWND) {
+    unsafe {
+        let bar = GetDlgItem(dialog, BODY_SCROLLBAR);
+        if !bar.is_null() {
+            InvalidateRect(bar, null(), 0);
+        }
+    }
 }
 
 unsafe fn clipboard(hwnd: HWND, value: &[u16]) {
@@ -298,7 +305,7 @@ unsafe fn layout(hwnd: HWND, dialog: &Dialog, dpi: u32) {
         dialog.scale.set(dpi.max(96) as f32 / 96.0);
         let font = |height, weight| {
             CreateFontW(
-                -dialog.px(height),
+                -dialog.dip(height),
                 0,
                 0,
                 0,
@@ -311,11 +318,11 @@ unsafe fn layout(hwnd: HWND, dialog: &Dialog, dpi: u32) {
                 0,
                 CLEARTYPE_QUALITY as u32,
                 0,
-                windows_sys::w!("Segoe UI"),
+                dialog.family.as_ptr(),
             )
         };
-        let old_font = dialog.font.replace(font(14, FW_NORMAL as i32));
-        let old_heading = dialog.heading_font.replace(font(20, FW_SEMIBOLD as i32));
+        let old_font = dialog.font.replace(font(style::TEXT, FW_NORMAL as i32));
+        let old_heading = dialog.heading_font.replace(font(20.0, FW_SEMIBOLD as i32));
         for id in [IDOK, IDCANCEL, COPY, BODY, HEADING] {
             SendMessageW(
                 GetDlgItem(hwnd, id),
@@ -346,7 +353,7 @@ unsafe fn layout(hwnd: HWND, dialog: &Dialog, dpi: u32) {
         let width = dialog
             .px(520)
             .min((work.right - work.left - dialog.px(32)).max(dialog.px(240)));
-        let padding = dialog.px(24);
+        let padding = dialog.px(PADDING);
         let dc = GetDC(hwnd);
         let old = SelectObject(dc, dialog.font.get());
         let mut bounds = RECT {
@@ -363,10 +370,14 @@ unsafe fn layout(hwnd: HWND, dialog: &Dialog, dpi: u32) {
             DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX,
         );
         // Labels may be considerably wider in translated locales.
+        let gap = dialog.dip(style::BUTTON_GAP);
+        let button_count = if dialog.confirmation { 3 } else { 2 };
         let button_width = dialog
             .labels
             .iter()
-            .map(|label| {
+            .enumerate()
+            .filter(|(index, _)| dialog.confirmation || *index != 1)
+            .map(|(_, label)| {
                 let mut rect = RECT::default();
                 DrawTextW(
                     dc,
@@ -375,17 +386,23 @@ unsafe fn layout(hwnd: HWND, dialog: &Dialog, dpi: u32) {
                     &raw mut rect,
                     DT_CALCRECT | DT_SINGLELINE | DT_NOPREFIX,
                 );
-                (rect.right + dialog.px(32)).max(dialog.px(92))
+                (rect.right + dialog.dip(style::BUTTON_PADDING * 2.0)).max(dialog.px(96))
             })
             .max()
-            .unwrap_or(dialog.px(92))
-            .min((width - padding * 2 - dialog.px(24)) / 3);
+            .unwrap_or(dialog.px(96))
+            .min((width - padding * 2 - gap * (button_count - 1)) / button_count);
         SelectObject(dc, old);
         ReleaseDC(hwnd, dc);
         let body_height = bounds
             .bottom
             .max(dialog.px(52))
             .min(((work.bottom - work.top) * 2 / 3 - dialog.px(180)).max(dialog.px(52)));
+        #[cfg(test)]
+        let body_height = tests::PREVIEW_BODY_LIMIT.with(|limit| {
+            limit
+                .get()
+                .map_or(body_height, |dip| body_height.min(dialog.px(dip)))
+        });
         let heading_height = dialog.px(54);
         let height = padding + heading_height + body_height + dialog.px(84);
         let mut frame = RECT {
@@ -420,50 +437,50 @@ unsafe fn layout(hwnd: HWND, dialog: &Dialog, dpi: u32) {
             outer_height,
             SWP_NOZORDER | SWP_NOACTIVATE,
         );
+        let heading_inset = dialog.dip(HEADING_ICON_SIZE as f32 + style::ICON_GAP);
         MoveWindow(
             GetDlgItem(hwnd, HEADING),
-            padding + dialog.px(12),
+            padding + heading_inset,
             padding,
-            width - padding * 2 - dialog.px(12),
+            width - padding * 2 - heading_inset,
             heading_height,
             1,
         );
+        let edit = GetDlgItem(hwnd, BODY);
         MoveWindow(
-            GetDlgItem(hwnd, BODY),
+            edit,
             padding,
             padding + heading_height,
             width - padding * 2,
             body_height,
             1,
         );
-        let bottom = height - dialog.px(56);
-        let gap = dialog.px(12);
+        gdi::position_edit_scrollbar(hwnd, edit, GetDlgItem(hwnd, BODY_SCROLLBAR));
+        let control_height = dialog.dip(style::HEIGHT);
+        let bottom = height - padding - control_height;
         MoveWindow(
             GetDlgItem(hwnd, COPY),
             padding,
             bottom,
             button_width,
-            dialog.px(34),
+            control_height,
             1,
         );
         MoveWindow(
             GetDlgItem(hwnd, IDOK),
-            width
-                - padding
-                - button_width * if dialog.confirmation { 2 } else { 1 }
-                - if dialog.confirmation { gap } else { 0 },
+            width - padding - button_width,
             bottom,
             button_width,
-            dialog.px(34),
+            control_height,
             1,
         );
         if dialog.confirmation {
             MoveWindow(
                 GetDlgItem(hwnd, IDCANCEL),
-                width - padding - button_width,
+                width - padding - 2 * button_width - gap,
                 bottom,
                 button_width,
-                dialog.px(34),
+                control_height,
                 1,
             );
         }
@@ -518,6 +535,7 @@ unsafe extern "system" fn procedure(hwnd: HWND, msg: u32, wp: usize, lp: isize) 
                     dialog.body.as_ptr(),
                     WS_TABSTOP
                         | WS_VSCROLL
+                        | WS_CLIPSIBLINGS
                         | ES_MULTILINE as u32
                         | ES_READONLY as u32
                         | ES_AUTOVSCROLL as u32,
@@ -527,12 +545,6 @@ unsafe extern "system" fn procedure(hwnd: HWND, msg: u32, wp: usize, lp: isize) 
                     windows_sys::w!("BUTTON"),
                     wide(&dialog.labels[2]).as_ptr(),
                     WS_TABSTOP | BS_OWNERDRAW as u32,
-                ) && create(
-                    hwnd,
-                    IDOK,
-                    windows_sys::w!("BUTTON"),
-                    wide(&dialog.labels[0]).as_ptr(),
-                    WS_TABSTOP | BS_OWNERDRAW as u32,
                 ) && (!dialog.confirmation
                     || create(
                         hwnd,
@@ -540,11 +552,19 @@ unsafe extern "system" fn procedure(hwnd: HWND, msg: u32, wp: usize, lp: isize) 
                         windows_sys::w!("BUTTON"),
                         wide(&dialog.labels[1]).as_ptr(),
                         WS_TABSTOP | BS_OWNERDRAW as u32,
-                    ));
+                    ))
+                    && create(
+                        hwnd,
+                        IDOK,
+                        windows_sys::w!("BUTTON"),
+                        wide(&dialog.labels[0]).as_ptr(),
+                        WS_TABSTOP | BS_OWNERDRAW as u32,
+                    );
                 if !ok {
                     EndDialog(hwnd, -1);
                     return 1;
                 }
+                gdi::add_edit_scrollbar(hwnd, GetDlgItem(hwnd, BODY), BODY_SCROLLBAR, dialog.dark);
                 let owner = GetWindow(hwnd, GW_OWNER);
                 layout(
                     hwnd,
@@ -565,6 +585,9 @@ unsafe extern "system" fn procedure(hwnd: HWND, msg: u32, wp: usize, lp: isize) 
             }
             WM_COMMAND => {
                 match (wp & 0xffff) as i32 {
+                    BODY if matches!((wp >> 16) as u32, EN_VSCROLL | EN_UPDATE) => {
+                        invalidate_scrollbar(hwnd);
+                    }
                     IDOK => {
                         EndDialog(hwnd, IDOK as isize);
                     }
@@ -585,7 +608,7 @@ unsafe extern "system" fn procedure(hwnd: HWND, msg: u32, wp: usize, lp: isize) 
                 1
             }
             WM_CTLCOLORSTATIC | WM_CTLCOLOREDIT => {
-                SetTextColor(wp as HDC, dialog.text_color());
+                SetTextColor(wp as HDC, colorref(Palette::for_theme(dialog.dark).ink));
                 SetBkColor(wp as HDC, dialog.background_color());
                 dialog.background as isize
             }
@@ -598,101 +621,51 @@ unsafe extern "system" fn procedure(hwnd: HWND, msg: u32, wp: usize, lp: isize) 
             WM_PAINT => {
                 let mut paint = PAINTSTRUCT::default();
                 let dc = BeginPaint(hwnd, &raw mut paint);
-                let brush = CreateSolidBrush(dialog.accent());
-                let rect = RECT {
-                    left: dialog.px(24),
-                    top: dialog.px(26),
-                    right: dialog.px(28),
-                    bottom: dialog.px(48),
+                let palette = Palette::for_theme(dialog.dark);
+                let canvas = GdiCanvas {
+                    dc,
+                    scale: dialog.scale.get(),
+                    palette: &palette,
                 };
-                FillRect(dc, &rect, brush);
-                DeleteObject(brush);
+                let (glyph, rgb) = dialog.heading_icon();
+                let bounds = RECT {
+                    left: dialog.px(PADDING),
+                    top: dialog.px(PADDING),
+                    right: dialog.px(PADDING + HEADING_ICON_SIZE),
+                    bottom: dialog.px(PADDING + HEADING_ICON_SIZE + 4),
+                };
+                canvas.icons(HEADING_ICON_SIZE as f32, [(bounds, glyph, rgb)]);
                 EndPaint(hwnd, &paint);
                 1
             }
             WM_DRAWITEM => {
                 let item = &*(lp as *const DRAWITEMSTRUCT);
-                let primary = item.CtlID == IDOK as u32;
-                let pressed = item.itemState & ODS_SELECTED != 0;
+                let (kind, label) = match item.CtlID as i32 {
+                    IDOK => (ButtonKind::Primary, &dialog.labels[0]),
+                    IDCANCEL => (ButtonKind::Secondary, &dialog.labels[1]),
+                    COPY => (ButtonKind::Secondary, &dialog.labels[2]),
+                    _ => return 0,
+                };
                 let mut point = POINT::default();
                 GetCursorPos(&raw mut point);
                 ScreenToClient(item.hwndItem, &raw mut point);
-                let hover = PtInRect(&item.rcItem, point) != 0;
-                let color = if primary {
-                    dialog.accent()
-                } else if dialog.dark {
-                    if hover || pressed {
-                        rgb(60, 60, 60)
-                    } else {
-                        rgb(48, 48, 48)
-                    }
-                } else if hover || pressed {
-                    rgb(240, 240, 240)
-                } else {
-                    rgb(255, 255, 255)
+                let state = State {
+                    enabled: item.itemState & ODS_DISABLED == 0,
+                    active: item.itemState & ODS_SELECTED != 0
+                        || PtInRect(&item.rcItem, point) != 0,
+                    focused: item.itemState & ODS_FOCUS != 0,
                 };
-                let brush = CreateSolidBrush(color);
-                let pen = CreatePen(
-                    PS_SOLID,
-                    1,
-                    if dialog.dark {
-                        rgb(80, 80, 80)
-                    } else {
-                        rgb(205, 205, 205)
-                    },
-                );
-                let old_brush = SelectObject(item.hDC, brush);
-                let old_pen = SelectObject(item.hDC, pen);
-                let rect = item.rcItem;
-                RoundRect(
-                    item.hDC,
-                    rect.left,
-                    rect.top,
-                    rect.right,
-                    rect.bottom,
-                    dialog.px(8),
-                    dialog.px(8),
-                );
-                SelectObject(item.hDC, old_pen);
-                SelectObject(item.hDC, old_brush);
-                DeleteObject(pen);
-                DeleteObject(brush);
-                SetBkMode(item.hDC, TRANSPARENT as i32);
-                SetTextColor(
-                    item.hDC,
-                    if primary {
-                        if dialog.dark {
-                            rgb(12, 22, 28)
-                        } else {
-                            rgb(255, 255, 255)
-                        }
-                    } else {
-                        dialog.text_color()
-                    },
-                );
+                FillRect(item.hDC, &item.rcItem, dialog.background);
                 let font = SelectObject(item.hDC, dialog.font.get());
-                let label = match item.CtlID as i32 {
-                    IDOK => &dialog.labels[0],
-                    IDCANCEL => &dialog.labels[1],
-                    _ => &dialog.labels[2],
+                let palette = Palette::for_theme(dialog.dark);
+                let mut canvas = GdiCanvas {
+                    dc: item.hDC,
+                    scale: dialog.scale.get(),
+                    palette: &palette,
                 };
-                let mut text_rect = rect;
-                if pressed {
-                    OffsetRect(&raw mut text_rect, 1, 1);
-                }
-                DrawTextW(
-                    item.hDC,
-                    wide(label).as_ptr(),
-                    -1,
-                    &raw mut text_rect,
-                    DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
-                );
+                let bounds = canvas.bounds(item.rcItem);
+                kind.paint(&mut canvas, bounds, label, state);
                 SelectObject(item.hDC, font);
-                if item.itemState & ODS_FOCUS != 0 {
-                    let mut focus = rect;
-                    InflateRect(&raw mut focus, -dialog.px(4), -dialog.px(4));
-                    DrawFocusRect(item.hDC, &focus);
-                }
                 1
             }
             WM_NCDESTROY => {
@@ -713,6 +686,44 @@ mod tests {
         static ACTION: Cell<u32> = const { Cell::new(0) };
         static DEFAULT_CANCEL: Cell<bool> = const { Cell::new(false) };
         static BODY_PRESENT: Cell<bool> = const { Cell::new(false) };
+        static BUTTON_LAYOUT: Cell<bool> = const { Cell::new(false) };
+        static SCROLLBAR_WORKS: Cell<bool> = const { Cell::new(false) };
+        static ARROWS_MATCH_SCROLL_POSITION: Cell<bool> = const { Cell::new(false) };
+        pub(super) static PREVIEW_BODY_LIMIT: Cell<Option<i32>> = const { Cell::new(None) };
+    }
+    unsafe fn arrow_contrast(scrollbar: HWND, arrow_height: i32, background: u32) -> [u32; 2] {
+        unsafe {
+            let mut bounds = RECT::default();
+            GetClientRect(scrollbar, &raw mut bounds);
+            let window_dc = GetDC(scrollbar);
+            let dc = CreateCompatibleDC(window_dc);
+            let bitmap = CreateCompatibleBitmap(window_dc, bounds.right, bounds.bottom);
+            ReleaseDC(scrollbar, window_dc);
+            let old = SelectObject(dc, bitmap);
+            SendMessageW(scrollbar, WM_PRINTCLIENT, dc as usize, PRF_CLIENT as isize);
+            let background = colorref(background);
+            // Font rasterization blends arrow edges with the background.
+            let result = [0, bounds.bottom - arrow_height].map(|top| {
+                let mut contrast = 0_u32;
+                for y in top..top + arrow_height {
+                    for x in 0..bounds.right {
+                        let pixel = GetPixel(dc, x, y);
+                        let difference = [0, 8, 16]
+                            .into_iter()
+                            .map(|shift| {
+                                ((pixel >> shift) & 255).abs_diff((background >> shift) & 255)
+                            })
+                            .sum();
+                        contrast = contrast.max(difference);
+                    }
+                }
+                contrast
+            });
+            SelectObject(dc, old);
+            DeleteObject(bitmap);
+            DeleteDC(dc);
+            result
+        }
     }
     unsafe extern "system" fn inspect(_: HWND, _: u32, timer: usize, _: u32) {
         unsafe {
@@ -722,8 +733,83 @@ mod tests {
             }
             KillTimer(null_mut(), timer);
             DEFAULT_CANCEL.with(|value| value.set(GetFocus() == GetDlgItem(hwnd, IDCANCEL)));
+            let bounds = |id| {
+                let mut rect = RECT::default();
+                GetWindowRect(GetDlgItem(hwnd, id), &raw mut rect);
+                rect
+            };
+            let (copy, cancel, confirm) = (bounds(COPY), bounds(IDCANCEL), bounds(IDOK));
+            let scale = GetDpiForWindow(hwnd).max(96) as f32 / 96.0;
+            BUTTON_LAYOUT.with(|value| {
+                value.set(
+                    copy.right <= cancel.left
+                        && cancel.right <= confirm.left
+                        && GetNextDlgTabItem(hwnd, GetDlgItem(hwnd, IDCANCEL), 0)
+                            == GetDlgItem(hwnd, IDOK)
+                        && [copy, cancel, confirm].iter().all(|rect| {
+                            rect.top == copy.top
+                                && rect.bottom - rect.top == (style::HEIGHT * scale).round() as i32
+                        }),
+                )
+            });
             BODY_PRESENT
                 .with(|value| value.set(GetWindowTextLengthW(GetDlgItem(hwnd, BODY)) > 1000));
+            let edit = GetDlgItem(hwnd, BODY);
+            let scrollbar = GetDlgItem(hwnd, BODY_SCROLLBAR);
+            let bar = bounds(BODY_SCROLLBAR);
+            let mut info = SCROLLBARINFO {
+                cbSize: size_of::<SCROLLBARINFO>() as u32,
+                ..Default::default()
+            };
+            let native_bar = GetScrollBarInfo(edit, OBJID_VSCROLL, &raw mut info) != 0;
+            let arrow_height = info.dxyLineButton;
+            let hit = |target, y| {
+                let packed =
+                    ((y as u16 as usize) << 16) | ((bar.left + bar.right) / 2) as u16 as usize;
+                SendMessageW(target, WM_NCHITTEST, 0, packed as isize)
+            };
+            let arrows_hit = [bar.top + arrow_height / 2, bar.bottom - arrow_height / 2]
+                .into_iter()
+                .all(|y| {
+                    hit(scrollbar, y) == HTTRANSPARENT as isize
+                        && hit(edit, y) == HTVSCROLL as isize
+                });
+            let first_line = || SendMessageW(edit, EM_GETFIRSTVISIBLELINE, 0, 0);
+            let palette = Palette::for_theme(message_is_dark());
+            let contrast = || arrow_contrast(scrollbar, arrow_height, palette.page_background);
+            let [up_at_top, down_at_top] = contrast();
+            SendMessageW(edit, WM_VSCROLL, SB_LINEDOWN as usize, 0);
+            let down_one = first_line() == 1;
+            let [up_in_middle, down_in_middle] = contrast();
+            SendMessageW(edit, WM_VSCROLL, SB_LINEUP as usize, 0);
+            let up_one = first_line() == 0;
+            SendMessageW(edit, WM_VSCROLL, SB_BOTTOM as usize, 0);
+            let [up_at_bottom, down_at_bottom] = contrast();
+            SendMessageW(edit, WM_VSCROLL, SB_TOP as usize, 0);
+            ARROWS_MATCH_SCROLL_POSITION.with(|value| {
+                value.set(
+                    up_at_top > 0
+                        && up_at_top < up_in_middle.min(up_at_bottom)
+                        && down_at_bottom > 0
+                        && down_at_bottom < down_in_middle.min(down_at_top),
+                )
+            });
+            let before = first_line();
+            SendMessageW(edit, WM_VSCROLL, SB_PAGEDOWN as usize, 0);
+            let moved = first_line() > before;
+            SendMessageW(edit, WM_VSCROLL, SB_TOP as usize, 0);
+            SCROLLBAR_WORKS.with(|value| {
+                value.set(
+                    native_bar
+                        && bar.right > bar.left
+                        && IsWindowVisible(scrollbar) != 0
+                        && arrows_hit
+                        && down_one
+                        && up_one
+                        && moved
+                        && first_line() == 0,
+                )
+            });
             OBSERVED.with(|value| value.set(true));
             match ACTION.with(Cell::get) {
                 1 => {
@@ -745,7 +831,9 @@ mod tests {
     #[test]
     #[ignore = "Interactive modal keyboard test; run alone on a Windows desktop"]
     fn confirmation_defaults_to_cancel_and_preserves_long_text() {
+        let prior_theme = THEME.load(Ordering::Relaxed);
         for action in 0..4 {
+            set_message_theme(Some(action % 2 != 0));
             ACTION.with(|value| value.set(action));
             OBSERVED.with(|value| value.set(false));
             unsafe {
@@ -759,7 +847,11 @@ mod tests {
             assert!(OBSERVED.with(Cell::get));
             assert!(DEFAULT_CANCEL.with(Cell::get));
             assert!(BODY_PRESENT.with(Cell::get));
+            assert!(BUTTON_LAYOUT.with(Cell::get));
+            assert!(SCROLLBAR_WORKS.with(Cell::get));
+            assert!(ARROWS_MATCH_SCROLL_POSITION.with(Cell::get));
         }
+        THEME.store(prior_theme, Ordering::Relaxed);
     }
     #[test]
     #[ignore = "Manual visual preview; dismiss the dialog to finish"]
@@ -768,11 +860,20 @@ mod tests {
         set_message_theme(Some(
             std::env::var("LUCIDDESK_DIALOG_THEME").as_deref() != Ok("light"),
         ));
-        super::super::confirm_message(
-            0,
-            "准备安装更新",
-            "已验证新版本。现在退出 LucidDesk、安装更新并重新打开？\n\n你的配置、面板布局和个人文件会保留。",
-            MessageKind::Information,
-        );
+        let body = "已验证新版本。现在退出 LucidDesk、安装更新并重新打开？\n\n你的配置、面板布局和个人文件会保留。";
+        let long_sample = std::env::var_os("LUCIDDESK_DIALOG_LONG_SAMPLE").is_some();
+        PREVIEW_BODY_LIMIT.with(|limit| limit.set(long_sample.then_some(280)));
+        let details = if long_sample {
+            format!(
+                "{body}\n\n安装检查详情\n{}",
+                (1..=30)
+                    .map(|index| format!("已验证第 {index} 项更新文件\n"))
+                    .collect::<String>()
+            )
+        } else {
+            body.to_owned()
+        };
+        super::super::confirm_message(0, "准备安装更新", &details, MessageKind::Information);
+        PREVIEW_BODY_LIMIT.with(|limit| limit.set(None));
     }
 }

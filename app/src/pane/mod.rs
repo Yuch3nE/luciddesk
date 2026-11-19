@@ -64,11 +64,12 @@ mod theme;
 
 pub(crate) mod menu;
 mod dropdown;
-mod control_style;
+use luciddesk_window::control_style;
 mod tooltip;
 use events::handle;
 pub use hybrid::run;
 pub(crate) use monitor::process::run as run_monitor_child;
+pub(crate) use fonts::with_family as with_interface_font;
 
 use luciddesk_core::{
     DesktopItem, DesktopPlacement, GridPosition, Panel, PanelId, RectDip, ShellIdentity, Workspace,

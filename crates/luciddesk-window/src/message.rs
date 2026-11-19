@@ -63,7 +63,7 @@ pub fn confirm_message(owner: isize, title: &str, message: &str, kind: MessageKi
 }
 
 mod dialog;
-pub use dialog::{message_is_dark, set_message_labels, set_message_theme};
+pub use dialog::{message_is_dark, set_message_font, set_message_labels, set_message_theme};
 
 fn valid_owner(owner: isize) -> isize {
     let mut process = 0;

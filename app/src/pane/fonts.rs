@@ -7,9 +7,10 @@ pub(super) fn revision() -> u64 { REVISION.load(std::sync::atomic::Ordering::Rel
 static FAMILY: RwLock<String> = RwLock::new(String::new());
 
 pub(super) const ICON_GLYPHS: &[u32] = &[
-    0xe70d, 0xe70e, 0xe70f, 0xe710, 0xe711, 0xe712, 0xe713, 0xe721, 0xe72b, 0xe73e, 0xe74e, 0xe76c,
-    0xe790, 0xe80f, 0xe81c, 0xe890, 0xe8a5, 0xe8b7, 0xe8bb,
-    0xe8cb, 0xe8d2, 0xe916, 0xe921, 0xe922, 0xe923, 0xe946, 0xe9d9, 0xf0e2, 0xf2b7,
+    0xe70d, 0xe70e, 0xe70f, 0xe710, 0xe711, 0xe712, 0xe713, 0xe721, 0xe72b, 0xe72c, 0xe73e,
+    0xe74a, 0xe74b, 0xe74e, 0xe76c, 0xe777, 0xe790, 0xe7ba, 0xe80f, 0xe81c, 0xe890, 0xe8a5,
+    0xe8a7, 0xe8b7, 0xe8bb, 0xe8cb, 0xe8d2, 0xe8fd, 0xe916, 0xe91b, 0xe921, 0xe922, 0xe923,
+    0xe946, 0xe9d9, 0xea39, 0xea3a, 0xea3f, 0xf0e2, 0xf2b7,
 ];
 
 /// Private-use glyphs cannot rely on normal text fallback. Check the actual
@@ -24,7 +25,8 @@ pub(super) fn icon_family() -> &'static str {
 }
 
 fn choose_icon_family(supports: impl FnOnce(&str) -> bool) -> &'static str {
-    if supports("Segoe Fluent Icons") { "Segoe Fluent Icons" } else { "Segoe MDL2 Assets" }
+    use luciddesk_window::control_style::{FLUENT_ICON_FONT, MDL2_ICON_FONT};
+    if supports(FLUENT_ICON_FONT) { FLUENT_ICON_FONT } else { MDL2_ICON_FONT }
 }
 
 fn icon_coverage(name: &str) -> windows::core::Result<bool> {
@@ -48,7 +50,7 @@ fn icon_coverage(name: &str) -> windows::core::Result<bool> {
     }
 }
 pub(super) fn family() -> String { with_family(str::to_owned) }
-pub(super) fn with_family<T>(read: impl FnOnce(&str) -> T) -> T {
+pub(crate) fn with_family<T>(read: impl FnOnce(&str) -> T) -> T {
     let value = FAMILY.read().unwrap();
     read(if value.is_empty() { crate::i18n::default_font() } else { &value })
 }
