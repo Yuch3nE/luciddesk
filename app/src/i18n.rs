@@ -1,7 +1,9 @@
-//! Embedded Fluent resources. Catalogs stay alive while the active language can change at runtime.
+//! Compressed Fluent resources. Catalogs stay alive while the active language can change at runtime.
+use flate2::read::DeflateDecoder;
 use fluent_bundle::{FluentArgs, FluentResource, concurrent::FluentBundle};
 use std::{
     collections::HashMap,
+    io::Read,
     sync::{LazyLock, atomic::{AtomicUsize, Ordering}},
 };
 
@@ -15,14 +17,14 @@ pub const LANGUAGES: [(&str, &str); 8] = [
     ("de-DE", "Deutsch"),
     ("ru-RU", "Русский"),
 ];
-const SOURCES: [&str; 7] = [
-    include_str!("../locales/zh-CN.ftl"),
-    include_str!("../locales/zh-TW.ftl"),
-    include_str!("../locales/en-US.ftl"),
-    include_str!("../locales/ja-JP.ftl"),
-    include_str!("../locales/ko-KR.ftl"),
-    include_str!("../locales/de-DE.ftl"),
-    include_str!("../locales/ru-RU.ftl"),
+const SOURCES: [&[u8]; 7] = [
+    include_bytes!(concat!(env!("OUT_DIR"), "/zh-CN.ftl.deflate")),
+    include_bytes!(concat!(env!("OUT_DIR"), "/zh-TW.ftl.deflate")),
+    include_bytes!(concat!(env!("OUT_DIR"), "/en-US.ftl.deflate")),
+    include_bytes!(concat!(env!("OUT_DIR"), "/ja-JP.ftl.deflate")),
+    include_bytes!(concat!(env!("OUT_DIR"), "/ko-KR.ftl.deflate")),
+    include_bytes!(concat!(env!("OUT_DIR"), "/de-DE.ftl.deflate")),
+    include_bytes!(concat!(env!("OUT_DIR"), "/ru-RU.ftl.deflate")),
 ];
 static ACTIVE: AtomicUsize = AtomicUsize::new(usize::MAX);
 // Keep separate from pane visibility's WM_APP + 196..=198 lifecycle messages.
@@ -41,9 +43,17 @@ static CATALOGS: [LazyLock<Catalog>; 7] = [
     LazyLock::new(|| catalog(5)),
     LazyLock::new(|| catalog(6)),
 ];
+fn source(i: usize) -> String {
+    let mut text = String::new();
+    DeflateDecoder::new(SOURCES[i])
+        .read_to_string(&mut text)
+        .expect("valid compressed Fluent resource");
+    text
+}
+
 fn catalog(i: usize) -> Catalog {
-    let source = SOURCES[i];
-    let resource = FluentResource::try_new(source.to_owned()).expect("validated Fluent resource");
+    let source = source(i);
+    let resource = FluentResource::try_new(source.clone()).expect("validated Fluent resource");
     let mut bundle = FluentBundle::new_concurrent(vec![LANGUAGES[i + 1].0.parse().unwrap()]);
     bundle.set_use_isolating(false);
     bundle.add_resource(resource).expect("unique message IDs");
@@ -182,6 +192,16 @@ fn format_locale(locale: usize, id: &str, values: &[(&str, String)]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn embedded_catalogs_match_the_original_utf8_sources() {
+        let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("locales");
+        for (index, &(language, _)) in LANGUAGES[1..].iter().enumerate() {
+            let original = std::fs::read_to_string(directory.join(format!("{language}.ftl"))).unwrap();
+            assert_eq!(source(index), original, "{language}");
+        }
+    }
+
     #[test]
     fn live_selection_refreshes_text_and_keeps_borrowed_strings_valid() {
         with_locale(0, || {
@@ -271,21 +291,23 @@ mod tests {
 
     #[test]
     fn all_messages_format_in_all_languages() {
+        let primary = source(0);
         let variables = |line: &str| {
             let mut names: Vec<_> = line.split("{ $").skip(1)
                 .map(|part| part.split(' ').next().unwrap().to_owned()).collect();
             names.sort();
             names
         };
-        let source_variables: std::collections::HashMap<_, _> = SOURCES[0].lines()
+        let source_variables: std::collections::HashMap<_, _> = primary.lines()
             .filter(|line| !line.starts_with('#') && line.contains(" = "))
             .map(|line| (line.split(" = ").next().unwrap(), variables(line))).collect();
-        let ids: Vec<_> = SOURCES[0]
+        let ids: Vec<_> = primary
             .lines()
             .filter(|l| !l.starts_with('#') && l.contains(" = "))
             .map(|l| l.split(" = ").next().unwrap())
             .collect();
-        for (index, source) in SOURCES.iter().enumerate() {
+        for index in 0..SOURCES.len() {
+            let source = source(index);
             let other: Vec<_> = source
                 .lines()
                 .filter(|l| !l.starts_with('#') && l.contains(" = "))

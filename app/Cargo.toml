@@ -113,6 +113,7 @@ windows-version = "=0.100.0"
 windows-registry = "=0.100.0"
 luciddesk-graphics = { path = "../crates/luciddesk-graphics" }
 fluent-bundle = "0.16"
+flate2 = { version = "1.1.11", default-features = false, features = ["zlib-rs"] }
 unic-langid = "0.9"
 base64 = "0.23.1"
 ring = "0.17.14"
@@ -126,3 +127,4 @@ workspace = true
 
 [build-dependencies]
 embed-resource = "3.0.12"
+flate2 = { version = "1.1.11", default-features = false, features = ["zlib-rs"] }

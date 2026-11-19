@@ -1,6 +1,6 @@
 # 本地化指南
 
-应用使用 Fluent，七种语言资源位于 `app/locales/*.ftl`，通过 `include_str!` 编译进 EXE。`app/src/i18n.rs` 负责解析、系统语言匹配、英文回退、参数格式化和原生 UTF-16 文本。每种资源首次使用时加载，后续复用；布局测量仅缓存数值，不持有 COM 资源。
+应用使用 Fluent。`app/build.rs` 压缩 `app/locales/*.ftl` 中的七种语言资源，再将压缩数据编译进 EXE。`app/src/i18n.rs` 在每种语言首次使用时解压和解析，后续复用同一份缓存，并负责系统语言匹配、英文回退、参数格式化和原生 UTF-16 文本。布局测量仅缓存数值，不持有 COM 资源。
 
 ## 从哪里开始
 
@@ -88,7 +88,7 @@ let message = crate::i18n::format(
 新增 `.ftl` 文件不会自动出现在设置中，需要同步以下位置：
 
 1. **资源**：以现有文件为模板创建 `app/locales/<代码>.ftl`，保留全部键、顺序和变量，并完成译文。
-2. **注册与索引**：更新 `app/src/i18n.rs` 的 `LANGUAGES`、`SOURCES`、`CATALOGS` 及数组长度。`LANGUAGES` 的首项是 `system`，资源索引与其后各项一一对应。英文回退目前写死为索引 `2`；调整排序时必须同步所有相关索引，不能只移动列表项。
+2. **注册与索引**：在 `app/build.rs` 登记新的压缩资源，并更新 `app/src/i18n.rs` 的 `LANGUAGES`、`SOURCES`、`CATALOGS` 及数组长度。`LANGUAGES` 的首项是 `system`，资源索引与其后各项一一对应。英文回退固定为索引 `2`，调整排序时要同步所有相关索引。
 3. **匹配**：扩展 `resolve` 及 `system_locale_matching`，覆盖语言代码、地区或脚本变体与未知语言回退。系统标签匹配与配置允许值是两套规则，不能用前者替代配置验证。
 4. **配置**：更新 `crates/luciddesk-storage/src/store/config.rs` 的 `validate_language` 白名单，以及 `config_tests.rs` 中的语言往返测试。确认旧配置缺少 `language` 时仍默认 `system`。
 5. **字体**：更新 `default_font` 和 `font_sample`。代表字符应包含目标语言特有字形，并验证系统默认字体、自定义字体筛选和缺字回退。

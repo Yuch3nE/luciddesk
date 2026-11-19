@@ -7,6 +7,7 @@ fn main() {
         "app/src",
         "app/updater",
         "app/assets",
+        "app/locales",
         "app/build.rs",
         "app/Cargo.toml",
         "Cargo.toml",
@@ -89,11 +90,11 @@ fn main() {
         .expect("failed to read application resource template")
         .replace("@VERSION_NUMERIC@", &format!("{numeric_version},0"))
         .replace("@VERSION_STRING@", &version);
-    let resource_path = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap())
-        .join("app.rc");
+    let out_dir = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
+    compress_locales(&out_dir).expect("failed to compress Fluent resources");
     for (bin, description) in [("luciddesk", "LucidDesk"), ("updater", "LucidDesk Updater")] {
         let rc = resource.replace("@BINARY@", bin).replace("@DESCRIPTION@", description);
-        compile_resources(&resource_path.with_file_name(format!("{bin}.rc")), &rc, bin);
+        compile_resources(&out_dir.join(format!("{bin}.rc")), &rc, bin);
     }
     // Declare modern Windows compatibility for composited native child editors,
     // and use the same v6 controls in the app and backdrop fixtures.
@@ -114,6 +115,19 @@ fn main() {
             manifest.display()
         );
     }
+}
+
+fn compress_locales(out_dir: &std::path::Path) -> std::io::Result<()> {
+    use flate2::{Compression, write::DeflateEncoder};
+    use std::io::Write;
+
+    for language in ["zh-CN", "zh-TW", "en-US", "ja-JP", "ko-KR", "de-DE", "ru-RU"] {
+        let source = std::fs::read(format!("locales/{language}.ftl"))?;
+        let mut encoder = DeflateEncoder::new(Vec::new(), Compression::best());
+        encoder.write_all(&source)?;
+        std::fs::write(out_dir.join(format!("{language}.ftl.deflate")), encoder.finish()?)?;
+    }
+    Ok(())
 }
 
 fn compile_resources(path: &std::path::Path, resource: &str, bin: &str) {
