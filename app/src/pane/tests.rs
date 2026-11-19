@@ -481,6 +481,7 @@ pub(super) fn test_state() -> PaneApp {
         tab_models: HashMap::new(),
         settings: None,
         session: None,
+        pending_desktop_renames: Vec::new(),
         drops: Vec::new(),
         runtime: None,
         workspace,

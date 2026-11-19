@@ -152,6 +152,7 @@ struct PaneApp {
     settings: Option<windows_window::Window>,
     // Desktop membership is suspended while Explorer/its compatible Hook is unavailable.
     session: Option<hybrid::Session>,
+    pending_desktop_renames: Vec<hybrid::rename_transaction::PendingRename>,
     drops: Vec<drag_drop::target::Registration>,
     runtime: Option<runtime::State>,
     workspace: Workspace,
@@ -305,6 +306,7 @@ fn desktop_items_for(state: &PaneApp, id: PanelId, current: Option<&[Item]>) -> 
     };
     let items: Vec<_> = ordered_desktop_items(&state.workspace, id)
         .into_iter()
+        .filter(|item| !hybrid::rename_transaction::awaiting_identity(state, item.identity()))
         .map(|item| {
             (
                 item,

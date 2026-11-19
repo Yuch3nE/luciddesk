@@ -630,6 +630,7 @@ fn run_inner() -> Result<(), String> {
         tab_models: HashMap::new(),
         settings: None,
         session: None,
+        pending_desktop_renames: Vec::new(),
         drops: Vec::new(),
         runtime: None,
         workspace: Workspace::new(),

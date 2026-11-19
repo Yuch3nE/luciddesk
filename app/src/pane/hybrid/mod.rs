@@ -7,7 +7,7 @@ mod icons;
 mod image_retention;
 mod shortcut_retention;
 mod inventory;
-mod rename_transaction;
+pub(in crate::pane) mod rename_transaction;
 use super::assets::RECYCLE_BIN_PARSING_NAME;
 use super::search::everything_settings;
 use super::*;
@@ -79,6 +79,7 @@ pub(super) fn desired_membership(s: &PaneApp) -> Vec<String> {
         .desktop_items()
         .iter()
         .filter(|item| matches!(item.placement(), DesktopPlacement::Pane { .. }))
+        .filter(|item| !rename_transaction::awaiting_identity(s, item.identity()))
         .map(|item| {
             item.identity()
                 .activation_name()
@@ -184,6 +185,7 @@ pub fn run(path: &Path, title: Option<String>) -> Result<(), String> {
         tab_models: HashMap::new(),
         settings: None,
         session: None,
+        pending_desktop_renames: Vec::new(),
         drops: Vec::new(),
         runtime: Some(runtime::State::new(path.to_path_buf())),
         workspace,
@@ -659,16 +661,12 @@ fn update_inventory(s: &mut PaneApp) {
         .image_retention
         .invalidate(&mut s.images);
     normalize_pane_orders(s);
+    let mut incoming: Vec<_> = s.session.as_ref().unwrap().snapshot.items.iter()
+        .map(|item| DesktopItem::new(item.identity.clone(), item.display_name.clone())).collect();
+    rename_transaction::retain_unresolved(s, &mut incoming);
     let h = s.session.as_mut().unwrap();
     let snapshot = &h.snapshot;
-    h.shortcut_retention.reconcile(
-        &mut s.workspace,
-        snapshot
-            .items
-            .iter()
-            .map(|item| DesktopItem::new(item.identity.clone(), item.display_name.clone())),
-        Instant::now(),
-    );
+    h.shortcut_retention.reconcile(&mut s.workspace, incoming, Instant::now());
     let valid: Vec<_> = s.workspace.panels().iter().map(Panel::id).collect();
     for item in s.workspace.desktop_items_mut() {
         if matches!(item.placement(), DesktopPlacement::Pane { pane_id, .. } if !valid.contains(pane_id))
@@ -865,6 +863,7 @@ fn hidden_names(s: &PaneApp) -> Vec<String> {
         .filter(|item| {
             matches!(item.placement(), DesktopPlacement::Pane { .. })
                 && s.images.contains_key(&item.identity().persistent_key())
+                && !rename_transaction::awaiting_identity(s, item.identity())
         })
         .map(|item| {
             item.identity()
@@ -1019,26 +1018,29 @@ fn clear_pane_selection_on_desktop_input(s: &PaneApp) {
     }
 }
 
-// Called by the queued preview action, not when its shortcut is received.
-// False means another menu/preview owns this session; do not open or resume it.
-pub(super) fn pause_for_preview(s: &PaneApp, allow: bool) -> Result<bool, String> {
-    if let Some(h) = &s.session {
-        if allow {
-            if h.menu_active.replace(true) {
-                return Ok(false);
-            }
-            h.last_pane_input
-                .set(Some(unsafe { GetMessageTime() } as u32));
+pub(super) fn with_desktop_preview(
+    state: &Rc<RefCell<PaneApp>>,
+    open: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    let hook = {
+        let s = state.borrow();
+        if s.session.as_ref().is_some_and(|h| h.menu_active.get()) {
+            return Ok(());
         }
-        if let Err(error) = h.hook.pause(allow) {
-            if allow {
-                h.menu_active.set(false);
-            }
-            return Err(error);
-        }
-        h.menu_active.set(allow);
+        s.session.as_ref().map(|_| begin_item_menu(&s)).transpose()?
+    };
+    let Some(hook) = hook else { return open(); };
+
+    // A failed PAUSE may have already changed the view. Always attempt RESUME
+    // on the same session, without an application borrow across either call.
+    let result = hook.pause(true).and_then(|_| open());
+    let restored = hook.resume_preview();
+    let s = state.borrow();
+    if let Some(h) = s.session.as_ref().filter(|h| Rc::ptr_eq(&h.hook, &hook)) {
+        h.menu_active.set(false);
+        h.wake.notify();
     }
-    Ok(true)
+    result.and(restored)
 }
 
 pub(super) fn begin_item_menu(s: &PaneApp) -> Result<Rc<FilterSession>, String> {

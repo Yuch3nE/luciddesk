@@ -348,6 +348,15 @@ impl FilterSession {
         self.request(if pause { wire::PAUSE } else { wire::RESUME }, &[])?;
         Ok(!pause && unsafe { !GetPropW(self.view, RENAME).is_null() })
     }
+
+    /// Leave the preview scope, or retire the session so detach restores its view.
+    pub fn resume_preview(&self) -> Result<(), String> {
+        let result = self.pause(false).map(|_| ());
+        if result.is_err() {
+            self.retired.set(true);
+        }
+        result
+    }
     /// Enable blank-desktop gestures on the existing desktop thread hook.
     /// # Errors
     /// Returns the native request/acknowledgement failure.
@@ -824,6 +833,34 @@ mod update_tests {
             assert!(session.request(wire::DETACH, &[]).is_ok(), "cleanup must still reach Explorer");
             assert!(GetPropW(hwnd, OWNER).is_null());
         }
+    }
+
+    #[test]
+    fn failed_preview_resume_retires_live_session_and_still_allows_detach() {
+        unsafe extern "system" fn peer(hwnd: HWND, msg: u32, wp: usize, lp: isize) -> isize {
+            unsafe {
+                if msg != WM_COPYDATA {
+                    return DefWindowProcW(hwnd, msg, wp, lp);
+                }
+                let request = received_request(lp);
+                if request.op == wire::DETACH {
+                    RemovePropW(hwnd, OWNER);
+                } else if request.op == wire::RESUME && request.sequence == 2 {
+                    SetPropW(hwnd, REQUEST_ERROR, 123usize as _);
+                }
+                SetPropW(hwnd, ACK, request.sequence as usize as _);
+                MAGIC as isize
+            }
+        }
+        let window = Window::with_proc(windows_sys::w!("LucidDeskPreviewResumeTest"), Some(peer));
+        let hwnd = window.hwnd;
+        window.owner(hwnd);
+        let session = std::mem::ManuallyDrop::new(test_session(hwnd, hwnd, 0));
+        assert!(session.resume_preview().is_ok());
+        assert!(session.is_alive());
+        assert!(session.resume_preview().is_err());
+        assert!(!session.is_alive());
+        assert!(session.request(wire::DETACH, &[]).is_ok());
     }
 
     #[test]

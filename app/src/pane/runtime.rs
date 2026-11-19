@@ -331,6 +331,7 @@ fn next_work(s: &PaneApp, reveal: &show_hotkey::Registration) -> Option<u32> {
         .chain(desktop_toggle::next_work().map(|delay| now + delay))
         .chain(runtime.filter(|r| r.updates.borrow().busy()).map(|_| now + Duration::from_millis(200)))
         .chain(reconnect)
+        .chain(hybrid::rename_transaction::recovery_deadline(s))
         .chain(runtime.and_then(|r| r.layouts.deadline()))
         .chain(recovery::deadline(s))
         .chain(reveal.retry_deadline())
@@ -512,6 +513,7 @@ pub(super) fn supervisor(state: &Rc<RefCell<PaneApp>>) -> Result<windows_window:
                         if let Err(error) = result { luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Error, "pane.runtime", &format!("Language refresh: {error}")); }
                     }
 
+                    hybrid::rename_transaction::retry_pending(&state);
                     let folder_renames = {
                         let mut s = state.borrow_mut();
                         if let Some(runtime) = &mut s.runtime {

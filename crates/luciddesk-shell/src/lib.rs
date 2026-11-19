@@ -34,7 +34,7 @@ pub use native_menu::{MenuInvocation, peek_desktop_item, show_isolated_item_menu
 #[cfg(feature = "desktop-menu-diagnostics")]
 pub use native_menu::{show_desktop_item_menu, show_desktop_items_menu};
 pub use notification::DesktopChangeSubscription;
-pub use rename::{rename_shell_identity, rename_shell_item};
+pub use rename::{CommittedRename, commit_shell_rename, rename_shell_identity, rename_shell_item};
 
 #[cfg(test)]
 mod tests;

@@ -181,12 +181,7 @@ pub(super) fn route(
                 {
                     return peek::open_path(identity);
                 }
-                if !hybrid::pause_for_preview(&state.borrow(), true)? {
-                    return Ok(());
-                }
-                let result = peek::open(owner, identity);
-                let restored = hybrid::pause_for_preview(&state.borrow(), false).map(|_| ());
-                result.and(restored)
+                hybrid::with_desktop_preview(&state, || peek::open(owner, identity))
             })?;
         }
         return Ok(false);

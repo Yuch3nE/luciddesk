@@ -538,10 +538,14 @@ mod tests {
         assert!(!valid_shortcut(0x43, 1));
         assert!(!valid_shortcut(VK_F4, 4));
         assert!(decode("broken").is_none());
+        let fixture = tempfile::tempdir().unwrap();
+        let executable = fixture.path().join("PowerToys.Peek.UI.exe");
+        std::fs::write(&executable, []).unwrap();
         save(
             &store,
             Settings {
                 enabled: true,
+                path: executable.to_string_lossy().into_owned(),
                 ..Default::default()
             },
         )

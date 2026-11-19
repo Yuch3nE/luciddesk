@@ -11,7 +11,7 @@ impl Update {
         let result = self.hook.finish_update();
         self.finished = result.is_ok();
         if let Some(state) = self.state.upgrade() {
-            if let Some(h) = &state.borrow().session {
+            if let Some(h) = state.borrow().session.as_ref().filter(|h| Rc::ptr_eq(&h.hook, &self.hook)) {
                 h.menu_active.set(false);
                 h.dirty.set(true);
                 h.wake.notify();
@@ -67,11 +67,22 @@ pub(in crate::pane) fn commit(
         finished: false,
     };
     let renamed =
-        luciddesk_shell::rename_shell_item(windows::Win32::Foundation::HWND(owner), old, name)
+        luciddesk_shell::commit_shell_rename(windows::Win32::Foundation::HWND(owner), old, name)
             .map_err(|e| e.to_string())?;
     let Some(renamed) = renamed else {
         update.finish()?;
         return Ok(false);
+    };
+    let renamed = match renamed.entry(old) {
+        Ok(entry) => entry,
+        Err(error) => {
+            queue_recovery(&mut state.borrow_mut(), old.clone(), renamed);
+            log_recovery("read new identity", &error);
+            if let Err(error) = update.finish() {
+                log_recovery("release", &error);
+            }
+            return Ok(true);
+        }
     };
     let hook = update.hook.clone();
     reconcile_committed(
@@ -83,6 +94,98 @@ pub(in crate::pane) fn commit(
         || update.finish(),
     );
     Ok(true)
+}
+
+const RETRY_DELAY: Duration = Duration::from_secs(1);
+
+pub(in crate::pane) struct PendingRename {
+    old: ShellIdentity,
+    renamed: luciddesk_shell::CommittedRename,
+    retry_at: Option<Instant>,
+}
+
+impl PendingRename {
+    fn matches(&self, identity: &ShellIdentity) -> bool {
+        match (&self.old, identity) {
+            (
+                ShellIdentity::FileSystem { volume_id: Some(old_volume), file_id: Some(old_file), .. },
+                ShellIdentity::FileSystem { volume_id: Some(volume), file_id: Some(file), .. },
+            ) => (old_volume, old_file) == (volume, file),
+            _ => self.old.equivalent_to(identity),
+        }
+    }
+}
+
+pub(in crate::pane) fn awaiting_identity(s: &PaneApp, identity: &ShellIdentity) -> bool {
+    s.pending_desktop_renames.iter().any(|pending| {
+        pending.matches(identity)
+            && pending.old.activation_name().eq_ignore_ascii_case(identity.activation_name())
+    })
+}
+
+pub(super) fn retain_unresolved(s: &PaneApp, incoming: &mut Vec<DesktopItem>) {
+    for pending in &s.pending_desktop_renames {
+        // Preserve the old placement if neither the authoritative new identity
+        // nor the old row appeared in this snapshot. Ignore reuse of the old path.
+        incoming.retain(|item| !pending.old.equivalent_to(item.identity()) || pending.matches(item.identity()));
+        if !incoming.iter().any(|item| pending.matches(item.identity()))
+            && let Some(old) = s.workspace.desktop_items().iter().find(|item| pending.matches(item.identity()))
+        {
+            incoming.push(old.clone());
+        }
+    }
+}
+
+fn queue_recovery(s: &mut PaneApp, old: ShellIdentity, renamed: luciddesk_shell::CommittedRename) {
+    s.pending_desktop_renames.push(PendingRename { old, renamed, retry_at: Some(Instant::now()) });
+    if let Some(h) = &s.session {
+        h.dirty.set(true);
+    }
+    refresh_views(s);
+    s.wake.notify();
+}
+
+pub(in crate::pane) fn recovery_deadline(s: &PaneApp) -> Option<Instant> {
+    s.session.as_ref().filter(|h| is_alive(h) && !h.menu_active.get())?;
+    s.pending_desktop_renames.iter().filter_map(|pending| pending.retry_at).min()
+}
+
+pub(in crate::pane) fn retry_pending(state: &Rc<RefCell<PaneApp>>) {
+    let now = Instant::now();
+    let (old, renamed) = {
+        let mut s = state.borrow_mut();
+        if recovery_deadline(&s).is_none_or(|due| due > now) {
+            return;
+        }
+        let Some(pending) = s.pending_desktop_renames.iter_mut().find(|pending| pending.retry_at.is_some_and(|due| due <= now)) else { return; };
+        // Prevent a nested message loop from retrying the same COM object.
+        pending.retry_at = None;
+        (pending.old.clone(), pending.renamed.clone())
+    };
+    let entry = renamed.entry(&old);
+    let mut s = state.borrow_mut();
+    let Some(index) = s.pending_desktop_renames.iter().position(|pending| pending.old == old) else { return; };
+    let Some(entry) = entry.ok().filter(|_| s.session.is_some()) else {
+        s.pending_desktop_renames[index].retry_at = Some(Instant::now() + RETRY_DELAY);
+        return;
+    };
+    let pending = s.pending_desktop_renames.remove(index);
+    let current = s.workspace.desktop_items().iter().find(|item| pending.matches(item.identity()))
+        .map(|item| item.identity().clone());
+    if let Some(current) = current {
+        replace_item(&mut s, &current, entry);
+        let h = s.session.as_mut().unwrap();
+        h.pending_workspace_save = true;
+        h.save_due = None;
+        h.audit.invalidate_snapshot();
+        h.dirty.set(true);
+        h.wake.notify();
+    }
+    refresh_views(&mut s);
+}
+
+fn log_recovery(stage: &str, error: &impl std::fmt::Display) {
+    luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Error, "pane.hybrid.rename_transaction", &format!("Rename committed; {stage} recovery pending: {error}"));
 }
 
 fn reconcile_committed(
@@ -140,12 +243,19 @@ fn reconcile_committed(
         ("save", saved),
     ] {
         if let Err(error) = result {
-            luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Error, "pane.hybrid.rename_transaction", &format!("Rename committed; {stage} recovery pending: {error}"));
+            log_recovery(stage, &error);
         }
     }
 }
 
 fn replace_item(s: &mut PaneApp, old: &ShellIdentity, renamed: luciddesk_shell::ShellEntry) {
+    if !old.equivalent_to(&renamed.identity) && s.workspace.desktop_item(&renamed.identity).is_some() {
+        // A desktop audit may already have seen the renamed item separately.
+        // Preserve the old entry's placement and remove the duplicate incoming row.
+        let items: Vec<_> = s.workspace.desktop_items().iter()
+            .filter(|item| !item.identity().equivalent_to(&renamed.identity)).cloned().collect();
+        s.workspace.reconcile_desktop_items(items);
+    }
     for item in s.workspace.desktop_items_mut() {
         if item.identity().equivalent_to(old) {
             let placement = item.placement().clone();
@@ -163,6 +273,11 @@ fn replace_item(s: &mut PaneApp, old: &ShellIdentity, renamed: luciddesk_shell::
         }
     }
     if let Some(h) = s.session.as_mut() {
+        if !old.equivalent_to(&renamed.identity)
+            && h.snapshot.items.iter().any(|item| item.identity.equivalent_to(old))
+        {
+            h.snapshot.items.retain(|item| !item.identity.equivalent_to(&renamed.identity));
+        }
         for item in &mut h.snapshot.items {
             if item.identity.equivalent_to(old) {
                 *item = renamed.clone();
@@ -266,6 +381,36 @@ mod tests {
         let identity=renamed.identity.clone();
         replace_item(&mut s,&old,renamed);
         assert_eq!(s.workspace.desktop_item_mut(&identity).unwrap().pane_position(),Some(point));
+    }
+
+    #[test]
+    fn recovered_identity_replaces_an_audited_duplicate_and_keeps_placement() {
+        let mut s = crate::pane::tests::test_state();
+        let old = s.workspace.desktop_items()[0].identity().clone();
+        let identity = ShellIdentity::Namespace { parsing_name: "test:recovered".into() };
+        let point = luciddesk_core::PointDip::new(12.0, 42.0);
+        let original = s.workspace.desktop_item_mut(&old).unwrap();
+        original.set_pane_position(Some(point));
+        let placement = original.placement().clone();
+        let mut inventory = s.workspace.desktop_items().to_vec();
+        inventory.push(DesktopItem::new(identity.clone(), "Recovered"));
+        s.workspace.reconcile_desktop_items(inventory);
+
+        replace_item(&mut s, &old, luciddesk_shell::ShellEntry {
+            identity: identity.clone(),
+            display_name: "Recovered".into(),
+            attributes: Default::default(),
+            created: None,
+            modified: None,
+            size: None,
+        });
+
+        assert!(s.workspace.desktop_item(&old).is_none());
+        let mut entries = s.workspace.desktop_items().iter().filter(|item| item.identity() == &identity);
+        let recovered = entries.next().unwrap();
+        assert_eq!(recovered.placement(), &placement);
+        assert_eq!(recovered.pane_position(), Some(point));
+        assert!(entries.next().is_none());
     }
 
 }

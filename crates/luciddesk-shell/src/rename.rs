@@ -4,9 +4,12 @@ use windows::Win32::UI::Shell::{IFileOperationProgressSink, IFileOperationProgre
 use windows::core::{HRESULT, PCWSTR, Ref, implement};
 use windows::{
     Win32::{
-        Foundation::{E_INVALIDARG, HWND},
+        Foundation::{E_FAIL, E_INVALIDARG, HWND, S_OK},
         System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance},
-        UI::Shell::{FileOperation, IFileOperation, IShellItem, SHCreateItemFromParsingName},
+        UI::Shell::{
+            COPYENGINE_S_COLLISIONRESOLVED, FileOperation, IFileOperation, IShellItem,
+            SHCreateItemFromParsingName,
+        },
     },
     core::{HSTRING, Result},
 };
@@ -16,7 +19,7 @@ use windows::{
 /// # Errors
 /// Returns Shell errors for invalid names, unavailable items, or failed operations.
 pub fn rename_shell_identity(owner: HWND, identity: &ShellIdentity, name: &str) -> Result<bool> {
-    Ok(rename_shell_item(owner, identity, name)?.is_some())
+    Ok(commit_shell_rename(owner, identity, name)?.is_some())
 }
 
 /// Return the actual Shell result so the caller can replace its identity before
@@ -26,6 +29,56 @@ pub fn rename_shell_item(
     identity: &ShellIdentity,
     name: &str,
 ) -> Result<Option<crate::ShellEntry>> {
+    commit_shell_rename(owner, identity, name)?
+        .map(|renamed| renamed.entry(identity))
+        .transpose()
+}
+
+/// The Shell confirmed the rename. The returned object can be queried again
+/// on the same STA if its new identity cannot be read immediately.
+#[derive(Clone)]
+pub struct CommittedRename {
+    item: Option<IShellItem>,
+    actual_name: Option<String>,
+}
+
+impl CommittedRename {
+    pub fn entry(&self, old: &ShellIdentity) -> Result<crate::ShellEntry> {
+        if let Some(item) = &self.item
+            && let Ok(entry) = crate::namespace::shell_entry_with_display_fallback(item, self.actual_name.as_deref())
+        {
+            return Ok(entry);
+        }
+        // The reported name may differ from the requested one. Trust a path
+        // reconstructed from it only when it still has the original file ID.
+        if let ShellIdentity::FileSystem { path, volume_id: Some(volume), file_id: Some(file) } = old
+            && let Some(parent) = path.parent()
+            && let Some(name) = self.actual_name.as_deref()
+            && !name.contains(['\\', '/', ':', '\0'])
+            && std::path::Path::new(name).file_name() == Some(std::ffi::OsStr::new(name))
+        {
+            let path = parent.join(name);
+            if crate::namespace::stable_file_identity(&path) == Some((*volume, *file)) {
+                return Ok(crate::ShellEntry {
+                    identity: ShellIdentity::FileSystem { path, volume_id: Some(*volume), file_id: Some(*file) },
+                    display_name: name.to_owned(),
+                    attributes: Default::default(),
+                    created: None,
+                    modified: None,
+                    size: None,
+                });
+            }
+        }
+        Err(windows::core::Error::new(E_FAIL, "Shell 改名已完成，暂时无法读取新项目身份"))
+    }
+}
+
+/// Perform the rename and report commitment independently of identity reads.
+pub fn commit_shell_rename(
+    owner: HWND,
+    identity: &ShellIdentity,
+    name: &str,
+) -> Result<Option<CommittedRename>> {
     if name.trim().is_empty() || name.contains(['\0', '/', '\\']) {
         return Err(windows::core::Error::new(
             E_INVALIDARG,
@@ -44,39 +97,39 @@ pub fn rename_shell_item(
         let outcome = Rc::new(RefCell::new(None));
         let sink: IFileOperationProgressSink = RenameResult(outcome.clone()).into();
         operation.RenameItem(&item, &HSTRING::from(name), &sink)?;
-        if !crate::file_command::command_completed(operation.PerformOperations())? {
+        let performed = operation.PerformOperations();
+        let reported = outcome.borrow_mut().take();
+        if let Some(Ok(Some(renamed))) = reported {
+            return Ok(Some(renamed));
+        }
+        if !crate::file_command::command_completed(performed)? {
             return Ok(None);
         }
         if operation.GetAnyOperationsAborted()?.as_bool() {
             return Ok(None);
         }
-        let result = outcome.borrow_mut().take().ok_or_else(|| {
-            windows::core::Error::new(
-                windows::Win32::Foundation::E_FAIL,
-                "Shell 未返回改名后的项目",
-            )
-        })??;
-        Ok(Some(result))
+        reported.unwrap_or_else(|| Err(windows::core::Error::new(E_FAIL, "Shell 未返回改名结果")))
     }
 }
 
 #[implement(IFileOperationProgressSink)]
-struct RenameResult(Rc<RefCell<Option<Result<crate::ShellEntry>>>>);
+struct RenameResult(Rc<RefCell<Option<Result<Option<CommittedRename>>>>>);
 impl IFileOperationProgressSink_Impl for RenameResult_Impl {
     fn PostRenameItem(
         &self,
         _: u32,
         _: Ref<IShellItem>,
-        _: &PCWSTR,
+        name: &PCWSTR,
         result: HRESULT,
         item: Ref<IShellItem>,
     ) -> Result<()> {
-        let outcome = result.ok().and_then(|()| {
-            crate::namespace::shell_entry(
-                item.as_ref().ok_or(windows::Win32::Foundation::E_POINTER)?,
-            )
-            .map_err(|error| {
-                windows::core::Error::new(windows::Win32::Foundation::E_FAIL, error.to_string())
+        let outcome = result.ok().map(|()| {
+            (item.as_ref().is_some() || matches!(result, S_OK | COPYENGINE_S_COLLISIONRESOLVED)).then(|| CommittedRename {
+                item: item.as_ref().cloned(),
+                actual_name: (!name.is_null())
+                    .then(|| unsafe { name.to_string().ok() })
+                    .flatten()
+                    .filter(|name| !name.is_empty()),
             })
         });
         *self.0.borrow_mut() = Some(outcome);
@@ -175,6 +228,32 @@ impl IFileOperationProgressSink_Impl for RenameResult_Impl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn committed_rename_can_recover_identity_after_callback_lookup_fails() {
+        let _apartment = crate::ShellApartment::initialize_sta().unwrap();
+        let suffix = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("luciddesk-rename-recovery-{suffix}"));
+        std::fs::create_dir(&root).unwrap();
+        let before = root.join("before.txt");
+        let after = root.join("reported.txt");
+        std::fs::write(&before, b"rename recovery").unwrap();
+        let (volume, file) = crate::namespace::stable_file_identity(&before).unwrap();
+        let old = ShellIdentity::FileSystem { path: before.clone(), volume_id: Some(volume), file_id: Some(file) };
+        let outcome = Rc::new(RefCell::new(None));
+        let sink: IFileOperationProgressSink = RenameResult(outcome.clone()).into();
+        unsafe { sink.PostRenameItem(0, None::<&IShellItem>, windows::core::w!("reported.txt"), S_OK, None::<&IShellItem>) }.unwrap();
+        let committed = outcome.borrow_mut().take().unwrap().unwrap().unwrap();
+        std::fs::write(&after, b"unrelated file").unwrap();
+        assert!(committed.entry(&old).is_err(), "do not capture another file at the reported path");
+        std::fs::remove_file(&after).unwrap();
+        std::fs::rename(&before, &after).unwrap();
+        let entry = committed.entry(&old).unwrap();
+        assert_eq!(entry.identity.file_system_path(), Some(after.as_path()));
+        assert!(entry.identity.equivalent_to(&old));
+        std::fs::remove_file(after).unwrap();
+        std::fs::remove_dir(root).unwrap();
+    }
+
     #[test]
     fn shell_rename_keeps_the_same_file_identity() {
         let _apartment = crate::ShellApartment::initialize_sta().unwrap();

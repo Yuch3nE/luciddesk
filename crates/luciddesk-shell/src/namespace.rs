@@ -274,7 +274,15 @@ fn enumerate_shell_folder(
 }
 
 pub(crate) fn shell_entry(item: &IShellItem) -> Result<ShellEntry, ShellError> {
-    let display_name = shell_item_name(item, SIGDN_NORMALDISPLAY)?;
+    shell_entry_with_display_fallback(item, None)
+}
+
+pub(crate) fn shell_entry_with_display_fallback(
+    item: &IShellItem,
+    fallback: Option<&str>,
+) -> Result<ShellEntry, ShellError> {
+    let display_name = shell_item_name(item, SIGDN_NORMALDISPLAY)
+        .or_else(|error| fallback.map(str::to_owned).ok_or(error))?;
     let identity = shell_item_name(item, SIGDN_FILESYSPATH)
         .ok()
         .filter(|value| !value.is_empty())
