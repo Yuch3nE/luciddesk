@@ -78,12 +78,15 @@ pub(super) fn navigation_colors(material: Backdrop, dark: bool) -> [ColorF; 3] {
 }
 impl<'a> SettingsForm<'a> {
     pub fn continuation(scene: &'a mut Scene, width: f32, y: f32) -> Self {
+        Self::continuation_with_margin(scene, width, y, Tokens::MARGIN)
+    }
+    pub fn continuation_with_margin(scene: &'a mut Scene, width: f32, y: f32, right_margin: f32) -> Self {
         let x = scene.content_left;
         Self {
             scene,
             title_badge: None,
             x,
-            width: (width - x - Tokens::MARGIN).min(Tokens::MAX_WIDTH),
+            width: (width - x - right_margin).min(Tokens::MAX_WIDTH),
             y,
         }
     }

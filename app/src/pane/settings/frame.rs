@@ -24,10 +24,12 @@ pub(super) fn frame_hit(x: f32, y: f32, width: f32, height: f32, maximized: bool
     }
 }
 pub(super) fn with_titlebar(scene: Scene, width: f32, maximized: bool) -> Scene {
-    with_named_titlebar(scene, width, maximized, crate::i18n::text("ui-luciddesk-settings"))
+    with_named_titlebar(scene, width, maximized, crate::i18n::text("ui-luciddesk-settings"), 28.0)
 }
 
-pub(super) fn with_named_titlebar(mut scene: Scene, width: f32, maximized: bool, title: &str) -> Scene {
+pub(super) fn with_named_titlebar(
+    mut scene: Scene, width: f32, maximized: bool, title: &str, icon_left: f32,
+) -> Scene {
     if let Some(viewport) = &mut scene.navigation_viewport {
         viewport.top += TITLE_HEIGHT;
         viewport.bottom += TITLE_HEIGHT;
@@ -55,10 +57,11 @@ pub(super) fn with_named_titlebar(mut scene: Scene, width: f32, maximized: bool,
         c.bounds.top += TITLE_HEIGHT;
         c.bounds.bottom += TITLE_HEIGHT;
     }
-    scene.caption_icon = Some(Rect::from_xywh(28.0, (TITLE_HEIGHT - 18.0) * 0.5, 18.0, 18.0));
+    scene.caption_icon = Some(Rect::from_xywh(icon_left, (TITLE_HEIGHT - 18.0) * 0.5, 18.0, 18.0));
+    let title_left = icon_left + 28.0;
     scene.text(
         // Keep localized titles clear of the caption buttons.
-        Rect::from_xywh(56.0, 0.0, (width - 56.0 - 138.0 - 16.0).max(1.0), TITLE_HEIGHT),
+        Rect::from_xywh(title_left, 0.0, (width - title_left - 138.0 - 16.0).max(1.0), TITLE_HEIGHT),
         title,
         Tokens::CAPTION_TEXT,
     );

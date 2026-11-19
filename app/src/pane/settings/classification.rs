@@ -18,6 +18,7 @@ pub(super) enum Tab {
 }
 
 const TAB_TOP: f32 = Tokens::GAP;
+const SIDE_MARGIN: f32 = Tokens::INSET;
 const BODY_TOP: f32 = TAB_TOP + NavigationItem::HEIGHT + Tokens::INSET;
 const MIN_WINDOW_HEIGHT: f32 = 380.0;
 const MAX_PREVIEW_HEIGHT: f32 = 800.0;
@@ -520,6 +521,10 @@ pub(super) fn settings_entry(scene: &mut Scene, width: f32) {
     form.primary_button(t("organizer-window-title"), "", t("organizer-open"), Action::OpenOrganizer);
 }
 
+fn organizer_titlebar(scene: Scene, width: f32, maximized: bool) -> Scene {
+    with_named_titlebar(scene, width, maximized, t("organizer-window-title"), SIDE_MARGIN)
+}
+
 fn window_scene(
     (width, height): (f32, f32),
     backdrop: Backdrop,
@@ -529,7 +534,7 @@ fn window_scene(
     editor: &Editor,
     undo_available: bool,
 ) -> Scene {
-    let mut scene = Scene::empty(backdrop, Tokens::MARGIN, TITLE_HEIGHT + BODY_TOP - Tokens::GAP);
+    let mut scene = Scene::empty(backdrop, SIDE_MARGIN, TITLE_HEIGHT + BODY_TOP - Tokens::GAP);
     let labels = [
         (Tab::Rules, t("organizer-rules"), "\u{e8fd}"),
         (Tab::Organize, t("classification-run"), "\u{e8b7}"),
@@ -538,16 +543,16 @@ fn window_scene(
         let text = components::text_width(label, Style::TEXT_SIZE).ceil();
         (text + NavigationItem::LABEL_INSET + NavigationItem::END_INSET).max(112.0)
     });
-    let available = (width - 2.0 * Tokens::MARGIN - Tokens::GAP).max(2.0);
+    let available = (width - 2.0 * SIDE_MARGIN - Tokens::GAP).max(2.0);
     let scale = (available / widths.iter().sum::<f32>()).min(1.0);
-    let mut left = Tokens::MARGIN;
+    let mut left = SIDE_MARGIN;
     for ((target, label, icon), preferred_width) in labels.into_iter().zip(widths) {
         let tab_width = preferred_width * scale;
         scene.control(ControlKind::Tab(icon), Rect::from_xywh(left, TAB_TOP, tab_width, NavigationItem::HEIGHT),
             label, Action::OrganizeTab(target), target == tab);
         left += tab_width + Tokens::GAP;
     }
-    let form = SettingsForm::continuation(&mut scene, width, BODY_TOP);
+    let form = SettingsForm::continuation_with_margin(&mut scene, width, BODY_TOP, SIDE_MARGIN);
     match tab {
         Tab::Rules => draw_rules(form, panels, value, editor),
         Tab::Organize => draw_organize(form, editor, undo_available),
@@ -599,7 +604,7 @@ fn draw_footer(scene: &mut Scene, width: f32, height: f32, actions: &[(&str, Com
     if actions.is_empty() {
         return;
     }
-    let width = (width - 2.0 * Tokens::MARGIN).min(Tokens::MAX_WIDTH);
+    let width = (width - 2.0 * SIDE_MARGIN).min(Tokens::MAX_WIDTH);
     scene.footer_height = Tokens::CONTROL_HEIGHT + 2.0 * Tokens::INSET;
     let top = height - TITLE_HEIGHT - scene.footer_height + Tokens::INSET;
     let gap = luciddesk_window::control_style::BUTTON_GAP;
@@ -613,7 +618,7 @@ fn draw_footer(scene: &mut Scene, width: f32, height: f32, actions: &[(&str, Com
         .collect();
     let total = widths.iter().sum::<f32>();
     let scale = ((width - gaps) / total).min(1.0);
-    let mut left = Tokens::MARGIN + width - gaps - total * scale;
+    let mut left = SIDE_MARGIN + width - gaps - total * scale;
     for (&(label, action, primary), width) in actions.iter().zip(widths) {
         let width = width * scale;
         let refresh = action == Command::Run && !primary;
@@ -622,7 +627,7 @@ fn draw_footer(scene: &mut Scene, width: f32, height: f32, actions: &[(&str, Com
         } else { ControlKind::Button };
         scene.control(
             kind,
-            Rect::from_xywh(if refresh { Tokens::MARGIN } else { left }, top, width, Tokens::CONTROL_HEIGHT),
+            Rect::from_xywh(if refresh { SIDE_MARGIN } else { left }, top, width, Tokens::CONTROL_HEIGHT),
             label,
             action.action(),
             false,

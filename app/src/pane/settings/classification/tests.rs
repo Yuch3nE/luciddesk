@@ -62,7 +62,7 @@ fn settings_and_tray_share_one_modeless_organizer_and_select_the_requested_tab()
         GetClientRect(organizer, &raw mut bounds);
         let width = bounds.right as f32 / scale;
         let body = window_scene((width, bounds.bottom as f32 / scale), Backdrop::Mica, Tab::Organize, &[], None, &Editor::default(), false);
-        let body = with_named_titlebar(body, width, false, t("organizer-window-title"));
+        let body = organizer_titlebar(body, width, false);
         let rules = body.controls.iter().find(|control| matches!(control.action, Action::OrganizeTab(Tab::Rules))).unwrap();
         let x = ((rules.bounds.left + rules.bounds.right) * 0.5 * scale) as u16;
         let y = ((rules.bounds.top + rules.bounds.bottom) * 0.5 * scale) as u16;
@@ -375,7 +375,7 @@ fn classification_stages_align_and_render() {
                     );
                     let fit_example = locale == 0 && width == 800.0 && *name == "updated";
                     let height = if fit_example {
-                        let scene = with_named_titlebar(layout(height), width, false, t("organizer-window-title"));
+                        let scene = organizer_titlebar(layout(height), width, false);
                         preferred_preview_height(&scene)
                     } else {
                         height
@@ -383,6 +383,7 @@ fn classification_stages_align_and_render() {
                     let body = layout(height);
                     let tabs: Vec<_> = body.controls.iter().filter(|control| matches!(control.kind, ControlKind::Tab(_))).collect();
                     let [rules, organize] = tabs.as_slice() else { panic!("expected two organizer tabs") };
+                    assert_eq!(rules.bounds.left, SIDE_MARGIN);
                     assert_eq!(rules.bounds.right + Tokens::GAP, organize.bounds.left);
                     assert!(tabs.iter().any(|control| control.selected
                         && matches!(control.action, Action::OrganizeTab(selected) if selected == tab)));
@@ -392,16 +393,21 @@ fn classification_stages_align_and_render() {
                             - NavigationItem::LABEL_INSET - NavigationItem::END_INSET + 0.01);
                     }
                     for card in &body.cards {
-                        assert_eq!(card.left, Tokens::MARGIN);
-                        assert!(card.right <= width - Tokens::MARGIN + 0.01);
+                        assert_eq!(card.left, SIDE_MARGIN);
+                        assert!((card.right - (width - SIDE_MARGIN)).abs() < 0.01);
                     }
                     assert!(body.cards.windows(2).all(|cards| cards[0].bottom <= cards[1].top));
+                    if let Some(last) = body.controls.iter().rev().find(|control| {
+                        matches!(control.action, Action::Classification(command) if command.is_footer())
+                    }) {
+                        assert!((last.bounds.right - (width - SIDE_MARGIN)).abs() < 0.01);
+                    }
                     let control = |command: Command| body.controls.iter().find(|control| command.is_control(&control.action));
                     if let Some(preview) = &editor.preview {
                         let refresh = control(Command::Run).unwrap();
                         assert!(refresh.enabled && matches!(refresh.kind, ControlKind::QuietButton(_)));
                         assert_eq!(refresh.label, t("organizer-refresh-preview"));
-                        assert_eq!(refresh.bounds.left, Tokens::MARGIN);
+                        assert_eq!(refresh.bounds.left, SIDE_MARGIN);
                         assert!(control(Command::CancelPreview).unwrap().enabled);
                         assert_eq!(control(Command::ApplyPreview).is_some_and(|button| button.enabled && matches!(button.kind, ControlKind::PrimaryButton)),
                             preview.move_count() > 0);
@@ -526,9 +532,9 @@ fn classification_stages_align_and_render() {
                     if *undo_available {
                         assert!(control(Command::UndoOrganize).unwrap().enabled);
                     }
-                    let mut scrolled = with_named_titlebar(
+                    let mut scrolled = organizer_titlebar(
                         window_scene((width, height), Backdrop::Mica, tab, &panels, settings.get(KEY), editor, *undo_available),
-                        width, false, t("organizer-window-title"),
+                        width, false,
                     );
                     let mut offset = f32::MAX;
                     scrolled.scroll_to(width, height, &mut offset);
@@ -539,7 +545,8 @@ fn classification_stages_align_and_render() {
                         assert_eq!(change.bounds.top, (original.bounds.top + TITLE_HEIGHT) - offset);
                     }
 
-                    let mut body = with_named_titlebar(body, width, false, t("organizer-window-title"));
+                    let mut body = organizer_titlebar(body, width, false);
+                    assert_eq!(body.caption_icon.unwrap().left, SIDE_MARGIN);
                     body.scroll_to(width, height, &mut 0.0);
                     if fit_example {
                         assert_eq!(body.scroll_max, 0.0);
@@ -743,7 +750,7 @@ fn classification_editing_survives_tab_switch_and_only_saves_valid_input() {
         let body = window_scene((w, rect.bottom as f32 / scale), appearance.1, Tab::Rules, owner.workspace.panels(),
             owner.store.settings().unwrap().get(KEY), &Editor::default(), false);
         drop(owner);
-        let body = with_named_titlebar(body, w, false, t("organizer-window-title"));
+        let body = organizer_titlebar(body, w, false);
         assert!(
             body.text
                 .iter()

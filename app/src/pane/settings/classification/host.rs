@@ -319,7 +319,7 @@ impl Organizer {
                 self.editor.collapse_details();
                 self.pressed = None;
             }
-            let mut scene = with_named_titlebar(
+            let mut scene = organizer_titlebar(
                 window_scene(
                     (width, height),
                     visible_material(self.appearance.1, supports_mica()),
@@ -331,7 +331,6 @@ impl Organizer {
                 ),
                 width,
                 unsafe { IsZoomed(hwnd) } != 0,
-                t("organizer-window-title"),
             );
             if self.auto_fit_preview && self.tab == Tab::Organize && self.editor.previewing() {
                 preferred_height = preferred_preview_height(&scene);
