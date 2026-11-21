@@ -1809,7 +1809,7 @@ fn all_languages_layout_and_render_without_control_overflow() {
                             painter.label_width(&c.label).unwrap()
                                 <= c.bounds.right
                                     - c.bounds.left
-                                    - NavigationItem::LABEL_INSET
+                                    - NavigationItem::SIDEBAR_LABEL_INSET
                                     - NavigationItem::END_INSET,
                             "Navigation truncated: {}",
                             c.label
@@ -2377,6 +2377,7 @@ fn grouped_navigation_keeps_routes_selection_and_scrolling_in_all_languages() {
                     assert!(matches!(selected[0].action, Action::Page(id) if id == selected_page));
                     for (bounds, _, style) in &scene.text[scene.navigation_text.clone()] {
                         if *style == 8 {
+                            assert_eq!(bounds.left, Tokens::NAV_LEADING);
                             for control in scene.controls.iter().filter(|c| matches!(c.kind, ControlKind::Navigation(_))) {
                                 assert!(bounds.bottom <= control.bounds.top || bounds.top >= control.bounds.bottom);
                             }
@@ -2384,6 +2385,7 @@ fn grouped_navigation_keeps_routes_selection_and_scrolling_in_all_languages() {
                     }
                     let icons: Vec<_> = scene.controls.iter().filter_map(|control| {
                         let ControlKind::Navigation(icon) = control.kind else { return None; };
+                        assert_eq!(control.bounds.left, Tokens::NAV_LEFT);
                         assert_eq!(control.bounds.bottom - control.bounds.top, NavigationItem::HEIGHT);
                         Some(icon)
                     }).collect();
@@ -2396,6 +2398,7 @@ fn grouped_navigation_keeps_routes_selection_and_scrolling_in_all_languages() {
                     let viewport = scene.navigation_viewport.unwrap();
                     let selected = scene.controls.iter().find(|c| matches!(c.kind, ControlKind::Navigation(_)) && c.selected).unwrap();
                     assert!(selected.bounds.top >= viewport.top && selected.bounds.bottom <= viewport.bottom);
+                    assert_eq!(with_titlebar(scene, 1000.0, false).caption_icon.unwrap().left, Tokens::NAV_LEADING);
                 }
             }
         });

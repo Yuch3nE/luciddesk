@@ -306,11 +306,12 @@ fn scene_with_mica(
     let stride = NavigationItem::HEIGHT + 4.0;
     let start = s.text.len();
     let top = 28.0;
-    let left = Tokens::MARGIN / 2.0;
+    let left = Tokens::NAV_LEFT;
     let mut y = top;
     for entry in &entries {
         if let Some(section) = entry.section {
-            s.text(Rect::from_xywh(28.0, y + 4.0, content_x - 52.0, 20.0), section, 8);
+            s.text(Rect::from_xywh(Tokens::NAV_LEADING, y + 4.0,
+                content_x - Tokens::MARGIN - Tokens::NAV_LEADING, 20.0), section, 8);
             y += heading_height;
         }
         let selected = match &entry.action {
@@ -318,7 +319,8 @@ fn scene_with_mica(
             Action::Page(id) => plugin.is_none() && (page == *id || (page == 7 && *id == 0) || (matches!(page, 9 | 10) && *id == 6)),
             _ => false,
         };
-        s.control(ControlKind::Navigation(entry.icon), Rect::from_xywh(left, y, content_x - 2.0 * Tokens::MARGIN, NavigationItem::HEIGHT), &entry.label, entry.action.clone(), selected);
+        s.control(ControlKind::Navigation(entry.icon), Rect::from_xywh(left, y,
+            content_x - Tokens::NAV_RIGHT_GAP - left, NavigationItem::HEIGHT), &entry.label, entry.action.clone(), selected);
         y += stride;
     }
     s.navigation_text = start..s.text.len();

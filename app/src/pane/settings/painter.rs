@@ -542,7 +542,12 @@ impl Painter {
                             navigation.brushes[Tone::AccentInk as usize] = ink;
                         }
                         let indicated = c.selected || animation.selection.is_some_and(|opacity| opacity > 0.0);
-                        NavigationItem { icon, selected: indicated }.paint(&mut navigation, bounds, &c.label, state);
+                        let item = NavigationItem { icon, selected: indicated };
+                        if matches!(c.kind, ControlKind::Navigation(_)) {
+                            item.paint_sidebar(&mut navigation, bounds, &c.label, state);
+                        } else {
+                            item.paint(&mut navigation, bounds, &c.label, state);
+                        }
                         return Ok(());
                     }
                     if matches!(c.action, Action::FontSearch | Action::Classification(classification::Command::Input(_))) {

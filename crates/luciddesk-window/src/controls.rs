@@ -317,8 +317,20 @@ impl NavigationItem<'_> {
     pub const HEIGHT: f32 = 40.0;
     pub const LABEL_INSET: f32 = 48.0;
     pub const END_INSET: f32 = 12.0;
+    pub const SIDEBAR_ICON_INSET: f32 = 12.0;
+    pub const SIDEBAR_LABEL_INSET: f32 = 40.0;
 
     pub fn paint(self, canvas: &mut impl Canvas, bounds: Bounds, label: &str, state: State) {
+        self.paint_insets(canvas, bounds, label, state, [18.0, Self::LABEL_INSET]);
+    }
+
+    pub fn paint_sidebar(self, canvas: &mut impl Canvas, bounds: Bounds, label: &str, state: State) {
+        self.paint_insets(canvas, bounds, label, state, [Self::SIDEBAR_ICON_INSET, Self::SIDEBAR_LABEL_INSET]);
+    }
+
+    fn paint_insets(self, canvas: &mut impl Canvas, bounds: Bounds, label: &str, state: State,
+        [icon_inset, label_inset]: [f32; 2],
+    ) {
         let selected = state.enabled && self.selected;
         if selected || (state.enabled && state.active) {
             canvas.fill(bounds, style::RADIUS, if selected { Tone::Selection } else { Tone::Hover });
@@ -333,16 +345,16 @@ impl NavigationItem<'_> {
         state.focus(canvas, bounds);
         let tone = if selected { Tone::AccentInk } else { state.text() };
         canvas.text(
-            Bounds::new(bounds.x + 18.0, bounds.y, 20.0, bounds.height),
+            Bounds::new(bounds.x + icon_inset, bounds.y, 20.0, bounds.height),
             self.icon,
             Alignment::ActionIcon,
             tone,
         );
         canvas.text(
             Bounds::new(
-                bounds.x + Self::LABEL_INSET,
+                bounds.x + label_inset,
                 bounds.y,
-                (bounds.width - Self::LABEL_INSET - Self::END_INSET).max(1.0),
+                (bounds.width - label_inset - Self::END_INSET).max(1.0),
                 bounds.height,
             ),
             label,
@@ -789,6 +801,12 @@ mod tests {
         assert_eq!(navigation.icons, ["icon"]);
         assert_eq!(navigation.labels[1].0.x, bounds.x + NavigationItem::LABEL_INSET);
         assert!(navigation.labels.iter().all(|(_, tone)| *tone == Tone::AccentInk));
+
+        let mut sidebar = RecordingCanvas::default();
+        NavigationItem { icon: "icon", selected: true }.paint_sidebar(&mut sidebar, bounds, "Rules", active);
+        assert_eq!(sidebar.fills, navigation.fills);
+        assert_eq!(sidebar.labels[0].0.x, bounds.x + NavigationItem::SIDEBAR_ICON_INSET);
+        assert_eq!(sidebar.labels[1].0.x, bounds.x + NavigationItem::SIDEBAR_LABEL_INSET);
 
         let mut disabled = RecordingCanvas::default();
         let state = State {

@@ -24,7 +24,7 @@ pub(super) fn frame_hit(x: f32, y: f32, width: f32, height: f32, maximized: bool
     }
 }
 pub(super) fn with_titlebar(scene: Scene, width: f32, maximized: bool) -> Scene {
-    with_named_titlebar(scene, width, maximized, crate::i18n::text("ui-luciddesk-settings"), 28.0)
+    with_named_titlebar(scene, width, maximized, crate::i18n::text("ui-luciddesk-settings"), Tokens::NAV_LEADING)
 }
 
 pub(super) fn with_named_titlebar(

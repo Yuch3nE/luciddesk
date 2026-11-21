@@ -13,13 +13,16 @@ impl Tokens {
     pub fn content_x() -> f32 {
         super::layout::navigation()
             .iter()
-            .map(|entry| (text_width(&entry.label, Style::TEXT_SIZE) + 2.0 * Self::MARGIN
-                + NavigationItem::LABEL_INSET + NavigationItem::END_INSET)
-                .max(entry.section.map_or(0.0, |title| text_width(title, Style::NAV_HEADING) + 52.0)))
+            .map(|entry| (text_width(&entry.label, Style::TEXT_SIZE) + Self::NAV_LEFT + Self::NAV_RIGHT_GAP
+                + NavigationItem::SIDEBAR_LABEL_INSET + NavigationItem::END_INSET)
+                .max(entry.section.map_or(0.0, |title| text_width(title, Style::NAV_HEADING) + Self::NAV_LEADING + Self::MARGIN)))
             .fold(248.0_f32, f32::max)
             .min(344.0)
     }
     pub const MARGIN: f32 = 24.0;
+    pub const NAV_LEFT: f32 = 8.0;
+    pub const NAV_LEADING: f32 = Self::NAV_LEFT + NavigationItem::SIDEBAR_ICON_INSET;
+    pub const NAV_RIGHT_GAP: f32 = 36.0;
     pub const GAP: f32 = 8.0;
     pub const INSET: f32 = 16.0;
     pub const CARD_RADIUS: f32 = 8.0;
