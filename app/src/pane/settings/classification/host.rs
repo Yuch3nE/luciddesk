@@ -136,7 +136,12 @@ pub(super) fn show(state: &Rc<RefCell<PaneApp>>, tab: Tab) -> Result<(), String>
                 WM_TIMER if wp == RULE_DRAG_TIMER => organizer.scroll_rule_drag(hwnd),
                 WM_TIMER if wp == RULE_MOTION_TIMER => {
                     let now = Instant::now();
-                    if !organizer.editor.tick_rule_animations(now) && !organizer.rule_motion.playing(now) {
+                    organizer.switch_motion.retain(|_, motion| {
+                        motion.sample(now).is_ok_and(|value| value != motion.to)
+                    });
+                    if !organizer.editor.tick_rule_animations(now)
+                        && !organizer.rule_motion.playing(now) && organizer.switch_motion.is_empty()
+                    {
                         unsafe { KillTimer(hwnd, RULE_MOTION_TIMER); }
                     }
                     redraw(hwnd);
@@ -397,12 +402,54 @@ struct Organizer {
     scroll_grab: Option<f32>,
     rule_drag: Option<RuleDrag>,
     rule_motion: RuleReorderMotion,
+    pending_switch: Option<Command>,
+    switch_motion: HashMap<RuleSwitch, Motion>,
     grip_hover: Option<usize>,
     hover: Option<usize>,
     hovered_destination: Option<(usize, usize)>,
     pressed: Option<usize>,
     focus: Option<usize>,
     tip: Option<Tooltip>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum RuleSwitch {
+    Automatic,
+    Rule(usize),
+}
+
+impl RuleSwitch {
+    fn for_command(command: Command) -> Option<Self> {
+        match command {
+            Command::Enable(_) => Some(Self::Automatic),
+            Command::Toggle(index) => Some(Self::Rule(index)),
+            _ => None,
+        }
+    }
+
+    fn saved_change(
+        command: Command,
+        before: Option<&SettingValue>,
+        after: Option<&SettingValue>,
+    ) -> Option<(Self, f32, f32)> {
+        let mut expected = decode(before).ok()?;
+        let (id, enabled, to) = match command {
+            Command::Enable(to) => (Self::Automatic, &mut expected.enabled, to),
+            Command::Toggle(index) => {
+                let enabled = &mut expected.rules.get_mut(index)?.enabled;
+                let to = !*enabled;
+                (Self::Rule(index), enabled, to)
+            }
+            _ => return None,
+        };
+        let from = std::mem::replace(enabled, to);
+        // A reorder, edit or external change can reuse a row index. Animate only the saved toggle.
+        if from != to && after == Some(&SettingValue::Text(encode(&expected).ok()?)) {
+            Some((id, f32::from(u8::from(from)), f32::from(u8::from(to))))
+        } else {
+            None
+        }
+    }
 }
 
 impl Organizer {
@@ -424,6 +471,8 @@ impl Organizer {
             scroll_grab: None,
             rule_drag: None,
             rule_motion: RuleReorderMotion::default(),
+            pending_switch: None,
+            switch_motion: HashMap::new(),
             grip_hover: None,
             hover: None,
             hovered_destination: None,
@@ -475,10 +524,14 @@ impl Organizer {
                 .settings()
                 .ok()
                 .and_then(|mut values| values.remove(KEY));
+            let pending_switch = self.pending_switch.take();
             if self.rules != rules {
                 let _ = self.stop_rule_drag(hwnd);
                 if self.rule_motion.release.is_none() {
                     self.rule_motion = RuleReorderMotion::default();
+                }
+                if self.update_switch_motion(pending_switch, rules.as_ref(), Instant::now(), scrollbar::animations_enabled()) {
+                    self.schedule_rule_animations(hwnd);
                 }
                 self.rules = rules;
                 self.editor.collapse_details();
@@ -567,6 +620,19 @@ impl Organizer {
         if self.tab == Tab::Rules {
             self.editor.sync(scene, scale, dark);
         }
+        let mut switch_positions = HashMap::new();
+        if !self.switch_motion.is_empty() {
+            let now = Instant::now();
+            for (index, control) in scene.controls.iter().enumerate() {
+                if let Action::Classification(command) = control.action
+                    && let Some(id) = RuleSwitch::for_command(command)
+                    && let Some(motion) = self.switch_motion.get(&id)
+                    && let Ok(position) = motion.sample(now)
+                {
+                    switch_positions.insert(index, position);
+                }
+            }
+        }
         self.paint_recovery.paint(
             hwnd,
             &mut self.surface,
@@ -594,7 +660,7 @@ impl Organizer {
                     surface.native,
                     self.hover,
                     self.focus,
-                    &HashMap::new(),
+                    &switch_positions,
                 )?;
                 surface.end_frame()?;
                 Ok(true)
@@ -629,6 +695,9 @@ impl Organizer {
         }
         let previous = self.editor.expanded;
         self.editor.execute(state, hwnd, command);
+        if self.editor.error.is_none() && RuleSwitch::for_command(command).is_some() {
+            self.pending_switch = Some(command);
+        }
         if matches!(command, Command::ToggleDetails(_)) && previous != self.editor.expanded
             && scrollbar::animations_enabled()
         {
@@ -757,14 +826,32 @@ impl Organizer {
 
     fn schedule_rule_animations(&mut self, hwnd: HWND) {
         if unsafe { SetTimer(hwnd, RULE_MOTION_TIMER, USER_TIMER_MINIMUM, None) } == 0 {
-            self.editor.finish_rule_animations();
-            self.rule_motion = RuleReorderMotion::default();
+            self.finish_rule_animations(hwnd);
         }
+    }
+
+    fn update_switch_motion(
+        &mut self,
+        command: Option<Command>,
+        rules: Option<&SettingValue>,
+        now: Instant,
+        animate: bool,
+    ) -> bool {
+        let change = command.filter(|_| animate)
+            .and_then(|command| RuleSwitch::saved_change(command, self.rules.as_ref(), rules));
+        let Some((id, from, to)) = change else {
+            self.switch_motion.clear();
+            return false;
+        };
+        let motion = self.switch_motion.entry(id).or_insert_with(|| Motion::settled(from, now));
+        motion.retarget(to, now, true) != to
     }
 
     fn finish_rule_animations(&mut self, hwnd: HWND) {
         self.editor.finish_rule_animations();
         self.rule_motion = RuleReorderMotion::default();
+        self.pending_switch = None;
+        self.switch_motion.clear();
         unsafe { KillTimer(hwnd, RULE_MOTION_TIMER); }
     }
 
@@ -1208,6 +1295,55 @@ fn rule_drag_advances_insertion_when_scrolled_at_the_viewport_edge() {
     scene.scroll_to(480.0, 380.0, &mut organizer.scroll);
     let drag = organizer.rule_drag.as_ref().unwrap();
     assert_eq!(drag.drop_target(scene), Some(3));
+}
+
+#[test]
+fn rule_switch_motion_reverses_and_only_follows_the_saved_switch() {
+    let _sta = crate::pane::test_support::apartment();
+    let mut organizer = Organizer::new().unwrap();
+    let snapshot = |config: &Classification| SettingValue::Text(encode(config).unwrap());
+    let mut config = Classification {
+        enabled: false,
+        rules: vec![ClassificationRule {
+            target_panel: 1,
+            enabled: true,
+            item_type: None,
+            extensions: vec!["pdf".into()],
+            name_contains: None,
+            name_regex: None,
+        }],
+    };
+    let start = Instant::now();
+    organizer.rules = Some(snapshot(&config));
+    config.enabled = true;
+    let enabled = snapshot(&config);
+    assert!(organizer.update_switch_motion(Some(Command::Enable(true)), Some(&enabled), start, true));
+    organizer.rules = Some(enabled);
+
+    let halfway = start + crate::pane::animation::TOGGLE_DURATION / 2;
+    let automatic = RuleSwitch::Automatic;
+    let fraction = organizer.switch_motion[&automatic].sample(halfway).unwrap();
+    assert!(fraction > 0.0 && fraction < 1.0);
+    config.rules[0].enabled = false;
+    let disabled_rule = snapshot(&config);
+    assert!(organizer.update_switch_motion(Some(Command::Toggle(0)), Some(&disabled_rule), halfway, true));
+    assert_eq!(organizer.switch_motion[&RuleSwitch::Rule(0)].sample(halfway).unwrap(), 1.0);
+    organizer.rules = Some(disabled_rule);
+
+    config.enabled = false;
+    let disabled = snapshot(&config);
+    assert!(organizer.update_switch_motion(Some(Command::Enable(false)), Some(&disabled), halfway, true));
+    assert!((organizer.switch_motion[&automatic].sample(halfway).unwrap() - fraction).abs() < 0.001);
+
+    organizer.rules = Some(disabled);
+    config.rules[0].enabled = true;
+    let enabled_rule = snapshot(&config);
+    assert!(!organizer.update_switch_motion(Some(Command::Toggle(0)), Some(&enabled_rule), halfway, false));
+    assert!(organizer.switch_motion.is_empty());
+    config.rules[0].target_panel = 2;
+    let unrelated_edit = snapshot(&config);
+    assert!(!organizer.update_switch_motion(Some(Command::Toggle(0)), Some(&unrelated_edit), halfway, true));
+    assert!(organizer.switch_motion.is_empty());
 }
 
 #[test]
