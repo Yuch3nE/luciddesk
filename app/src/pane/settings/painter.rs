@@ -330,6 +330,7 @@ impl Painter {
                     .map(|(first, last)| first.separators.start..last.separators.end);
                 for (index, r) in s.separators.iter().enumerate() {
                     let _clip = ContentClip::new(&t, s, r.left >= s.content_left && !s.fixed_list());
+                    let _disclosure = s.disclosure_separator_clip(index).map(|clip| ContentClip::rect(&t, clip));
                     let line = if rule_dividers.as_ref().is_some_and(|range| range.contains(&index)) {
                         rule_divider
                     } else if dark {
@@ -544,8 +545,9 @@ impl Painter {
                             return Ok(());
                         }
                         ControlKind::SectionDisclosure { summary_width } => {
-                            let mut section_canvas = WidgetCanvas { leading_text: Some((Tokens::SECTION_TITLE, summary_width)), ..widget_canvas };
-                            InlineControl::Disclosure { expanded: c.selected, tinted: false }
+                            let reserved = summary_width + InlineControl::SECTION_DISCLOSURE_PADDING;
+                            let mut section_canvas = WidgetCanvas { leading_text: Some((Tokens::SECTION_TITLE, reserved)), ..widget_canvas };
+                            InlineControl::SectionDisclosure { expanded: c.selected }
                                 .paint(&mut section_canvas, bounds, &c.label, state);
                             return Ok(());
                         }
@@ -867,7 +869,7 @@ impl Painter {
                 let paint_text = |index: usize, (r, text, size): &(Rect, String, usize)| {
                     let _navigation_clip = s.navigation_text.contains(&index).then(|| ContentClip::navigation(&t, s));
                     let _clip = ContentClip::new(&t, s, *size != Tokens::CAPTION_TEXT && r.left >= s.content_left && !s.fixed_list());
-                    let _detail_clip = s.rule_detail_clip(index).map(|clip| ContentClip::rect(&t, clip));
+                    let _disclosure = s.disclosure_text_clip(index).map(|clip| ContentClip::rect(&t, clip));
                     if *size == Tokens::TITLE_BADGE {
                         t.clipped_icon(style::INFO, &self.formats[4],
                             &Rect::from_xywh(r.left + 8.0, r.top, Style::ICON_SLOT, r.bottom - r.top), blue);

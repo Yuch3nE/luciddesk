@@ -103,7 +103,7 @@ pub(super) fn draw(
     let now = Instant::now();
     for (index, rule) in rules.iter().enumerate() {
         let (controls, text, separators, clips) = (
-            scene.controls.len(), scene.text.len(), scene.separators.len(), scene.rule_detail_clips.len(),
+            scene.controls.len(), scene.text.len(), scene.separators.len(), scene.disclosure_clips.len(),
         );
         let divider_left = if index == 0 { left } else { target.left };
         scene.separators.push(Rect::from_xywh(divider_left, y, right - divider_left, 1.0));
@@ -122,7 +122,7 @@ pub(super) fn draw(
             controls: controls..scene.controls.len(),
             text: text..scene.text.len(),
             separators: separators..scene.separators.len(),
-            detail_clips: clips..scene.rule_detail_clips.len(),
+            detail_clips: clips..scene.disclosure_clips.len(),
         });
         y = bottom;
     }
@@ -280,7 +280,7 @@ pub(super) fn draw_preview(
     scene: &mut Scene,
     mut bounds: Rect,
     preview: &hybrid::OrganizePreview,
-    show_skipped: bool,
+    disclosure: (bool, f32),
 ) {
     if let Some(changes) = preview.changes.as_deref().filter(|changes| !changes.is_empty()) {
         draw_preview_changes(scene, &mut bounds, changes);
@@ -295,9 +295,9 @@ pub(super) fn draw_preview(
             preview
                 .entries
                 .iter()
-                .filter(|entry| show_skipped && matches!(entry, hybrid::PreviewEntry::Skip { .. }))
+                .filter(|entry| disclosure.1 > 0.0 && matches!(entry, hybrid::PreviewEntry::Skip { .. }))
                 .map(preview_row),
-            show_skipped,
+            disclosure,
         );
     }
 }
@@ -418,16 +418,19 @@ fn draw_skipped(
     bounds: Rect,
     count: usize,
     entries: impl Iterator<Item = (String, String)>,
-    expanded: bool,
+    (expanded, reveal): (bool, f32),
 ) {
+    use luciddesk_window::controls::InlineControl;
+
     let left = bounds.left + INSET;
     let width = (bounds.right - bounds.left - 2.0 * INSET).max(1.0);
     let heading_top = bounds.top + GAP;
     let summary = icon_count(count);
     let summary_width = SectionHeader::measure_summary(&summary, width);
+    let padding = InlineControl::SECTION_DISCLOSURE_PADDING;
     scene.control(
         ControlKind::SectionDisclosure { summary_width },
-        Rect::from_xywh(left, heading_top, width, CONTROL),
+        Rect::from_xywh(left - padding, heading_top, width + 2.0 * padding, CONTROL),
         t("classification-preview-skipped"),
         Command::ToggleSkipped.action(),
         expanded,
@@ -437,8 +440,11 @@ fn draw_skipped(
         summary,
         Tokens::SECONDARY_VALUE,
     );
-    let mut top = heading_top + CONTROL;
-    let inset = luciddesk_window::controls::InlineControl::DISCLOSURE_LABEL_INSET;
+    let rows_top = heading_top + CONTROL;
+    let first_text = scene.text.len();
+    let first_separator = scene.separators.len();
+    let mut top = rows_top;
+    let inset = InlineControl::DISCLOSURE_LABEL_INSET;
     let row_width = (width - inset).max(1.0);
     for (index, (name, detail)) in entries.enumerate() {
         if index > 0 {
@@ -447,7 +453,15 @@ fn draw_skipped(
         let row = Rect::from_xywh(left + inset, top + GAP / 2.0, row_width, 0.0);
         top = preview_text_row(scene, row, name, detail) + GAP / 2.0;
     }
-    scene.cards.push(Rect { bottom: top + GAP, ..bounds });
+    let height = (top - rows_top) * reveal;
+    if reveal > 0.0 && reveal < 1.0 {
+        scene.disclosure_clips.push(DisclosureClip {
+            text: first_text..scene.text.len(),
+            separators: first_separator..scene.separators.len(),
+            bounds: Rect::from_xywh(left, rows_top, width, height),
+        });
+    }
+    scene.cards.push(Rect { bottom: rows_top + height + GAP, ..bounds });
 }
 
 fn icon_count(count: usize) -> String {
@@ -643,7 +657,11 @@ fn saved_row(
     let bottom = actions.bottom + (full_bottom - actions.bottom) * expansion;
     if expansion < 1.0 {
         let clip = Rect::from_xywh(target.left, actions.bottom, actions.right - target.left, bottom - actions.bottom);
-        scene.rule_detail_clips.push((first_detail..scene.text.len(), clip));
+        scene.disclosure_clips.push(DisclosureClip {
+            text: first_detail..scene.text.len(),
+            separators: 0..0,
+            bounds: clip,
+        });
     }
     if bottom >= actions.bottom + GAP + 1.0 {
         scene.separators.push(Rect::from_xywh(

@@ -185,6 +185,7 @@ pub(super) struct Editor {
     detail_motions: HashMap<usize, Motion>,
     preview: Option<hybrid::OrganizePreview>,
     show_skipped: Option<bool>,
+    skipped_motion: Option<Motion>,
     applying: Option<PendingOrganize>,
     result: Option<OrganizeResult>,
     error: Option<String>,
@@ -205,6 +206,24 @@ impl Editor {
         self.show_skipped.unwrap_or(preview.move_count() == 0)
     }
 
+    fn skipped_fraction(&self, expanded: bool, now: Instant) -> f32 {
+        self.skipped_motion.as_ref().and_then(|motion| motion.sample(now).ok())
+            .unwrap_or(if expanded { 1.0 } else { 0.0 })
+            .clamp(0.0, 1.0)
+    }
+
+    fn animate_skipped(&mut self, previous: bool, now: Instant, animate: bool) -> bool {
+        if !animate {
+            self.skipped_motion = None;
+            return false;
+        }
+        let to = if self.show_skipped == Some(true) { 1.0 } else { 0.0 };
+        let motion = self.skipped_motion.get_or_insert_with(|| {
+            Motion::settled(if previous { 1.0 } else { 0.0 }, now)
+        });
+        motion.retarget_with_duration(to, now, true, SETTINGS_DURATION) != to
+    }
+
     pub(super) fn poll_organize(&mut self) -> bool {
         use std::sync::mpsc::TryRecvError;
         let Some(pending) = &self.applying else { return false; };
@@ -214,6 +233,7 @@ impl Editor {
             Err(TryRecvError::Disconnected) => Err(t("classification-desktop-unavailable").into()),
         };
         self.applying = None;
+        self.skipped_motion = None;
         match result {
             Ok(hybrid::OrganizeOutcome::Applied(moves)) => {
                 self.result = Some(OrganizeResult::Applied(moves));
@@ -299,13 +319,19 @@ impl Editor {
             .clamp(0.0, 1.0)
     }
 
-    fn tick_rule_animations(&mut self, now: Instant) -> bool {
+    fn tick_disclosure_animations(&mut self, now: Instant) -> bool {
         self.detail_motions.retain(|_, motion| motion.sample(now).is_ok_and(|value| value != motion.to));
-        !self.detail_motions.is_empty()
+        if self.skipped_motion.as_ref().is_some_and(|motion| {
+            !motion.sample(now).is_ok_and(|value| value != motion.to)
+        }) {
+            self.skipped_motion = None;
+        }
+        !self.detail_motions.is_empty() || self.skipped_motion.is_some()
     }
 
-    fn finish_rule_animations(&mut self) {
+    fn finish_disclosure_animations(&mut self) {
         self.detail_motions.clear();
+        self.skipped_motion = None;
     }
 
     fn drop_rule(&mut self, state: &PaneApp, from: usize, to: usize, expected: &SettingValue) -> bool {
@@ -375,11 +401,13 @@ impl Editor {
             Command::CancelPreview => {
                 self.preview = None;
                 self.show_skipped = None;
+                self.skipped_motion = None;
                 self.reveal(Command::Run);
                 return Ok(());
             }
             Command::ApplyPreview if self.applying.is_none() => {
                 if let Some(preview) = self.preview.take() {
+                    self.skipped_motion = None;
                     self.reveal(Command::Run);
                     if preview.move_count() > 0 {
                         return self.start_organize(hwnd, command, || hybrid::apply_organize(&mut state.borrow_mut(), preview));
@@ -391,6 +419,7 @@ impl Editor {
                 let preview = hybrid::preview_organize(&state.borrow())?;
                 self.result = None;
                 self.show_skipped = None;
+                self.skipped_motion = None;
                 self.preview = Some(preview);
                 self.reveal(Command::CancelPreview);
                 return Ok(());
@@ -406,6 +435,7 @@ impl Editor {
                 self.start_organize(hwnd, command, || hybrid::undo_organize(&mut state.borrow_mut()))?;
                 self.preview = None;
                 self.show_skipped = None;
+                self.skipped_motion = None;
                 return Ok(());
             }
             Command::Target(id) => {
@@ -760,7 +790,9 @@ fn draw_organize(mut form: SettingsForm<'_>, editor: &Editor, undo_available: bo
         }
         let (scene, mut bounds) = form.into_content();
         table::draw_preview_summary(scene, &mut bounds, preview, undo);
-        table::draw_preview(scene, bounds, preview, editor.skipped_expanded(preview));
+        let expanded = editor.skipped_expanded(preview);
+        let reveal = editor.skipped_fraction(expanded, Instant::now());
+        table::draw_preview(scene, bounds, preview, (expanded, reveal));
         return;
     }
     if let Some(pending) = &editor.applying {

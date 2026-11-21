@@ -7,7 +7,7 @@ use windows_sys::Win32::UI::HiDpi::GetDpiForWindow;
 
 pub(super) const SELECT_TAB: u32 = WM_APP + 100;
 const RULE_DRAG_TIMER: usize = 0x4c4f44;
-const RULE_MOTION_TIMER: usize = 0x4c4f4d;
+const ORGANIZER_MOTION_TIMER: usize = 0x4c4f4d;
 #[cfg(test)]
 pub(super) const INSPECT_TAB: u32 = WM_APP + 101;
 #[cfg(test)]
@@ -117,12 +117,13 @@ pub(super) fn show(state: &Rc<RefCell<PaneApp>>, tab: Tab) -> Result<(), String>
                     organizer.tip = None;
                     unsafe {
                         KillTimer(hwnd, ORGANIZE_TIMER);
-                        KillTimer(hwnd, RULE_MOTION_TIMER);
+                        KillTimer(hwnd, ORGANIZER_MOTION_TIMER);
                     }
                     drop(closing);
                 }
                 WM_TIMER if wp == ORGANIZE_TIMER => {
                     if organizer.editor.poll_organize() {
+                        organizer.preview_fit_pending = organizer.editor.previewing();
                         organizer.tab_scroll[Tab::Organize as usize] = 0.0;
                         if organizer.tab == Tab::Organize {
                             organizer.scroll = 0.0;
@@ -134,22 +135,22 @@ pub(super) fn show(state: &Rc<RefCell<PaneApp>>, tab: Tab) -> Result<(), String>
                     }
                 }
                 WM_TIMER if wp == RULE_DRAG_TIMER => organizer.scroll_rule_drag(hwnd),
-                WM_TIMER if wp == RULE_MOTION_TIMER => {
+                WM_TIMER if wp == ORGANIZER_MOTION_TIMER => {
                     let now = Instant::now();
                     organizer.switch_motion.retain(|_, motion| {
                         motion.sample(now).is_ok_and(|value| value != motion.to)
                     });
-                    if !organizer.editor.tick_rule_animations(now)
+                    if !organizer.editor.tick_disclosure_animations(now)
                         && !organizer.rule_motion.playing(now) && organizer.switch_motion.is_empty()
                     {
-                        unsafe { KillTimer(hwnd, RULE_MOTION_TIMER); }
+                        unsafe { KillTimer(hwnd, ORGANIZER_MOTION_TIMER); }
                     }
                     redraw(hwnd);
                 }
                 WM_PAINT => organizer.paint(&state, hwnd, scale),
                 WM_SETTINGCHANGE => {
                     if !scrollbar::animations_enabled() {
-                        organizer.finish_rule_animations(hwnd);
+                        organizer.finish_animations(hwnd);
                     }
                     redraw(hwnd);
                 }
@@ -377,7 +378,7 @@ impl Scene {
         for bounds in self.controls[row.controls.clone()].iter_mut().map(|control| &mut control.bounds)
             .chain(self.text[row.text.clone()].iter_mut().map(|(bounds, _, _)| bounds))
             .chain(&mut self.separators[row.separators.clone()])
-            .chain(self.rule_detail_clips[row.detail_clips.clone()].iter_mut().map(|(_, clip)| clip))
+            .chain(self.disclosure_clips[row.detail_clips.clone()].iter_mut().map(|clip| &mut clip.bounds))
         {
             bounds.top += offset;
             bounds.bottom += offset;
@@ -399,6 +400,7 @@ struct Organizer {
     tab_scroll: [f32; 2],
     opened_preview: bool,
     auto_fit_preview: bool,
+    preview_fit_pending: bool,
     scroll_grab: Option<f32>,
     rule_drag: Option<RuleDrag>,
     rule_motion: RuleReorderMotion,
@@ -409,6 +411,7 @@ struct Organizer {
     hovered_destination: Option<(usize, usize)>,
     pressed: Option<usize>,
     focus: Option<usize>,
+    keyboard_focus: bool,
     tip: Option<Tooltip>,
 }
 
@@ -468,6 +471,7 @@ impl Organizer {
             tab_scroll: [0.0; 2],
             opened_preview: false,
             auto_fit_preview: true,
+            preview_fit_pending: true,
             scroll_grab: None,
             rule_drag: None,
             rule_motion: RuleReorderMotion::default(),
@@ -478,6 +482,7 @@ impl Organizer {
             hovered_destination: None,
             pressed: None,
             focus: None,
+            keyboard_focus: false,
             tip: None,
         })
     }
@@ -488,7 +493,7 @@ impl Organizer {
         }
         if self.tab != tab {
             let _ = self.stop_rule_drag(hwnd);
-            self.finish_rule_animations(hwnd);
+            self.finish_animations(hwnd);
             self.tab_scroll[self.tab as usize] = self.scroll;
             self.editor.hide_inputs();
             self.tab = tab;
@@ -531,7 +536,7 @@ impl Organizer {
                     self.rule_motion = RuleReorderMotion::default();
                 }
                 if self.update_switch_motion(pending_switch, rules.as_ref(), Instant::now(), scrollbar::animations_enabled()) {
-                    self.schedule_rule_animations(hwnd);
+                    self.schedule_animations(hwnd);
                 }
                 self.rules = rules;
                 self.editor.collapse_details();
@@ -550,7 +555,7 @@ impl Organizer {
                 width,
                 unsafe { IsZoomed(hwnd) } != 0,
             );
-            if self.auto_fit_preview && self.tab == Tab::Organize && self.editor.previewing() {
+            if self.auto_fit_preview && self.preview_fit_pending && self.tab == Tab::Organize && self.editor.previewing() {
                 preferred_height = preferred_preview_height(&scene);
             }
             if let Some(command) = self.editor.take_reveal(self.tab)
@@ -577,7 +582,7 @@ impl Organizer {
                     let now = Instant::now();
                     self.rule_motion.place(&mut scene, drag, now, scrollbar::animations_enabled());
                     if self.rule_motion.playing(now) {
-                        self.schedule_rule_animations(hwnd);
+                        self.schedule_animations(hwnd);
                     }
                 }
                 scene.rule_grip_pressed = self.rule_drag.as_ref().map(|drag| drag.from);
@@ -599,6 +604,9 @@ impl Organizer {
             return;
         }
         let preferred_height = self.layout(state, hwnd, bounds, scale);
+        if self.tab == Tab::Organize && self.editor.previewing() {
+            self.preview_fit_pending = false;
+        }
         if preferred_height != bounds.bottom as f32 / scale && resize_preview(hwnd, preferred_height, scale) {
             bounds = client_bounds(hwnd);
             self.clear_hover();
@@ -633,6 +641,7 @@ impl Organizer {
                 }
             }
         }
+        let focus = self.visible_focus(scene);
         self.paint_recovery.paint(
             hwnd,
             &mut self.surface,
@@ -659,7 +668,7 @@ impl Organizer {
                     dark,
                     surface.native,
                     self.hover,
-                    self.focus,
+                    focus,
                     &switch_positions,
                 )?;
                 surface.end_frame()?;
@@ -694,6 +703,11 @@ impl Organizer {
             return;
         }
         let previous = self.editor.expanded;
+        let previous_skipped = if command == Command::ToggleSkipped {
+            self.editor.preview.as_ref().map(|preview| self.editor.skipped_expanded(preview))
+        } else {
+            None
+        };
         self.editor.execute(state, hwnd, command);
         if self.editor.error.is_none() && RuleSwitch::for_command(command).is_some() {
             self.pending_switch = Some(command);
@@ -702,9 +716,18 @@ impl Organizer {
             && scrollbar::animations_enabled()
         {
             self.editor.animate_details(previous, Instant::now());
-            self.schedule_rule_animations(hwnd);
+            self.schedule_animations(hwnd);
+        }
+        if let Some(previous) = previous_skipped {
+            self.preview_fit_pending = false;
+            if self.editor.animate_skipped(previous, Instant::now(), scrollbar::animations_enabled()) {
+                self.schedule_animations(hwnd);
+            }
         }
         if self.tab == Tab::Organize {
+            if command == Command::Run && self.editor.organize_error.is_none() && self.editor.previewing() {
+                self.preview_fit_pending = true;
+            }
             if matches!(command, Command::Run | Command::CancelPreview)
                 || self.editor.applying.is_some()
             {
@@ -730,6 +753,14 @@ impl Organizer {
         if let Some(tip) = &mut self.tip {
             tip.hide();
         }
+    }
+
+    fn visible_focus(&self, scene: &Scene) -> Option<usize> {
+        self.focus.filter(|&index| {
+            scene.controls.get(index).is_some_and(|control| {
+                self.keyboard_focus || !matches!(control.kind, ControlKind::SectionDisclosure { .. })
+            })
+        })
     }
 
     fn scroll_by(&mut self, hwnd: HWND, delta: f32) {
@@ -824,9 +855,9 @@ impl Organizer {
         Some(drag)
     }
 
-    fn schedule_rule_animations(&mut self, hwnd: HWND) {
-        if unsafe { SetTimer(hwnd, RULE_MOTION_TIMER, USER_TIMER_MINIMUM, None) } == 0 {
-            self.finish_rule_animations(hwnd);
+    fn schedule_animations(&mut self, hwnd: HWND) {
+        if unsafe { SetTimer(hwnd, ORGANIZER_MOTION_TIMER, USER_TIMER_MINIMUM, None) } == 0 {
+            self.finish_animations(hwnd);
         }
     }
 
@@ -847,12 +878,12 @@ impl Organizer {
         motion.retarget(to, now, true) != to
     }
 
-    fn finish_rule_animations(&mut self, hwnd: HWND) {
-        self.editor.finish_rule_animations();
+    fn finish_animations(&mut self, hwnd: HWND) {
+        self.editor.finish_disclosure_animations();
         self.rule_motion = RuleReorderMotion::default();
         self.pending_switch = None;
         self.switch_motion.clear();
-        unsafe { KillTimer(hwnd, RULE_MOTION_TIMER); }
+        unsafe { KillTimer(hwnd, ORGANIZER_MOTION_TIMER); }
     }
 
     fn scroll_rule_drag(&mut self, hwnd: HWND) {
@@ -917,6 +948,7 @@ impl Organizer {
             WM_LBUTTONDOWN => {
                 self.pressed = hit;
                 self.focus = hit;
+                self.keyboard_focus = false;
                 if hit.is_some() {
                     unsafe {
                         SetCapture(hwnd);
@@ -1058,6 +1090,7 @@ impl Organizer {
         }
         match key {
             VK_TAB | VK_UP | VK_DOWN if !combo => {
+                self.keyboard_focus = true;
                 let n = scene.controls.len();
                 let backwards =
                     key == VK_UP || (key == VK_TAB && unsafe { GetKeyState(VK_SHIFT as i32) } < 0);
@@ -1110,6 +1143,7 @@ impl Organizer {
                     })
                     .cloned()
                 {
+                    self.keyboard_focus = true;
                     self.invoke(state, hwnd, &control, scale, sender);
                 }
             }
@@ -1395,6 +1429,47 @@ fn rule_drag_opens_the_gap_and_settles_from_the_last_visible_positions() {
 }
 
 #[test]
+fn skipped_disclosure_only_shows_focus_after_keyboard_interaction() {
+    let _sta = crate::pane::test_support::apartment();
+    let state = Rc::new(RefCell::new(crate::pane::tests::test_state()));
+    let window = windows_window::Window::new("Skipped disclosure test").create().unwrap();
+    let hwnd = window.hwnd().cast();
+    let bounds = RECT { right: 800, bottom: 560, ..Default::default() };
+    let mut organizer = Organizer::new().unwrap();
+    organizer.tab = Tab::Organize;
+    organizer.editor.show_skipped = Some(false);
+    organizer.editor.preview = Some(hybrid::OrganizePreview::fixture(vec![hybrid::PreviewEntry::Skip {
+        identity: ShellIdentity::FileSystem { path: "Draft.txt".into(), volume_id: None, file_id: None },
+        item_name: "Draft.txt".into(),
+        reason: hybrid::SkipReason::NoMatch,
+    }], None));
+    let disclosure = |organizer: &Organizer| {
+        let scene = organizer.scene.as_ref().unwrap();
+        let (index, control) = scene.controls.iter().enumerate()
+            .find(|(_, control)| Command::ToggleSkipped.is_control(&control.action)).unwrap();
+        (index, control.bounds, control.selected, organizer.visible_focus(scene))
+    };
+    assert_ne!(organizer.layout(&state, hwnd, bounds, 1.0), bounds.bottom as f32);
+    let (index, heading, expanded, _) = disclosure(&organizer);
+    assert!(!expanded);
+    let point = POINT {
+        x: (heading.right - Tokens::INSET) as i32,
+        y: ((heading.top + heading.bottom) / 2.0) as i32,
+    };
+    let (sender, _receiver) = mpsc::channel();
+    organizer.pointer(hwnd, WM_LBUTTONDOWN, point, 1.0);
+    let clicked = organizer.pointer(hwnd, WM_LBUTTONUP, point, 1.0).unwrap();
+    organizer.invoke(&state, hwnd, &clicked, 1.0, &sender);
+    assert_eq!(organizer.layout(&state, hwnd, bounds, 1.0), bounds.bottom as f32);
+    assert_eq!(organizer.focus, Some(index));
+    assert_eq!(disclosure(&organizer), (index, heading, true, None));
+
+    assert!(organizer.key(&state, hwnd, (WM_KEYDOWN, VK_SPACE, 0), 1.0, &sender));
+    assert_eq!(organizer.layout(&state, hwnd, bounds, 1.0), bounds.bottom as f32);
+    assert_eq!(disclosure(&organizer), (index, heading, false, Some(index)));
+}
+
+#[test]
 fn long_preview_keeps_its_review_state_and_footer_when_switching_tabs() {
     let _sta = crate::pane::test_support::apartment();
     let state = Rc::new(RefCell::new(crate::pane::tests::test_state()));
@@ -1454,6 +1529,7 @@ fn long_preview_keeps_its_review_state_and_footer_when_switching_tabs() {
     assert_eq!(organizer.layout(&state, hwnd, bounds, 1.0), bounds.bottom as f32);
     let button_top = apply_button_top(&organizer);
     organizer.run_command(&state, hwnd, Command::ToggleSkipped);
+    organizer.editor.finish_disclosure_animations();
     organizer.layout(&state, hwnd, bounds, 1.0);
     let scroll = organizer.scroll;
     assert!(scroll > 0.0);

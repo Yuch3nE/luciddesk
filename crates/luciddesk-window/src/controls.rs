@@ -320,6 +320,7 @@ pub enum InlineControl<'a> {
     Quiet(&'a str),
     Icon { glyph: &'a str, selected: bool },
     Disclosure { expanded: bool, tinted: bool },
+    SectionDisclosure { expanded: bool },
     Link(&'a str),
 }
 
@@ -327,6 +328,7 @@ impl InlineControl<'_> {
     const COMPACT_INSET: f32 = 4.0;
     pub const DISCLOSURE_LABEL_INSET: f32 =
         Self::COMPACT_INSET + style::ICON_SLOT + style::ICON_GAP;
+    pub const SECTION_DISCLOSURE_PADDING: f32 = style::BUTTON_GAP;
 
     pub fn paint<C: Canvas>(self, canvas: &mut C, bounds: Bounds, label: &str, state: State) {
         let selected = state.enabled
@@ -347,7 +349,13 @@ impl InlineControl<'_> {
                 },
             );
         }
-        state.focus(canvas, bounds);
+        if matches!(self, Self::SectionDisclosure { .. }) {
+            if state.enabled && state.focused {
+                canvas.stroke(bounds, style::RADIUS, 1.0, Tone::Accent);
+            }
+        } else {
+            state.focus(canvas, bounds);
+        }
         let accent = if state.enabled {
             Tone::AccentInk
         } else {
@@ -386,6 +394,12 @@ impl InlineControl<'_> {
                 },
                 Self::COMPACT_INSET,
                 if !tinted && state.active { accent } else { state.text() },
+            ),
+            Self::SectionDisclosure { expanded } => leading(
+                canvas,
+                if expanded { style::CHEVRON_DOWN } else { style::CHEVRON_RIGHT },
+                Self::COMPACT_INSET + Self::SECTION_DISCLOSURE_PADDING,
+                state.text(),
             ),
             Self::Link(glyph) => {
                 canvas.text(
@@ -766,6 +780,31 @@ mod tests {
                 assert_eq!(canvas.labels[1].1, if active { Tone::AccentInk } else { Tone::Ink });
             }
         }
+    }
+
+    #[test]
+    fn section_disclosure_uses_a_hover_surface_and_a_thin_focus_outline() {
+        let bounds = Bounds::new(16.0, 24.0, 160.0, style::HEIGHT);
+        let idle = State { enabled: true, active: false, focused: false };
+        let mut expanded = RecordingCanvas::default();
+        InlineControl::SectionDisclosure { expanded: true }.paint(&mut expanded, bounds, "Skipped icons", idle);
+        assert!(expanded.fills.is_empty());
+        assert!(expanded.borders.is_empty());
+        assert_eq!(expanded.icons, [style::CHEVRON_DOWN]);
+        assert_eq!(expanded.labels[1].0.x, bounds.x + InlineControl::DISCLOSURE_LABEL_INSET + InlineControl::SECTION_DISCLOSURE_PADDING);
+
+        let mut hover = RecordingCanvas::default();
+        InlineControl::SectionDisclosure { expanded: false }
+            .paint(&mut hover, bounds, "Skipped icons", State { active: true, ..idle });
+        assert_eq!(hover.fills, [(bounds, Tone::Hover)]);
+        assert!(hover.borders.is_empty());
+        assert_eq!(hover.icons, [style::CHEVRON_RIGHT]);
+
+        let mut keyboard = RecordingCanvas::default();
+        InlineControl::SectionDisclosure { expanded: true }
+            .paint(&mut keyboard, bounds, "Skipped icons", State { focused: true, ..idle });
+        assert!(keyboard.fills.is_empty());
+        assert_eq!(keyboard.borders, [(1.0, Tone::Accent)]);
     }
 
     #[test]

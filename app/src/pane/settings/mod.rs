@@ -146,7 +146,7 @@ struct Scene {
     section_headers: Vec<SectionHeader>,
     destination_changes: Vec<DestinationChange>,
     rule_rows: Vec<RuleRow>,
-    rule_detail_clips: Vec<(std::ops::Range<usize>, Rect)>,
+    disclosure_clips: Vec<DisclosureClip>,
     rule_grip_hover: Option<usize>,
     rule_grip_pressed: Option<usize>,
     floating_rule: Option<usize>,
@@ -176,7 +176,7 @@ impl Scene {
             section_headers: Vec::new(),
             destination_changes: Vec::new(),
             rule_rows: Vec::new(),
-            rule_detail_clips: Vec::new(),
+            disclosure_clips: Vec::new(),
             rule_grip_hover: None,
             rule_grip_pressed: None,
             floating_rule: None,
@@ -187,6 +187,12 @@ impl Scene {
             caption_icon: None,
         }
     }
+}
+
+struct DisclosureClip {
+    text: std::ops::Range<usize>,
+    separators: std::ops::Range<usize>,
+    bounds: Rect,
 }
 
 #[derive(Default)]

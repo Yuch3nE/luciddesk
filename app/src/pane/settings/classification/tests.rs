@@ -538,7 +538,8 @@ fn classification_stages_align_and_render() {
                                 bounds.top == skipped.bounds.top && text == &count_text && *style == Tokens::SECONDARY_VALUE
                             }).unwrap().0;
                             assert_eq!(skipped_count.right - skipped_count.left, summary_width);
-                            assert_eq!(skipped_count.right, skipped.bounds.right);
+                            let padding = luciddesk_window::controls::InlineControl::SECTION_DISCLOSURE_PADDING;
+                            assert_eq!(skipped_count.right + padding, skipped.bounds.right);
                             assert!(row_top("classification-preview-moves") < skipped.bounds.top);
                             let expanded = preview.changes.is_some();
                             assert_eq!(skipped.selected, expanded);
@@ -858,14 +859,14 @@ fn classification_details_show_one_rule_without_writing_settings() {
 
     editor.detail_motions.insert(0, Motion::settled(0.5, Instant::now()));
     let expanding = render(&editor);
-    let (_, clip) = &expanding.rule_detail_clips[0];
+    let clip = &expanding.disclosure_clips[0].bounds;
     let (extension_index, _) = expanding.text.iter().enumerate()
         .find(|(_, (_, value, _))| value == &extensions).unwrap();
-    assert!(expanding.rule_detail_clip(extension_index).is_some());
+    assert!(expanding.disclosure_text_clip(extension_index).is_some());
     assert!(collapsed.rule_rows[1].bounds.top < expanding.rule_rows[1].bounds.top);
     assert!(expanding.rule_rows[1].bounds.top < first.rule_rows[1].bounds.top);
     assert!(clip.bottom <= expanding.rule_rows[1].bounds.top);
-    editor.finish_rule_animations();
+    editor.finish_disclosure_animations();
 
     editor.execute(&state, hwnd, Command::ToggleDetails(1));
     let second = render(&editor);
@@ -891,10 +892,56 @@ fn rule_animations_reverse_and_clear_after_the_transition() {
     editor.expanded = None;
     editor.animate_details(Some(0), halfway);
     assert_eq!(editor.detail_fraction(0, halfway), fraction);
-    assert!(editor.tick_rule_animations(halfway));
+    assert!(editor.tick_disclosure_animations(halfway));
     let finished = halfway + SETTINGS_DURATION;
-    assert!(!editor.tick_rule_animations(finished));
+    assert!(!editor.tick_disclosure_animations(finished));
     assert_eq!(editor.detail_fraction(0, finished), 0.0);
+}
+
+#[test]
+fn skipped_preview_animates_the_visible_rows_and_reverses_without_jumping() {
+    let _sta = crate::pane::test_support::apartment();
+    let preview = hybrid::OrganizePreview::fixture((1..=8).map(|index| {
+        let item_name = format!("Draft {index}.txt");
+        hybrid::PreviewEntry::Skip {
+            identity: ShellIdentity::FileSystem {
+                path: item_name.clone().into(), volume_id: None, file_id: None,
+            },
+            item_name,
+            reason: hybrid::SkipReason::NoMatch,
+        }
+    }).collect(), None);
+    let render = |expanded, fraction| {
+        let mut scene = Scene::empty(Backdrop::Mica, SIDE_MARGIN, TITLE_HEIGHT);
+        table::draw_preview(&mut scene, Rect::from_xywh(SIDE_MARGIN, TITLE_HEIGHT, 768.0, 0.0), &preview, (expanded, fraction));
+        scene
+    };
+    let start = Instant::now();
+    let mut editor = Editor { show_skipped: Some(true), ..Editor::default() };
+    assert!(editor.animate_skipped(false, start, true));
+    assert_eq!(editor.skipped_fraction(true, start), 0.0);
+    let halfway = start + SETTINGS_DURATION / 2;
+    let fraction = editor.skipped_fraction(true, halfway);
+    assert!(fraction > 0.0 && fraction < 1.0);
+
+    let closed = render(false, 0.0);
+    let expanding = render(true, fraction);
+    let open = render(true, 1.0);
+    let clip = &expanding.disclosure_clips[0];
+    assert!(!clip.text.is_empty() && !clip.separators.is_empty());
+    assert!(expanding.disclosure_text_clip(clip.text.start).is_some());
+    assert!(expanding.disclosure_separator_clip(clip.separators.end - 1).is_some());
+    assert!(closed.content_bottom() < expanding.content_bottom());
+    assert!(expanding.content_bottom() < open.content_bottom());
+
+    editor.show_skipped = Some(false);
+    assert!(editor.animate_skipped(true, halfway, true));
+    assert!((editor.skipped_fraction(false, halfway) - fraction).abs() < 0.001);
+    assert!(!editor.tick_disclosure_animations(halfway + SETTINGS_DURATION));
+    assert_eq!(editor.skipped_fraction(false, halfway + SETTINGS_DURATION), 0.0);
+    editor.show_skipped = Some(true);
+    assert!(!editor.animate_skipped(false, halfway + SETTINGS_DURATION, false));
+    assert_eq!(editor.skipped_fraction(true, halfway + SETTINGS_DURATION), 1.0);
 }
 
 #[test]

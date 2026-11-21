@@ -889,7 +889,7 @@ impl Scene {
     pub fn content_bottom(&self) -> f32 {
         let text_bottom = self.text.iter().enumerate()
             .filter(|(_, (bounds, _, style))| *style != Tokens::CAPTION_TEXT && bounds.left >= self.content_left)
-            .map(|(index, (bounds, _, _))| self.rule_detail_clip(index).map_or(bounds.bottom, |clip| bounds.bottom.min(clip.bottom)))
+            .map(|(index, (bounds, _, _))| self.disclosure_text_clip(index).map_or(bounds.bottom, |clip| bounds.bottom.min(clip.bottom)))
             .fold(self.content_top, f32::max);
         self.cards.iter()
             .chain(self.section_headers.iter().map(|header| &header.bounds))
@@ -901,8 +901,11 @@ impl Scene {
             .fold(text_bottom, f32::max)
     }
 
-    pub fn rule_detail_clip(&self, text_index: usize) -> Option<&Rect> {
-        self.rule_detail_clips.iter().find(|(text, _)| text.contains(&text_index)).map(|(_, clip)| clip)
+    pub fn disclosure_text_clip(&self, index: usize) -> Option<&Rect> {
+        self.disclosure_clips.iter().find(|clip| clip.text.contains(&index)).map(|clip| &clip.bounds)
+    }
+    pub fn disclosure_separator_clip(&self, index: usize) -> Option<&Rect> {
+        self.disclosure_clips.iter().find(|clip| clip.separators.contains(&index)).map(|clip| &clip.bounds)
     }
     pub fn scroll_to(&mut self, width: f32, height: f32, offset: &mut f32) {
         if self.fixed_list() {
@@ -955,7 +958,7 @@ impl Scene {
             .chain(self.section_headers.iter_mut().map(|header| &mut header.bounds))
             .chain(self.destination_changes.iter_mut().map(|change| &mut change.bounds))
             .chain(self.rule_rows.iter_mut().map(|row| &mut row.bounds))
-            .chain(self.rule_detail_clips.iter_mut().map(|(_, clip)| clip))
+            .chain(self.disclosure_clips.iter_mut().map(|clip| &mut clip.bounds))
         {
             translate(r);
         }

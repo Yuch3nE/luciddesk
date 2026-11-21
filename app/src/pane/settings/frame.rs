@@ -46,7 +46,7 @@ pub(super) fn with_named_titlebar(
         .chain(scene.section_headers.iter_mut().map(|header| &mut header.bounds))
         .chain(scene.destination_changes.iter_mut().map(|change| &mut change.bounds))
         .chain(scene.rule_rows.iter_mut().map(|row| &mut row.bounds))
-        .chain(scene.rule_detail_clips.iter_mut().map(|(_, clip)| clip))
+        .chain(scene.disclosure_clips.iter_mut().map(|clip| &mut clip.bounds))
     {
         r.top += TITLE_HEIGHT;
         r.bottom += TITLE_HEIGHT;
