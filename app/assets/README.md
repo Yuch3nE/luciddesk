@@ -23,3 +23,7 @@ ICO 包含 16、20、24、30、32、36、40、48、60、64、72、80、96、128�
 ## 程序内使用
 
 `app.rc` 将 ICO 以资源 ID 1 嵌入 EXE。窗口、托盘和关于页都从该资源加载，无需读取外部图片。中英文 README 和功能示意图使用同源 PNG。
+
+## 规则拖动手柄
+
+`fluent-reorder.ttf` 取自 [Microsoft Fluent UI System Icons 1.1.347](https://github.com/microsoft/fluentui-system-icons/tree/1.1.347)，仅保留 `FluentSystemIcons-Regular.ttf` 中的 `re_order_dots_vertical_20_regular`（U+E9F8）字形。使用 FontTools 裁剪，保留原始字形轮廓并在命名表中附上 [MIT 许可证](fluent-reorder.LICENSE.txt)。

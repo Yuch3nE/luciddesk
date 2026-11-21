@@ -200,7 +200,6 @@ struct RuleRow {
 }
 
 impl RuleRow {
-    const GRIP_ICON: &str = "\u{e76f}";
     const GRIP_WIDTH: f32 = Tokens::CONTROL_HEIGHT;
 
     fn visual_bounds(&self) -> Rect {

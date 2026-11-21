@@ -8,10 +8,55 @@ static FAMILY: RwLock<String> = RwLock::new(String::new());
 
 pub(super) const ICON_GLYPHS: &[u32] = &[
     0xe70d, 0xe70e, 0xe70f, 0xe710, 0xe711, 0xe712, 0xe713, 0xe721, 0xe72b, 0xe72c, 0xe73e,
-    0xe74a, 0xe74b, 0xe74e, 0xe76c, 0xe76f, 0xe777, 0xe790, 0xe7ba, 0xe80f, 0xe81c, 0xe890, 0xe8a5,
+    0xe74a, 0xe74b, 0xe74e, 0xe76c, 0xe777, 0xe784, 0xe790, 0xe7ba, 0xe80f, 0xe81c, 0xe890, 0xe8a5,
     0xe8a7, 0xe8b7, 0xe8bb, 0xe8cb, 0xe8d2, 0xe8fd, 0xe916, 0xe91b, 0xe921, 0xe922, 0xe923,
     0xe946, 0xe9d9, 0xea39, 0xea3a, 0xea3f, 0xf0e2, 0xf2b7,
 ];
+
+pub(super) const DRAG_HANDLE_ICON: &str = "\u{e9f8}";
+pub(super) const DRAG_HANDLE_FALLBACK: &str = "\u{e784}";
+
+pub(super) struct DragHandleFont {
+    pub(super) layout: windows::Win32::Graphics::DirectWrite::IDWriteTextLayout,
+    loader: windows::Win32::Graphics::DirectWrite::IDWriteInMemoryFontFileLoader,
+    factory: windows::Win32::Graphics::DirectWrite::IDWriteFactory5,
+}
+
+impl DragHandleFont {
+    pub(super) fn new(size: f32) -> windows::core::Result<Self> {
+        use windows::Win32::Graphics::DirectWrite::*;
+        use windows::core::{IUnknown, w};
+
+        static DATA: &[u8] = include_bytes!("../../assets/fluent-reorder.ttf");
+        unsafe {
+            let factory: IDWriteFactory5 = DWriteCreateFactory(DWRITE_FACTORY_TYPE_ISOLATED)?;
+            let loader = factory.CreateInMemoryFontFileLoader()?;
+            factory.RegisterFontFileLoader(&loader)?;
+            let file = loader.CreateInMemoryFontFileReference(
+                &factory, DATA.as_ptr().cast(), DATA.len() as u32, None::<&IUnknown>,
+            )?;
+            let builder = factory.CreateFontSetBuilder()?;
+            builder.AddFontFile(&file)?;
+            let collection = factory.CreateFontCollectionFromFontSet(&builder.CreateFontSet()?)?;
+            let format = factory.CreateTextFormat(
+                w!("FluentSystemIcons-Regular"), &collection, DWRITE_FONT_WEIGHT_NORMAL,
+                DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, size, w!("en-us"),
+            )?;
+            format.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER)?;
+            format.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER)?;
+            let glyph = [DRAG_HANDLE_ICON.encode_utf16().next().unwrap()];
+            let extent = luciddesk_window::control_style::HEIGHT;
+            let layout = factory.CreateTextLayout(&glyph, &format, extent, extent)?;
+            Ok(Self { layout, factory, loader })
+        }
+    }
+}
+
+impl Drop for DragHandleFont {
+    fn drop(&mut self) {
+        let _ = unsafe { self.factory.UnregisterFontFileLoader(&self.loader) };
+    }
+}
 
 /// Private-use glyphs cannot rely on normal text fallback. Check the actual
 /// DirectWrite family and glyph coverage before selecting the Windows 11 font.
@@ -274,6 +319,25 @@ mod tests {
         assert!(icon_coverage("Segoe MDL2 Assets").unwrap());
         assert!(!icon_coverage("LucidDesk nonexistent icon font").unwrap());
         assert!(icon_coverage(icon_family()).unwrap());
+    }
+
+    #[test]
+    fn embedded_drag_font_contains_the_reorder_glyph() {
+        use windows::Win32::Graphics::DirectWrite::*;
+        use windows::core::Interface;
+
+        let icon = DragHandleFont::new(20.0).unwrap();
+        unsafe {
+            let format: IDWriteTextFormat = icon.layout.cast().unwrap();
+            let collection = format.GetFontCollection().unwrap();
+            assert_eq!(collection.GetFontFamilyCount(), 1);
+            let family = collection.GetFontFamily(0).unwrap();
+            let font = family.GetFirstMatchingFont(
+                DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL,
+            ).unwrap();
+            assert!(font.HasCharacter(DRAG_HANDLE_ICON.chars().next().unwrap() as u32).unwrap().as_bool());
+            assert!(!font.HasCharacter('A' as u32).unwrap().as_bool());
+        }
     }
     #[test]
     fn regular_faces_exclude_weight_variants_and_italics() {

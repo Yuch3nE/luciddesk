@@ -4,14 +4,14 @@ use super::super::control_style as style;
 use luciddesk_window::controls as widgets;
 use widgets::{InlineControl, Tone};
 
-const WINDOW_BRUSH_COUNT: usize = 12;
+const WINDOW_BRUSH_COUNT: usize = 13;
 const WIDGET_BRUSH_COUNT: usize = Tone::ALL.len();
 
 struct WidgetCanvas<'a, 'b> {
     pass: &'a canvas::DrawPass<'b>,
     painter: &'a Painter,
     brushes: [&'a windows_canvas::Brush; WIDGET_BRUSH_COUNT],
-    section_summary_width: Option<f32>,
+    leading_text: Option<(usize, f32)>,
 }
 
 impl WidgetCanvas<'_, '_> {
@@ -43,16 +43,29 @@ impl widgets::Canvas for WidgetCanvas<'_, '_> {
         match alignment {
             widgets::Alignment::Center => self.pass.clipped_text(label, &self.painter.button_format, &bounds, brush),
             widgets::Alignment::Leading => {
-                let format = if let Some(width) = self.section_summary_width {
+                let format = if let Some((format, width)) = self.leading_text {
                     bounds.right = (bounds.right - width).max(bounds.left + 1.0);
-                    &self.painter.formats[Tokens::SECTION_TITLE]
+                    &self.painter.formats[format]
                 } else {
                     &self.painter.formats[Tokens::CONTROL_TEXT]
                 };
                 self.pass.clipped_text(label, format, &bounds, brush);
             }
             widgets::Alignment::Icon => self.pass.clipped_icon(label, &self.painter.formats[4], &bounds, brush),
-            widgets::Alignment::ActionIcon => self.pass.clipped_icon(label, &self.painter.formats[5], &bounds, brush),
+            widgets::Alignment::ActionIcon => {
+                let label = if label == fonts::DRAG_HANDLE_ICON {
+                    let font = self.painter.drag_handle.get_or_init(|| fonts::DragHandleFont::new(20.0).ok());
+                    if font.as_ref().is_some_and(|font| {
+                        self.pass.clipped_native_icon(&font.layout, &bounds, brush).is_ok()
+                    }) {
+                        return;
+                    }
+                    fonts::DRAG_HANDLE_FALLBACK
+                } else {
+                    label
+                };
+                self.pass.clipped_icon(label, &self.painter.formats[5], &bounds, brush);
+            }
             widgets::Alignment::Supporting => self.pass.clipped_text(label, &self.painter.formats[6], &bounds, brush),
         }
     }
@@ -75,6 +88,7 @@ pub(super) struct Painter {
     formats: Vec<windows_canvas::TextFormat>,
     button_format: windows_canvas::TextFormat,
     new_group_format: windows_canvas::TextFormat,
+    drag_handle: std::cell::OnceCell<Option<fonts::DragHandleFont>>,
 }
 impl Drop for Painter {
     fn drop(&mut self) { super::components::release_text_metrics(); }
@@ -158,6 +172,7 @@ impl Painter {
             formats,
             button_format,
             new_group_format,
+            drag_handle: std::cell::OnceCell::new(),
         })
     }
     pub(super) fn label_width(&self, text: &str) -> windows::core::Result<f32> {
@@ -243,6 +258,7 @@ impl Painter {
                         color(if dark { 0xef8d8d } else { 0xb83d42 }),
                         color(if dark { 0x8dccaa } else { 0x287b50 }),
                         color(if dark { 0x88baf0 } else { 0x266eae }),
+                        ColorF { a: 0.45, ..color(palette.border) },
                 ];
                 let colors = std::array::from_fn(|index| {
                     if index < WINDOW_BRUSH_COUNT {
@@ -253,7 +269,7 @@ impl Painter {
                 });
                 let brushes = canvas_result(brushes.get(context, &t, colors))?;
                 let [card, card_border, slider_track, slider_border, slider_surface, nav_selected,
-                    nav_hovered, nav_selected_hovered, page_background, red, green, blue] =
+                    nav_hovered, nav_selected_hovered, page_background, red, green, blue, rule_divider] =
                     std::array::from_fn(|index| &brushes[index]);
                 let widget_brushes: [_; WIDGET_BRUSH_COUNT] = std::array::from_fn(|index| &brushes[WINDOW_BRUSH_COUNT + index]);
                 let brush = |tone: Tone| widget_brushes[tone as usize];
@@ -262,7 +278,7 @@ impl Painter {
                     brush(Tone::Accent), brush(Tone::Surface), brush(Tone::Hover),
                 );
                 let mut widget_canvas = WidgetCanvas {
-                    pass: &t, painter: self, brushes: widget_brushes, section_summary_width: None,
+                    pass: &t, painter: self, brushes: widget_brushes, leading_text: None,
                 };
                 let selected = nav_selected;
                 let hovered = nav_hovered;
@@ -310,9 +326,18 @@ impl Painter {
                     t.fill_rounded_rect(&rr, card);
                     t.draw_rounded_rect(&rr, card_border, 1.0);
                 }
-                for r in &s.separators {
+                let rule_dividers = s.rule_rows.first().zip(s.rule_rows.last())
+                    .map(|(first, last)| first.separators.start..last.separators.end);
+                for (index, r) in s.separators.iter().enumerate() {
                     let _clip = ContentClip::new(&t, s, r.left >= s.content_left && !s.fixed_list());
-                    t.fill_rect(r, if dark { border } else { card_border });
+                    let line = if rule_dividers.as_ref().is_some_and(|range| range.contains(&index)) {
+                        rule_divider
+                    } else if dark {
+                        border
+                    } else {
+                        card_border
+                    };
+                    t.fill_rect(r, line);
                 }
                 for header in &s.section_headers {
                     let _clip = ContentClip::new(&t, s, true);
@@ -426,6 +451,7 @@ impl Painter {
                     t.draw_rounded_rect(&RoundedRect { rect: r, radius_x: Tokens::CARD_RADIUS, radius_y: Tokens::CARD_RADIUS }, card_border, 1.0);
                 }
                 let floating = s.floating_rule.map(|index| &s.rule_rows[index]);
+                let mut grip_canvas = WidgetCanvas { ..widget_canvas };
                 let mut paint_control = |i: usize, c: &Control, raised: bool| -> windows::core::Result<()> {
                     let _navigation_clip = matches!(c.kind, ControlKind::Navigation(_)).then(|| ContentClip::navigation(&t, s));
                     if s.fixed_list() && Scene::list_row(c) && s.viewport.is_some_and(|v| c.bounds.bottom <= v.top || c.bounds.top >= v.bottom) { return Ok(()); }
@@ -505,19 +531,20 @@ impl Painter {
                     let inline = match c.kind {
                         ControlKind::QuietButton(icon) => Some(InlineControl::Quiet(icon)),
                         ControlKind::IconButton(glyph) => Some(InlineControl::Icon {
-                            glyph, open: controls::dropdown_is_open(c.bounds),
+                            glyph, selected: controls::dropdown_is_open(c.bounds),
                         }),
                         ControlKind::RuleDisclosure { missing_target } => {
-                            let mut section_canvas = WidgetCanvas { section_summary_width: Some(0.0), ..widget_canvas };
-                            let color = if missing_target { red } else { brush(Tone::AccentInk) };
-                            section_canvas.brushes[Tone::Ink as usize] = color;
-                            section_canvas.brushes[Tone::AccentInk as usize] = color;
+                            let mut section_canvas = WidgetCanvas { leading_text: Some((Tokens::GROUP_TITLE, 0.0)), ..widget_canvas };
+                            if missing_target {
+                                section_canvas.brushes[Tone::Ink as usize] = red;
+                                section_canvas.brushes[Tone::AccentInk as usize] = red;
+                            }
                             InlineControl::Disclosure { expanded: c.selected, tinted: false }
                                 .paint(&mut section_canvas, bounds, &c.label, state);
                             return Ok(());
                         }
                         ControlKind::SectionDisclosure { summary_width } => {
-                            let mut section_canvas = WidgetCanvas { section_summary_width: Some(summary_width), ..widget_canvas };
+                            let mut section_canvas = WidgetCanvas { leading_text: Some((Tokens::SECTION_TITLE, summary_width)), ..widget_canvas };
                             InlineControl::Disclosure { expanded: c.selected, tinted: false }
                                 .paint(&mut section_canvas, bounds, &c.label, state);
                             return Ok(());
@@ -866,20 +893,20 @@ impl Painter {
                         },
                     );
                 };
-                let paint_grip = |index: usize, row: &RuleRow| {
-                    let bounds = row.grip();
-                    let pressed = s.rule_grip_pressed == Some(index) || s.floating_rule == Some(index);
-                    let hot = s.rule_grip_hover == Some(index);
+                let mut paint_grip = |index: usize, row: &RuleRow| {
                     let _clip = ContentClip::new(&t, s, true);
-                    let surface = RoundedRect {
-                        rect: Rect::from_xywh(bounds.left + 3.0, bounds.top + 3.0,
-                            bounds.right - bounds.left - 6.0, bounds.bottom - bounds.top - 6.0),
-                        radius_x: Style::RADIUS,
-                        radius_y: Style::RADIUS,
-                    };
-                    t.fill_rounded_rect(&surface, if pressed { brush(Tone::Selection) } else if hot { button_hover } else { button });
-                    t.clipped_icon(RuleRow::GRIP_ICON, &self.formats[5], &bounds,
-                        if pressed || hot { brush(Tone::AccentInk) } else { muted });
+                    let active = s.rule_grip_hover == Some(index);
+                    grip_canvas.brushes[Tone::Ink as usize] = if active { ink } else { muted };
+                    InlineControl::Icon {
+                        glyph: fonts::DRAG_HANDLE_ICON,
+                        selected: s.rule_grip_pressed == Some(index) || s.floating_rule == Some(index),
+                    }
+                    .paint(
+                        &mut grip_canvas,
+                        components::widget_bounds(row.grip()),
+                        "",
+                        widgets::State { enabled: true, active, focused: false },
+                    );
                 };
                 for (index, control) in s.controls.iter().enumerate() {
                     if floating.is_none_or(|row| !row.controls.contains(&index)) {

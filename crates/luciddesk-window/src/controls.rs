@@ -318,7 +318,7 @@ impl NavigationItem<'_> {
 #[derive(Clone, Copy)]
 pub enum InlineControl<'a> {
     Quiet(&'a str),
-    Icon { glyph: &'a str, open: bool },
+    Icon { glyph: &'a str, selected: bool },
     Disclosure { expanded: bool, tinted: bool },
     Link(&'a str),
 }
@@ -332,7 +332,7 @@ impl InlineControl<'_> {
         let selected = state.enabled
             && matches!(
                 self,
-                Self::Icon { open: true, .. }
+                Self::Icon { selected: true, .. }
                     | Self::Disclosure { expanded: true, tinted: true }
             );
         let plain_disclosure = matches!(self, Self::Disclosure { tinted: false, .. });
@@ -702,6 +702,25 @@ mod tests {
             expanded.labels[1].0.x,
             bounds.x + InlineControl::DISCLOSURE_LABEL_INSET
         );
+
+        let grip = Bounds::new(bounds.x, bounds.y, style::HEIGHT, style::HEIGHT);
+        for (hover, selected, surface, ink) in [
+            (false, false, None, Tone::Ink),
+            (true, false, Some(Tone::Hover), Tone::Ink),
+            (true, true, Some(Tone::Selection), Tone::AccentInk),
+        ] {
+            let mut canvas = RecordingCanvas::default();
+            InlineControl::Icon { glyph: style::ARROW_UP, selected }.paint(
+                &mut canvas,
+                grip,
+                "",
+                State { active: hover, ..active },
+            );
+            assert_eq!(canvas.icons, [style::ARROW_UP]);
+            assert_eq!(canvas.labels, [(grip, ink)]);
+            assert_eq!(canvas.fills.first().copied(), surface.map(|tone| (grip, tone)));
+            assert!(canvas.borders.is_empty());
+        }
 
         let mut navigation = RecordingCanvas::default();
         NavigationItem { icon: "icon", selected: true }.paint(&mut navigation, bounds, "Rules", active);

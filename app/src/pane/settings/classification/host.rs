@@ -865,7 +865,7 @@ impl Organizer {
                         ControlKind::IconButton(_) => true,
                         ControlKind::RuleDisclosure { .. } => {
                             let inset = luciddesk_window::controls::InlineControl::DISCLOSURE_LABEL_INSET + Style::ICON_GAP;
-                            components::text_width_with_weight(&control.label, Tokens::SECTION_TITLE_SIZE, windows_canvas::FontWeight(600))
+                            components::text_width_with_weight(&control.label, SectionHeader::TITLE_SIZE, SectionHeader::TITLE_WEIGHT)
                                 > control.bounds.right - control.bounds.left - inset
                         }
                         _ => false,

@@ -366,6 +366,28 @@ impl DrawPass<'_> {
         self.pop_clip();
     }
 
+    pub(super) fn clipped_native_icon(
+        &self,
+        layout: &windows::Win32::Graphics::DirectWrite::IDWriteTextLayout,
+        bounds: &c::Rect,
+        brush: &c::Brush,
+    ) -> Result<()> {
+        use c::Paint;
+        use windows::Win32::Graphics::Direct2D::{D2D1_DRAW_TEXT_OPTIONS_NONE, ID2D1Brush};
+        let native_brush: ID2D1Brush = native_interface(brush.as_raw_brush())?;
+        let ink = unsafe { layout.GetOverhangMetrics()? };
+        let origin = windows_numerics::Vector2::new(
+            bounds.left + (ink.left - ink.right) * 0.5,
+            bounds.top + (ink.top - ink.bottom) * 0.5,
+        );
+        self.push_clip(bounds);
+        unsafe {
+            self.native.DrawTextLayout(origin, layout, &native_brush, D2D1_DRAW_TEXT_OPTIONS_NONE);
+        }
+        self.pop_clip();
+        Ok(())
+    }
+
     pub fn clipped_text(
         &self,
         text: &str,

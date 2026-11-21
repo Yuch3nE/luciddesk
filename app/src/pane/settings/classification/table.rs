@@ -10,6 +10,7 @@ const SWITCH_WIDTH: f32 = 46.0;
 const SWITCH_HEIGHT: f32 = 24.0;
 const SWITCH_ACTION_GAP: f32 = INSET;
 const BUTTON_GAP: f32 = GAP;
+const HEADING_SIZE: f32 = 12.0;
 const CONDITION_LABELS: [&str; 4] = [
     "classification-item-type",
     "classification-extensions",
@@ -42,7 +43,7 @@ struct Columns {
 impl Columns {
     fn new(left: f32, width: f32, enabled_label: &str, show_grip: bool) -> Self {
         let actions = CONTROL + CONTROL + BUTTON_GAP;
-        let status = text_width(enabled_label, 14.0).ceil().max(SWITCH_WIDTH);
+        let status = text_width(enabled_label, HEADING_SIZE).ceil().max(SWITCH_WIDTH);
         let grip = if show_grip { RuleRow::GRIP_WIDTH } else { 0.0 };
         let gaps = [if show_grip { GAP } else { 0.0 }, INSET, SWITCH_ACTION_GAP, 0.0];
         let target = (width - grip - actions - status - gaps.iter().sum::<f32>()).max(1.0);
@@ -78,17 +79,21 @@ pub(super) fn draw(
     let columns = Columns::new(left, width, enabled_label, rules.len() > 1);
     let header_top = bounds.top + GAP / 2.0;
     let [_, target, status, actions] = columns.cells(header_top, CONTROL);
-    let target = summary_target(target);
-    let header_cells = [target, switch_label(status, enabled_label), actions];
+    let actions_label = t("classification-actions");
+    let header_cells = [
+        summary_target(target),
+        centered_label(status, enabled_label, status.right - SWITCH_WIDTH / 2.0),
+        centered_label(actions, actions_label, (actions.left + actions.right) / 2.0),
+    ];
     let labels = [
         t("classification-target"),
         enabled_label,
-        t("classification-actions"),
+        actions_label,
     ];
     let heading = header_cells
         .iter()
         .zip(labels)
-        .map(|(cell, label)| text_height(label, 14.0, cell.right - cell.left))
+        .map(|(cell, label)| text_height(label, HEADING_SIZE, cell.right - cell.left))
         .fold(CONTROL, f32::max);
     for (mut cell, label) in header_cells.into_iter().zip(labels) {
         cell.bottom = cell.top + heading;
@@ -100,7 +105,8 @@ pub(super) fn draw(
         let (controls, text, separators, clips) = (
             scene.controls.len(), scene.text.len(), scene.separators.len(), scene.rule_detail_clips.len(),
         );
-        scene.separators.push(Rect::from_xywh(left, y, width, 1.0));
+        let divider_left = if index == 0 { left } else { target.left };
+        scene.separators.push(Rect::from_xywh(divider_left, y, right - divider_left, 1.0));
         let bottom = saved_row(
             scene,
             columns.cells(y + GAP, CONTROL),
@@ -537,10 +543,9 @@ fn skip_reason(reason: hybrid::SkipReason) -> &'static str {
     })
 }
 
-fn switch_label(cell: Rect, label: &str) -> Rect {
-    let width = text_width(label, 14.0).ceil().min(cell.right - cell.left);
-    let switch_center = cell.right - SWITCH_WIDTH / 2.0;
-    let left = (switch_center - width / 2.0).clamp(cell.left, cell.right - width);
+fn centered_label(cell: Rect, label: &str, center: f32) -> Rect {
+    let width = text_width(label, HEADING_SIZE).ceil().min(cell.right - cell.left);
+    let left = (center - width / 2.0).clamp(cell.left, cell.right - width);
     Rect::from_xywh(left, cell.top, width, cell.bottom - cell.top)
 }
 

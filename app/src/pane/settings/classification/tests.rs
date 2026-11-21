@@ -672,6 +672,23 @@ fn classification_stages_align_and_render() {
                     painter.paint(&bitmap.target, &body, width, height, scale, dark, false, None, None, &HashMap::new()).unwrap();
                     let pixels = bitmap.pixels().unwrap();
                     assert_eq!(pixels[0] < 128, dark);
+                    if *name == "rules" && width == 800.0 {
+                        let grip = body.rule_rows[0].grip();
+                        let left = grip.left.round() as u32;
+                        let right = grip.right.round() as u32;
+                        let top = grip.top.round() as u32;
+                        let bottom = grip.bottom.round() as u32;
+                        let sample = |x, y| pixels[((y * w + x) * 4) as usize];
+                        let background = sample(left, (top + bottom) / 2);
+                        let points: Vec<_> = (top..bottom).flat_map(|y| (left..right).map(move |x| (x, y)))
+                            .filter(|&(x, y)| sample(x, y).abs_diff(background) > 40)
+                            .collect();
+                        let ink_left = points.iter().map(|&(x, _)| x).min().unwrap();
+                        let ink_right = points.iter().map(|&(x, _)| x).max().unwrap();
+                        assert!((ink_left + ink_right + 1).abs_diff(left + right) <= 2);
+                        let bands = points.windows(2).filter(|pair| pair[1].1 > pair[0].1 + 1).count() + 1;
+                        assert_eq!(bands, 3);
+                    }
                     if export && locale == 0 && width == 800.0 {
                         let mut bmp = vec![0u8; 54];
                         bmp[0..2].copy_from_slice(b"BM");
