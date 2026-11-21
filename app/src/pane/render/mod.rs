@@ -8,6 +8,7 @@ use windows_canvas::{ColorF, Ellipse, Rect, RoundedRect, Vector2};
 
 use super::native_graphics::canvas_result;
 use super::{GroupModel, assets, canvas, layout::HEADER};
+use luciddesk_window::controls::motion::Highlights;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -89,6 +90,9 @@ pub struct Renderer {
     #[cfg(test)]
     image_uploads: usize,
     states: HashMap<(u32, u32, u32, i32), windows_canvas::Bitmap>,
+    buttons: Highlights<usize>,
+    tabs: Highlights<luciddesk_core::PanelId>,
+    items: Highlights<luciddesk_core::ShellIdentity>,
 }
 
 impl Renderer {
@@ -304,6 +308,9 @@ impl Renderer {
             .width_including_trailing_whitespace;
         }
         Ok(Self {
+            buttons: Highlights::default(),
+            tabs: Highlights::default(),
+            items: Highlights::default(),
             monitor: None,
             family: family.clone(),
             font_revision: assets::font_revision(),
@@ -379,18 +386,27 @@ impl Renderer {
             scale,
             model,
             model.grid(width as f32 / scale, height as f32 / scale),
+            false,
         )?;
         self.target.as_ref().unwrap().2.as_ref().unwrap().pixels()
     }
 
+    #[cfg(test)]
     pub fn paint(
+        &mut self, target: &ID2D1DeviceContext, width: u32, height: u32, scale: f32, model: &GroupModel,
+    ) -> Result<()> {
+        self.paint_animated(target, width, height, scale, model, false).map(|_| ())
+    }
+
+    pub(super) fn paint_animated(
         &mut self,
         target: &ID2D1DeviceContext,
         width: u32,
         height: u32,
         scale: f32,
         model: &GroupModel,
-    ) -> Result<()> {
+        animate: bool,
+    ) -> Result<bool> {
         if self
             .target
             .as_ref()
@@ -435,7 +451,7 @@ impl Renderer {
             if live.insert(key) { retained += 1; }
         }
         self.images.retain(|key, _| live.contains(key));
-        self.draw(width, height, scale, model, grid)
+        self.draw(width, height, scale, model, grid, animate)
     }
 
     fn layout_title(
@@ -493,7 +509,8 @@ impl Renderer {
         scale: f32,
         model: &GroupModel,
         grid: super::layout::Grid,
-    ) -> Result<()> {
+        animate: bool,
+    ) -> Result<bool> {
         if model.monitor.is_some() && self.monitor.is_none() {
             self.monitor = Some(super::monitor::Drawing::new()?);
         }
@@ -516,6 +533,8 @@ impl Renderer {
         }
 
         let mut live_states = HashSet::new();
+        let now = std::time::Instant::now();
+        let mut playing = false;
         let w = width as f32 / scale;
         let (mut title_left, mut title_space) = super::layout::title_area(w);
         if model.folder.is_some() {
@@ -655,22 +674,22 @@ impl Renderer {
                         }
                         let x = model.header_button_x(w, button);
                         let enabled = model.header_button_enabled(button);
-                        let hovered = enabled && model.hovered_button == Some(button);
+                        let feedback = self.buttons.sample(&button, enabled && model.hovered_button == Some(button),
+                            enabled && model.pressed_button == Some(button), false, now, animate && enabled);
+                        playing |= feedback.playing;
                         let glyph = canvas_result(target.cached_solid_brush(ColorF::new(
                             ink,
                             ink,
                             ink,
                             if !enabled {
                                 0.3
-                            } else if hovered {
-                                1.0
                             } else {
-                                0.85
+                                0.85 + 0.15 * feedback.hover
                             },
                         )))?;
-                        if hovered {
+                        if feedback.hover > 0.0 {
                             let fill = canvas_result(
-                                target.cached_solid_brush(ColorF::new(ink, ink, ink, 0.07)),
+                                target.cached_solid_brush(ColorF::new(ink, ink, ink, 0.07 * feedback.hover)),
                             )?;
                             target.fill_rounded_rect(
                                 &RoundedRect {
@@ -734,14 +753,23 @@ impl Renderer {
                 {
                     let rect = Rect::from_xywh(bounds.x, bounds.y, bounds.width, bounds.height);
                     let active = id == model.active_tab;
-                    let hovered = model.hovered_tab == Some(id);
+                    let feedback = self.tabs.sample(&id, model.hovered_tab == Some(id), false, active, now, animate);
+                    playing |= feedback.playing;
                     let radius = crate::pane::interface_flags::pane_corner_radius(model.options.corner_radius)
                         .min(6.0).min(bounds.width * 0.5);
                     let shape = RoundedRect { rect, radius_x: radius, radius_y: radius };
-                    if active || hovered {
-                        let fill = canvas_result(target.cached_solid_brush(if active {
-                            chrome.tab_active
-                        } else { chrome.tab_hover }))?;
+                    let hover = feedback.hover * (1.0 - feedback.selected);
+                    if hover > 0.0 || feedback.selected > 0.0 {
+                        let blend = |active: f32, hovered: f32| {
+                            let strength = feedback.selected + hover;
+                            (active * feedback.selected + hovered * hover) / strength
+                        };
+                        let fill = canvas_result(target.cached_solid_brush(ColorF::new(
+                            blend(chrome.tab_active.r, chrome.tab_hover.r),
+                            blend(chrome.tab_active.g, chrome.tab_hover.g),
+                            blend(chrome.tab_active.b, chrome.tab_hover.b),
+                            chrome.tab_active.a * feedback.selected + chrome.tab_hover.a * hover,
+                        )))?;
                         target.fill_rounded_rect(&shape, &*fill);
                     }
                     let text = model
@@ -759,7 +787,7 @@ impl Renderer {
                             bounds.width - padding * 2.0,
                             bounds.height,
                         ),
-                        if id == model.active_tab { white } else { dim },
+                        if active { white } else { dim },
                     )?;
                 }
                 for (text, incoming, active, bounds) in super::tabs::merge_strip(model, w) {
@@ -965,22 +993,21 @@ impl Renderer {
                                 }
                             }
                         }
-                        if model.selection.contains(&index) || model.hovered_item == Some(index) {
+                        let feedback = self.items.sample(&item.identity, model.hovered_item == Some(index), false,
+                            model.selection.contains(&index), now, animate && self.marquee.is_none());
+                        playing |= feedback.playing;
+                        let hot_selection = if model.focused { feedback.hover } else { 0.0 };
+                        let selected_ink = if model.focused { selection } else { inactive };
+                        for (state, amount, brush) in [
+                            (2, feedback.hover * (1.0 - feedback.selected), hover),
+                            (if model.focused { 3 } else { 5 }, feedback.selected * (1.0 - hot_selection), selected_ink),
+                            (6, feedback.selected * hot_selection, selected_ink),
+                        ] {
+                            if amount <= 0.0 { continue; }
                             let bounds = model.selection_bounds(grid, index, scale);
                             let selection_height = bounds.height;
                             let selection_width = bounds.width;
                             let selection_x = bounds.x;
-                            let state = if model.selection.contains(&index) {
-                                if !model.focused {
-                                    5
-                                } else if model.hovered_item == Some(index) {
-                                    6
-                                } else {
-                                    3
-                                }
-                            } else {
-                                2
-                            };
                             let key = (
                                 (selection_width * scale).round() as u32,
                                 (selection_height * scale).round() as u32,
@@ -1013,10 +1040,10 @@ impl Renderer {
                                         selection_width,
                                         selection_height,
                                     ),
-                                    1.0,
+                                    amount,
                                 );
                             } else {
-                                target.fill_rounded_rect(
+                                target.fill_highlight(
                                     &RoundedRect {
                                         rect: Rect::from_xywh(
                                             selection_x,
@@ -1027,11 +1054,8 @@ impl Renderer {
                                         radius_x: 0.0,
                                         radius_y: 0.0,
                                     },
-                                    if model.selection.contains(&index) {
-                                        if model.focused { selection } else { inactive }
-                                    } else {
-                                        hover
-                                    },
+                                    brush,
+                                    amount,
                                 );
                             }
                         }
@@ -1247,8 +1271,12 @@ impl Renderer {
                 // DPI changes, deselection, or collapsing the content.
                 self.states.retain(|key, _| live_states.contains(key));
                 result
-            })
+            })?;
         }
+        self.buttons.finish_frame();
+        self.tabs.finish_frame();
+        self.items.finish_frame();
+        Ok(playing)
     }
 }
 

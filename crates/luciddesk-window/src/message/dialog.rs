@@ -5,6 +5,7 @@ use crate::control_style::{self as style, Palette, colorref};
 use crate::controls::{
     ButtonKind, State,
     gdi::{self, GdiCanvas},
+    motion::PointerMotion,
 };
 use std::{
     cell::{Cell, RefCell},
@@ -79,6 +80,7 @@ struct Dialog {
     font: Cell<HFONT>,
     heading_font: Cell<HFONT>,
     scale: Cell<f32>,
+    button_motion: RefCell<[PointerMotion; 3]>,
 }
 impl Dialog {
     fn background_color(&self) -> u32 {
@@ -139,6 +141,7 @@ pub(super) fn show(
         font: Cell::new(null_mut()),
         heading_font: Cell::new(null_mut()),
         scale: Cell::new(1.0),
+        button_motion: RefCell::default(),
     };
     dialog.background = unsafe { CreateSolidBrush(dialog.background_color()) };
     let template = Template {
@@ -220,6 +223,21 @@ unsafe extern "system" fn control_proc(
     if msg == BM_SETSTYLE {
         return 0;
     }
+    if msg == WM_TIMER && wp == gdi::POINTER_TIMER {
+        unsafe { InvalidateRect(hwnd, null(), 0); }
+        return 0;
+    }
+    if msg == WM_NCMOUSEMOVE && unsafe { GetDlgCtrlID(hwnd) } == BODY {
+        unsafe {
+            let mut tracking = TRACKMOUSEEVENT {
+                cbSize: size_of::<TRACKMOUSEEVENT>() as u32,
+                dwFlags: TME_LEAVE | TME_NONCLIENT,
+                hwndTrack: hwnd,
+                dwHoverTime: 0,
+            };
+            TrackMouseEvent(&raw mut tracking);
+        }
+    }
     if msg == WM_MOUSEMOVE || msg == WM_MOUSELEAVE {
         unsafe {
             if msg == WM_MOUSEMOVE {
@@ -260,7 +278,8 @@ unsafe extern "system" fn control_proc(
         if GetDlgCtrlID(hwnd) == BODY
             && matches!(
                 msg,
-                WM_NCPAINT | WM_VSCROLL | WM_NCLBUTTONDOWN | WM_MOUSEWHEEL | WM_KEYDOWN
+                WM_NCPAINT | WM_VSCROLL | WM_NCLBUTTONDOWN | WM_NCMOUSEMOVE | WM_NCMOUSELEAVE
+                    | WM_CAPTURECHANGED | WM_MOUSEWHEEL | WM_KEYDOWN
             )
         {
             invalidate_scrollbar(parent as HWND);
@@ -640,19 +659,22 @@ unsafe extern "system" fn procedure(hwnd: HWND, msg: u32, wp: usize, lp: isize) 
             }
             WM_DRAWITEM => {
                 let item = &*(lp as *const DRAWITEMSTRUCT);
-                let (kind, label) = match item.CtlID as i32 {
-                    IDOK => (ButtonKind::Primary, &dialog.labels[0]),
-                    IDCANCEL => (ButtonKind::Secondary, &dialog.labels[1]),
-                    COPY => (ButtonKind::Secondary, &dialog.labels[2]),
+                let (kind, index) = match item.CtlID as i32 {
+                    IDOK => (ButtonKind::Primary, 0),
+                    IDCANCEL => (ButtonKind::Secondary, 1),
+                    COPY => (ButtonKind::Secondary, 2),
                     _ => return 0,
                 };
                 let mut point = POINT::default();
                 GetCursorPos(&raw mut point);
                 ScreenToClient(item.hwndItem, &raw mut point);
+                let enabled = item.itemState & ODS_DISABLED == 0;
+                let hovered = enabled && PtInRect(&item.rcItem, point) != 0;
+                let pressed = enabled && item.itemState & ODS_SELECTED != 0;
+                let hover = gdi::pointer_feedback(item.hwndItem, &mut dialog.button_motion.borrow_mut()[index], hovered, pressed);
                 let state = State {
-                    enabled: item.itemState & ODS_DISABLED == 0,
-                    active: item.itemState & ODS_SELECTED != 0
-                        || PtInRect(&item.rcItem, point) != 0,
+                    enabled,
+                    active: hovered || pressed || hover > 0.0,
                     focused: item.itemState & ODS_FOCUS != 0,
                 };
                 FillRect(item.hDC, &item.rcItem, dialog.background);
@@ -664,7 +686,7 @@ unsafe extern "system" fn procedure(hwnd: HWND, msg: u32, wp: usize, lp: isize) 
                     palette: &palette,
                 };
                 let bounds = canvas.bounds(item.rcItem);
-                kind.paint(&mut canvas, bounds, label, state);
+                kind.paint_with_hover(&mut canvas, bounds, &dialog.labels[index], state, hover);
                 SelectObject(item.hDC, font);
                 1
             }

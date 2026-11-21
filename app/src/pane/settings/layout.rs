@@ -868,6 +868,8 @@ pub(super) fn backup_page(
                 crate::i18n::text("ui-view-details"),
                 Action::BackupStatus,
             );
+        } else if view.busy {
+            form.busy(crate::i18n::text("ui-backup-status"), status);
         } else {
             form.info(crate::i18n::text("ui-backup-status"), status);
         }

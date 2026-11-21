@@ -55,7 +55,7 @@ const ROW: f32 = 48.0;
 const FOOTER: f32 = 32.0;
 const ROW_INSET: f32 = 4.0;
 const VISIBLE: usize = 8;
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum Action { Clear, Retry, Launch }
 fn action_rect(action: Action, width: f32) -> Option<RectDip> {
     let rect = match action {
@@ -950,6 +950,7 @@ pub(super) fn create(
     let editor: Rc<RefCell<Option<Editor>>> = Rc::new(RefCell::new(None));
     let input = Rc::clone(&editor);
     let mut drawing: Option<Drawing> = None;
+    let mut control_redraw = super::canvas::ControlRedraw::default();
     let mut paint_recovery = super::composition::PaintRecovery::default();
     let mut visibility = super::visibility::Transition::default();
     let mut state = Search::new();
@@ -986,6 +987,7 @@ pub(super) fn create(
                 return Some(drawing.as_ref().is_some_and(|d| d.surface.has_host_backdrop()) as isize);
             }
             if msg == WM_DESTROY || (msg == WM_SHOWWINDOW && wp == 0) {
+                control_redraw.sync(hwnd, false);
                 if let Some(drawing) = drawing.as_mut() {drawing.clear_icons();}
             }
             if visibility.message(hwnd, msg, wp, lp, drawing.as_ref().map(|d| &d.surface), |opacity| {
@@ -1008,6 +1010,10 @@ pub(super) fn create(
                     state.copied = true;
                     unsafe { SetTimer(hwnd, FEEDBACK, 1800, None); }
                     invalidate(hwnd);
+                    return Some(0);
+                }
+                WM_TIMER if wp == super::canvas::ControlRedraw::TIMER => {
+                    control_redraw.tick(hwnd);
                     return Some(0);
                 }
                 WM_TIMER if wp == FEEDBACK => {
@@ -1434,7 +1440,7 @@ pub(super) fn create(
                     }
                     return Some(0);
                 }
-                WM_SETFOCUS | WM_KILLFOCUS => {
+                WM_SETFOCUS | WM_KILLFOCUS | WM_LBUTTONUP => {
                     invalidate(hwnd);
                 }
                 WM_MOUSELEAVE => {
@@ -1535,6 +1541,7 @@ pub(super) fn create(
                         }
                         drawing.as_mut().unwrap().paint(hwnd, &model.borrow(), &state)
                     });
+                    control_redraw.sync(hwnd, drawing.as_ref().is_some_and(|drawing| drawing.controls_playing));
                     return Some(0);
                 }
                 _ => {}

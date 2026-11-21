@@ -1,6 +1,7 @@
 //! Shared rendering for the explicit settings control types.
 use super::*;
 use super::super::control_style as style;
+use super::motions::{ControlMotion, MotionFrame};
 use luciddesk_window::controls as widgets;
 use widgets::{InlineControl, Tone};
 
@@ -12,19 +13,47 @@ struct WidgetCanvas<'a, 'b> {
     painter: &'a Painter,
     brushes: [&'a windows_canvas::Brush; WIDGET_BRUSH_COUNT],
     leading_text: Option<(usize, f32)>,
+    motion: ControlMotion,
+    palette: &'a style::Palette,
+    selection: f32,
+    combo: bool,
 }
 
 impl WidgetCanvas<'_, '_> {
     fn frame(bounds: widgets::Bounds, radius: f32) -> RoundedRect {
         RoundedRect { rect: Rect::from_xywh(bounds.x, bounds.y, bounds.width, bounds.height), radius_x: radius, radius_y: radius }
     }
+
 }
 
 impl widgets::Canvas for WidgetCanvas<'_, '_> {
     type Error = windows::core::Error;
 
+    fn palette(&self) -> &style::Palette { self.palette }
+
     fn fill(&mut self, bounds: widgets::Bounds, radius: f32, tone: widgets::Tone) {
-        self.pass.fill_rounded_rect(&Self::frame(bounds, radius), self.brushes[tone as usize]);
+        let hover = self.motion.hover.unwrap_or(1.0);
+        let blend = if self.combo {
+            self.motion.disclosure.map(|open| (Tone::Surface, Tone::Selection, open))
+                .or_else(|| (tone == Tone::Hover && hover < 1.0).then_some((Tone::Surface, tone, hover)))
+        } else if tone == Tone::Accent && self.motion.check.is_some() {
+            self.motion.check.map(|check| (Tone::Surface, tone, check))
+        } else {
+            None
+        };
+        if let Some((from, to, progress)) = blend
+            && self.fill_rgb(bounds, radius, widgets::mix_tones(from, to, self.palette, progress)).is_ok()
+        {
+            return;
+        }
+        let opacity = match tone {
+            Tone::Hover => hover,
+            Tone::Selection | Tone::Accent => self.selection,
+            _ => 1.0,
+        };
+        let shape = Self::frame(bounds, radius);
+        let _fade = self.pass.opacity_layer(&shape.rect, opacity);
+        self.pass.fill_rounded_rect(&shape, self.brushes[tone as usize]);
     }
 
     fn fill_rgb(&mut self, bounds: widgets::Bounds, radius: f32, [r, g, b]: [f32; 3]) -> Result<(), Self::Error> {
@@ -51,7 +80,23 @@ impl widgets::Canvas for WidgetCanvas<'_, '_> {
                 };
                 self.pass.clipped_text(label, format, &bounds, brush);
             }
-            widgets::Alignment::Icon => self.pass.clipped_icon(label, &self.painter.formats[4], &bounds, brush),
+            widgets::Alignment::Icon => {
+                let format = &self.painter.formats[4];
+                if let Some(progress) = self.motion.disclosure
+                    && matches!(label, style::CHEVRON_RIGHT | style::CHEVRON_DOWN | style::CHEVRON_UP)
+                {
+                    let (glyph, length) = if self.combo {
+                        (style::CHEVRON_DOWN, std::f32::consts::PI)
+                    } else {
+                        (style::CHEVRON_RIGHT, std::f32::consts::FRAC_PI_2)
+                    };
+                    self.pass.rotated_icon(glyph, format, &bounds, brush, progress * length);
+                } else {
+                    let opacity = if label == style::CHECK_MARK { self.motion.check.unwrap_or(1.0) } else { 1.0 };
+                    let _fade = self.pass.opacity_layer(&bounds, opacity);
+                    self.pass.clipped_icon(label, format, &bounds, brush);
+                }
+            }
             widgets::Alignment::ActionIcon => {
                 let label = if label == fonts::DRAG_HANDLE_ICON {
                     let font = self.painter.drag_handle.get_or_init(|| fonts::DragHandleFont::new(20.0).ok());
@@ -184,7 +229,16 @@ impl Painter {
         ))?;
         Ok(layout.metrics().width)
     }
+    #[cfg(test)]
     pub(super) fn paint(
+        &self, t: &ID2D1DeviceContext, s: &Scene, width: f32, height: f32,
+        scale: f32, dark: bool, native: bool, hover: Option<usize>, focus: Option<usize>,
+        toggles: &HashMap<usize, f32>,
+    ) -> windows::core::Result<()> {
+        self.paint_animated(t, s, width, height, scale, dark, native, hover, focus, toggles, &MotionFrame::default())
+    }
+
+    pub(super) fn paint_animated(
         &self,
         t: &ID2D1DeviceContext,
         s: &Scene,
@@ -196,6 +250,7 @@ impl Painter {
         hover: Option<usize>,
         focus: Option<usize>,
         toggles: &std::collections::HashMap<usize, f32>,
+        motion: &MotionFrame,
     ) -> windows::core::Result<()> {
         {
             let context = t;
@@ -277,8 +332,10 @@ impl Painter {
                     brush(Tone::Ink), brush(Tone::Muted), brush(Tone::Disabled), brush(Tone::Border),
                     brush(Tone::Accent), brush(Tone::Surface), brush(Tone::Hover),
                 );
-                let mut widget_canvas = WidgetCanvas {
+                let widget_canvas = WidgetCanvas {
                     pass: &t, painter: self, brushes: widget_brushes, leading_text: None,
+                    motion: ControlMotion::default(), palette: &palette, selection: 1.0,
+                    combo: false,
                 };
                 let selected = nav_selected;
                 let hovered = nav_hovered;
@@ -453,7 +510,7 @@ impl Painter {
                 }
                 let floating = s.floating_rule.map(|index| &s.rule_rows[index]);
                 let mut grip_canvas = WidgetCanvas { ..widget_canvas };
-                let mut paint_control = |i: usize, c: &Control, raised: bool| -> windows::core::Result<()> {
+                let paint_control = |i: usize, c: &Control, raised: bool| -> windows::core::Result<()> {
                     let _navigation_clip = matches!(c.kind, ControlKind::Navigation(_)).then(|| ContentClip::navigation(&t, s));
                     if s.fixed_list() && Scene::list_row(c) && s.viewport.is_some_and(|v| c.bounds.bottom <= v.top || c.bounds.top >= v.bottom) { return Ok(()); }
                     let _clip = ContentClip::new(
@@ -463,17 +520,29 @@ impl Painter {
                             && !Scene::fixed_control(c)
                             && (!s.fixed_list() || Scene::list_row(c)),
                     );
-                    let state = widgets::State { enabled: c.enabled, active: !raised && hover == Some(i), focused: !raised && focus == Some(i) };
+                    let animation = motion.controls.get(&i).copied().filter(|_| !raised).unwrap_or_default();
+                    let mut widget_canvas = WidgetCanvas {
+                        motion: animation,
+                        combo: matches!(c.kind, ControlKind::Combo),
+                        ..widget_canvas
+                    };
+                    let state = widgets::State { enabled: c.enabled, active: !raised && (hover == Some(i)
+                        || animation.hover.is_some_and(|progress| progress > 0.0)), focused: !raised && focus == Some(i) };
                     let bounds = components::widget_bounds(c.bounds);
                     if let ControlKind::Navigation(icon) | ControlKind::Tab(icon) = c.kind {
                         let mut navigation = WidgetCanvas { ..widget_canvas };
+                        navigation.selection = animation.selection.unwrap_or(1.0);
                         navigation.brushes[Tone::Hover as usize] = nav_hovered;
                         navigation.brushes[Tone::Selection as usize] = if state.active {
                             nav_selected_hovered
                         } else {
                             nav_selected
                         };
-                        NavigationItem { icon, selected: c.selected }.paint(&mut navigation, bounds, &c.label, state);
+                        if !c.selected {
+                            navigation.brushes[Tone::AccentInk as usize] = ink;
+                        }
+                        let indicated = c.selected || animation.selection.is_some_and(|opacity| opacity > 0.0);
+                        NavigationItem { icon, selected: indicated }.paint(&mut navigation, bounds, &c.label, state);
                         return Ok(());
                     }
                     if matches!(c.action, Action::FontSearch | Action::Classification(classification::Command::Input(_))) {
@@ -504,12 +573,14 @@ impl Painter {
                     let material = matches!(c.action, Action::Change(Event::Material(_))) && bounds.height >= 80.0;
                     match c.kind {
                         ControlKind::PrimaryButton => {
-                            widgets::ButtonKind::Primary.paint(&mut widget_canvas, bounds, &c.label, state);
+                            widgets::ButtonKind::Primary.paint_with_hover(&mut widget_canvas, bounds, &c.label,
+                                state, animation.hover.unwrap_or(f32::from(u8::from(state.active))));
                             return Ok(());
                         }
                         ControlKind::Button if !c.label.is_empty() && !material => {
                             let button = if c.selected { widgets::ButtonKind::Selected } else { widgets::ButtonKind::Secondary };
-                            button.paint(&mut widget_canvas, bounds, &c.label, state);
+                            button.paint_with_hover(&mut widget_canvas, bounds, &c.label, state,
+                                animation.hover.unwrap_or(f32::from(u8::from(state.active))));
                             return Ok(());
                         }
                         ControlKind::Combo => {
@@ -517,7 +588,8 @@ impl Painter {
                             return Ok(());
                         }
                         ControlKind::Checkbox => {
-                            widgets::CheckBox::paint(&mut widget_canvas, bounds, &c.label, state, c.selected);
+                            let checked = animation.check.map_or(c.selected, |progress| progress > 0.0);
+                            widgets::CheckBox::paint(&mut widget_canvas, bounds, &c.label, state, checked);
                             return Ok(());
                         }
                         ControlKind::Toggle => {
@@ -531,9 +603,13 @@ impl Painter {
                     }
                     let inline = match c.kind {
                         ControlKind::QuietButton(icon) => Some(InlineControl::Quiet(icon)),
-                        ControlKind::IconButton(glyph) => Some(InlineControl::Icon {
-                            glyph, selected: controls::dropdown_is_open(c.bounds),
-                        }),
+                        ControlKind::IconButton(glyph) => {
+                            let open = controls::dropdown_is_open(c.bounds);
+                            widget_canvas.selection = animation.disclosure.unwrap_or(1.0);
+                            Some(InlineControl::Icon {
+                                glyph, selected: animation.disclosure.map_or(open, |progress| progress > 0.0),
+                            })
+                        }
                         ControlKind::RuleDisclosure { missing_target } => {
                             let mut section_canvas = WidgetCanvas { leading_text: Some((Tokens::GROUP_TITLE, 0.0)), ..widget_canvas };
                             if missing_target {
@@ -563,6 +639,7 @@ impl Painter {
                         return Ok(());
                     }
                     if let ControlKind::Slider(slider) = c.kind {
+                        let thumb = animation.slider.unwrap_or_default();
                         let r = c.bounds;
                         let cy = (r.top + r.bottom) / 2.0;
                         let left = r.left + Style::SLIDER_INSET;
@@ -599,16 +676,16 @@ impl Painter {
                         t.fill_ellipse(
                             &Ellipse {
                                 center: Vector2 { x: cx, y: cy },
-                                radius_x: 8.0,
-                                radius_y: 8.0,
+                                radius_x: thumb.outer,
+                                radius_y: thumb.outer,
                             },
                             slider_surface,
                         );
                         t.draw_ellipse(
                             &Ellipse {
                                 center: Vector2 { x: cx, y: cy },
-                                radius_x: 8.0,
-                                radius_y: 8.0,
+                                radius_x: thumb.outer,
+                                radius_y: thumb.outer,
                             },
                             slider_border,
                             1.0,
@@ -616,8 +693,8 @@ impl Painter {
                         t.fill_ellipse(
                             &Ellipse {
                                 center: Vector2 { x: cx, y: cy },
-                                radius_x: 5.0,
-                                radius_y: 5.0,
+                                radius_x: thumb.inner,
+                                radius_y: thumb.inner,
                             },
                             slider_ink,
                         );
@@ -643,7 +720,17 @@ impl Painter {
                         radius_x: if caption { 0.0 } else { Style::RADIUS },
                         radius_y: if caption { 0.0 } else { Style::RADIUS },
                     };
-                    if (!caption && !plain) || c.selected || hover == Some(i) {
+                    if plain {
+                        let hover = animation.hover.unwrap_or(f32::from(u8::from(c.enabled && hover == Some(i))));
+                        let selection = animation.selection.unwrap_or(f32::from(u8::from(c.selected)));
+                        t.fill_highlight(&rr, hovered, hover * (1.0 - selection));
+                        t.fill_highlight(&rr, selected, selection * (1.0 - hover));
+                        t.fill_highlight(&rr, nav_selected_hovered, selection * hover);
+                    } else if matches!(c.kind, ControlKind::BackButton) {
+                        let hover = animation.hover.unwrap_or(f32::from(u8::from(state.active)));
+                        t.fill_rounded_rect(&rr, if dark { card } else { slider_surface });
+                        t.fill_highlight(&rr, hovered, hover);
+                    } else if !caption || c.selected || hover == Some(i) {
                         t.fill_rounded_rect(
                             &rr,
                             if c.selected && c.enabled && hover == Some(i) {
@@ -897,7 +984,8 @@ impl Painter {
                 };
                 let mut paint_grip = |index: usize, row: &RuleRow| {
                     let _clip = ContentClip::new(&t, s, true);
-                    let active = s.rule_grip_hover == Some(index);
+                    grip_canvas.motion.hover = motion.grip.filter(|(row, _)| *row == index).map(|(_, value)| value);
+                    let active = s.rule_grip_hover == Some(index) || grip_canvas.motion.hover.is_some_and(|value| value > 0.0);
                     grip_canvas.brushes[Tone::Ink as usize] = if active { ink } else { muted };
                     InlineControl::Icon {
                         glyph: fonts::DRAG_HANDLE_ICON,
@@ -940,8 +1028,23 @@ impl Painter {
                     }
                     paint_grip(index, row);
                 }
-                for bar in [s.scrollbar(), s.navigation_scrollbar()].into_iter().flatten() {
-                    widgets::Scrollbar::paint_thumb(&mut widget_canvas, bar.thumb);
+                if let Some(bounds) = &s.activity {
+                    let _clip = ContentClip::new(&t, s, true);
+                    let angle = motion.activity.unwrap_or(0.0);
+                    t.rotated_icon(widgets::motion::ACTIVITY_GLYPH, &self.formats[5], bounds, accent, angle);
+                }
+                let paint_scrollbar = |bar: widgets::Scrollbar, index: usize| {
+                    let mut thumb = bar.thumb;
+                    let growth = widgets::Scrollbar::thumb_growth(motion.scrollbars[index]);
+                    thumb.x -= growth;
+                    thumb.width += growth;
+                    widgets::Scrollbar::paint_thumb(&mut WidgetCanvas { ..widget_canvas }, thumb);
+                };
+                if let Some(bar) = s.scrollbar() {
+                    paint_scrollbar(bar, 0);
+                }
+                if let Some(bar) = s.navigation_scrollbar() {
+                    paint_scrollbar(bar, 1);
                 }
                 t.finish()
             })

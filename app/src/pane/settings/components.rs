@@ -148,7 +148,7 @@ impl<'a> SettingsForm<'a> {
     }
     /// Reserve a common trailing column. Long descriptions use the full card width.
     fn card(&mut self, title: &str, description: &str, action_width: f32) -> Rect {
-        self.card_layout(title, description, action_width, false)
+        self.card_layout(title, description, action_width, false, false)
     }
     fn card_layout(
         &mut self,
@@ -156,6 +156,7 @@ impl<'a> SettingsForm<'a> {
         description: &str,
         action_width: f32,
         force_stacked: bool,
+        activity: bool,
     ) -> Rect {
         let column = action_width.max(232.0);
         let stacked =
@@ -165,12 +166,14 @@ impl<'a> SettingsForm<'a> {
         } else {
             self.width - column - 3.0 * Tokens::INSET
         };
+        let indicator_width = if activity { 28.0 } else { 0.0 };
+        let title_text_width = (text_width - indicator_width).max(1.0);
         let badge = self.title_badge.take();
         let title_width = super::components::text_width(title, 14.0);
         let badge_width = badge.as_ref().map_or(0.0, |label|
-            (super::components::text_width(label, 11.0) + 36.0).min(text_width));
-        let badge_inline = title_width + Tokens::GAP + badge_width <= text_width;
-        let title_line_height = text_height(title, 14.0, text_width).max(24.0);
+            (super::components::text_width(label, 11.0) + 36.0).min(title_text_width));
+        let badge_inline = title_width + Tokens::GAP + badge_width <= title_text_width;
+        let title_line_height = text_height(title, 14.0, title_text_width).max(24.0);
         let badge_height = badge.as_ref().map_or(0.0, |label|
             text_height(label, 11.0, (badge_width - 36.0).max(1.0)).max(16.0) + 4.0);
         let title_height = title_line_height + if badge.is_some() && !badge_inline {
@@ -198,28 +201,29 @@ impl<'a> SettingsForm<'a> {
         self.scene
             .cards
             .push(Rect::from_xywh(self.x, self.y, self.width, height));
+        let title_top = self.y + if description.is_empty() && !stacked {
+            (height - title_height) / 2.0
+        } else {
+            Tokens::INSET
+        };
         self.scene.text(
             Rect::from_xywh(
                 self.x + Tokens::INSET,
-                self.y
-                    + if description.is_empty() && !stacked {
-                        (height - title_height) / 2.0
-                    } else {
-                        Tokens::INSET
-                    },
-                text_width,
+                title_top,
+                title_text_width,
                 title_line_height,
             ),
             title,
             1,
         );
+        if activity {
+            self.scene.activity = Some(Rect::from_xywh(self.x + self.width - Tokens::INSET - indicator_width,
+                title_top, indicator_width, title_line_height));
+        }
         if let Some(label) = badge {
-            let top = self.y + if description.is_empty() && !stacked {
-                (height - title_height) / 2.0
-            } else { Tokens::INSET };
             self.scene.text(Rect::from_xywh(
                 self.x + Tokens::INSET + if badge_inline { title_width + Tokens::GAP } else { 0.0 },
-                top + if badge_inline { (title_line_height - badge_height) / 2.0 } else { title_line_height + 4.0 },
+                title_top + if badge_inline { (title_line_height - badge_height) / 2.0 } else { title_line_height + 4.0 },
                 badge_width, badge_height,
             ), label, Tokens::TITLE_BADGE);
         }
@@ -251,6 +255,9 @@ impl<'a> SettingsForm<'a> {
     }
     pub fn info(&mut self, title: &str, description: &str) {
         self.card(title, description, 0.0);
+    }
+    pub fn busy(&mut self, title: &str, description: &str) {
+        self.card_layout(title, description, 0.0, false, true);
     }
     pub fn toggle_enabled(
         &mut self,
@@ -438,7 +445,7 @@ impl<'a> SettingsForm<'a> {
             }
             return;
         }
-        let r = self.card_layout(title, description, width, stacked);
+        let r = self.card_layout(title, description, width, stacked, false);
         let count = actions.len();
         let cell = (width - gap * (count - 1) as f32) / count as f32;
         for (i, (label, action)) in actions.into_iter().enumerate() {
@@ -959,6 +966,7 @@ impl Scene {
             .chain(self.destination_changes.iter_mut().map(|change| &mut change.bounds))
             .chain(self.rule_rows.iter_mut().map(|row| &mut row.bounds))
             .chain(self.disclosure_clips.iter_mut().map(|clip| &mut clip.bounds))
+            .chain(self.activity.iter_mut())
         {
             translate(r);
         }

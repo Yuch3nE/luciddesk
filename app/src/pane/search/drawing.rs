@@ -1,5 +1,6 @@
 //! Search input, results, and status drawing.
 use super::*;
+use luciddesk_window::controls::motion::{self, ActivityMotion, Highlights};
 
 pub(super) struct Drawing {
     frame_cache: std::cell::RefCell<crate::pane::canvas::FrameCache>,
@@ -13,6 +14,11 @@ pub(super) struct Drawing {
     icon: windows_canvas::TextFormat,
     action_icon: windows_canvas::TextFormat,
     placeholder: windows_canvas::TextFormat,
+    rows: Highlights<std::path::PathBuf>,
+    buttons: Highlights<Action>,
+    row_buttons: [Highlights<std::path::PathBuf>; 2],
+    activity: ActivityMotion,
+    pub(super) controls_playing: bool,
 }
 
 #[cfg(test)]
@@ -80,6 +86,11 @@ impl Drawing {
         crate::pane::canvas::ellipsis_delimiter(&name, '.' as u32).map_err(|e| e.to_string())?;
         crate::pane::canvas::ellipsis_delimiter(&path, '\\' as u32).map_err(|e| e.to_string())?;
         Ok(Self {
+            rows: Highlights::default(),
+            buttons: Highlights::default(),
+            row_buttons: Default::default(),
+            activity: ActivityMotion::default(),
+            controls_playing: false,
             frame_cache: Default::default(),
             brushes: Default::default(),
             file_icons: icons::Icons::new(hwnd),
@@ -127,6 +138,7 @@ impl Drawing {
         state: &Search,
     ) -> Result<bool, String> {
         use crate::pane::native_graphics::canvas_result;
+        self.controls_playing = false;
         let family = crate::pane::fonts::family();
         if family != self.family || self.language != crate::i18n::language() {
             use windows_canvas::{ParagraphAlignment, TextFormat, WordWrapping};
@@ -180,6 +192,11 @@ impl Drawing {
         let end = (start+state.visible_rows).min(state.entries.len());
         self.file_icons.refresh(&state.entries[start..end], icon_size);
         let context = &target;
+        let now = Instant::now();
+        let animate = unsafe { IsWindowVisible(hwnd) != 0 && IsIconic(hwnd) == 0 } && motion::animations_enabled();
+        let pointer_down = unsafe { GetKeyState(VK_LBUTTON as i32) } < 0;
+        let activity = self.activity.frame(state.busy, now, animate);
+        let mut playing = activity.is_some() && animate;
         crate::pane::canvas::draw_cached(&target, s, &self.frame_cache, |target| {
             target.clear(ColorF::new(0.0, 0.0, 0.0, 0.0));
             let contrast = crate::pane::theme::panel_contrast(
@@ -223,12 +240,12 @@ impl Drawing {
                     stroke,
                 );
             }
-            target.clipped_icon(
-                if state.busy { "\u{e916}" } else { "\u{e721}" },
-                &self.icon,
-                &Rect::from_xywh(12.0, 0.0, 28.0, TOP),
-                dim,
-            );
+            let search_icon = Rect::from_xywh(12.0, 0.0, 28.0, TOP);
+            if let Some(angle) = activity {
+                target.rotated_icon(motion::ACTIVITY_GLYPH, &self.icon, &search_icon, dim, angle);
+            } else {
+                target.clipped_icon("\u{e721}", &self.icon, &search_icon, dim);
+            }
             if unsafe { GetWindowTextLengthW(edit(hwnd)) } == 0 {
                 target.clipped_text(
                     crate::i18n::text("ui-search-local-files"),
@@ -240,11 +257,12 @@ impl Drawing {
             if unsafe { GetWindowTextLengthW(edit(hwnd)) } > 0 {
                 if let Some(r) = action_rect(Action::Clear, w) {
                     let rect = Rect::from_xywh(r.x, r.y, r.width, r.height);
-                    if state.hovered_action == Some(Action::Clear) {
-                        target.fill_rounded_rect(&RoundedRect { rect, radius_x: 6.0, radius_y: 6.0 }, hovered);
-                    }
-                    target.clipped_icon("\u{e711}", &self.icon, &rect,
-                        if state.hovered_action == Some(Action::Clear) { text } else { dim });
+                    let hot = state.hovered_action == Some(Action::Clear);
+                    let feedback = self.buttons.sample(&Action::Clear, hot, hot && pointer_down, false, now, animate);
+                    playing |= feedback.playing;
+                    target.fill_highlight(&RoundedRect { rect, radius_x: 6.0, radius_y: 6.0 }, hovered, feedback.hover);
+                    let glyph = canvas_result(target.cached_solid_brush(ColorF::new(ink, ink, ink, 0.58 + 0.42 * feedback.hover)))?;
+                    target.clipped_icon("\u{e711}", &self.icon, &rect, &glyph);
                 }
             }
             if !state.query.is_empty() {
@@ -284,14 +302,12 @@ impl Drawing {
                             let Some(r) = action_rect(action, w) else { continue; };
                             let (x, width) = (r.x, r.width);
                             let rect = Rect::from_xywh(r.x, r.y, r.width, r.height);
-                            target.fill_rounded_rect(
-                                &RoundedRect {
-                                    rect,
-                                    radius_x: 5.0,
-                                    radius_y: 5.0,
-                                },
-                                if state.hovered_action == Some(action) { selected } else { hovered },
-                            );
+                            let hot = state.hovered_action == Some(action);
+                            let feedback = self.buttons.sample(&action, hot, hot && pointer_down, false, now, animate);
+                            playing |= feedback.playing;
+                            let shape = RoundedRect { rect, radius_x: 5.0, radius_y: 5.0 };
+                            target.fill_highlight(&shape, hovered, 1.0 - feedback.hover);
+                            target.fill_highlight(&shape, selected, feedback.hover);
                             target.clipped_text(
                                 label,
                                 &self.path,
@@ -309,29 +325,15 @@ impl Drawing {
                     .take(state.visible_rows)
                 {
                     let y = TOP + ROW_INSET + (row - state.scroll) as f32 * ROW;
-                    if state.selection.contains(&row) || state.hovered == Some(row) {
-                        target.fill_rounded_rect(
-                            &RoundedRect {
-                                rect: Rect::from_xywh(6.0, y, w - 12.0, ROW - 2.0),
-                                radius_x: 6.0,
-                                radius_y: 6.0,
-                            },
-                            if state.selection.contains(&row) {
-                                selected
-                            } else {
-                                hovered
-                            },
-                        );
-                        if state.focused == Some(row) && state.selection.contains(&row) {
-                            target.fill_rounded_rect(
-                                &RoundedRect {
-                                    rect: Rect::from_xywh(7.0, y + 12.0, 3.0, ROW - 26.0),
-                                    radius_x: 1.5,
-                                    radius_y: 1.5,
-                                },
-                                accent,
-                            );
-                        }
+                    let feedback = self.rows.sample(&entry.path, state.hovered == Some(row), false,
+                        state.selection.contains(&row), now, animate);
+                    playing |= feedback.playing;
+                    let shape = RoundedRect { rect: Rect::from_xywh(6.0, y, w - 12.0, ROW - 2.0), radius_x: 6.0, radius_y: 6.0 };
+                    target.fill_highlight(&shape, hovered, feedback.hover * (1.0 - feedback.selected));
+                    target.fill_highlight(&shape, selected, feedback.selected);
+                    if state.focused == Some(row) && state.selection.contains(&row) {
+                        target.fill_highlight(&RoundedRect { rect: Rect::from_xywh(7.0, y + 12.0, 3.0, ROW - 26.0),
+                            radius_x: 1.5, radius_y: 1.5 }, accent, feedback.selected);
                     }
                     // Ctrl+navigation moves focus without changing selection.
                     // Keep that keyboard target visible, including unselected rows.
@@ -343,13 +345,16 @@ impl Drawing {
                         }, accent, crate::pane::control_style::FOCUS_STROKE);
                     }
                     if !state.replacing && (state.hovered == Some(row) || state.focused == Some(row)) {
-                        for button in [RowAction::Location, RowAction::More] {
+                        for (index, button) in [RowAction::Location, RowAction::More].into_iter().enumerate() {
                             let Some(r) = row_action_rect(button, w, y) else { continue; };
                             let rect = Rect::from_xywh(r.x, r.y, r.width, r.height);
-                            let active = state.hovered_row_action == Some((row, button));
-                            if active { target.fill_rounded_rect(&RoundedRect { rect, radius_x: 5.0, radius_y: 5.0 }, action_hover); }
+                            let hot = state.hovered_row_action == Some((row, button));
+                            let feedback = self.row_buttons[index].sample(&entry.path, hot, hot && pointer_down, false, now, animate);
+                            playing |= feedback.playing;
+                            target.fill_highlight(&RoundedRect { rect, radius_x: 5.0, radius_y: 5.0 }, action_hover, feedback.hover);
+                            let glyph = canvas_result(target.cached_solid_brush(ColorF::new(ink, ink, ink, 0.58 + 0.42 * feedback.hover)))?;
                             target.clipped_icon(if button == RowAction::More { "\u{e712}" } else { "\u{e8b7}" },
-                                &self.action_icon, &rect, if active { text } else { dim });
+                                &self.action_icon, &rect, &glyph);
                         }
                     }
                     let name = entry
@@ -424,6 +429,10 @@ impl Drawing {
             target.finish()
         })
         .map_err(|e| e.to_string())?;
+        self.rows.finish_frame();
+        self.buttons.finish_frame();
+        for buttons in &mut self.row_buttons { buttons.finish_frame(); }
+        self.controls_playing = playing;
         Ok(true)
     }
 }

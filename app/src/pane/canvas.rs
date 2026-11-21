@@ -91,6 +91,43 @@ pub struct DrawPass<'a> {
     clips: std::cell::Cell<usize>,
 }
 
+pub(super) struct OpacityLayer<'a>(&'a ID2D1DeviceContext);
+
+/// Schedule control repainting only while the last visible frame was moving.
+#[derive(Default)]
+pub(super) struct ControlRedraw(bool);
+
+impl ControlRedraw {
+    pub const TIMER: usize = 0x4c46;
+
+    pub fn tick(&mut self, hwnd: windows_sys::Win32::Foundation::HWND) {
+        self.sync(hwnd, self.0);
+        if self.0 {
+            unsafe { windows_sys::Win32::Graphics::Gdi::InvalidateRect(hwnd, std::ptr::null(), 0); }
+        }
+    }
+
+    pub fn sync(&mut self, hwnd: windows_sys::Win32::Foundation::HWND, playing: bool) {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{IsIconic, IsWindowVisible, KillTimer, SetTimer, USER_TIMER_MINIMUM};
+        let playing = playing && unsafe { IsWindowVisible(hwnd) != 0 && IsIconic(hwnd) == 0 };
+        if playing == self.0 { return; }
+        unsafe {
+            if playing {
+                self.0 = SetTimer(hwnd, Self::TIMER, USER_TIMER_MINIMUM, None) != 0;
+            } else {
+                KillTimer(hwnd, Self::TIMER);
+                self.0 = false;
+            }
+        }
+    }
+}
+
+impl Drop for OpacityLayer<'_> {
+    fn drop(&mut self) {
+        unsafe { self.0.PopLayer() };
+    }
+}
+
 pub fn draw<T>(
     target: &c::ID2D1DeviceContext,
     scale: f32,
@@ -141,6 +178,49 @@ impl<'a> std::ops::Deref for DrawPass<'a> {
 }
 
 impl DrawPass<'_> {
+    pub(super) fn fill_highlight(&self, shape: &c::RoundedRect, brush: &c::Brush, amount: f32) {
+        if amount > 0.0 {
+            let _fade = self.opacity_layer(&shape.rect, amount);
+            self.fill_rounded_rect(shape, brush);
+        }
+    }
+
+    pub(super) fn opacity_layer(&self, bounds: &c::Rect, opacity: f32) -> Option<OpacityLayer<'_>> {
+        use windows::Win32::Graphics::Direct2D::{D2D1_LAYER_PARAMETERS1, ID2D1Layer};
+        if opacity >= 1.0 { return None; }
+        let parameters = D2D1_LAYER_PARAMETERS1 {
+            contentBounds: D2D_RECT_F {
+                left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom,
+            },
+            maskTransform: windows_numerics::Matrix3x2 { M11: 1.0, M22: 1.0, ..Default::default() },
+            opacity: opacity.max(0.0),
+            ..Default::default()
+        };
+        unsafe { self.native.PushLayer(&parameters, None::<&ID2D1Layer>) };
+        Some(OpacityLayer(&self.native))
+    }
+
+    pub(super) fn rotated_icon(
+        &self, text: &str, format: &c::TextFormat, bounds: &c::Rect, brush: &c::Brush, radians: f32,
+    ) {
+        let x = (bounds.left + bounds.right) * 0.5;
+        let y = (bounds.top + bounds.bottom) * 0.5;
+        let (sin, cos) = radians.sin_cos();
+        let rotation = windows_numerics::Matrix3x2 {
+            M11: cos, M12: sin, M21: -sin, M22: cos,
+            M31: x - x * cos + y * sin, M32: y - x * sin - y * cos,
+        };
+        let mut previous = windows_numerics::Matrix3x2::default();
+        self.push_clip(bounds);
+        unsafe {
+            self.native.GetTransform(&raw mut previous);
+            self.native.SetTransform(&rotation);
+        }
+        self.clipped_icon(text, format, bounds, brush);
+        unsafe { self.native.SetTransform(&previous) };
+        self.pop_clip();
+    }
+
     pub fn cached_solid_brush(&self, color: c::ColorF) -> canvas_core::Result<std::rc::Rc<c::Brush>> {
         let slot = self.brush_slot.get();
         self.brush_slot.set(slot + 1);

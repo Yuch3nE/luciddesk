@@ -461,6 +461,7 @@ fn backup_in_progress_preserves_policy_controls_and_prevents_duplicate_jobs() {
             },
             false,
         );
+        assert!(body.activity.is_some());
         let toggle = body
             .controls
             .iter()

@@ -318,6 +318,7 @@ where
     let mut scrollbar_motion = super::animation::Motion::settled(0.0, std::time::Instant::now());
     let mut scrollbar_timer = false;
     let mut scrollbar_animated = super::scrollbar::animations_enabled();
+    let mut control_redraw = super::canvas::ControlRedraw::default();
     let mut fold: Option<super::animation::Fold> = None;
     let mut pane_moved = false;
     let mut drag_clipped = shape::WindowShape::default();
@@ -342,6 +343,9 @@ where
             }
             unsafe { super::desktop_toggle::gate(raw.cast(), message, lparam); }
             let hwnd: HWND = raw.cast();
+            if message == WM_DESTROY || (message == WM_SHOWWINDOW && wparam == 0) {
+                control_redraw.sync(hwnd, false);
+            }
             if matches!(message, WM_MOUSELEAVE | WM_NCMOUSEMOVE | WM_LBUTTONDOWN
                 | WM_RBUTTONDOWN | WM_MOUSEWHEEL | WM_MOUSEHWHEEL | WM_KEYDOWN
                 | WM_KILLFOCUS | WM_SHOWWINDOW | WM_SIZE | WM_ENTERSIZEMOVE
@@ -638,6 +642,10 @@ where
                     }
                     Some(0)
                 }
+                WM_TIMER if wparam == super::canvas::ControlRedraw::TIMER => {
+                    control_redraw.tick(hwnd);
+                    Some(0)
+                }
                 WM_TIMER if wparam == 4 => {
                     update_scrollbar_animation(
                         hwnd,
@@ -806,6 +814,7 @@ where
                         EndPaint(hwnd, &raw const ps);
                     }
                     let r = client(hwnd);
+                    let mut controls_playing = false;
                     if r.right > 0 && r.bottom > 0 {
                         let s = scale(hwnd);
                         let radius = super::interface_flags::pane_corner_radius(model.borrow().options.corner_radius);
@@ -833,17 +842,19 @@ where
                             else {
                                 return Ok::<_, windows::core::Error>(false);
                             };
-                            renderer.paint(
+                            controls_playing = renderer.paint_animated(
                                 &target,
                                 r.right as u32,
                                 r.bottom as u32,
                                 s,
                                 &model.borrow(),
+                                scrollbar_animated,
                             )?;
                             surface.end_frame()?;
                             Ok(true)
                         });
                     }
+                    control_redraw.sync(hwnd, controls_playing);
                     Some(0)
                 }
                 WM_SIZE => {

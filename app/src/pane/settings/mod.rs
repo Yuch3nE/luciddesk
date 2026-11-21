@@ -126,6 +126,7 @@ use frame::*;
 
 mod components;
 mod controls;
+mod motions;
 mod preview;
 use components::{ContentClip, SettingsForm, Tokens};
 use controls::{Control, ControlKind, DestinationChange, SectionHeader, Slider, Style};
@@ -147,6 +148,7 @@ struct Scene {
     destination_changes: Vec<DestinationChange>,
     rule_rows: Vec<RuleRow>,
     disclosure_clips: Vec<DisclosureClip>,
+    activity: Option<Rect>,
     rule_grip_hover: Option<usize>,
     rule_grip_pressed: Option<usize>,
     floating_rule: Option<usize>,
@@ -177,6 +179,7 @@ impl Scene {
             destination_changes: Vec::new(),
             rule_rows: Vec::new(),
             disclosure_clips: Vec::new(),
+            activity: None,
             rule_grip_hover: None,
             rule_grip_pressed: None,
             floating_rule: None,
@@ -226,7 +229,7 @@ mod plugin_content;
 pub(in crate::pane) mod plugin_page;
 use layout::scene;
 
-const TOGGLE_TIMER: usize = 0x4c5054;
+const CONTROL_MOTION_TIMER: usize = 0x4c5054;
 use super::animation::Motion as ToggleMotion;
 mod painter;
 use painter::Painter;

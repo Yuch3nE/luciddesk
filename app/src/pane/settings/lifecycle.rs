@@ -80,7 +80,7 @@ pub(super) fn close(
     };
     drop(owner);
     unsafe {
-        KillTimer(hwnd, TOGGLE_TIMER);
+        KillTimer(hwnd, CONTROL_MOTION_TIMER);
         KillTimer(hwnd, FONT_LOAD_TIMER);
         KillTimer(hwnd, UPDATE_TIMER);
         KillTimer(hwnd, STARTUP_TIMER);

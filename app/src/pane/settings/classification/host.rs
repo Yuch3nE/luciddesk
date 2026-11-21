@@ -142,6 +142,7 @@ pub(super) fn show(state: &Rc<RefCell<PaneApp>>, tab: Tab) -> Result<(), String>
                     });
                     if !organizer.editor.tick_disclosure_animations(now)
                         && !organizer.rule_motion.playing(now) && organizer.switch_motion.is_empty()
+                        && !organizer.interface_playing
                     {
                         unsafe { KillTimer(hwnd, ORGANIZER_MOTION_TIMER); }
                     }
@@ -292,7 +293,7 @@ struct RuleDrag {
 impl RuleDrag {
     fn drop_target(&self, scene: &Scene) -> Option<usize> {
         let (x, y) = self.pointer;
-        let viewport = scene.viewport.filter(|viewport| contains(viewport, x, y))?;
+        scene.viewport.filter(|viewport| contains(viewport, x, y))?;
         let first = scene.rule_rows.first()?.bounds;
         let last = scene.rule_rows.last()?.bounds;
         if !self.active || x < first.left || x >= first.right || y < first.top || y > last.bottom {
@@ -402,6 +403,9 @@ struct Organizer {
     auto_fit_preview: bool,
     preview_fit_pending: bool,
     scroll_grab: Option<f32>,
+    scroll_hover: Option<usize>,
+    interface_motion: motions::InterfaceMotion,
+    interface_playing: bool,
     rule_drag: Option<RuleDrag>,
     rule_motion: RuleReorderMotion,
     pending_switch: Option<Command>,
@@ -473,6 +477,9 @@ impl Organizer {
             auto_fit_preview: true,
             preview_fit_pending: true,
             scroll_grab: None,
+            scroll_hover: None,
+            interface_motion: motions::InterfaceMotion::default(),
+            interface_playing: false,
             rule_drag: None,
             rule_motion: RuleReorderMotion::default(),
             pending_switch: None,
@@ -642,6 +649,17 @@ impl Organizer {
             }
         }
         let focus = self.visible_focus(scene);
+        let (motion, playing) = self.interface_motion.frame(scene, motions::MotionInput {
+            hover: self.hover,
+            pressed: self.pressed,
+            scrollbar: self.scroll_grab.map(|_| 0).or(self.scroll_hover),
+            now: Instant::now(),
+            enabled: scrollbar::animations_enabled(),
+        });
+        if playing && !self.interface_playing {
+            unsafe { SetTimer(hwnd, ORGANIZER_MOTION_TIMER, USER_TIMER_MINIMUM, None); }
+        }
+        self.interface_playing = playing;
         self.paint_recovery.paint(
             hwnd,
             &mut self.surface,
@@ -659,7 +677,7 @@ impl Organizer {
                 else {
                     return Ok(false);
                 };
-                self.painter.paint(
+                self.painter.paint_animated(
                     &target,
                     scene,
                     width,
@@ -670,6 +688,7 @@ impl Organizer {
                     self.hover,
                     focus,
                     &switch_positions,
+                    &motion,
                 )?;
                 surface.end_frame()?;
                 Ok(true)
@@ -749,6 +768,7 @@ impl Organizer {
     fn clear_hover(&mut self) {
         self.hover = None;
         self.grip_hover = None;
+        self.scroll_hover = None;
         self.hovered_destination = None;
         if let Some(tip) = &mut self.tip {
             tip.hide();
@@ -883,6 +903,7 @@ impl Organizer {
         self.rule_motion = RuleReorderMotion::default();
         self.pending_switch = None;
         self.switch_motion.clear();
+        self.interface_playing = false;
         unsafe { KillTimer(hwnd, ORGANIZER_MOTION_TIMER); }
     }
 
@@ -904,6 +925,11 @@ impl Organizer {
     fn pointer(&mut self, hwnd: HWND, msg: u32, point: POINT, scale: f32) -> Option<Control> {
         let (x, y) = (point.x as f32 / scale, point.y as f32 / scale);
         let scene = self.scene.as_ref()?;
+        let scroll_hover = motions::scrollbar_at(scene, x, y);
+        if scroll_hover != self.scroll_hover {
+            self.scroll_hover = scroll_hover;
+            redraw(hwnd);
+        }
         if let (Some(scrollbar), Some(viewport)) = (scene.scrollbar(), scene.viewport) {
             if msg == WM_LBUTTONDOWN
                 && x >= viewport.right - luciddesk_window::controls::Scrollbar::GUTTER
@@ -1008,7 +1034,7 @@ impl Organizer {
                     tip.hide();
                 }
                 self.hovered_destination = destination_hit;
-                if self.hover != hit {
+                if self.hover != hit || self.grip_hover != grip_hover {
                 self.hover = hit;
                 self.grip_hover = grip_hover;
                     redraw(hwnd);
@@ -1298,6 +1324,30 @@ fn preview_resize_keeps_window_width_and_fits_the_monitor() {
         assert!(after.top >= work.top && after.bottom <= work.bottom);
     }
     assert!(!resize_preview(hwnd, preferred, scale));
+}
+
+#[test]
+fn rule_grip_hover_updates_when_entering_and_leaving_empty_space() {
+    let _sta = crate::pane::test_support::apartment();
+    let window = windows_window::Window::new("Grip hover test")
+        .on_message(|_, message, _, _| (message == WM_DESTROY).then_some(0))
+        .create().unwrap();
+    let hwnd = window.hwnd().cast();
+    let mut organizer = Organizer::new().unwrap();
+    let mut scene = Scene::empty(Backdrop::Mica, 16.0, 100.0);
+    scene.viewport = Some(Rect::from_xywh(16.0, 100.0, 480.0, 200.0));
+    scene.rule_rows = [100.0, 164.0].into_iter().map(|top| RuleRow {
+        bounds: Rect::from_xywh(32.0, top, 440.0, 64.0),
+        ..RuleRow::default()
+    }).collect();
+    let grip = scene.rule_rows[0].grip();
+    organizer.scene = Some(scene);
+
+    organizer.pointer(hwnd, WM_MOUSEMOVE, POINT { x: grip.left as i32 + 2, y: grip.top as i32 + 2 }, 1.0);
+    assert_eq!(organizer.grip_hover, Some(0));
+    assert_eq!(organizer.hover, None);
+    organizer.pointer(hwnd, WM_MOUSEMOVE, POINT { x: grip.right as i32 + 2, y: grip.top as i32 + 2 }, 1.0);
+    assert_eq!(organizer.grip_hover, None);
 }
 
 #[test]

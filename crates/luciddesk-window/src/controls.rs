@@ -1,6 +1,7 @@
 //! Common control layout and painting, with event handling owned by the host.
 use crate::control_style::{self as style, Palette};
 pub(crate) mod gdi;
+pub mod motion;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Bounds {
@@ -106,6 +107,28 @@ pub trait Canvas {
     fn fill_rgb(&mut self, bounds: Bounds, radius: f32, rgb: [f32; 3]) -> Result<(), Self::Error>;
     fn stroke(&mut self, bounds: Bounds, radius: f32, thickness: f32, tone: Tone);
     fn text(&mut self, bounds: Bounds, label: &str, alignment: Alignment, tone: Tone);
+    fn palette(&self) -> &Palette;
+
+    fn fill_between(&mut self, bounds: Bounds, radius: f32, from: Tone, to: Tone, progress: f32) {
+        if progress <= 0.0 || progress >= 1.0 {
+            self.fill(bounds, radius, if progress <= 0.0 { from } else { to });
+            return;
+        }
+        let rgb = mix_tones(from, to, self.palette(), progress);
+        if self.fill_rgb(bounds, radius, rgb).is_err() {
+            self.fill(bounds, radius, if progress < 0.5 { from } else { to });
+        }
+    }
+}
+
+pub fn mix_tones(from: Tone, to: Tone, palette: &Palette, progress: f32) -> [f32; 3] {
+    let from = from.rgb(palette);
+    let to = to.rgb(palette);
+    [16, 8, 0].map(|shift| {
+        let a = ((from >> shift) & 255) as f32;
+        let b = ((to >> shift) & 255) as f32;
+        (a + (b - a) * progress) / 255.0
+    })
 }
 
 #[derive(Clone, Copy)]
@@ -162,15 +185,30 @@ pub enum ButtonKind {
 
 impl ButtonKind {
     pub fn paint(self, canvas: &mut impl Canvas, bounds: Bounds, label: &str, state: State) {
+        self.paint_with_hover(canvas, bounds, label, state, f32::from(u8::from(state.active)));
+    }
+
+    pub fn paint_with_hover(self, canvas: &mut impl Canvas, bounds: Bounds, label: &str, state: State, hover: f32) {
         let primary = matches!(self, Self::Primary);
         let selected = state.enabled && matches!(self, Self::Selected);
-        let (fill, text) = match (self, state.enabled, state.active) {
-            (Self::Primary, true, true) => (Tone::AccentHover, Tone::OnAccent),
-            (Self::Primary, true, false) => (Tone::Accent, Tone::OnAccent),
-            (Self::Selected, true, _) => (Tone::Selection, Tone::AccentInk),
-            _ => (state.surface(), state.text()),
+        let text = match (self, state.enabled) {
+            (Self::Primary, true) => {
+                canvas.fill_between(bounds, style::RADIUS, Tone::Accent, Tone::AccentHover, hover);
+                Tone::OnAccent
+            }
+            (Self::Secondary, true) => {
+                canvas.fill_between(bounds, style::RADIUS, Tone::Surface, Tone::Hover, hover);
+                Tone::Ink
+            }
+            (Self::Selected, true) => {
+                canvas.fill(bounds, style::RADIUS, Tone::Selection);
+                Tone::AccentInk
+            }
+            (_, false) => {
+                canvas.fill(bounds, style::RADIUS, Tone::DisabledSurface);
+                Tone::Disabled
+            }
         };
-        canvas.fill(bounds, style::RADIUS, fill);
         if primary && state.enabled {
             if state.focused {
                 let inset = style::PRIMARY_FOCUS_INSET;
@@ -609,7 +647,11 @@ impl Scrollbar {
     }
 
     pub fn paint_thumb(canvas: &mut impl Canvas, bounds: Bounds) {
-        canvas.fill(bounds, Self::THUMB_WIDTH / 2.0, Tone::ScrollThumb);
+        canvas.fill(bounds, bounds.width / 2.0, Tone::ScrollThumb);
+    }
+
+    pub fn thumb_growth(hover: f32) -> f32 {
+        3.0 * hover
     }
 }
 
@@ -626,6 +668,10 @@ mod tests {
     }
 
     impl Canvas for RecordingCanvas {
+        fn palette(&self) -> &Palette {
+            static PALETTE: Palette = Palette::for_theme(false);
+            &PALETTE
+        }
         type Error = std::convert::Infallible;
 
         fn fill(&mut self, bounds: Bounds, _: f32, tone: Tone) {

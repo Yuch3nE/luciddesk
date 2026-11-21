@@ -1,8 +1,11 @@
 use super::{Alignment, Bounds, Canvas, Scrollbar, Tone};
+use super::motion::{PointerMotion, animations_enabled};
 use crate::control_style::{self as style, Palette, colorref};
 use std::{
+    cell::RefCell,
     mem::size_of,
     ptr::{null, null_mut},
+    time::Instant,
 };
 use windows_sys::Win32::{
     Foundation::*,
@@ -10,10 +13,25 @@ use windows_sys::Win32::{
     UI::{
         Controls::{STATE_SYSTEM_PRESSED, STATE_SYSTEM_UNAVAILABLE},
         HiDpi::GetDpiForWindow,
-        Shell::{DefSubclassProc, SetWindowSubclass},
+        Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass},
         WindowsAndMessaging::*,
     },
 };
+
+pub(crate) const POINTER_TIMER: usize = 0x4c47;
+
+pub(crate) fn pointer_feedback(hwnd: HWND, motion: &mut PointerMotion, hovered: bool, pressed: bool) -> f32 {
+    let now = Instant::now();
+    let (amount, playing) = motion.frame(hovered, pressed, now, animations_enabled());
+    unsafe {
+        if !playing {
+            KillTimer(hwnd, POINTER_TIMER);
+        } else if SetTimer(hwnd, POINTER_TIMER, USER_TIMER_MINIMUM, None) == 0 {
+            return motion.frame(hovered, pressed, now, false).0;
+        }
+    }
+    amount
+}
 
 pub(crate) struct GdiCanvas<'a> {
     pub dc: HDC,
@@ -167,6 +185,10 @@ impl GdiCanvas<'_> {
 }
 
 impl Canvas for GdiCanvas<'_> {
+    fn palette(&self) -> &Palette {
+        self.palette
+    }
+
     type Error = std::convert::Infallible;
 
     fn fill(&mut self, bounds: Bounds, radius: f32, tone: Tone) {
@@ -245,15 +267,16 @@ pub(crate) unsafe fn add_edit_scrollbar(parent: HWND, edit: HWND, id: i32, dark:
             null_mut(),
             null(),
         );
-        if !bar.is_null()
-            && SetWindowSubclass(
-                bar,
-                Some(edit_scrollbar_proc),
-                usize::from(dark),
-                edit as usize,
-            ) == 0
-        {
-            DestroyWindow(bar);
+        if !bar.is_null() {
+            let state = Box::into_raw(Box::new(EditScrollbar {
+                edit,
+                dark,
+                motion: RefCell::default(),
+            }));
+            if SetWindowSubclass(bar, Some(edit_scrollbar_proc), 0, state as usize) == 0 {
+                drop(Box::from_raw(state));
+                DestroyWindow(bar);
+            }
         }
     }
 }
@@ -288,43 +311,61 @@ pub(crate) unsafe fn position_edit_scrollbar(parent: HWND, edit: HWND, bar: HWND
     }
 }
 
+struct EditScrollbar {
+    edit: HWND,
+    dark: bool,
+    motion: RefCell<PointerMotion>,
+}
+
 unsafe extern "system" fn edit_scrollbar_proc(
     hwnd: HWND,
     message: u32,
     wp: usize,
     lp: isize,
-    dark: usize,
-    edit: usize,
+    id: usize,
+    state: usize,
 ) -> isize {
     unsafe {
+        let state = state as *mut EditScrollbar;
         match message {
             WM_NCHITTEST => HTTRANSPARENT as isize,
             WM_ERASEBKGND => 1,
+            WM_TIMER if wp == POINTER_TIMER => {
+                InvalidateRect(hwnd, null(), 0);
+                0
+            }
             WM_PAINT => {
                 let mut paint = PAINTSTRUCT::default();
                 let dc = BeginPaint(hwnd, &raw mut paint);
-                paint_edit_scrollbar(hwnd, edit as HWND, dc, dark != 0);
+                paint_edit_scrollbar(hwnd, dc, &*state);
                 EndPaint(hwnd, &paint);
                 0
             }
             WM_PRINTCLIENT => {
-                paint_edit_scrollbar(hwnd, edit as HWND, wp as HDC, dark != 0);
+                paint_edit_scrollbar(hwnd, wp as HDC, &*state);
                 0
+            }
+            WM_NCDESTROY => {
+                KillTimer(hwnd, POINTER_TIMER);
+                RemoveWindowSubclass(hwnd, Some(edit_scrollbar_proc), id);
+                drop(Box::from_raw(state));
+                DefSubclassProc(hwnd, message, wp, lp)
             }
             _ => DefSubclassProc(hwnd, message, wp, lp),
         }
     }
 }
 
-unsafe fn paint_edit_scrollbar(hwnd: HWND, edit: HWND, dc: HDC, dark: bool) {
+unsafe fn paint_edit_scrollbar(hwnd: HWND, dc: HDC, state: &EditScrollbar) {
     unsafe {
-        let palette = Palette::for_theme(dark);
+        let palette = Palette::for_theme(state.dark);
         let mut rect = RECT::default();
         GetClientRect(hwnd, &raw mut rect);
         let background = CreateSolidBrush(colorref(palette.page_background));
         FillRect(dc, &rect, background);
         DeleteObject(background);
-        let Some(bar) = native_scrollbar(edit) else {
+        let Some(bar) = native_scrollbar(state.edit) else {
+            KillTimer(hwnd, POINTER_TIMER);
             return;
         };
         let mut scroll = SCROLLINFO {
@@ -332,11 +373,13 @@ unsafe fn paint_edit_scrollbar(hwnd: HWND, edit: HWND, dc: HDC, dark: bool) {
             fMask: SIF_RANGE | SIF_PAGE | SIF_POS,
             ..Default::default()
         };
-        if GetScrollInfo(edit, SB_VERT, &raw mut scroll) == 0 {
+        if GetScrollInfo(state.edit, SB_VERT, &raw mut scroll) == 0 {
+            KillTimer(hwnd, POINTER_TIMER);
             return;
         }
         let maximum = i64::from(scroll.nMax) - i64::from(scroll.nPage.saturating_sub(1));
         if maximum <= i64::from(scroll.nMin) {
+            KillTimer(hwnd, POINTER_TIMER);
             return;
         }
         let scale = GetDpiForWindow(hwnd).max(96) as f32 / 96.0;
@@ -347,14 +390,24 @@ unsafe fn paint_edit_scrollbar(hwnd: HWND, edit: HWND, dc: HDC, dark: bool) {
             scale,
             palette: &palette,
         };
-        let thumb = canvas.bounds(RECT {
+        let mut thumb = canvas.bounds(RECT {
             left: center - width / 2,
             top: bar.xyThumbTop,
             right: center - width / 2 + width,
             bottom: bar.xyThumbBottom,
         });
         if thumb.height > 0.0 {
+            let mut point = POINT::default();
+            GetCursorPos(&raw mut point);
+            let active = PtInRect(&bar.rcScrollBar, point) != 0
+                || bar.rgstate[3] & STATE_SYSTEM_PRESSED != 0;
+            let hover = pointer_feedback(hwnd, &mut state.motion.borrow_mut(), active, false);
+            let growth = Scrollbar::thumb_growth(hover);
+            thumb.x -= growth / 2.0;
+            thumb.width += growth;
             Scrollbar::paint_thumb(&mut canvas, thumb);
+        } else {
+            KillTimer(hwnd, POINTER_TIMER);
         }
         let tones = [
             (bar.rgstate[1], scroll.nPos > scroll.nMin),

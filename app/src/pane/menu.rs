@@ -8,14 +8,54 @@
     clippy::cast_precision_loss,
     clippy::cast_sign_loss
 )]
-use super::{composition::Surface, render::Renderer};
+use super::{animation::Motion, composition::Surface, render::Renderer};
 use luciddesk_core::Backdrop;
-use std::{cell::Cell, rc::Rc, time::Instant};
+use std::{cell::{Cell, RefCell}, collections::HashMap, rc::Rc, time::{Duration, Instant}};
 use windows_sys::Win32::{
     Foundation::{HWND, POINT, RECT},
     Graphics::Gdi::*,
     UI::{HiDpi::GetDpiForWindow, Input::KeyboardAndMouse::*, WindowsAndMessaging::*},
 };
+
+const POPUP_OPACITY: u32 = WM_APP + 104;
+const POPUP_DISMISS_DURATION: Duration = Duration::from_millis(85);
+
+thread_local! {
+    static DISMISSING_POPUPS: RefCell<HashMap<usize, (windows_window::Window, Motion)>> =
+        RefCell::new(HashMap::new());
+}
+
+fn dismiss_popup(window: windows_window::Window) {
+    unsafe extern "system" fn tick(_: HWND, _: u32, timer: usize, _: u32) {
+        let Some((window, motion)) = DISMISSING_POPUPS.with(|popups| popups.borrow_mut().remove(&timer)) else {
+            return;
+        };
+        let hwnd = window.hwnd().cast();
+        let opacity = motion.sample(Instant::now()).unwrap_or_default();
+        unsafe {
+            if opacity > 0.0 && SendMessageW(hwnd, POPUP_OPACITY, opacity.to_bits() as usize, 0) != 0 {
+                DISMISSING_POPUPS.with(|popups| popups.borrow_mut().insert(timer, (window, motion)));
+            } else {
+                KillTimer(std::ptr::null_mut(), timer);
+            }
+        }
+    }
+
+    let hwnd = window.hwnd().cast();
+    let timer = unsafe { SetTimer(std::ptr::null_mut(), 0, 16, Some(tick)) };
+    if timer == 0 { return; }
+    let opacity = f32::from_bits(unsafe { SendMessageW(hwnd, POPUP_OPACITY, 0, 0) } as u32);
+    let now = Instant::now();
+    let mut motion = Motion::settled(opacity, now);
+    if motion.retarget_with_duration(0.0, now, true, POPUP_DISMISS_DURATION) <= 0.0 {
+        unsafe { KillTimer(std::ptr::null_mut(), timer); }
+        return;
+    }
+    // The popup is visual only while closing. Return the command immediately
+    // and release the window from the thread timer, outside its message handler.
+    unsafe { EnableWindow(hwnd, 0); }
+    DISMISSING_POPUPS.with(|popups| popups.borrow_mut().insert(timer, (window, motion)));
+}
 
 #[derive(Clone)]
 pub struct Entry {
@@ -353,10 +393,7 @@ fn show_level(
     let dark = super::theme::is_dark(theme);
     let backdrop = default_material(backdrop, dark);
     let scale = unsafe { GetDpiForWindow(owner) }.max(96) as f32 / 96.0;
-    let mut animate = 1i32;
-    unsafe {
-        SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, (&raw mut animate).cast(), 0);
-    }
+    let animate = luciddesk_window::controls::motion::animations_enabled();
     let renderer = if picker_options.is_none() {
         let Ok(renderer) = Renderer::new() else { return 0; };
         Some(renderer)
@@ -405,7 +442,9 @@ fn show_level(
     unsafe { GetCursorPos(&raw mut pointer); }
     let mut fade_started: Option<Instant> = None;
     let mut fade: Option<super::animation::Fade> = None;
-    let mut fade_finished = animate == 0;
+    let mut fade_finished = !animate;
+    let mut opacity = 0.0f32;
+    let mut dismissing = false;
     let mut hover_motion: Vec<_> = rows
         .iter()
         .enumerate()
@@ -419,6 +458,23 @@ fn show_level(
         .size(width, height)
         .on_message(move |raw, message, wparam, lparam| {
             let hwnd = raw.cast();
+            if message == POPUP_OPACITY {
+                if wparam == 0 {
+                    dismissing = true;
+                    return Some(opacity.to_bits() as isize);
+                }
+                let applied = surface.as_mut().is_some_and(|surface| {
+                    surface.opacity(f32::from_bits(wparam as u32)).is_ok()
+                });
+                return Some(isize::from(applied));
+            }
+            if dismissing {
+                return match message {
+                    WM_NCHITTEST => Some(HTTRANSPARENT as isize),
+                    WM_ERASEBKGND | WM_NCCALCSIZE | WM_CLOSE | WM_DESTROY => Some(0),
+                    _ => None,
+                };
+            }
             let mut activate = None;
             match message {
                 WM_ERASEBKGND | WM_NCCALCSIZE => return Some(0),
@@ -460,7 +516,7 @@ fn show_level(
                                 let value = motion.retarget_with_duration(
                                     to,
                                     now,
-                                    animate != 0,
+                                    animate,
                                     super::animation::HOVER_DURATION,
                                 );
                                 hovering |= (value - to).abs() > 0.0001;
@@ -502,7 +558,7 @@ fn show_level(
                             }
                         }
                         let started = *fade_started.get_or_insert_with(Instant::now);
-                        let opacity = if fade_finished {
+                        opacity = if fade_finished {
                             1.0
                         } else {
                             match fade.as_ref().unwrap().sample(started.elapsed()) {
@@ -653,7 +709,7 @@ fn show_level(
                         }
                     } else {
                         if let (Some(started), Some(value)) = (fade_started, surface.as_mut()) {
-                            let opacity = match fade.as_ref().unwrap().sample(started.elapsed()) {
+                            opacity = match fade.as_ref().unwrap().sample(started.elapsed()) {
                                 Ok(opacity) => opacity,
                                 Err(error) => {
                                     luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Error, "pane.menu", &format!("Menu animation failed: {error}"));
@@ -695,6 +751,7 @@ fn show_level(
         return 0;
     };
     let hwnd = window.hwnd().cast();
+    let mut can_dismiss = animate;
     unsafe {
         crate::window_visibility::prepare_canvas(hwnd);
         // Pickers support type-ahead, including composed characters. Ordinary
@@ -715,13 +772,14 @@ fn show_level(
         SetWindowPos(hwnd, HWND_TOPMOST, left, top, width, height, SWP_SHOWWINDOW | SWP_NOOWNERZORDER);
         SetForegroundWindow(hwnd);
         SetFocus(hwnd);
-        if animate != 0 {
+        if animate {
             SetTimer(hwnd, 1, 16, None);
         }
         let mut message = MSG::default();
         while !done.get() {
             let status = GetMessageW(&raw mut message, std::ptr::null_mut(), 0, 0);
             if status <= 0 {
+                can_dismiss = false;
                 if status == 0 {
                     PostQuitMessage(i32::try_from(message.wParam).unwrap_or_default());
                 }
@@ -787,13 +845,17 @@ fn show_level(
         KillTimer(hwnd, 2);
         KillTimer(hwnd, 3);
         if (parent_row.is_some() && resume_parent.get())
-            || (GetForegroundWindow() == hwnd && (parent_row.is_some() || command.get() != 0))
+            || (GetForegroundWindow() == hwnd && (parent_row.is_some() || command.get() != 0 || can_dismiss))
         {
             // A selected root command belongs to the owner. Destroying the
             // active flyout first can activate an unrelated application.
             SetForegroundWindow(owner);
             SetFocus(owner);
         }
+    }
+    if can_dismiss && unsafe { IsWindow(owner) != 0 && IsWindowVisible(hwnd) != 0 } {
+        dismiss_popup(window);
+        return command.get();
     }
     drop(window);
     debug_assert_eq!(Rc::strong_count(&done), 1, "menu callback was not released");
@@ -804,6 +866,41 @@ fn show_level(
 mod tests {
     use super::*;
     use windows_sys::Win32::System::{ProcessStatus::*, Threading::*};
+
+    #[test]
+    fn dismissed_popup_releases_input_and_drops_after_its_fade() {
+        let _sta = crate::pane::test_support::apartment();
+        let updates = Rc::new(Cell::new(0));
+        let samples = Rc::clone(&updates);
+        let window = windows_window::Window::new("Picker dismissal test")
+            .on_message(move |_, message, opacity, _| match message {
+                POPUP_OPACITY if opacity == 0 => Some(1.0f32.to_bits() as isize),
+                POPUP_OPACITY => {
+                    assert!(f32::from_bits(opacity as u32) <= 1.0);
+                    samples.set(samples.get() + 1);
+                    Some(1)
+                }
+                WM_DESTROY => Some(0),
+                _ => None,
+            })
+            .create().unwrap();
+        let hwnd = window.hwnd().cast();
+        dismiss_popup(window);
+        assert_ne!(unsafe { IsWindow(hwnd) }, 0);
+        assert_eq!(unsafe { IsWindowEnabled(hwnd) }, 0);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while unsafe { IsWindow(hwnd) } != 0 && Instant::now() < deadline {
+            let mut message = MSG::default();
+            unsafe {
+                while PeekMessageW(&raw mut message, std::ptr::null_mut(), WM_TIMER, WM_TIMER, PM_REMOVE) != 0 {
+                    DispatchMessageW(&raw const message);
+                }
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(unsafe { IsWindow(hwnd) }, 0);
+        assert_eq!(Rc::strong_count(&updates), 1);
+    }
 
     fn tab_commands(rows: &[Entry]) -> Vec<(i32, bool)> {
         let mut commands = Vec::new();

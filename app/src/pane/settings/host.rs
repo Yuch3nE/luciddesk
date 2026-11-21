@@ -107,8 +107,10 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
     let mut backup_view = recovery::View::default();
     let mut backup_policy = recovery::Policy::default();
     let mut backup_offset = 0usize;
-    let mut toggle_timer_running = false;
+    let mut motion_timer_running = false;
     let mut toggle_motion = std::collections::HashMap::<usize, ToggleMotion>::new();
+    let mut interface_motion = motions::InterfaceMotion::default();
+    let mut scroll_hover = None;
     let prepared = Rc::new(std::cell::Cell::new(false));
     let show_prepared = Rc::clone(&prepared);
     let window = windows_window::Window::new(crate::i18n::text("ui-luciddesk-settings"))
@@ -607,7 +609,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
             let scene = cached_scene.as_ref().unwrap();
             if !font_editor.sync(hwnd, page, scene, scale, dark) { return Some(0); }
 
-            let interaction_before = (hover, focus, keyboard_focus, pressed);
+            let interaction_before = (hover, focus, keyboard_focus, pressed, scroll_hover);
             let mut activate = None;
             let mut radius_change = None;
             let mut snap_gap_change = None;
@@ -634,29 +636,30 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 }
                 WM_PAINT => {
                     let now = std::time::Instant::now();
-                    let mut enabled = 1i32;
-                    unsafe {
-                        SystemParametersInfoW(
-                            SPI_GETCLIENTAREAANIMATION,
-                            0,
-                            (&raw mut enabled).cast(),
-                            0,
-                        );
-                    }
+                    let enabled = scrollbar::animations_enabled();
                     let mut positions = std::collections::HashMap::new();
                     let mut animating = false;
                     for (i, control) in scene.controls.iter().enumerate().filter(|(_, c)| c.is_toggle())
                     {
                         let to = if control.selected { 1.0 } else { 0.0 };
                         let motion = toggle_motion.entry(i).or_insert_with(|| ToggleMotion::settled(to, now));
-                        let value = motion.retarget(to, now, enabled != 0);
+                        let value = motion.retarget(to, now, enabled);
                         animating |= (value - to).abs() > 0.0001;
                         positions.insert(i, value);
                     }
+                    let (motion, playing) = interface_motion.frame(scene, motions::MotionInput {
+                        hover,
+                        pressed,
+                        scrollbar: scroll_drag.map(|(navigation, _)| usize::from(navigation)).or(scroll_hover),
+                        now,
+                        enabled,
+                    });
+                    animating |= playing;
                     unsafe {
-                        if animating != toggle_timer_running {
-                            toggle_timer_running = animating && SetTimer(hwnd, TOGGLE_TIMER, USER_TIMER_MINIMUM, None) != 0;
-                            if !toggle_timer_running { KillTimer(hwnd, TOGGLE_TIMER); }
+                        if animating != motion_timer_running {
+                            motion_timer_running = animating
+                                && SetTimer(hwnd, CONTROL_MOTION_TIMER, USER_TIMER_MINIMUM, None) != 0;
+                            if !motion_timer_running { KillTimer(hwnd, CONTROL_MOTION_TIMER); }
                         }
                     }
                     unsafe {
@@ -681,7 +684,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                                 surface.try_begin_frame(bounds.right as u32, bounds.bottom as u32)? else {
                                     return Ok(false);
                                 };
-                            painter.paint(
+                            painter.paint_animated(
                                 &target,
                                 &scene,
                                 w,
@@ -692,13 +695,14 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                                 hover,
                                 if keyboard_focus { focus } else { None },
                                 &positions,
+                                &motion,
                             )?;
                             surface.end_frame()?;
                             Ok(true)
                         });
                     }
                 }
-                WM_TIMER if wp == TOGGLE_TIMER => {}
+                WM_TIMER if wp == CONTROL_MOTION_TIMER => {}
                 WM_ERASEBKGND => return Some(1),
                 WM_SIZE => {
                     hover = None;
@@ -707,6 +711,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     scene_key = None;
                     if wp & 0xffff == WA_INACTIVE as usize {
                         hover = None;
+                        scroll_hover = None;
                         pressed = None;
                         keyboard_focus = false;
                     }
@@ -722,6 +727,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 }
                 WM_MOUSELEAVE | WM_NCMOUSEMOVE => {
                     hover = None;
+                    scroll_hover = None;
                 }
                 WM_MOUSEMOVE | WM_LBUTTONDOWN | WM_LBUTTONUP => {
                     if msg == WM_MOUSEMOVE {
@@ -737,6 +743,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     }
                     let x = (lp as u16 as i16) as f32 / scale;
                     let y = ((lp >> 16) as u16 as i16) as f32 / scale;
+                    scroll_hover = motions::scrollbar_at(scene, x, y);
                     if msg == WM_LBUTTONDOWN && !font_editor.hwnd.is_null() && font_search_hit(scene, x, y) {
                         if scene.controls.iter().any(|c| matches!(c.action, Action::FontSearch) && c.selected && x >= c.bounds.right - 40.0) {
                             unsafe { SetWindowTextW(font_editor.hwnd, windows_sys::w!("")); SetFocus(font_editor.hwnd); }
@@ -1089,7 +1096,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
             }
             if msg != WM_PAINT
                 && (scene_changed
-                    || interaction_before != (hover, focus, keyboard_focus, pressed)
+                    || interaction_before != (hover, focus, keyboard_focus, pressed, scroll_hover)
                     || activate.is_some()
                     || dropdown_selection.is_some()
                     || grid_change.is_some()

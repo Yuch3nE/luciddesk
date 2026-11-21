@@ -19,13 +19,7 @@ impl State {
 }
 
 pub(super) fn animations_enabled() -> bool {
-    let mut enabled = 1i32;
-    unsafe {
-        windows_sys::Win32::UI::WindowsAndMessaging::SystemParametersInfoW(
-            windows_sys::Win32::UI::WindowsAndMessaging::SPI_GETCLIENTAREAANIMATION,
-            0, (&raw mut enabled).cast(), 0);
-    }
-    enabled != 0
+    luciddesk_window::controls::motion::animations_enabled()
 }
 
 #[derive(Clone, Copy, Debug)]

@@ -791,7 +791,7 @@ fn draw_organize(mut form: SettingsForm<'_>, editor: &Editor, undo_available: bo
         } else {
             "classification-apply-in-progress"
         });
-        form.info(operation, t("ui-loading-desktop-items"));
+        form.busy(operation, t("ui-loading-desktop-items"));
         return;
     }
     if let Some(error) = &editor.organize_error {
