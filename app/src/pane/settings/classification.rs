@@ -47,7 +47,6 @@ pub(super) enum Command {
     UndoDelete,
     Toggle(usize),
     ToggleDetails(usize),
-    Move(usize, isize),
     Run,
     ApplyPreview,
     CancelPreview,
@@ -574,15 +573,6 @@ impl Editor {
                 if let Some(rule) = config.rules.get_mut(i) {
                     rule.enabled = !rule.enabled;
                 }
-            }
-            Command::Move(i, delta) => {
-                if let Some(to) = i.checked_add_signed(delta)
-                    && i < config.rules.len() && to < config.rules.len() && i != to
-                {
-                    self.move_rule(&state.borrow(), &mut config, i, to)?;
-                    self.reveal(Command::Edit(to));
-                }
-                return Ok(());
             }
             _ => return Ok(()),
         }

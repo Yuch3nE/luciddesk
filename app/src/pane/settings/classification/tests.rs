@@ -87,12 +87,11 @@ fn settings_and_tray_share_one_modeless_organizer_and_select_the_requested_tab()
 }
 
 #[test]
-fn classification_controls_persist_order_toggle_delete_and_enable() {
+fn classification_controls_persist_toggle_delete_and_enable() {
     let (_directory, state) = test_state();
     let mut editor = Editor::default();
     let hwnd = std::ptr::null_mut();
     for command in [
-        Command::Move(1, -1),
         Command::Toggle(0),
         Command::Enable(true),
     ] {
@@ -101,11 +100,11 @@ fn classification_controls_persist_order_toggle_delete_and_enable() {
     }
     let saved = load(&state.borrow()).unwrap();
     assert!(saved.enabled);
-    assert_eq!(saved.rules[0].extensions, ["png"]);
+    assert_eq!(saved.rules[0].extensions, ["pdf"]);
     assert!(!saved.rules[0].enabled);
     editor.execute(&state, hwnd, Command::Delete(0));
     assert!(editor.error.is_none());
-    assert_eq!(load(&state.borrow()).unwrap().rules[0].extensions, ["pdf"]);
+    assert_eq!(load(&state.borrow()).unwrap().rules[0].extensions, ["png"]);
     let before = state.borrow().workspace.clone();
     assert!(hybrid::preview_organize(&state.borrow()).is_err());
     assert_eq!(state.borrow().workspace, before);
@@ -145,6 +144,11 @@ fn rule_drag_saves_insertion_on_release_and_cancels_other_drops() {
         unsafe { SendMessageW(hwnd, message, if message == WM_LBUTTONUP { 0 } else { 1 }, point) };
     };
     let snapshot = render();
+    let row = &snapshot.rule_rows[0];
+    let rule_menu = snapshot.controls[row.controls.clone()].iter().find_map(|control| {
+        if let Action::Dropdown(choices) = &control.action { Some(choices) } else { None }
+    }).unwrap();
+    assert!(matches!(rule_menu.as_ref(), [(_, Action::Classification(Command::Delete(0)), false)]));
     let first = snapshot.rule_rows[0].grip();
     let (x, y) = ((first.left + first.right) / 2.0, (first.top + first.bottom) / 2.0);
     let third = snapshot.rule_rows[2].bounds;
@@ -187,11 +191,6 @@ fn rule_drag_saves_insertion_on_release_and_cancels_other_drops() {
         assert_eq!(SendMessageW(hwnd, host::HAS_CONTROL_FOCUS, 0, 0), 0);
     }
 
-    let mut editor = Editor::default();
-    editor.execute(&state, hwnd, Command::Move(2, -1));
-    assert_eq!(order(), ["png", "pdf", "zip", "lnk"]);
-    editor.execute(&state, hwnd, Command::Move(1, 1));
-    assert_eq!(order(), ["png", "zip", "pdf", "lnk"]);
     let persisted = WorkspaceStore::open(&directory.path().join("workspace.db")).unwrap();
     let restored = decode(persisted.settings().unwrap().get(KEY)).unwrap();
     assert_eq!(restored.rules[2].extensions, ["pdf"]);

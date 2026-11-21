@@ -113,7 +113,6 @@ pub(super) fn draw(
             panels,
             rule,
             index,
-            rules.len(),
             (editor.expanded == Some(index), editor.detail_fraction(index, now)),
         ) + GAP;
         scene.rule_rows.push(RuleRow {
@@ -590,7 +589,6 @@ fn saved_row(
     panels: &[Panel],
     rule: &ClassificationRule,
     index: usize,
-    count: usize,
     (expanded, expansion): (bool, f32),
 ) -> f32 {
     let destination = panels
@@ -611,27 +609,6 @@ fn saved_row(
         rule.enabled,
         true,
     );
-    let mut choices = Vec::new();
-    if index > 0 {
-        choices.push((
-            t("classification-up").into(),
-            Command::Move(index, -1).action(),
-            false,
-        ));
-    }
-    if index + 1 < count {
-        choices.push((
-            t("classification-down").into(),
-            Command::Move(index, 1).action(),
-            false,
-        ));
-    }
-    choices.push((
-        t("classification-delete").into(),
-        Command::Delete(index).action(),
-        false,
-    ));
-
     let [edit, menu] = action_buttons(actions);
     scene.icon_button(
         edit,
@@ -645,7 +622,7 @@ fn saved_row(
         menu,
         "\u{e712}",
         t("ui-search-more-actions"),
-        Action::Dropdown(choices.into()),
+        Action::Dropdown([(t("classification-delete").into(), Command::Delete(index).action(), false)].into()),
         false,
         true,
     );
