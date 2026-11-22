@@ -1466,6 +1466,8 @@ dialog-cancel = Abbrechen
 
 classification-actions = Aktionen
 
+classification-delete-confirm-title = Regel löschen
+classification-delete-confirm-body = Regel { $position } für die Zielgruppe „{ $group }“ löschen?
 classification-deleted = Regel gelöscht
 classification-deleted-count = { $count } Regeln gelöscht
 classification-undo = Löschen rückgängig

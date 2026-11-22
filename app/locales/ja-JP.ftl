@@ -1466,6 +1466,8 @@ dialog-cancel = キャンセル
 
 classification-actions = 操作
 
+classification-delete-confirm-title = ルールを削除
+classification-delete-confirm-body = ルール { $position }（移動先グループ「{ $group }」）を削除しますか？
 classification-deleted = ルールを削除しました
 classification-deleted-count = { $count } 件のルールを削除しました
 classification-undo = 削除を元に戻す

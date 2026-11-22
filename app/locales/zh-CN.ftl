@@ -1466,6 +1466,8 @@ dialog-cancel = 取消
 
 classification-actions = 操作
 
+classification-delete-confirm-title = 删除规则
+classification-delete-confirm-body = 确定删除第 { $position } 条规则（目标分组「{ $group }」）吗？
 classification-deleted = 规则已删除
 classification-deleted-count = 已删除 { $count } 条规则
 classification-undo = 撤销删除

@@ -1466,6 +1466,8 @@ dialog-cancel = Отмена
 
 classification-actions = Действия
 
+classification-delete-confirm-title = Удалить правило
+classification-delete-confirm-body = Удалить правило № { $position } для целевой группы «{ $group }»?
 classification-deleted = Правило удалено
 classification-deleted-count = Удалено правил: { $count }
 classification-undo = Отменить удаление

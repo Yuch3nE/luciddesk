@@ -1466,6 +1466,8 @@ dialog-cancel = 취소
 
 classification-actions = 작업
 
+classification-delete-confirm-title = 규칙 삭제
+classification-delete-confirm-body = 대상 그룹이 ‘{ $group }’인 { $position }번 규칙을 삭제할까요?
 classification-deleted = 규칙이 삭제됨
 classification-deleted-count = 규칙 { $count }개를 삭제했습니다
 classification-undo = 삭제 실행 취소

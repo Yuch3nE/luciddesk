@@ -1466,6 +1466,8 @@ dialog-cancel = Cancel
 
 classification-actions = Actions
 
+classification-delete-confirm-title = Delete rule
+classification-delete-confirm-body = Delete rule { $position } for the target group “{ $group }”?
 classification-deleted = Rule deleted
 classification-deleted-count = { $count } rules deleted
 classification-undo = Undo deletion

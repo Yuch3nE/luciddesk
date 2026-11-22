@@ -6,6 +6,7 @@ use std::sync::mpsc::{self, Sender};
 use windows_sys::Win32::UI::HiDpi::GetDpiForWindow;
 
 pub(super) const SELECT_TAB: u32 = WM_APP + 100;
+const RULE_DELETE_RESULT: u32 = WM_APP + 103;
 const RULE_DRAG_TIMER: usize = 0x4c4f44;
 const ORGANIZER_MOTION_TIMER: usize = 0x4c4f4d;
 #[cfg(test)]
@@ -84,6 +85,10 @@ pub(super) fn show(state: &Rc<RefCell<PaneApp>>, tab: Tab) -> Result<(), String>
                     },
                     lp != 0,
                 ),
+                RULE_DELETE_RESULT => {
+                    organizer.finish_delete(&state, hwnd, wp != 0);
+                    return Some(0);
+                }
                 #[cfg(test)]
                 INSPECT_TAB => {
                     return Some(if wp == 0 {
@@ -392,11 +397,17 @@ impl Scene {
     }
 }
 
+struct RuleDeleteRequest {
+    index: usize,
+    expected: SettingValue,
+}
+
 struct Organizer {
     tab: Tab,
     editor: Editor,
     scene: Option<Scene>,
     rules: Option<SettingValue>,
+    pending_delete: Option<RuleDeleteRequest>,
     appearance: (PanelTheme, Backdrop),
     painter: Painter,
     typography: (String, &'static str),
@@ -471,6 +482,7 @@ impl Organizer {
             editor: Editor::default(),
             scene: None,
             rules: None,
+            pending_delete: None,
             appearance: (PanelTheme::System, Backdrop::Mica),
             painter: Painter::new().map_err(|error| error.to_string())?,
             typography: (fonts::family(), crate::i18n::language()),
@@ -710,6 +722,7 @@ impl Organizer {
         sender: &Sender<Control>,
     ) {
         match control.action {
+            Action::Classification(Command::Delete(index)) => self.request_delete(state, hwnd, index),
             Action::Classification(command) => self.run_command(state, hwnd, command),
             Action::OrganizeTab(tab) => self.select(state, hwnd, tab, false),
             Action::Dropdown(_) => {
@@ -719,6 +732,65 @@ impl Organizer {
                 PostMessageW(hwnd, WM_SYSCOMMAND, command as usize, 0);
             },
             _ => {}
+        }
+    }
+
+    fn request_delete(&mut self, state: &Rc<RefCell<PaneApp>>, hwnd: HWND, index: usize) {
+        if self.tab != Tab::Rules || self.editor.editing() || self.pending_delete.is_some() {
+            return;
+        }
+        let Some(expected) = self.rules.clone() else { return; };
+        let Ok(config) = decode(Some(&expected)) else { return; };
+        let Some(rule) = config.rules.get(index) else { return; };
+        let group = targets(state.borrow().workspace.panels())
+            .find(|panel| panel.id().get() == rule.target_panel)
+            .map_or(t("classification-missing"), Panel::title)
+            .to_owned();
+        let body = crate::i18n::format(
+            "classification-delete-confirm-body",
+            &[("position", (index + 1).to_string()), ("group", group)],
+        );
+        let owner = Rc::downgrade(state);
+        let theme = self.appearance.0;
+        // The modal dialog pumps the owner's messages after its current callback returns.
+        if window::defer_action(move || {
+            let still_open = || owner.upgrade().is_some_and(|state| {
+                state.try_borrow().is_ok_and(|state| {
+                    state.organizer.as_ref().is_some_and(|window| window.hwnd().cast() == hwnd)
+                })
+            });
+            if !still_open() {
+                return;
+            }
+            luciddesk_window::set_message_theme(match theme {
+                PanelTheme::System => None,
+                PanelTheme::Dark => Some(true),
+                PanelTheme::Light => Some(false),
+            });
+            let confirmed = crate::error_report::confirm(
+                hwnd as isize,
+                t("classification-delete-confirm-title"),
+                &body,
+            );
+            if still_open() {
+                unsafe { SendMessageW(hwnd, RULE_DELETE_RESULT, usize::from(confirmed), 0); }
+            }
+        }) {
+            self.pending_delete = Some(RuleDeleteRequest { index, expected });
+        }
+    }
+
+    fn finish_delete(&mut self, state: &Rc<RefCell<PaneApp>>, hwnd: HWND, confirmed: bool) {
+        let Some(request) = self.pending_delete.take() else { return; };
+        if !confirmed || self.tab != Tab::Rules || self.editor.editing() {
+            return;
+        }
+        let current = state.borrow().store.settings().map(|mut values| values.remove(KEY));
+        if current.is_ok_and(|value| value.as_ref() == Some(&request.expected)) {
+            self.run_command(state, hwnd, Command::Delete(request.index));
+        } else {
+            self.editor.error = Some(t("classification-conflict").into());
+            redraw(hwnd);
         }
     }
 

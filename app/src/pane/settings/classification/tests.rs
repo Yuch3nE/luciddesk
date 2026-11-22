@@ -1142,7 +1142,27 @@ fn classification_editing_survives_tab_switch_and_only_saves_valid_input() {
 }
 
 #[test]
-fn clicking_delete_and_footer_undo_preserves_rule_order() {
+fn clicking_delete_requires_confirmation_and_footer_undo_restores_the_rule() {
+    use std::cell::Cell;
+    use std::ptr::null_mut;
+    use std::time::Duration;
+
+    thread_local! {
+        static DELETE_ANSWER: Cell<(HWND, i32)> = const { Cell::new((null_mut(), 0)) };
+    }
+
+    unsafe extern "system" fn answer_dialog(_: HWND, _: u32, timer: usize, _: u32) {
+        let (owner, answer) = DELETE_ANSWER.with(Cell::get);
+        let popup = unsafe { GetLastActivePopup(owner) };
+        if popup != owner && !unsafe { GetDlgItem(popup, answer) }.is_null() {
+            unsafe {
+                KillTimer(null_mut(), timer);
+                PostMessageW(popup, WM_COMMAND, answer as usize, 0);
+            }
+            DELETE_ANSWER.with(|slot| slot.set((owner, 0)));
+        }
+    }
+
     let _sta = crate::pane::test_support::apartment();
     let (_directory, state) = test_state();
     let original = encode(&load(&state.borrow()).unwrap()).unwrap();
@@ -1175,7 +1195,27 @@ fn clicking_delete_and_footer_undo_preserves_rule_order() {
             SendMessageW(hwnd, WM_PAINT, 0, 0);
         }
     };
-    click(x, y);
+    let answer = |answer| {
+        click(x, y);
+        assert_eq!(encode(&load(&state.borrow()).unwrap()).unwrap(), original);
+        DELETE_ANSWER.with(|slot| slot.set((hwnd, answer)));
+        let timer = unsafe { SetTimer(null_mut(), 0, 20, Some(answer_dialog)) };
+        assert_ne!(timer, 0);
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while DELETE_ANSWER.with(Cell::get).1 != 0 && Instant::now() < deadline {
+            let mut message = MSG::default();
+            if unsafe { PeekMessageW(&raw mut message, null_mut(), 0, 0, PM_REMOVE) } != 0 {
+                unsafe { DispatchMessageW(&raw const message); }
+            } else {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        }
+        unsafe { KillTimer(null_mut(), timer); }
+        assert_eq!(DELETE_ANSWER.with(Cell::get).1, 0, "the organizer must open a confirmation dialog");
+    };
+    answer(IDCANCEL);
+    assert_eq!(encode(&load(&state.borrow()).unwrap()).unwrap(), original);
+    answer(IDOK);
     unsafe {
         SendMessageW(hwnd, WM_PAINT, 0, 0);
         assert_eq!(SendMessageW(hwnd, host::HAS_CONTROL_FOCUS, 0, 0), 0);
