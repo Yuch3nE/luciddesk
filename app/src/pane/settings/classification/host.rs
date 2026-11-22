@@ -728,6 +728,11 @@ impl Organizer {
             None
         };
         self.editor.execute(state, hwnd, command);
+        if matches!(command, Command::Delete(_) | Command::UndoDelete) && self.editor.error.is_none() {
+            // The rebuilt controls must not inherit focus from a vanished button.
+            self.focus = None;
+            self.clear_hover();
+        }
         if self.editor.error.is_none() && RuleSwitch::for_command(command).is_some() {
             self.pending_switch = Some(command);
         }

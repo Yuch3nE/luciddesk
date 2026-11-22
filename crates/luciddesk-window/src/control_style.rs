@@ -15,6 +15,7 @@ pub const CHEVRON_RIGHT: &str = "\u{e76c}";
 pub const CHECK_MARK: &str = "\u{e73e}";
 pub const ARROW_UP: &str = "\u{e74a}";
 pub const ARROW_DOWN: &str = "\u{e74b}";
+pub const DELETE: &str = "\u{e74d}";
 pub const INFO: &str = "\u{e946}";
 pub const WARNING: &str = "\u{e7ba}";
 pub const ERROR_BADGE: &str = "\u{ea39}";

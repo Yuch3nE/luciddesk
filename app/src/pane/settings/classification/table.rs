@@ -609,7 +609,7 @@ fn saved_row(
         rule.enabled,
         true,
     );
-    let [edit, menu] = action_buttons(actions);
+    let [edit, delete] = action_buttons(actions);
     scene.icon_button(
         edit,
         "\u{e70f}",
@@ -619,10 +619,10 @@ fn saved_row(
         true,
     );
     scene.icon_button(
-        menu,
-        "\u{e712}",
-        t("ui-search-more-actions"),
-        Action::Dropdown([(t("classification-delete").into(), Command::Delete(index).action(), false)].into()),
+        delete,
+        luciddesk_window::control_style::DELETE,
+        t("classification-delete"),
+        Command::Delete(index).action(),
         false,
         true,
     );

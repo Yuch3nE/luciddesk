@@ -144,11 +144,6 @@ fn rule_drag_saves_insertion_on_release_and_cancels_other_drops() {
         unsafe { SendMessageW(hwnd, message, if message == WM_LBUTTONUP { 0 } else { 1 }, point) };
     };
     let snapshot = render();
-    let row = &snapshot.rule_rows[0];
-    let rule_menu = snapshot.controls[row.controls.clone()].iter().find_map(|control| {
-        if let Action::Dropdown(choices) = &control.action { Some(choices) } else { None }
-    }).unwrap();
-    assert!(matches!(rule_menu.as_ref(), [(_, Action::Classification(Command::Delete(0)), false)]));
     let first = snapshot.rule_rows[0].grip();
     let (x, y) = ((first.left + first.right) / 2.0, (first.top + first.bottom) / 2.0);
     let third = snapshot.rule_rows[2].bounds;
