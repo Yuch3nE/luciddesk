@@ -366,6 +366,16 @@ impl Painter {
                         if dark { border } else { card_border },
                     );
                 }
+                if let Some((bounds, label)) = &s.footer_status {
+                    t.fill_rounded_rect(&RoundedRect {
+                        rect: *bounds, radius_x: Style::RADIUS, radius_y: Style::RADIUS,
+                    }, brush(Tone::Selection));
+                    let icon = Rect::from_xywh(bounds.left + 12.0, bounds.top, Style::ICON_SLOT, bounds.height());
+                    t.clipped_icon(style::CHECK_MARK, &self.formats[4], &icon, brush(Tone::AccentInk));
+                    let left = icon.right + Style::ICON_GAP;
+                    let text = Rect::from_xywh(left, bounds.top, (bounds.right - left - 12.0).max(1.0), bounds.height());
+                    t.clipped_text(label, &self.formats[Tokens::CONTROL_TEXT], &text, ink);
+                }
                 if s.controls.iter().any(|control| matches!(control.kind, ControlKind::Tab(_))) {
                     t.fill_rect(
                         &Rect::from_xywh(s.content_left, page_top - 1.0,
@@ -385,10 +395,15 @@ impl Painter {
                 }
                 let rule_dividers = s.rule_rows.first().zip(s.rule_rows.last())
                     .map(|(first, last)| first.separators.start..last.separators.end);
+                let row_clip = |transition: &RuleRowTransition| ContentClip::rect(&t, &transition.row.visual_bounds());
+                let row_opacity = |transition: &RuleRowTransition| t.opacity_layer(&transition.row.visual_bounds(), transition.opacity);
                 for (index, r) in s.separators.iter().enumerate() {
                     let _clip = ContentClip::new(&t, s, r.left >= s.content_left && !s.fixed_list());
                     let _disclosure = s.disclosure_separator_clip(index).map(|clip| ContentClip::rect(&t, clip));
-                    let line = if rule_dividers.as_ref().is_some_and(|range| range.contains(&index)) {
+                    let transition = s.rule_transition(index, |row| &row.separators);
+                    let _row_clip = transition.map(row_clip);
+                    let _row_opacity = transition.and_then(row_opacity);
+                    let line = if transition.is_some() || rule_dividers.as_ref().is_some_and(|range| range.contains(&index)) {
                         rule_divider
                     } else if dark {
                         border
@@ -520,14 +535,18 @@ impl Painter {
                             && !Scene::fixed_control(c)
                             && (!s.fixed_list() || Scene::list_row(c)),
                     );
-                    let animation = motion.controls.get(&i).copied().filter(|_| !raised).unwrap_or_default();
+                    let transition = s.rule_transition(i, |row| &row.controls);
+                    let _row_clip = transition.map(row_clip);
+                    let _row_opacity = transition.and_then(row_opacity);
+                    let interactive = !raised && transition.is_none();
+                    let animation = motion.controls.get(&i).copied().filter(|_| interactive).unwrap_or_default();
                     let mut widget_canvas = WidgetCanvas {
                         motion: animation,
                         combo: matches!(c.kind, ControlKind::Combo),
                         ..widget_canvas
                     };
-                    let state = widgets::State { enabled: c.enabled, active: !raised && (hover == Some(i)
-                        || animation.hover.is_some_and(|progress| progress > 0.0)), focused: !raised && focus == Some(i) };
+                    let state = widgets::State { enabled: c.enabled || transition.is_some(), active: interactive && (hover == Some(i)
+                        || animation.hover.is_some_and(|progress| progress > 0.0)), focused: interactive && focus == Some(i) };
                     let bounds = components::widget_bounds(c.bounds);
                     if let ControlKind::Navigation(icon) | ControlKind::Tab(icon) = c.kind {
                         let mut navigation = WidgetCanvas { ..widget_canvas };
@@ -962,6 +981,9 @@ impl Painter {
                     let _navigation_clip = s.navigation_text.contains(&index).then(|| ContentClip::navigation(&t, s));
                     let _clip = ContentClip::new(&t, s, *size != Tokens::CAPTION_TEXT && r.left >= s.content_left && !s.fixed_list());
                     let _disclosure = s.disclosure_text_clip(index).map(|clip| ContentClip::rect(&t, clip));
+                    let transition = s.rule_transition(index, |row| &row.text);
+                    let _row_clip = transition.map(row_clip);
+                    let _row_opacity = transition.and_then(row_opacity);
                     if *size == Tokens::TITLE_BADGE {
                         t.clipped_icon(style::INFO, &self.formats[4],
                             &Rect::from_xywh(r.left + 8.0, r.top, Style::ICON_SLOT, r.bottom - r.top), blue);
@@ -987,14 +1009,18 @@ impl Painter {
                         },
                     );
                 };
-                let mut paint_grip = |index: usize, row: &RuleRow| {
+                let mut paint_grip = |index: Option<usize>, row: &RuleRow| {
                     let _clip = ContentClip::new(&t, s, true);
-                    grip_canvas.motion.hover = motion.grip.filter(|(row, _)| *row == index).map(|(_, value)| value);
-                    let active = s.rule_grip_hover == Some(index) || grip_canvas.motion.hover.is_some_and(|value| value > 0.0);
+                    let transition = s.rule_transition(row.controls.start, |row| &row.controls);
+                    let _row_clip = transition.map(row_clip);
+                    let _row_opacity = transition.and_then(row_opacity);
+                    grip_canvas.motion.hover = motion.grip.filter(|(row, _)| Some(*row) == index).map(|(_, value)| value);
+                    let active = index.is_some() && (s.rule_grip_hover == index
+                        || grip_canvas.motion.hover.is_some_and(|value| value > 0.0));
                     grip_canvas.brushes[Tone::Ink as usize] = if active { ink } else { muted };
                     InlineControl::Icon {
                         glyph: fonts::DRAG_HANDLE_ICON,
-                        selected: s.rule_grip_pressed == Some(index) || s.floating_rule == Some(index),
+                        selected: index.is_some() && (s.rule_grip_pressed == index || s.floating_rule == index),
                     }
                     .paint(
                         &mut grip_canvas,
@@ -1013,12 +1039,16 @@ impl Painter {
                         paint_text(index, text);
                     }
                 }
-                if s.rule_rows.len() > 1 {
+                let leaving_grip = s.rule_transitions.iter().find(|row| row.leaving && row.grip);
+                if s.rule_rows.len() > 1 || leaving_grip.is_some() {
                     for (index, row) in s.rule_rows.iter().enumerate() {
                         if s.floating_rule != Some(index) {
-                            paint_grip(index, row);
+                            paint_grip(Some(index), row);
                         }
                     }
+                }
+                if let Some(row) = leaving_grip {
+                    paint_grip(None, &row.row);
                 }
                 if let (Some(index), Some(row)) = (s.floating_rule, floating) {
                     let _clip = ContentClip::new(&t, s, true);
@@ -1031,7 +1061,7 @@ impl Painter {
                     for index in row.text.clone() {
                         paint_text(index, &s.text[index]);
                     }
-                    paint_grip(index, row);
+                    paint_grip(Some(index), row);
                 }
                 if let Some(bounds) = &s.activity {
                     let _clip = ContentClip::new(&t, s, true);

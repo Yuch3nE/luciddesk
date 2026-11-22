@@ -71,12 +71,19 @@ pub(super) fn draw(
     panels: &[Panel],
     rules: &[ClassificationRule],
     editor: &Editor,
+    presence: Option<(&RulePresence, f32)>,
 ) {
     let left = bounds.left + INSET;
     let right = bounds.right - INSET;
     let width = right - left;
     let enabled_label = t("classification-enabled");
-    let columns = Columns::new(left, width, enabled_label, rules.len() > 1);
+    let leaving = presence.and_then(|(row, progress)| {
+        let RulePresenceRows::Leaving { index, original, details } = &row.rows else { return None; };
+        let rule = editor.deleted.as_ref()?.rules.get(original)?;
+        Some((*index, *details, progress, rule))
+    });
+    let show_grip = rules.len() + usize::from(leaving.is_some()) > 1;
+    let columns = Columns::new(left, width, enabled_label, show_grip);
     let header_top = bounds.top + GAP / 2.0;
     let [_, target, status, actions] = columns.cells(header_top, CONTROL);
     let actions_label = t("classification-actions");
@@ -99,13 +106,14 @@ pub(super) fn draw(
         cell.bottom = cell.top + heading;
         scene.text(cell, label, 6);
     }
-    let mut y = header_top + heading + GAP / 2.0;
+    let first_row_top = header_top + heading + GAP / 2.0;
+    let mut y = first_row_top;
     let now = Instant::now();
-    for (index, rule) in rules.iter().enumerate() {
+    let draw_row = |scene: &mut Scene, y, rule: &ClassificationRule, index, details| {
         let (controls, text, separators, clips) = (
             scene.controls.len(), scene.text.len(), scene.separators.len(), scene.disclosure_clips.len(),
         );
-        let divider_left = if index == 0 { left } else { target.left };
+        let divider_left = if y == first_row_top { left } else { target.left };
         scene.separators.push(Rect::from_xywh(divider_left, y, right - divider_left, 1.0));
         let bottom = saved_row(
             scene,
@@ -113,22 +121,49 @@ pub(super) fn draw(
             panels,
             rule,
             index,
-            (editor.expanded == Some(index), editor.detail_fraction(index, now)),
+            details,
         ) + GAP;
-        scene.rule_rows.push(RuleRow {
+        RuleRow {
             bounds: Rect::from_xywh(left, y, width, bottom - y),
             offset: 0.0,
             controls: controls..scene.controls.len(),
             text: text..scene.text.len(),
             separators: separators..scene.separators.len(),
             detail_clips: clips..scene.disclosure_clips.len(),
-        });
-        y = bottom;
+        }
+    };
+    for index in 0..=rules.len() {
+        if let Some((_, details, progress, rule)) = leaving.filter(|(target, _, _, _)| *target == index) {
+            let mut row = draw_row(scene, y, rule, index, (details > 0.0, details));
+            clip_rule_row(scene, &mut row, progress, true, show_grip);
+            y = row.bounds.bottom;
+        }
+        let Some(rule) = rules.get(index) else { break; };
+        let mut row = draw_row(scene, y, rule, index, (editor.expanded == Some(index), editor.detail_fraction(index, now)));
+        if let Some((presence, progress)) = presence
+            && let RulePresenceRows::Restoring { indices, partial } = &presence.rows
+            && indices.binary_search(&index).is_ok()
+        {
+            let from = partial.filter(|(original, _)| *original == index).map_or(0.0, |(_, fraction)| fraction);
+            let progress = from + (1.0 - from) * progress;
+            clip_rule_row(scene, &mut row, progress, false, show_grip);
+        }
+        y = row.bounds.bottom;
+        scene.rule_rows.push(row);
     }
     scene.cards.push(Rect {
         bottom: y,
         ..bounds
     });
+}
+
+fn clip_rule_row(scene: &mut Scene, row: &mut RuleRow, progress: f32, leaving: bool, grip: bool) {
+    row.bounds.bottom = row.bounds.top + row.bounds.height() * progress;
+    // The row is visible during the transition while the active controls follow the saved list.
+    for control in &mut scene.controls[row.controls.clone()] {
+        control.enabled = false;
+    }
+    scene.rule_transitions.push(RuleRowTransition { row: row.clone(), opacity: progress, leaving, grip });
 }
 
 pub(super) fn draw_preview_summary(

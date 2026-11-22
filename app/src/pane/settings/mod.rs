@@ -140,6 +140,7 @@ struct Scene {
     material: Backdrop,
     viewport: Option<Rect>,
     footer_height: f32,
+    footer_status: Option<(Rect, String)>,
     scroll_max: f32,
     scroll_offset: f32,
     text: Vec<(Rect, String, usize)>,
@@ -147,6 +148,7 @@ struct Scene {
     section_headers: Vec<SectionHeader>,
     destination_changes: Vec<DestinationChange>,
     rule_rows: Vec<RuleRow>,
+    rule_transitions: Vec<RuleRowTransition>,
     disclosure_clips: Vec<DisclosureClip>,
     activity: Option<Rect>,
     rule_grip_hover: Option<usize>,
@@ -171,6 +173,7 @@ impl Scene {
             material,
             viewport: None,
             footer_height: 0.0,
+            footer_status: None,
             scroll_max: 0.0,
             scroll_offset: 0.0,
             text: Vec::new(),
@@ -178,6 +181,7 @@ impl Scene {
             section_headers: Vec::new(),
             destination_changes: Vec::new(),
             rule_rows: Vec::new(),
+            rule_transitions: Vec::new(),
             disclosure_clips: Vec::new(),
             activity: None,
             rule_grip_hover: None,
@@ -190,6 +194,13 @@ impl Scene {
             caption_icon: None,
         }
     }
+
+    fn rule_transition(
+        &self, index: usize, range: fn(&RuleRow) -> &std::ops::Range<usize>,
+    ) -> Option<&RuleRowTransition> {
+        let next = self.rule_transitions.partition_point(|row| range(&row.row).end <= index);
+        self.rule_transitions.get(next).filter(|row| range(&row.row).contains(&index))
+    }
 }
 
 struct DisclosureClip {
@@ -198,7 +209,14 @@ struct DisclosureClip {
     bounds: Rect,
 }
 
-#[derive(Default)]
+struct RuleRowTransition {
+    row: RuleRow,
+    opacity: f32,
+    leaving: bool,
+    grip: bool,
+}
+
+#[derive(Clone, Default)]
 struct RuleRow {
     bounds: Rect,
     offset: f32,

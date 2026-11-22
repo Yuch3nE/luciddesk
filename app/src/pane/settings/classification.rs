@@ -3,6 +3,7 @@ use super::*;
 use super::super::animation::{Motion, SETTINGS_DURATION};
 use luciddesk_core::{Classification, ClassificationError, ClassificationItemType, ClassificationRule};
 use luciddesk_storage::SettingValue;
+use std::collections::BTreeMap;
 use std::time::Instant;
 use windows_sys::Win32::Foundation::HWND;
 
@@ -116,7 +117,7 @@ impl Command {
     }
 
     pub(super) fn is_footer(self) -> bool {
-        matches!(self, Self::Run | Self::ApplyPreview | Self::CancelPreview | Self::Save | Self::Cancel)
+        matches!(self, Self::Run | Self::ApplyPreview | Self::CancelPreview | Self::Save | Self::Cancel | Self::UndoDelete)
     }
 
     pub(super) fn is_control(self, action: &Action) -> bool {
@@ -160,10 +161,44 @@ fn targets(panels: &[Panel]) -> impl Iterator<Item = &Panel> {
         .filter(|panel| panel.supports_tabs())
 }
 
-struct DeletedRule {
-    index: usize,
-    rule: ClassificationRule,
+#[derive(Default)]
+struct DeletedRules {
+    rules: BTreeMap<usize, ClassificationRule>,
     after: String,
+}
+
+impl DeletedRules {
+    fn original_index(&self, mut index: usize) -> usize {
+        for &removed in self.rules.keys() {
+            if removed > index {
+                break;
+            }
+            index += 1;
+        }
+        index
+    }
+}
+
+enum RulePresenceRows {
+    Leaving { index: usize, original: usize, details: f32 },
+    Restoring { indices: Vec<usize>, partial: Option<(usize, f32)> },
+}
+
+struct RulePresence {
+    rows: RulePresenceRows,
+    expected: String,
+    motion: Motion,
+}
+
+impl RulePresence {
+    fn progress(&self, now: Instant) -> Option<f32> {
+        self.motion.sample(now).ok().filter(|&value| value != self.motion.to)
+    }
+
+    fn partial_removal(&self, now: Instant) -> Option<(usize, f32)> {
+        let RulePresenceRows::Leaving { original, .. } = &self.rows else { return None; };
+        Some((*original, self.progress(now)?))
+    }
 }
 
 enum OrganizeResult {
@@ -179,7 +214,8 @@ struct PendingOrganize {
 #[derive(Default)]
 pub(super) struct Editor {
     draft: Option<Draft>,
-    deleted: Option<DeletedRule>,
+    deleted: Option<DeletedRules>,
+    rule_presence: Option<RulePresence>,
     expanded: Option<usize>,
     detail_motions: HashMap<usize, Motion>,
     preview: Option<hybrid::OrganizePreview>,
@@ -333,6 +369,33 @@ impl Editor {
         self.skipped_motion = None;
     }
 
+    fn update_rule_presence(&mut self, now: Instant) -> bool {
+        if self.rule_presence.as_ref().is_some_and(|row| row.progress(now).is_none()) {
+            self.rule_presence = None;
+        }
+        self.rule_presence.is_some()
+    }
+
+    fn rule_presence(&self, value: Option<&SettingValue>, now: Instant) -> Option<(&RulePresence, f32)> {
+        let row = self.rule_presence.as_ref()?;
+        if !matches!(value, Some(SettingValue::Text(raw)) if raw == &row.expected) {
+            return None;
+        }
+        Some((row, row.progress(now)?))
+    }
+
+    fn animate_rule_rows(&mut self, rows: RulePresenceRows, expected: &str, hwnd: HWND, now: Instant) {
+        self.rule_presence = None;
+        if hwnd.is_null() || !scrollbar::animations_enabled() {
+            return;
+        }
+        let target = if matches!(rows, RulePresenceRows::Leaving { .. }) { 0.0 } else { 1.0 };
+        let mut motion = Motion::settled(1.0 - target, now);
+        if motion.retarget_with_duration(target, now, true, SETTINGS_DURATION) != target {
+            self.rule_presence = Some(RulePresence { rows, expected: expected.to_owned(), motion });
+        }
+    }
+
     fn drop_rule(&mut self, state: &PaneApp, from: usize, to: usize, expected: &SettingValue) -> bool {
         self.error = (|| {
             let settings = state.store.settings().map_err(|error| error.to_string())?;
@@ -469,6 +532,7 @@ impl Editor {
         }
         let mut config = load(&state.borrow())?;
         let mut deleted = None;
+        let mut restored = None;
         match command {
             Command::Add | Command::AddTemplate(_) | Command::Edit(_) if !self.editing() => {
                 let (index, rule) = {
@@ -560,14 +624,21 @@ impl Editor {
             }
             Command::Enable(value) => config.enabled = value,
             Command::Delete(i) if i < config.rules.len() => {
-                deleted = Some((i, config.rules.remove(i)));
+                let previous = if let Some(batch) = &self.deleted && batch.after == encode(&config)? {
+                    Some(batch)
+                } else { None };
+                let original = previous.map_or(i, |batch| batch.original_index(i));
+                deleted = Some((i, original, config.rules.remove(i), previous.is_some()));
             }
             Command::UndoDelete => {
                 let Some(deleted) = &self.deleted else { return Ok(()); };
                 if encode(&config)? != deleted.after {
                     return Err(t("classification-conflict").into());
                 }
-                config.rules.insert(deleted.index, deleted.rule.clone());
+                for (&index, rule) in &deleted.rules {
+                    config.rules.insert(index, rule.clone());
+                }
+                restored = Some(deleted.rules.keys().copied().collect());
             }
             Command::Toggle(i) => {
                 if let Some(rule) = config.rules.get_mut(i) {
@@ -577,9 +648,25 @@ impl Editor {
             _ => return Ok(()),
         }
         save(&state.borrow(), &config)?;
-        self.deleted = deleted.map(|(index, rule)| DeletedRule {
-            index, rule, after: encode(&config).expect("validated classification serializes"),
-        });
+        let previous = self.deleted.take();
+        if let Some((index, original, rule, continues)) = deleted {
+            let mut batch = previous.filter(|_| continues).unwrap_or_default();
+            batch.rules.insert(original, rule);
+            batch.after = encode(&config).expect("validated classification serializes");
+            let now = Instant::now();
+            self.animate_rule_rows(RulePresenceRows::Leaving { index, original, details: self.detail_fraction(index, now) },
+                &batch.after, hwnd, now);
+            self.deleted = Some(batch);
+        } else if let Some(indices) = restored {
+            let now = Instant::now();
+            let partial = self.rule_presence.as_ref()
+                .filter(|row| previous.as_ref().is_some_and(|batch| batch.after == row.expected))
+                .and_then(|row| row.partial_removal(now));
+            let after = encode(&config).expect("validated classification serializes");
+            self.animate_rule_rows(RulePresenceRows::Restoring { indices, partial }, &after, hwnd, now);
+        } else {
+            self.rule_presence = None;
+        }
         if matches!(command, Command::Enable(_)) {
             hybrid::classification_settings_changed(&mut state.borrow_mut());
         }
@@ -635,11 +722,16 @@ fn window_scene(
         Tab::Organize => draw_organize(form, editor, undo_available),
     }
     let preview = editor.preview.as_ref();
+    let deletion = if tab == Tab::Rules && !editor.editing() {
+        editor.deleted.as_ref().and_then(|deleted| decode(value).ok().map(|config|
+            (deleted.rules.len(), encode(&config).is_ok_and(|raw| raw == deleted.after))))
+    } else { None };
     let footer = match tab {
         Tab::Rules if editor.editing() => vec![
             (t("classification-cancel"), Command::Cancel, false),
             (t("classification-save"), Command::Save, true),
         ],
+        Tab::Rules if deletion.is_some() => vec![(t("classification-undo"), Command::UndoDelete, true)],
         Tab::Organize if editor.applying.is_none() => match preview {
             Some(preview) => {
                 let can_apply = preview.move_count() > 0;
@@ -669,6 +761,17 @@ fn window_scene(
         _ => Vec::new(),
     };
     draw_footer(&mut scene, width, height, &footer);
+    if let Some((count, enabled)) = deletion && let Some(undo) = scene.controls.last_mut() {
+        undo.enabled = enabled;
+        let bounds = undo.bounds;
+        let label = if count == 1 { t("classification-deleted").to_owned() } else {
+            crate::i18n::format("classification-deleted-count", &[("count", count.to_string())])
+        };
+        let width = (components::text_width(&label, Style::TEXT_SIZE).ceil() + 48.0)
+            .min(bounds.left - SIDE_MARGIN - Tokens::GAP).max(1.0);
+        scene.footer_status = Some((Rect::from_xywh(SIDE_MARGIN, bounds.top,
+            width, Tokens::CONTROL_HEIGHT), label));
+    }
     scene
 }
 
@@ -757,18 +860,12 @@ fn draw_rules(
     if let Some(error) = &editor.error {
         form.status(error, Tokens::STATUS_ERROR, None);
     }
-    if let Some(deleted) = &editor.deleted {
-        form.actions_enabled(
-            t("classification-deleted"), "",
-            vec![(t("classification-undo"), Command::UndoDelete.action())],
-            encode(&config).is_ok_and(|raw| raw == deleted.after),
-        );
-    }
-    if config.rules.is_empty() {
+    let presence = editor.rule_presence(value, Instant::now());
+    if config.rules.is_empty() && presence.is_none() {
         form.info(t("classification-empty"), if has_targets { t("classification-add-hint") } else { "" });
     } else {
         let (scene, bounds) = form.into_content();
-        table::draw(scene, bounds, panels, &config.rules, editor);
+        table::draw(scene, bounds, panels, &config.rules, editor, presence);
     }
 }
 

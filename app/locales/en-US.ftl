@@ -1467,4 +1467,5 @@ dialog-cancel = Cancel
 classification-actions = Actions
 
 classification-deleted = Rule deleted
+classification-deleted-count = { $count } rules deleted
 classification-undo = Undo deletion

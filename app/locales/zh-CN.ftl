@@ -1467,4 +1467,5 @@ dialog-cancel = 取消
 classification-actions = 操作
 
 classification-deleted = 规则已删除
+classification-deleted-count = 已删除 { $count } 条规则
 classification-undo = 撤销删除

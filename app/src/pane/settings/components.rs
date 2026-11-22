@@ -304,19 +304,6 @@ impl<'a> SettingsForm<'a> {
         }
         self.scene.text[title].2 = style;
     }
-    pub fn actions_enabled(
-        &mut self,
-        title: &str,
-        description: &str,
-        actions: Vec<(&str, Action)>,
-        enabled: bool,
-    ) {
-        let first = self.scene.controls.len();
-        self.actions(title, description, actions);
-        for control in &mut self.scene.controls[first..] {
-            control.enabled = enabled;
-        }
-    }
     pub fn desktop_connection(&mut self, connected: bool, copied: bool) {
         let title = crate::i18n::text("ui-desktop-connection");
         let actions = vec![
@@ -899,12 +886,18 @@ impl Scene {
     pub fn content_bottom(&self) -> f32 {
         let text_bottom = self.text.iter().enumerate()
             .filter(|(_, (bounds, _, style))| *style != Tokens::CAPTION_TEXT && bounds.left >= self.content_left)
-            .map(|(index, (bounds, _, _))| self.disclosure_text_clip(index).map_or(bounds.bottom, |clip| bounds.bottom.min(clip.bottom)))
+            .map(|(index, (bounds, _, _))| {
+                let bottom = self.disclosure_text_clip(index).map_or(bounds.bottom, |clip| bounds.bottom.min(clip.bottom));
+                self.rule_transition(index, |row| &row.text)
+                    .map_or(bottom, |transition| bottom.min(transition.row.bounds.bottom))
+            })
             .fold(self.content_top, f32::max);
         self.cards.iter()
             .chain(self.section_headers.iter().map(|header| &header.bounds))
             .chain(self.destination_changes.iter().map(|change| &change.bounds))
-            .chain(self.controls.iter().filter(|control| !Self::fixed_control(control)).map(|control| &control.bounds))
+            .chain(self.controls.iter().enumerate().filter(|(index, control)| !Self::fixed_control(control)
+                && self.rule_transition(*index, |row| &row.controls).is_none())
+                .map(|(_, control)| &control.bounds))
             .filter(|r| r.left >= self.content_left)
             .map(|r| r.bottom)
             .chain(self.app_icon.iter().map(|r| r.bottom))
@@ -968,6 +961,7 @@ impl Scene {
             .chain(self.section_headers.iter_mut().map(|header| &mut header.bounds))
             .chain(self.destination_changes.iter_mut().map(|change| &mut change.bounds))
             .chain(self.rule_rows.iter_mut().map(|row| &mut row.bounds))
+            .chain(self.rule_transitions.iter_mut().map(|transition| &mut transition.row.bounds))
             .chain(self.disclosure_clips.iter_mut().map(|clip| &mut clip.bounds))
             .chain(self.activity.iter_mut())
         {

@@ -1467,4 +1467,5 @@ dialog-cancel = 취소
 classification-actions = 작업
 
 classification-deleted = 규칙이 삭제됨
+classification-deleted-count = 규칙 { $count }개를 삭제했습니다
 classification-undo = 삭제 실행 취소

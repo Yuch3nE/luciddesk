@@ -42,10 +42,15 @@ pub(super) fn with_named_titlebar(
         r.top += TITLE_HEIGHT;
         r.bottom += TITLE_HEIGHT;
     }
+    if let Some((bounds, _)) = &mut scene.footer_status {
+        bounds.top += TITLE_HEIGHT;
+        bounds.bottom += TITLE_HEIGHT;
+    }
     for r in scene.cards.iter_mut().chain(&mut scene.separators)
         .chain(scene.section_headers.iter_mut().map(|header| &mut header.bounds))
         .chain(scene.destination_changes.iter_mut().map(|change| &mut change.bounds))
         .chain(scene.rule_rows.iter_mut().map(|row| &mut row.bounds))
+        .chain(scene.rule_transitions.iter_mut().map(|transition| &mut transition.row.bounds))
         .chain(scene.disclosure_clips.iter_mut().map(|clip| &mut clip.bounds))
         .chain(scene.activity.iter_mut())
     {

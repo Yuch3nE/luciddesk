@@ -1467,4 +1467,5 @@ dialog-cancel = キャンセル
 classification-actions = 操作
 
 classification-deleted = ルールを削除しました
+classification-deleted-count = { $count } 件のルールを削除しました
 classification-undo = 削除を元に戻す

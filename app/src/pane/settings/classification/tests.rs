@@ -819,6 +819,7 @@ fn classification_details_show_one_rule_without_writing_settings() {
             state.borrow().workspace.panels(),
             &config.rules,
             editor,
+            None,
         );
         body
     };
@@ -1141,18 +1142,86 @@ fn classification_editing_survives_tab_switch_and_only_saves_valid_input() {
 }
 
 #[test]
+fn clicking_delete_and_footer_undo_preserves_rule_order() {
+    let _sta = crate::pane::test_support::apartment();
+    let (_directory, state) = test_state();
+    let original = encode(&load(&state.borrow()).unwrap()).unwrap();
+    host::show(&state, Tab::Rules).unwrap();
+    let hwnd: HWND = state.borrow().organizer.as_ref().unwrap().hwnd().cast();
+    let mut bounds = RECT::default();
+    assert_ne!(unsafe { GetClientRect(hwnd, &raw mut bounds) }, 0);
+    let scale = unsafe { GetDpiForWindow(hwnd) }.max(96) as f32 / 96.0;
+    let (width, height) = (bounds.right as f32 / scale, bounds.bottom as f32 / scale);
+    let mut scene = {
+        let owner = state.borrow();
+        window_scene(
+            (width, height), Backdrop::Mica, Tab::Rules, owner.workspace.panels(),
+            owner.store.settings().unwrap().get(KEY), &Editor::default(), false,
+        )
+    };
+    scene = organizer_titlebar(scene, width, false);
+    scene.scroll_to(width, height, &mut 0.0);
+    let actions = &scene.controls[scene.rule_rows[0].controls.clone()];
+    let delete = actions.iter().find(|control| Command::Delete(0).is_control(&control.action)).unwrap();
+    assert!(matches!(delete.kind, ControlKind::IconButton(luciddesk_window::control_style::DELETE)));
+    assert!(actions.iter().all(|control| !matches!(control.action, Action::Dropdown(_))));
+    let x = ((delete.bounds.left + delete.bounds.right) * 0.5 * scale).round() as u16;
+    let y = ((delete.bounds.top + delete.bounds.bottom) * 0.5 * scale).round() as u16;
+    let click = |x: u16, y: u16| {
+        let point = (u32::from(x) | (u32::from(y) << 16)) as isize;
+        unsafe {
+            SendMessageW(hwnd, WM_LBUTTONDOWN, 1, point);
+            SendMessageW(hwnd, WM_LBUTTONUP, 0, point);
+            SendMessageW(hwnd, WM_PAINT, 0, 0);
+        }
+    };
+    click(x, y);
+    unsafe {
+        SendMessageW(hwnd, WM_PAINT, 0, 0);
+        assert_eq!(SendMessageW(hwnd, host::HAS_CONTROL_FOCUS, 0, 0), 0);
+        SendMessageW(hwnd, WM_KEYDOWN, VK_RETURN.into(), 1 << 30);
+    }
+    let saved = load(&state.borrow()).unwrap();
+    assert_eq!(saved.rules.len(), 1);
+    assert_eq!(saved.rules[0].extensions, ["png"]);
+    let undo_x = ((width - SIDE_MARGIN - Tokens::CONTROL_HEIGHT) * scale).round() as u16;
+    let undo_y = ((height - Tokens::INSET - Tokens::CONTROL_HEIGHT * 0.5) * scale).round() as u16;
+    click(undo_x, undo_y);
+    assert_eq!(encode(&load(&state.borrow()).unwrap()).unwrap(), original);
+    unsafe { SendMessageW(hwnd, WM_CLOSE, 0, 0); }
+}
+
+#[test]
 fn delete_undo_restores_order_and_rejects_concurrent_rule_changes() {
+    let _sta = crate::pane::test_support::apartment();
     let (_directory, state) = test_state();
     let mut editor = Editor::default();
     let hwnd = std::ptr::null_mut();
     let original = encode(&load(&state.borrow()).unwrap()).unwrap();
+    let render = |editor: &Editor| {
+        let owner = state.borrow();
+        organizer_titlebar(window_scene((780.0, 560.0), Backdrop::Mica, Tab::Rules,
+            owner.workspace.panels(), owner.store.settings().unwrap().get(KEY), editor, false), 780.0, false)
+    };
+    let list_top = render(&editor).rule_rows[0].bounds.top;
     editor.execute(&state, hwnd, Command::Delete(0));
     assert!(editor.error.is_none(), "{:?}", editor.error);
     assert_eq!(load(&state.borrow()).unwrap().rules[0].extensions, ["png"]);
+    let mut scene = render(&editor);
+    assert_eq!(scene.rule_rows[0].bounds.top, list_top);
+    let mut offset = f32::MAX;
+    scene.scroll_to(780.0, 560.0, &mut offset);
+    let undo = scene.controls.iter().find(|control| Command::UndoDelete.is_control(&control.action)).unwrap();
+    let (status, text) = scene.footer_status.unwrap();
+    assert_eq!(text, t("classification-deleted"));
+    assert!(undo.enabled && Scene::fixed_control(undo));
+    assert!(status.top >= scene.viewport.unwrap().bottom && status.right < undo.bounds.left);
+    assert_eq!(status.top, undo.bounds.top);
     editor.execute(&state, hwnd, Command::UndoDelete);
     assert!(editor.error.is_none());
     assert_eq!(encode(&load(&state.borrow()).unwrap()).unwrap(), original);
     assert!(editor.deleted.is_none());
+    assert!(render(&editor).footer_status.is_none());
     editor.execute(&state, hwnd, Command::Delete(1));
     let mut changed = load(&state.borrow()).unwrap();
     changed.rules[0].extensions = vec!["docx".into()];
@@ -1160,6 +1229,100 @@ fn delete_undo_restores_order_and_rejects_concurrent_rule_changes() {
     editor.execute(&state, hwnd, Command::UndoDelete);
     assert!(editor.error.is_some());
     assert_eq!(encode(&load(&state.borrow()).unwrap()).unwrap(), encode(&changed).unwrap());
+}
+
+#[test]
+fn consecutive_deletions_show_a_count_and_undo_as_one_batch() {
+    let _sta = crate::pane::test_support::apartment();
+    let (_directory, state) = test_state();
+    let mut config = load(&state.borrow()).unwrap();
+    for extension in ["zip", "jpg", "txt"] {
+        let mut rule = config.rules[0].clone();
+        rule.extensions = vec![extension.into()];
+        config.rules.push(rule);
+    }
+    save(&state.borrow(), &config).unwrap();
+    let original = encode(&config).unwrap();
+    let mut editor = Editor::default();
+    let hwnd = std::ptr::null_mut();
+    for index in [3, 0, 1] {
+        editor.execute(&state, hwnd, Command::Delete(index));
+        assert!(editor.error.is_none());
+    }
+    let remaining = load(&state.borrow()).unwrap().rules;
+    assert_eq!(remaining.iter().map(|rule| rule.extensions[0].as_str()).collect::<Vec<_>>(), ["png", "txt"]);
+    for locale in 0..7 {
+        crate::i18n::with_locale(locale, || {
+            let owner = state.borrow();
+            let scene = window_scene((480.0, 450.0), Backdrop::Mica, Tab::Rules, owner.workspace.panels(),
+                owner.store.settings().unwrap().get(KEY), &editor, false);
+            let (_, label) = scene.footer_status.unwrap();
+            assert!(label.contains('3'), "{label}");
+            let undo = scene.controls.iter().find(|control| Command::UndoDelete.is_control(&control.action)).unwrap();
+            assert!(undo.enabled && matches!(undo.kind, ControlKind::PrimaryButton));
+        });
+    }
+    editor.execute(&state, hwnd, Command::UndoDelete);
+    assert!(editor.error.is_none() && editor.deleted.is_none());
+    assert_eq!(encode(&load(&state.borrow()).unwrap()).unwrap(), original);
+
+    editor.execute(&state, hwnd, Command::Delete(0));
+    let mut changed = load(&state.borrow()).unwrap();
+    changed.rules[0].extensions = vec!["webp".into()];
+    save(&state.borrow(), &changed).unwrap();
+    editor.execute(&state, hwnd, Command::Delete(2));
+    assert_eq!(editor.deleted.as_ref().unwrap().rules.len(), 1);
+    editor.execute(&state, hwnd, Command::UndoDelete);
+    assert!(editor.error.is_none());
+    assert_eq!(encode(&load(&state.borrow()).unwrap()).unwrap(), encode(&changed).unwrap());
+}
+
+#[test]
+fn rule_presence_shrinks_and_regrows_the_original_slot() {
+    let _sta = crate::pane::test_support::apartment();
+    let (_directory, state) = test_state();
+    let owner = state.borrow();
+    let mut rules = load(&owner).unwrap().rules;
+    rules.push(rules[0].clone());
+    rules.push(rules[1].clone());
+    let render = |rules: &[ClassificationRule], editor: &Editor, presence| {
+        let mut scene = Scene::empty(Backdrop::Mica, SIDE_MARGIN, TITLE_HEIGHT);
+        table::draw(&mut scene, Rect::from_xywh(SIDE_MARGIN, 0.0, 748.0, 0.0),
+            owner.workspace.panels(), rules, editor, presence);
+        scene
+    };
+    let mut editor = Editor::default();
+    let before = render(&rules, &editor, None);
+    let slot = before.rule_rows[1].bounds;
+    let mut remaining = rules.clone();
+    editor.deleted = Some(DeletedRules { rules: [(1, remaining.remove(1))].into(), after: String::new() });
+    let now = Instant::now();
+    let leaving = RulePresence { rows: RulePresenceRows::Leaving { index: 1, original: 1, details: 0.0 },
+        expected: String::new(), motion: Motion::settled(0.0, now) };
+    let removing = render(&remaining, &editor, Some((&leaving, 0.5)));
+    let entering = RulePresence { rows: RulePresenceRows::Restoring { indices: vec![1, 3], partial: None },
+        expected: String::new(), motion: Motion::settled(1.0, now) };
+    let restoring = render(&rules, &editor, Some((&entering, 0.5)));
+    assert_eq!(removing.rule_rows.len(), 3);
+    assert_eq!(restoring.rule_rows.len(), 4);
+    assert_eq!(restoring.rule_transitions.len(), 2);
+    assert_eq!(removing.rule_rows[0].bounds.top, before.rule_rows[0].bounds.top);
+    assert_eq!(restoring.rule_rows[1].bounds.top, slot.top);
+    assert_eq!(removing.rule_rows[1].bounds.top, restoring.rule_rows[2].bounds.top);
+    assert_eq!(restoring.rule_rows[2].bounds.top, slot.top + slot.height() * 0.5);
+
+    let painter = Painter::new().unwrap();
+    let device = windows_canvas::GpuDevice::new_warp().unwrap();
+    let target = canvas::Offscreen::new(&device, 780, 560).unwrap();
+    for mut scene in [removing, restoring] {
+        for row in &scene.rule_transitions {
+            assert_eq!(row.row.bounds.height(), slot.height() * 0.5);
+            assert!(scene.controls[row.row.controls.clone()].iter().all(|control| !control.enabled));
+        }
+        scene = organizer_titlebar(scene, 780.0, false);
+        scene.scroll_to(780.0, 560.0, &mut 0.0);
+        painter.paint(&target.target, &scene, 780.0, 560.0, 1.0, true, false, None, None, &HashMap::new()).unwrap();
+    }
 }
 
 #[test]

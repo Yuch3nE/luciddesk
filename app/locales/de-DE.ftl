@@ -1467,4 +1467,5 @@ dialog-cancel = Abbrechen
 classification-actions = Aktionen
 
 classification-deleted = Regel gelöscht
+classification-deleted-count = { $count } Regeln gelöscht
 classification-undo = Löschen rückgängig

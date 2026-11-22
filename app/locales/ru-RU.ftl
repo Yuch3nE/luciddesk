@@ -1467,4 +1467,5 @@ dialog-cancel = Отмена
 classification-actions = Действия
 
 classification-deleted = Правило удалено
+classification-deleted-count = Удалено правил: { $count }
 classification-undo = Отменить удаление

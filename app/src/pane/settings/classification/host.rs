@@ -140,7 +140,9 @@ pub(super) fn show(state: &Rc<RefCell<PaneApp>>, tab: Tab) -> Result<(), String>
                     organizer.switch_motion.retain(|_, motion| {
                         motion.sample(now).is_ok_and(|value| value != motion.to)
                     });
+                    let row_transition = organizer.editor.update_rule_presence(now);
                     if !organizer.editor.tick_disclosure_animations(now)
+                        && !row_transition
                         && !organizer.rule_motion.playing(now) && organizer.switch_motion.is_empty()
                         && !organizer.interface_playing
                     {
@@ -376,6 +378,9 @@ impl Scene {
         if offset == 0.0 { return; }
         let row = &mut self.rule_rows[index];
         row.offset = offset;
+        if let Some(transition) = self.rule_transitions.iter_mut().find(|transition| transition.row.controls == row.controls) {
+            transition.row.offset = offset;
+        }
         for bounds in self.controls[row.controls.clone()].iter_mut().map(|control| &mut control.bounds)
             .chain(self.text[row.text.clone()].iter_mut().map(|(bounds, _, _)| bounds))
             .chain(&mut self.separators[row.separators.clone()])
@@ -732,6 +737,9 @@ impl Organizer {
             // The rebuilt controls must not inherit focus from a vanished button.
             self.focus = None;
             self.clear_hover();
+            if self.editor.rule_presence.is_some() {
+                self.schedule_animations(hwnd);
+            }
         }
         if self.editor.error.is_none() && RuleSwitch::for_command(command).is_some() {
             self.pending_switch = Some(command);
@@ -804,7 +812,9 @@ impl Organizer {
         let floating = scene.floating_rule_at(x, y);
         scene.rule_rows.iter().enumerate().find_map(|(index, row)| {
             let grip = row.grip();
-            (floating.is_none_or(|raised| raised == index) && contains(&grip, x, y)).then_some((index, grip))
+            (floating.is_none_or(|raised| raised == index) && contains(&grip, x, y)
+                && scene.rule_transition(row.controls.start, |row| &row.controls).is_none())
+                .then_some((index, grip))
         })
     }
 
@@ -905,6 +915,7 @@ impl Organizer {
 
     fn finish_animations(&mut self, hwnd: HWND) {
         self.editor.finish_disclosure_animations();
+        self.editor.rule_presence = None;
         self.rule_motion = RuleReorderMotion::default();
         self.pending_switch = None;
         self.switch_motion.clear();
