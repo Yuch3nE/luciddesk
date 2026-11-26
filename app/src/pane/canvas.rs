@@ -93,6 +93,17 @@ pub struct DrawPass<'a> {
 
 pub(super) struct OpacityLayer<'a>(&'a ID2D1DeviceContext);
 
+pub(super) struct TransformGuard<'a> {
+    native: &'a ID2D1DeviceContext,
+    previous: windows_numerics::Matrix3x2,
+}
+
+impl Drop for TransformGuard<'_> {
+    fn drop(&mut self) {
+        unsafe { self.native.SetTransform(&self.previous) };
+    }
+}
+
 /// Schedule control repainting only while the last visible frame was moving.
 #[derive(Default)]
 pub(super) struct ControlRedraw(bool);
@@ -200,20 +211,135 @@ impl DrawPass<'_> {
         Some(OpacityLayer(&self.native))
     }
 
+    pub(super) fn rounded_clip(&self, shape: &c::RoundedRect) -> Option<OpacityLayer<'_>> {
+        use windows::Win32::Graphics::Direct2D::{
+            D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, D2D1_LAYER_PARAMETERS1, D2D1_ROUNDED_RECT,
+            ID2D1Geometry, ID2D1Layer,
+        };
+        let factory = unsafe { self.native.GetFactory().ok()? };
+        let rect = D2D_RECT_F {
+            left: shape.rect.left,
+            top: shape.rect.top,
+            right: shape.rect.right,
+            bottom: shape.rect.bottom,
+        };
+        let geometry: ID2D1Geometry = unsafe {
+            factory
+                .CreateRoundedRectangleGeometry(&D2D1_ROUNDED_RECT {
+                    rect,
+                    radiusX: shape.radius_x,
+                    radiusY: shape.radius_y,
+                })
+                .ok()?
+                .into()
+        };
+        let mut parameters = D2D1_LAYER_PARAMETERS1 {
+            contentBounds: rect,
+            geometricMask: std::mem::ManuallyDrop::new(Some(geometry)),
+            maskAntialiasMode: D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
+            maskTransform: windows_numerics::Matrix3x2 { M11: 1.0, M22: 1.0, ..Default::default() },
+            opacity: 1.0,
+            ..Default::default()
+        };
+        unsafe {
+            self.native.PushLayer(&parameters, None::<&ID2D1Layer>);
+            std::mem::ManuallyDrop::drop(&mut parameters.geometricMask);
+        }
+        Some(OpacityLayer(&self.native))
+    }
+
+    pub(super) fn draw_elevation_border(
+        &self,
+        shape: &c::RoundedRect,
+        top: c::ColorF,
+        mid: c::ColorF,
+        bottom: c::ColorF,
+        stop_pos: f32,
+        thickness: f32,
+    ) {
+        use windows::Win32::Graphics::Direct2D::{
+            Common::{D2D1_COLOR_F, D2D1_GRADIENT_STOP, D2D_RECT_F},
+            D2D1_EXTEND_MODE_CLAMP, D2D1_GAMMA_2_2, D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES,
+            D2D1_ROUNDED_RECT, ID2D1Brush, ID2D1RenderTarget,
+        };
+        let to_d2d = |c: c::ColorF| D2D1_COLOR_F { r: c.r, g: c.g, b: c.b, a: c.a };
+        let inset = thickness * 0.5;
+        let rect = D2D_RECT_F {
+            left: shape.rect.left + inset,
+            top: shape.rect.top + inset,
+            right: shape.rect.right - inset,
+            bottom: shape.rect.bottom - inset,
+        };
+        if rect.right <= rect.left || rect.bottom <= rect.top {
+            return;
+        }
+        let stops = [
+            D2D1_GRADIENT_STOP { position: 0.0, color: to_d2d(top) },
+            D2D1_GRADIENT_STOP { position: stop_pos.clamp(0.05, 0.95), color: to_d2d(mid) },
+            D2D1_GRADIENT_STOP { position: 1.0, color: to_d2d(bottom) },
+        ];
+        unsafe {
+            let Ok(collection) = ID2D1RenderTarget::CreateGradientStopCollection(
+                &self.native,
+                &stops,
+                D2D1_GAMMA_2_2,
+                D2D1_EXTEND_MODE_CLAMP,
+            ) else {
+                return;
+            };
+            let props = D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES {
+                startPoint: windows_numerics::Vector2::new(rect.left, rect.top),
+                endPoint: windows_numerics::Vector2::new(rect.left, rect.bottom),
+            };
+            let Ok(gradient) = self.native.CreateLinearGradientBrush(&props, None, &collection) else {
+                return;
+            };
+            let brush: ID2D1Brush = gradient.into();
+            let rounded = D2D1_ROUNDED_RECT {
+                rect,
+                radiusX: (shape.radius_x - inset).max(0.0),
+                radiusY: (shape.radius_y - inset).max(0.0),
+            };
+            self.native.DrawRoundedRectangle(&rounded, &brush, thickness, None);
+        }
+    }
+
+    pub(super) fn translated(&self, dx: f32, dy: f32) -> Option<TransformGuard<'_>> {
+        if dx.abs() < 0.01 && dy.abs() < 0.01 {
+            return None;
+        }
+        let mut previous = windows_numerics::Matrix3x2::default();
+        unsafe {
+            self.native.GetTransform(&raw mut previous);
+            let mut next = previous;
+            next.M31 += dx;
+            next.M32 += dy;
+            self.native.SetTransform(&next);
+        }
+        Some(TransformGuard {
+            native: &self.native,
+            previous,
+        })
+    }
+
     pub(super) fn rotated_icon(
         &self, text: &str, format: &c::TextFormat, bounds: &c::Rect, brush: &c::Brush, radians: f32,
     ) {
         let x = (bounds.left + bounds.right) * 0.5;
         let y = (bounds.top + bounds.bottom) * 0.5;
         let (sin, cos) = radians.sin_cos();
-        let rotation = windows_numerics::Matrix3x2 {
-            M11: cos, M12: sin, M21: -sin, M22: cos,
-            M31: x - x * cos + y * sin, M32: y - x * sin - y * cos,
-        };
         let mut previous = windows_numerics::Matrix3x2::default();
         self.push_clip(bounds);
         unsafe {
             self.native.GetTransform(&raw mut previous);
+            let rotation = windows_numerics::Matrix3x2 {
+                M11: cos,
+                M12: sin,
+                M21: -sin,
+                M22: cos,
+                M31: x - x * cos + y * sin + previous.M31,
+                M32: y - x * sin - y * cos + previous.M32,
+            };
             self.native.SetTransform(&rotation);
         }
         self.clipped_icon(text, format, bounds, brush);
