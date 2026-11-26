@@ -767,10 +767,11 @@ impl Organizer {
                 PanelTheme::Dark => Some(true),
                 PanelTheme::Light => Some(false),
             });
-            let confirmed = crate::error_report::confirm(
+            let confirmed = crate::error_report::confirm_action(
                 hwnd as isize,
                 t("classification-delete-confirm-title"),
                 &body,
+                t("classification-delete"),
             );
             if still_open() {
                 unsafe { SendMessageW(hwnd, RULE_DELETE_RESULT, usize::from(confirmed), 0); }

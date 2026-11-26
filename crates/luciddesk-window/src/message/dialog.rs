@@ -16,7 +16,7 @@ use std::{
 use windows_sys::Win32::{
     Foundation::*,
     Graphics::{Dwm::*, Gdi::*},
-    System::{DataExchange::*, Memory::*, Registry::*},
+    System::{DataExchange::*, LibraryLoader::GetModuleHandleW, Memory::*, Registry::*},
     UI::{Controls::*, HiDpi::*, Input::KeyboardAndMouse::*, Shell::*, WindowsAndMessaging::*},
 };
 
@@ -24,8 +24,10 @@ const COPY: i32 = 100;
 const HEADING: i32 = 101;
 const BODY: i32 = 102;
 const BODY_SCROLLBAR: i32 = 103;
+const APP_ICON_RESOURCE: u16 = 1;
 const PADDING: i32 = 24;
 const HEADING_ICON_SIZE: i32 = 20;
+const HEADING_ROW_HEIGHT: i32 = 28;
 static THEME: AtomicI8 = AtomicI8::new(-1);
 thread_local! {
     static LABELS: RefCell<[String; 3]> = RefCell::new(["OK".into(), "Cancel".into(), "Copy".into()]);
@@ -67,6 +69,12 @@ pub fn message_is_dark() -> bool {
 fn wide(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(Some(0)).collect()
 }
+pub(super) enum Buttons<'a> {
+    Dismiss,
+    Confirm,
+    Action(&'a str),
+}
+
 struct Dialog {
     title: Vec<u16>,
     body: Vec<u16>,
@@ -74,11 +82,14 @@ struct Dialog {
     labels: [String; 3],
     family: Vec<u16>,
     confirmation: bool,
+    compact: bool,
     dark: bool,
     kind: MessageKind,
     background: HBRUSH,
     font: Cell<HFONT>,
     heading_font: Cell<HFONT>,
+    caption_icon: Cell<HICON>,
+    heading_row_height: Cell<i32>,
     scale: Cell<f32>,
     button_motion: RefCell<[PointerMotion; 3]>,
 }
@@ -96,6 +107,34 @@ impl Dialog {
             MessageKind::Information => (style::INFO, Palette::for_theme(self.dark).accent),
         }
     }
+    fn horizontal_padding(&self) -> i32 {
+        self.px(if self.compact { 20 } else { PADDING })
+    }
+    fn vertical_padding(&self) -> i32 {
+        self.px(if self.compact { 16 } else { PADDING })
+    }
+
+    fn update_caption_icon(&self, hwnd: HWND, dpi: u32) {
+        unsafe {
+            // LucidDesk and the updater both embed the app icon at resource ID 1.
+            let icon = LoadImageW(
+                GetModuleHandleW(null()),
+                usize::from(APP_ICON_RESOURCE) as _,
+                IMAGE_ICON,
+                GetSystemMetricsForDpi(SM_CXSMICON, dpi),
+                GetSystemMetricsForDpi(SM_CYSMICON, dpi),
+                0,
+            );
+            if !icon.is_null() {
+                SendMessageW(hwnd, WM_SETICON, ICON_SMALL as usize, icon as isize);
+                let previous = self.caption_icon.replace(icon);
+                if !previous.is_null() {
+                    DestroyIcon(previous);
+                }
+            }
+        }
+    }
+
     fn px(&self, value: i32) -> i32 {
         self.dip(value as f32)
     }
@@ -109,6 +148,9 @@ impl Drop for Dialog {
             DeleteObject(self.background);
             DeleteObject(self.font.get());
             DeleteObject(self.heading_font.get());
+            if !self.caption_icon.get().is_null() {
+                DestroyIcon(self.caption_icon.get());
+            }
         }
     }
 }
@@ -126,28 +168,40 @@ pub(super) fn show(
     title: &str,
     body: &str,
     kind: MessageKind,
-    confirmation: bool,
+    buttons: Buttons<'_>,
 ) -> bool {
+    let _antialiasing = gdi::Antialiasing::start();
+    let confirmation = !matches!(buttons, Buttons::Dismiss);
+    let mut labels = LABELS.with(|labels| labels.borrow().clone());
+    let compact = if let Buttons::Action(action) = buttons {
+        labels[0] = action.to_owned();
+        true
+    } else {
+        false
+    };
     let mut dialog = Dialog {
         title: wide(title),
         body: wide(body),
         copy_text: wide(&format!("{title}\r\n\r\n{body}")),
-        labels: LABELS.with(|labels| labels.borrow().clone()),
+        labels,
         family: FONT_FAMILY.with(|family| family.borrow().clone()),
         confirmation,
+        compact,
         dark: message_is_dark(),
         kind,
         background: null_mut(),
         font: Cell::new(null_mut()),
         heading_font: Cell::new(null_mut()),
+        caption_icon: Cell::new(null_mut()),
+        heading_row_height: Cell::new(0),
         scale: Cell::new(1.0),
         button_motion: RefCell::default(),
     };
     dialog.background = unsafe { CreateSolidBrush(dialog.background_color()) };
     let template = Template {
         header: DLGTEMPLATE {
-            style: WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME as u32,
-            dwExtendedStyle: WS_EX_DLGMODALFRAME,
+            style: WS_POPUP | WS_CAPTION | WS_SYSMENU,
+            dwExtendedStyle: 0,
             cdit: 0,
             x: 0,
             y: 0,
@@ -321,7 +375,9 @@ unsafe fn clipboard(hwnd: HWND, value: &[u16]) {
 
 unsafe fn layout(hwnd: HWND, dialog: &Dialog, dpi: u32) {
     unsafe {
-        dialog.scale.set(dpi.max(96) as f32 / 96.0);
+        let dpi = dpi.max(96);
+        dialog.scale.set(dpi as f32 / 96.0);
+        dialog.update_caption_icon(hwnd, dpi);
         let font = |height, weight| {
             CreateFontW(
                 -dialog.dip(height),
@@ -343,8 +399,12 @@ unsafe fn layout(hwnd: HWND, dialog: &Dialog, dpi: u32) {
         let old_font = dialog.font.replace(font(style::TEXT, FW_NORMAL as i32));
         let old_heading = dialog.heading_font.replace(font(20.0, FW_SEMIBOLD as i32));
         for id in [IDOK, IDCANCEL, COPY, BODY, HEADING] {
+            let child = GetDlgItem(hwnd, id);
+            if child.is_null() {
+                continue;
+            }
             SendMessageW(
-                GetDlgItem(hwnd, id),
+                child,
                 WM_SETFONT,
                 if id == HEADING {
                     dialog.heading_font.get()
@@ -370,32 +430,30 @@ unsafe fn layout(hwnd: HWND, dialog: &Dialog, dpi: u32) {
         );
         let work = monitor.rcWork;
         let width = dialog
-            .px(520)
+            .px(if dialog.compact { 400 } else { 520 })
             .min((work.right - work.left - dialog.px(32)).max(dialog.px(240)));
-        let padding = dialog.px(PADDING);
+        let padding = dialog.horizontal_padding();
+        let vertical_padding = dialog.vertical_padding();
+        let heading_inset = dialog.dip(HEADING_ICON_SIZE as f32 + style::ICON_GAP);
+        let heading_left = padding + heading_inset;
+        let body_left = if dialog.compact { heading_left } else { padding };
+        let body_width = width - body_left - padding;
         let dc = GetDC(hwnd);
-        let old = SelectObject(dc, dialog.font.get());
-        let mut bounds = RECT {
-            left: 0,
-            top: 0,
-            right: width - padding * 2,
-            bottom: 0,
-        };
-        DrawTextW(
-            dc,
-            dialog.body.as_ptr(),
-            -1,
-            &raw mut bounds,
-            DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX,
-        );
+        let old = SelectObject(dc, dialog.heading_font.get());
+        let mut metrics = TEXTMETRICW::default();
+        GetTextMetricsW(dc, &raw mut metrics);
+        // Keep the glyph centered on the first heading row in either dialog layout.
+        dialog.heading_row_height.set(metrics.tmHeight.max(dialog.px(HEADING_ROW_HEIGHT)));
+        SelectObject(dc, dialog.font.get());
+        GetTextMetricsW(dc, &raw mut metrics);
         // Labels may be considerably wider in translated locales.
         let gap = dialog.dip(style::BUTTON_GAP);
-        let button_count = if dialog.confirmation { 3 } else { 2 };
+        let button_count = if dialog.confirmation && !dialog.compact { 3 } else { 2 };
         let button_width = dialog
             .labels
             .iter()
             .enumerate()
-            .filter(|(index, _)| dialog.confirmation || *index != 1)
+            .filter(|(index, _)| (*index != 1 || dialog.confirmation) && (*index != 2 || !dialog.compact))
             .map(|(_, label)| {
                 let mut rect = RECT::default();
                 DrawTextW(
@@ -412,18 +470,29 @@ unsafe fn layout(hwnd: HWND, dialog: &Dialog, dpi: u32) {
             .min((width - padding * 2 - gap * (button_count - 1)) / button_count);
         SelectObject(dc, old);
         ReleaseDC(hwnd, dc);
-        let body_height = bounds
-            .bottom
-            .max(dialog.px(52))
-            .min(((work.bottom - work.top) * 2 / 3 - dialog.px(180)).max(dialog.px(52)));
+        let heading_height = dialog.heading_row_height.get()
+            .max(dialog.px(if dialog.compact { HEADING_ROW_HEIGHT } else { 54 }));
+        let body_top = vertical_padding + heading_height + dialog.px(if dialog.compact { 4 } else { 0 });
+        let body_limit = ((work.bottom - work.top) * 2 / 3 - dialog.px(180)).max(dialog.px(52));
         #[cfg(test)]
-        let body_height = tests::PREVIEW_BODY_LIMIT.with(|limit| {
+        let body_limit = tests::PREVIEW_BODY_LIMIT.with(|limit| {
             limit
                 .get()
-                .map_or(body_height, |dip| body_height.min(dialog.px(dip)))
+                .map_or(body_limit, |dip| body_limit.min(dialog.px(dip)))
         });
-        let heading_height = dialog.px(54);
-        let height = padding + heading_height + body_height + dialog.px(84);
+        // Measure the edit's own wrapped lines with the full text width before reserving a bar.
+        let edit = GetDlgItem(hwnd, BODY);
+        ShowScrollBar(edit, SB_VERT, 0);
+        MoveWindow(edit, body_left, body_top, body_width, body_limit, 0);
+        let line_height = metrics.tmHeight.max(dialog.dip(style::TEXT));
+        let lines = SendMessageW(edit, EM_GETLINECOUNT, 0, 0) as i32;
+        let text_height = lines.saturating_mul(line_height).saturating_add(dialog.px(4));
+        let body_height = text_height.max(dialog.px(if dialog.compact { 20 } else { 52 })).min(body_limit);
+        let scrolls = text_height > body_limit;
+        let control_height = dialog.dip(style::HEIGHT);
+        let button_gap = dialog.px(if dialog.compact { 16 } else { 28 });
+        let bottom = body_top + body_height + button_gap;
+        let height = bottom + control_height + vertical_padding;
         let mut frame = RECT {
             left: 0,
             top: 0,
@@ -456,35 +525,25 @@ unsafe fn layout(hwnd: HWND, dialog: &Dialog, dpi: u32) {
             outer_height,
             SWP_NOZORDER | SWP_NOACTIVATE,
         );
-        let heading_inset = dialog.dip(HEADING_ICON_SIZE as f32 + style::ICON_GAP);
         MoveWindow(
             GetDlgItem(hwnd, HEADING),
-            padding + heading_inset,
-            padding,
-            width - padding * 2 - heading_inset,
+            heading_left,
+            vertical_padding,
+            width - heading_left - padding,
             heading_height,
             1,
         );
-        let edit = GetDlgItem(hwnd, BODY);
-        MoveWindow(
-            edit,
-            padding,
-            padding + heading_height,
-            width - padding * 2,
-            body_height,
-            1,
-        );
-        gdi::position_edit_scrollbar(hwnd, edit, GetDlgItem(hwnd, BODY_SCROLLBAR));
-        let control_height = dialog.dip(style::HEIGHT);
-        let bottom = height - padding - control_height;
-        MoveWindow(
-            GetDlgItem(hwnd, COPY),
-            padding,
-            bottom,
-            button_width,
-            control_height,
-            1,
-        );
+        MoveWindow(edit, body_left, body_top, body_width, body_height, 1);
+        let bar = GetDlgItem(hwnd, BODY_SCROLLBAR);
+        if scrolls {
+            ShowScrollBar(edit, SB_VERT, 1);
+            gdi::position_edit_scrollbar(hwnd, edit, bar);
+        } else {
+            ShowWindow(bar, SW_HIDE);
+        }
+        if !dialog.compact {
+            MoveWindow(GetDlgItem(hwnd, COPY), padding, bottom, button_width, control_height, 1);
+        }
         MoveWindow(
             GetDlgItem(hwnd, IDOK),
             width - padding - button_width,
@@ -558,13 +617,13 @@ unsafe extern "system" fn procedure(hwnd: HWND, msg: u32, wp: usize, lp: isize) 
                         | ES_MULTILINE as u32
                         | ES_READONLY as u32
                         | ES_AUTOVSCROLL as u32,
-                ) && create(
+                ) && (dialog.compact || create(
                     hwnd,
                     COPY,
                     windows_sys::w!("BUTTON"),
                     wide(&dialog.labels[2]).as_ptr(),
                     WS_TABSTOP | BS_OWNERDRAW as u32,
-                ) && (!dialog.confirmation
+                )) && (!dialog.confirmation
                     || create(
                         hwnd,
                         IDCANCEL,
@@ -647,11 +706,13 @@ unsafe extern "system" fn procedure(hwnd: HWND, msg: u32, wp: usize, lp: isize) 
                     palette: &palette,
                 };
                 let (glyph, rgb) = dialog.heading_icon();
+                let left = dialog.horizontal_padding();
+                let top = dialog.vertical_padding();
                 let bounds = RECT {
-                    left: dialog.px(PADDING),
-                    top: dialog.px(PADDING),
-                    right: dialog.px(PADDING + HEADING_ICON_SIZE),
-                    bottom: dialog.px(PADDING + HEADING_ICON_SIZE + 4),
+                    left,
+                    top,
+                    right: left + dialog.px(HEADING_ICON_SIZE),
+                    bottom: top + dialog.heading_row_height.get(),
                 };
                 canvas.icons(HEADING_ICON_SIZE as f32, [(bounds, glyph, rgb)]);
                 EndPaint(hwnd, &paint);
@@ -711,6 +772,8 @@ mod tests {
         static BUTTON_LAYOUT: Cell<bool> = const { Cell::new(false) };
         static SCROLLBAR_WORKS: Cell<bool> = const { Cell::new(false) };
         static ARROWS_MATCH_SCROLL_POSITION: Cell<bool> = const { Cell::new(false) };
+        static FIT: Cell<Option<(bool, bool, bool, i32, i32)>> = const { Cell::new(None) };
+        static COMPACT_ALIGNMENT: Cell<bool> = const { Cell::new(false) };
         pub(super) static PREVIEW_BODY_LIMIT: Cell<Option<i32>> = const { Cell::new(None) };
     }
     unsafe fn arrow_contrast(scrollbar: HWND, arrow_height: i32, background: u32) -> [u32; 2] {
@@ -875,6 +938,80 @@ mod tests {
         }
         THEME.store(prior_theme, Ordering::Relaxed);
     }
+
+    unsafe extern "system" fn inspect_fit(_: HWND, _: u32, timer: usize, _: u32) {
+        unsafe {
+            let hwnd = GetActiveWindow();
+            let edit = GetDlgItem(hwnd, BODY);
+            if edit.is_null() {
+                return;
+            }
+            KillTimer(null_mut(), timer);
+            let mut bounds = RECT::default();
+            GetClientRect(hwnd, &raw mut bounds);
+            let scale = GetDpiForWindow(hwnd).max(96) as f32 / 96.0;
+            let copy = !GetDlgItem(hwnd, COPY).is_null();
+            let native_bar = GetWindowLongW(edit, GWL_STYLE) as u32 & WS_VSCROLL != 0;
+            let themed_bar = IsWindowVisible(GetDlgItem(hwnd, BODY_SCROLLBAR)) != 0;
+            let height = (bounds.bottom as f32 / scale).round() as i32;
+            let lines = SendMessageW(edit, EM_GETLINECOUNT, 0, 0) as i32;
+            FIT.with(|value| value.set(Some((copy, native_bar, themed_bar, height, lines))));
+            let screen_bounds = |child| {
+                let mut rect = RECT::default();
+                GetWindowRect(child, &raw mut rect);
+                rect
+            };
+            let heading = screen_bounds(GetDlgItem(hwnd, HEADING));
+            let body = screen_bounds(edit);
+            let confirm = screen_bounds(GetDlgItem(hwnd, IDOK));
+            COMPACT_ALIGNMENT.with(|value| value.set(
+                heading.left == body.left && heading.right == body.right
+                    && body.right == confirm.right
+                    && body.top - heading.bottom == (4.0 * scale).round() as i32
+                    && confirm.top - body.bottom == (16.0 * scale).round() as i32,
+            ));
+            PostMessageW(hwnd, WM_COMMAND, IDCANCEL as usize, 0);
+        }
+    }
+
+    #[test]
+    #[ignore = "Interactive native layout test; run alone on a Windows desktop"]
+    fn actions_fit_short_and_wrapped_text_and_scroll_only_on_overflow() {
+        let prior_theme = THEME.load(Ordering::Relaxed);
+        let short = "删除第 1 条规则（目标分组「开发」）？";
+        let wrapped = format!("Delete the rule for “{}”?", "Desktop workspace ".repeat(8).trim());
+        let long = "Long message C:\\文件\\workspace.db\r\n".repeat(100);
+        let inspect = |body: &str, compact| {
+            FIT.with(|value| value.set(None));
+            unsafe { assert_ne!(SetTimer(null_mut(), 0, 100, Some(inspect_fit)), 0); }
+            let result = if compact {
+                super::super::confirm_action(0, "删除规则", body, MessageKind::Warning, "删除")
+            } else {
+                super::super::confirm_message(0, "删除规则", body, MessageKind::Warning)
+            };
+            assert!(!result);
+            if compact {
+                assert!(COMPACT_ALIGNMENT.with(Cell::get));
+            }
+            FIT.with(Cell::get).expect("dialog must open")
+        };
+        for dark in [false, true] {
+            set_message_theme(Some(dark));
+            let (copy, native, themed, standard_height, _) = inspect(short, false);
+            assert!(copy && !native && !themed);
+            let (copy, native, themed, compact_height, lines) = inspect(short, true);
+            assert!(!copy && !native && !themed);
+            assert_eq!(lines, 1);
+            assert!(compact_height + 40 < standard_height);
+            let (copy, native, themed, wrapped_height, lines) = inspect(&wrapped, true);
+            assert!(!copy && !native && !themed);
+            assert!(lines > 1 && wrapped_height > compact_height);
+            let (copy, native, themed, height, _) = inspect(&long, true);
+            assert!(!copy && native && themed && height > wrapped_height);
+        }
+        THEME.store(prior_theme, Ordering::Relaxed);
+    }
+
     #[test]
     #[ignore = "Manual visual preview; dismiss the dialog to finish"]
     fn visual_preview() {

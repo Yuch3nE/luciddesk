@@ -5,7 +5,7 @@ mod monitors;
 mod message;
 pub use monitors::{MonitorDescriptor, PixelRect, enumerate_monitors};
 pub use message::{
-    MessageKind, confirm_message, message_is_dark, set_message_font, set_message_labels,
+    MessageKind, confirm_action, confirm_message, message_is_dark, set_message_font, set_message_labels,
     set_message_theme, show_message,
 };
 

@@ -1149,6 +1149,7 @@ fn clicking_delete_requires_confirmation_and_footer_undo_restores_the_rule() {
 
     thread_local! {
         static DELETE_ANSWER: Cell<(HWND, i32)> = const { Cell::new((null_mut(), 0)) };
+        static CAPTION_ICON: Cell<bool> = const { Cell::new(false) };
     }
 
     unsafe extern "system" fn answer_dialog(_: HWND, _: u32, timer: usize, _: u32) {
@@ -1156,6 +1157,9 @@ fn clicking_delete_requires_confirmation_and_footer_undo_restores_the_rule() {
         let popup = unsafe { GetLastActivePopup(owner) };
         if popup != owner && !unsafe { GetDlgItem(popup, answer) }.is_null() {
             unsafe {
+                let has_icon = SendMessageW(popup, WM_GETICON, ICON_SMALL as usize, 0) != 0;
+                let allows_icon = GetWindowLongW(popup, GWL_EXSTYLE) as u32 & WS_EX_DLGMODALFRAME == 0;
+                CAPTION_ICON.with(|slot| slot.set(has_icon && allows_icon));
                 KillTimer(null_mut(), timer);
                 PostMessageW(popup, WM_COMMAND, answer as usize, 0);
             }
@@ -1199,6 +1203,7 @@ fn clicking_delete_requires_confirmation_and_footer_undo_restores_the_rule() {
         click(x, y);
         assert_eq!(encode(&load(&state.borrow()).unwrap()).unwrap(), original);
         DELETE_ANSWER.with(|slot| slot.set((hwnd, answer)));
+        CAPTION_ICON.with(|slot| slot.set(false));
         let timer = unsafe { SetTimer(null_mut(), 0, 20, Some(answer_dialog)) };
         assert_ne!(timer, 0);
         let deadline = Instant::now() + Duration::from_secs(3);
@@ -1212,6 +1217,7 @@ fn clicking_delete_requires_confirmation_and_footer_undo_restores_the_rule() {
         }
         unsafe { KillTimer(null_mut(), timer); }
         assert_eq!(DELETE_ANSWER.with(Cell::get).1, 0, "the organizer must open a confirmation dialog");
+        assert!(CAPTION_ICON.with(Cell::get), "the confirmation must show the app's caption icon");
     };
     answer(IDCANCEL);
     assert_eq!(encode(&load(&state.borrow()).unwrap()).unwrap(), original);

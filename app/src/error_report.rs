@@ -20,6 +20,11 @@ pub(crate) fn confirm(owner: isize, title: &str, message: &str) -> bool {
     luciddesk_window::confirm_message(owner, title, message, MessageKind::Warning)
 }
 
+pub(crate) fn confirm_action(owner: isize, title: &str, message: &str, action: &str) -> bool {
+    prepare();
+    luciddesk_window::confirm_action(owner, title, message, MessageKind::Warning, action)
+}
+
 pub(crate) fn error(owner: isize, message: &str) {
     show(owner, crate::i18n::text("error-operation-title"), message, MessageKind::Error);
 }

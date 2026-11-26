@@ -48,18 +48,27 @@ pub fn show_message(owner: isize, title: &str, message: &str, kind: MessageKind)
     let Some(_active) = Active::enter((owner, title.clone(), message.clone(), kind)) else {
         return;
     };
-    let _ = dialog::show(owner, &title, &message, kind, false);
+    let _ = dialog::show(owner, &title, &message, kind, dialog::Buttons::Dismiss);
 }
 
 /// Confirmation dialogs deliberately focus Cancel; closing never accepts an operation.
 pub fn confirm_message(owner: isize, title: &str, message: &str, kind: MessageKind) -> bool {
+    confirm(owner, title, message, kind, dialog::Buttons::Confirm)
+}
+
+/// Show a compact confirmation with Cancel and a button named for the action.
+pub fn confirm_action(owner: isize, title: &str, message: &str, kind: MessageKind, action: &str) -> bool {
+    confirm(owner, title, message, kind, dialog::Buttons::Action(action))
+}
+
+fn confirm(owner: isize, title: &str, message: &str, kind: MessageKind, buttons: dialog::Buttons<'_>) -> bool {
     let owner = valid_owner(owner);
     let title = normalized(title);
     let message = normalized(message);
     let Some(_active) = Active::enter((owner, title.clone(), message.clone(), kind)) else {
         return false;
     };
-    dialog::show(owner, &title, &message, kind, true)
+    dialog::show(owner, &title, &message, kind, buttons)
 }
 
 mod dialog;
