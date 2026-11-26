@@ -18,6 +18,9 @@ use windows_sys::Win32::{
     },
 };
 
+mod shapes;
+pub(crate) use shapes::Antialiasing;
+
 pub(crate) const POINTER_TIMER: usize = 0x4c47;
 
 pub(crate) fn pointer_feedback(hwnd: HWND, motion: &mut PointerMotion, hovered: bool, pressed: bool) -> f32 {
@@ -83,6 +86,9 @@ impl GdiCanvas<'_> {
     }
 
     fn fill_color(&self, bounds: Bounds, radius: f32, rgb: u32) {
+        if shapes::paint(self.dc, self.rect(bounds), radius * self.scale, rgb, 0.0) {
+            return;
+        }
         unsafe {
             let brush = CreateSolidBrush(colorref(rgb));
             self.round_rect(bounds, radius, brush, GetStockObject(NULL_PEN));
@@ -201,16 +207,87 @@ impl Canvas for GdiCanvas<'_> {
         Ok(())
     }
 
+    fn fill_rgba(&mut self, bounds: Bounds, radius: f32, rgba: [f32; 4]) {
+        if !shapes::paint_rgba(self.dc, self.rect(bounds), radius * self.scale, rgba, 0.0) {
+            let [r, g, b, _] = rgba;
+            let _ = self.fill_rgb(bounds, radius, [r, g, b]);
+        }
+    }
+
     fn stroke(&mut self, bounds: Bounds, radius: f32, thickness: f32, tone: Tone) {
+        let rgb = tone.rgb(self.palette);
+        if shapes::paint(
+            self.dc,
+            self.rect(bounds),
+            radius * self.scale,
+            rgb,
+            thickness * self.scale,
+        ) {
+            return;
+        }
         unsafe {
             let pen = CreatePen(
                 PS_INSIDEFRAME,
                 self.px(thickness),
-                colorref(tone.rgb(self.palette)),
+                colorref(rgb),
             );
             self.round_rect(bounds, radius, GetStockObject(HOLLOW_BRUSH), pen);
             DeleteObject(pen);
         }
+    }
+
+    fn stroke_rgba(&mut self, bounds: Bounds, radius: f32, thickness: f32, rgba: [f32; 4]) {
+        if !shapes::paint_rgba(
+            self.dc,
+            self.rect(bounds),
+            radius * self.scale,
+            rgba,
+            thickness * self.scale,
+        ) {
+            self.stroke(bounds, radius, thickness, Tone::Border);
+        }
+    }
+
+    fn elevation_border(
+        &mut self,
+        bounds: Bounds,
+        radius: f32,
+        kind: style::ElevationKind,
+        hover: f32,
+        press: f32,
+    ) {
+        let gradient = self.palette.elevation_gradient(kind, hover, press);
+        if !shapes::paint_elevation(
+            self.dc,
+            self.rect(bounds),
+            radius * self.scale,
+            self.scale,
+            gradient,
+        ) {
+            self.stroke(bounds, radius, 1.0, Tone::Border);
+        }
+    }
+
+    fn fill_circle(&mut self, cx: f32, cy: f32, radius: f32, rgba: [f32; 4]) {
+        shapes::paint_circle(
+            self.dc,
+            cx * self.scale,
+            cy * self.scale,
+            radius * self.scale,
+            rgba,
+            0.0,
+        );
+    }
+
+    fn stroke_circle(&mut self, cx: f32, cy: f32, radius: f32, thickness: f32, rgba: [f32; 4]) {
+        shapes::paint_circle(
+            self.dc,
+            cx * self.scale,
+            cy * self.scale,
+            radius * self.scale,
+            rgba,
+            thickness * self.scale,
+        );
     }
 
     fn text(&mut self, bounds: Bounds, label: &str, alignment: Alignment, tone: Tone) {
