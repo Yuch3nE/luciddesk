@@ -11,24 +11,25 @@ pub(super) fn widget_bounds(rect: Rect) -> Bounds {
 pub(super) struct Tokens;
 impl Tokens {
     pub fn content_x() -> f32 {
+        let weight = windows_canvas::FontWeight(600);
         super::layout::navigation()
             .iter()
-            .map(|entry| (text_width(&entry.label, Style::TEXT_SIZE) + Self::NAV_LEFT + Self::NAV_RIGHT_GAP
+            .map(|entry| (text_width_with_weight(&entry.label, Style::TEXT_SIZE, weight) + Self::NAV_LEFT + Self::NAV_RIGHT_GAP
                 + NavigationItem::SIDEBAR_LABEL_INSET + NavigationItem::END_INSET)
-                .max(entry.section.map_or(0.0, |title| text_width(title, Style::NAV_HEADING) + Self::NAV_LEADING + Self::MARGIN)))
-            .fold(248.0_f32, f32::max)
+                .max(entry.section.map_or(0.0, |title| text_width_with_weight(title, Style::NAV_HEADING, weight) + Self::NAV_LEADING + Self::MARGIN)))
+            .fold(244.0_f32, f32::max)
             .min(344.0)
     }
     pub const MARGIN: f32 = 24.0;
     pub const NAV_LEFT: f32 = 8.0;
     pub const NAV_LEADING: f32 = Self::NAV_LEFT + NavigationItem::SIDEBAR_ICON_INSET;
-    pub const NAV_RIGHT_GAP: f32 = 36.0;
+    pub const NAV_RIGHT_GAP: f32 = Self::MARGIN + Self::NAV_LEFT;
     pub const GAP: f32 = 8.0;
     pub const INSET: f32 = 16.0;
     pub const CARD_RADIUS: f32 = 8.0;
     pub const CONTROL_HEIGHT: f32 = Style::CONTROL_HEIGHT;
     pub const CHECKBOX_INSET: f32 = 40.0;
-    pub const ROW_HEIGHT: f32 = 40.0;
+    pub const ROW_HEIGHT: f32 = 38.0;
     pub const MAX_WIDTH: f32 = 1000.0;
     pub const VALUE_TEXT: usize = 7;
     pub const CONTROL_TEXT: usize = 9;
@@ -41,43 +42,39 @@ impl Tokens {
     pub const SECTION_TITLE_SIZE: f32 = 16.0;
     pub const SECONDARY_VALUE: usize = 16;
     pub const GROUP_TITLE: usize = 17;
+    pub const FORM_SECTION: usize = 18;
 }
 
 pub(super) struct SettingsForm<'a> {
     scene: &'a mut Scene,
     title_badge: Option<String>,
+    in_group: bool,
     x: f32,
     width: f32,
     y: f32,
 }
 
-// Sidebar interaction surfaces have their own contrast requirements; pane-tab
-// fills are too subtle here, especially on dark acrylic and light solid colors.
+// Sidebar interaction surfaces follow Windows 11 Fluent 2 subtle neutral fills,
+// letting the gliding accent pill carry the active indicator cleanly.
 pub(super) fn navigation_colors(material: Backdrop, dark: bool) -> [ColorF; 3] {
-    let (selected, hovered) = match (material.base(), dark) {
-        (Backdrop::Acrylic, true) => (0.14, 0.07),
-        (Backdrop::Mica, true) => (0.10, 0.05),
-        (Backdrop::MicaAlt, true) => (0.12, 0.06),
-        (_, true) => (0.12, 0.06),
-        (Backdrop::Acrylic, false) => (0.14, 0.055),
-        (Backdrop::Mica, false) => (0.10, 0.035),
-        (Backdrop::MicaAlt, false) => (0.12, 0.045),
-        (_, false) => (0.12, 0.045),
+    let (selected, hovered, selected_hovered) = match (material.base(), dark) {
+        (Backdrop::Acrylic, true) => (0.08, 0.055, 0.105),
+        (Backdrop::Mica, true) => (0.065, 0.045, 0.085),
+        (Backdrop::MicaAlt, true) => (0.075, 0.05, 0.095),
+        (_, true) => (0.07, 0.05, 0.09),
+        (Backdrop::Acrylic, false) => (0.055, 0.038, 0.072),
+        (Backdrop::Mica, false) => (0.042, 0.028, 0.058),
+        (Backdrop::MicaAlt, false) => (0.048, 0.034, 0.064),
+        (_, false) => (0.045, 0.032, 0.060),
     };
-    // Keep all states legible at either end of the material-strength slider.
     let strength = f32::from(material.strength().unwrap_or(50)) / 100.0;
-    let factor = 0.9 + strength * 0.2;
-    let fill = |rgb: u32, alpha: f32| ColorF {
-        r: ((rgb >> 16) & 255) as f32 / 255.0,
-        g: ((rgb >> 8) & 255) as f32 / 255.0,
-        b: (rgb & 255) as f32 / 255.0,
-        a: alpha * factor,
-    };
-    let selection = Palette::for_theme(dark).accent;
+    let factor = 0.92 + strength * 0.16;
+    let tint = if dark { 1.0 } else { 0.0 };
+    let fill = |alpha: f32| ColorF::new(tint, tint, tint, alpha * factor);
     [
-        fill(selection, selected),
-        fill(if dark { 0xffffff } else { 0x000000 }, hovered),
-        fill(selection, selected * 1.25),
+        fill(selected),
+        fill(hovered),
+        fill(selected_hovered),
     ]
 }
 impl<'a> SettingsForm<'a> {
@@ -89,6 +86,7 @@ impl<'a> SettingsForm<'a> {
         Self {
             scene,
             title_badge: None,
+            in_group: false,
             x,
             width: (width - x - right_margin).min(Tokens::MAX_WIDTH),
             y,
@@ -97,19 +95,28 @@ impl<'a> SettingsForm<'a> {
     pub fn new(scene: &'a mut Scene, width: f32, description: &str) -> Self {
         let x = scene.content_left;
         let width = (width - x - Tokens::MARGIN).min(Tokens::MAX_WIDTH);
-        let description_height = text_height(description, 12.0, width).max(36.0);
-        scene.text(
-            Rect::from_xywh(x, 76.0, width, description_height),
-            description,
-            6,
-        );
+        let y = if description.is_empty() {
+            68.0
+        } else {
+            let description_height = text_height(description, 12.0, width).max(20.0);
+            scene.text(
+                Rect::from_xywh(x, 60.0, width, description_height),
+                description,
+                6,
+            );
+            60.0 + description_height + 16.0
+        };
         Self {
             scene,
             title_badge: None,
+            in_group: false,
             x,
             width,
-            y: 84.0 + description_height,
+            y,
         }
+    }
+    fn row_gap(&self) -> f32 {
+        if self.in_group { 0.0 } else { Tokens::GAP }
     }
     /// Annotate the next setting, reserving space for the badge in its title row.
     pub fn title_badge(&mut self, label: &str) -> &mut Self {
@@ -119,35 +126,53 @@ impl<'a> SettingsForm<'a> {
     /// Group related setting rows in one card with inset separators.
     pub fn group(&mut self, content: impl FnOnce(&mut Self)) {
         let start = self.scene.cards.len();
+        let was_grouped = self.in_group;
+        self.in_group = true;
         content(self);
-        if self.scene.cards.len() <= start + 1 { return; }
+        self.in_group = was_grouped;
+        if self.scene.cards.len() <= start {
+            return;
+        }
         let bottom = self.scene.cards.last().unwrap().bottom;
         for card in &self.scene.cards[start + 1..] {
             self.scene.separators.push(Rect::from_xywh(
-                card.left + Tokens::INSET, card.top - Tokens::GAP / 2.0,
-                card.right - card.left - 2.0 * Tokens::INSET, 1.0));
+                card.left + Tokens::INSET,
+                card.top,
+                card.right - card.left - 2.0 * Tokens::INSET,
+                1.0,
+            ));
         }
         self.scene.cards.truncate(start + 1);
         self.scene.cards[start].bottom = bottom;
+        if !was_grouped {
+            self.y = bottom + Tokens::GAP;
+        }
     }
     /// A secondary link belongs to the preceding setting, without another card.
     pub fn footer_link(&mut self, label: &str, action: Action) {
         let card = self.scene.cards.last_mut().unwrap();
         let height = text_height(label, 12.0, self.width - 64.0).max(32.0);
-        let top = card.bottom - 8.0;
-        card.bottom = top + height + Tokens::INSET;
-        self.y = card.bottom + Tokens::GAP;
+        let divider_y = card.bottom;
+        let top = divider_y + 6.0;
+        card.bottom = top + height + 6.0;
+        self.y = card.bottom + self.row_gap();
+        self.scene.separators.push(Rect::from_xywh(
+            self.x + Tokens::INSET,
+            divider_y,
+            self.width - 2.0 * Tokens::INSET,
+            1.0,
+        ));
         self.scene.control(ControlKind::FooterLink,
             Rect::from_xywh(self.x + 8.0, top, self.width - 16.0, height),
             label, action, false);
     }
     pub fn section(&mut self, title: &str) {
-        if self.y > 120.0 {
+        if self.y > 100.0 {
             self.y += 16.0;
         }
         self.scene
-            .text(Rect::from_xywh(self.x, self.y, self.width, 28.0), title, 1);
-        self.y += 36.0;
+            .text(Rect::from_xywh(self.x, self.y, self.width, 22.0), title, Tokens::FORM_SECTION);
+        self.y += 28.0;
     }
     /// Reserve a common trailing column. Long descriptions use the full card width.
     fn card(&mut self, title: &str, description: &str, action_width: f32) -> Rect {
@@ -161,53 +186,79 @@ impl<'a> SettingsForm<'a> {
         force_stacked: bool,
         activity: bool,
     ) -> Rect {
-        let column = action_width.max(232.0);
-        let stacked =
-            force_stacked || self.width < column + 260.0 || description.chars().count() > 60;
+        let badge = self.title_badge.take();
+        let title_width = super::components::text_width(title, 14.0);
+        let badge_natural = badge
+            .as_ref()
+            .map_or(0.0, |label| super::components::text_width(label, 11.0) + 32.0);
+        let inline_title_need = title_width
+            + if badge.is_some() {
+                Tokens::GAP + badge_natural
+            } else {
+                0.0
+            };
+        let trailing = if action_width >= 160.0 {
+            action_width.max(232.0)
+        } else {
+            action_width
+        };
+        let gutter = if action_width > 0.0 {
+            Tokens::INSET
+        } else {
+            0.0
+        };
+        let min_text = if description.is_empty() {
+            (inline_title_need + 8.0).clamp(112.0, 240.0)
+        } else {
+            220.0_f32.max(title_width.min(240.0))
+        };
+        let available_inline = self.width - 2.0 * Tokens::INSET - trailing - gutter;
+        let stacked = force_stacked
+            || (action_width > 0.0
+                && (available_inline < min_text || description.chars().count() > 60));
         let text_width = if stacked || action_width == 0.0 {
             self.width - 2.0 * Tokens::INSET
         } else {
-            self.width - column - 3.0 * Tokens::INSET
+            available_inline.max(1.0)
         };
         let indicator_width = if activity { 28.0 } else { 0.0 };
         let title_text_width = (text_width - indicator_width).max(1.0);
-        let badge = self.title_badge.take();
-        let title_width = super::components::text_width(title, 14.0);
-        let badge_width = badge.as_ref().map_or(0.0, |label|
-            (super::components::text_width(label, 11.0) + 36.0).min(title_text_width));
+        let badge_width = badge.as_ref().map_or(0.0, |_| badge_natural.min(title_text_width));
         let badge_inline = title_width + Tokens::GAP + badge_width <= title_text_width;
-        let title_line_height = text_height(title, 14.0, title_text_width).max(24.0);
+        let title_line_height = text_height(title, 14.0, title_text_width).max(20.0);
         let badge_height = badge.as_ref().map_or(0.0, |label|
-            text_height(label, 11.0, (badge_width - 36.0).max(1.0)).max(16.0) + 4.0);
+            text_height(label, 11.0, (badge_width - 32.0).max(1.0)).max(16.0) + 4.0);
         let title_height = title_line_height + if badge.is_some() && !badge_inline {
             badge_height + 4.0
         } else { 0.0 };
         let description_height = if description.is_empty() {
             0.0
         } else {
-            text_height(description, 12.0, text_width).max(20.0)
+            text_height(description, 12.0, text_width).max(18.0)
         };
         let text_height = title_height
             + if description.is_empty() {
                 0.0
             } else {
-                4.0 + description_height
+                3.0 + description_height
             };
+        let pad_y = if description.is_empty() && !stacked { 12.0 } else { 14.0 };
+        let min_height = if description.is_empty() && !stacked { 54.0 } else { 64.0 };
         let height = (text_height
-            + 2.0 * Tokens::INSET
+            + 2.0 * pad_y
             + if stacked && action_width > 0.0 {
                 12.0 + Tokens::CONTROL_HEIGHT
             } else {
                 0.0
             })
-        .max(72.0);
+        .max(min_height);
         self.scene
             .cards
             .push(Rect::from_xywh(self.x, self.y, self.width, height));
-        let title_top = self.y + if description.is_empty() && !stacked {
-            (height - title_height) / 2.0
+        let title_top = self.y + if !stacked {
+            (height - text_height) / 2.0
         } else {
-            Tokens::INSET
+            pad_y
         };
         self.scene.text(
             Rect::from_xywh(
@@ -234,7 +285,7 @@ impl<'a> SettingsForm<'a> {
             self.scene.text(
                 Rect::from_xywh(
                     self.x + Tokens::INSET,
-                    self.y + Tokens::INSET + title_height + 4.0,
+                    title_top + title_height + 3.0,
                     text_width,
                     description_height,
                 ),
@@ -242,18 +293,23 @@ impl<'a> SettingsForm<'a> {
                 6,
             );
         }
+        let action_left = if stacked {
+            self.x + Tokens::INSET
+        } else {
+            self.x + self.width - Tokens::INSET - action_width
+        };
         let action = Rect::from_xywh(
-            self.x + self.width - Tokens::INSET - action_width,
+            action_left,
             self.y
                 + if stacked {
-                    height - Tokens::INSET - Tokens::CONTROL_HEIGHT
+                    height - pad_y - Tokens::CONTROL_HEIGHT
                 } else {
                     (height - Tokens::CONTROL_HEIGHT) / 2.0
                 },
             action_width,
             Tokens::CONTROL_HEIGHT,
         );
-        self.y += height + Tokens::GAP;
+        self.y += height + self.row_gap();
         action
     }
     pub fn info(&mut self, title: &str, description: &str) {
@@ -323,32 +379,54 @@ impl<'a> SettingsForm<'a> {
             text_width(label, 14.0) + 32.0
         }).fold(112.0_f32, f32::max).min(inner);
         let action_width = actions.len() as f32 * (cell + Tokens::GAP) - Tokens::GAP;
-        if title_width + 16.0 + text_width(summary, 14.0) + 24.0 + action_width <= inner {
+        let summary_text_width = text_width_with_weight(summary, 14.0, windows_canvas::FontWeight(600)).ceil();
+        let pill_pad_left = 22.0;
+        let pill_pad_right = 11.0;
+        let pill_width = summary_text_width + pill_pad_left + pill_pad_right;
+        if title_width + 12.0 + pill_width + 16.0 + action_width <= inner {
             let height = 72.0;
             let center = top + height / 2.0;
             self.scene.cards.push(Rect::from_xywh(self.x, top, self.width, height));
             self.scene.text(Rect::from_xywh(left, center - 12.0, title_width, 24.0), title, 1);
-            self.scene.text(Rect::from_xywh(left + title_width + 16.0, center - 12.0,
-                inner - title_width - 16.0 - action_width - 24.0, 24.0), summary, status_style);
+            let pill_left = left + title_width + 12.0;
+            let max_pill = (inner - title_width - 12.0 - action_width - 16.0).max(1.0);
+            let pill_w = pill_width.min(max_pill);
+            self.scene.status_pills.push((Rect::from_xywh(pill_left, center - 13.0, pill_w, 26.0), connected));
+            self.scene.text(Rect::from_xywh(pill_left + pill_pad_left, center - 12.0,
+                (pill_w - pill_pad_left - pill_pad_right + 2.0).max(1.0), 24.0), summary, status_style);
             for (index, (label, action)) in actions.into_iter().enumerate() {
                 self.scene.button(Rect::from_xywh(left + inner - action_width + index as f32 * (cell + Tokens::GAP),
                     center - Tokens::CONTROL_HEIGHT / 2.0, cell, Tokens::CONTROL_HEIGHT), label, action, false);
             }
-            self.y = top + height + Tokens::GAP;
+            self.y = top + height + self.row_gap();
             return;
         }
-        let inline = title_width + 16.0 + text_width(summary, 14.0) <= inner;
+        let inline = title_width + 12.0 + pill_width <= inner;
         let title_height = text_height(title, 14.0, inner).max(24.0);
-        self.scene.text(Rect::from_xywh(left, top + Tokens::INSET,
+        self.scene.text(Rect::from_xywh(left, top + 14.0,
             if inline { title_width } else { inner }, title_height), title, 1);
-        let status_width = if inline { inner - title_width - 16.0 } else { inner };
-        let status_height = text_height(summary, 14.0, status_width).max(24.0);
-        let status_top = top + Tokens::INSET + if inline { 0.0 } else { title_height + 4.0 };
-        self.scene.text(Rect::from_xywh(
-            if inline { left + title_width + 16.0 } else { left },
-            status_top, status_width, status_height,
-        ), summary, status_style);
-        let mut y = (top + Tokens::INSET + title_height).max(status_top + status_height);
+        let status_width = if inline { inner - title_width - 12.0 } else { inner };
+        let single_line = pill_width <= status_width;
+        let status_height = if single_line {
+            24.0
+        } else {
+            text_height(summary, 14.0, status_width).max(24.0)
+        };
+        let status_top = top + 14.0 + if inline { 0.0 } else { title_height + 4.0 };
+        let status_left = if inline { left + title_width + 12.0 } else { left };
+        if single_line {
+            self.scene.status_pills.push((Rect::from_xywh(status_left, status_top - 1.0, pill_width, 26.0), connected));
+            self.scene.text(Rect::from_xywh(
+                status_left + pill_pad_left,
+                status_top, (pill_width - pill_pad_left - pill_pad_right + 2.0).max(1.0), status_height,
+            ), summary, status_style);
+        } else {
+            self.scene.text(Rect::from_xywh(
+                status_left,
+                status_top, status_width, status_height,
+            ), summary, status_style);
+        }
+        let mut y = (top + 14.0 + title_height).max(status_top + status_height);
         let columns = ((inner + Tokens::GAP) / (cell + Tokens::GAP)).floor().max(1.0) as usize;
         let columns = columns.min(actions.len());
         let rows = actions.len().div_ceil(columns);
@@ -357,14 +435,13 @@ impl<'a> SettingsForm<'a> {
             let column = index % columns;
             let row = index / columns;
             self.scene.button(Rect::from_xywh(
-                self.x + self.width - Tokens::INSET - columns as f32 * (cell + Tokens::GAP)
-                    + Tokens::GAP + column as f32 * (cell + Tokens::GAP),
+                left + column as f32 * (cell + Tokens::GAP),
                 y + row as f32 * (Tokens::CONTROL_HEIGHT + Tokens::GAP), cell, Tokens::CONTROL_HEIGHT,
             ), label, action, false);
         }
         let bottom = y + rows as f32 * (Tokens::CONTROL_HEIGHT + Tokens::GAP) - Tokens::GAP + Tokens::INSET;
         self.scene.cards.push(Rect::from_xywh(self.x, top, self.width, bottom - top));
-        self.y = bottom + Tokens::GAP;
+        self.y = bottom + self.row_gap();
     }
     /// Keep related actions and a compact switch in one card, including when
     /// long button labels require the actions to wrap onto separate rows.
@@ -380,7 +457,10 @@ impl<'a> SettingsForm<'a> {
         let top = self.y;
         let first_text = self.scene.text.len();
         let first_control = self.scene.controls.len();
+        let was_grouped = self.in_group;
+        self.in_group = true;
         self.actions(title, description, actions);
+        self.in_group = was_grouped;
         if highlight {
             if let Some((_, _, style)) = self.scene.text.get_mut(first_text) {
                 *style = Tokens::STATUS_GOOD;
@@ -389,10 +469,10 @@ impl<'a> SettingsForm<'a> {
                 control.selected = true;
             }
         }
-        let footer_top = self.y - Tokens::GAP;
+        let footer_top = self.y;
         let label_width = self.width - 2.0 * Tokens::INSET - 46.0 - 16.0;
-        let label_height = text_height(toggle.0, 14.0, label_width).max(24.0);
-        let footer_height = label_height + 2.0 * Tokens::INSET;
+        let label_height = text_height(toggle.0, 14.0, label_width).max(20.0);
+        let footer_height = (label_height + 24.0).max(52.0);
         self.scene.cards.truncate(first_card);
         self.scene.cards.push(Rect::from_xywh(
             self.x, top, self.width, footer_top + footer_height - top,
@@ -401,13 +481,13 @@ impl<'a> SettingsForm<'a> {
             self.x + Tokens::INSET, footer_top, self.width - 2.0 * Tokens::INSET, 1.0,
         ));
         self.scene.text(Rect::from_xywh(
-            self.x + Tokens::INSET, footer_top + Tokens::INSET, label_width, label_height,
+            self.x + Tokens::INSET, footer_top + (footer_height - label_height) / 2.0, label_width, label_height,
         ), toggle.0, 1);
         self.scene.toggle(Rect::from_xywh(
             self.x + self.width - Tokens::INSET - 46.0,
             footer_top + (footer_height - 24.0) / 2.0, 46.0, 24.0,
         ), toggle.1, toggle.2, true);
-        self.y = footer_top + footer_height + Tokens::GAP;
+        self.y = footer_top + footer_height + self.row_gap();
     }
     pub fn path(&mut self, title: &str, path: &str, actions: Vec<(&str, Action)>) {
         self.action_group(title, path, actions, true);
@@ -475,12 +555,14 @@ impl<'a> SettingsForm<'a> {
         );
     }
     pub fn link(&mut self, title: &str, description: &str, action: Action) {
-        let r = self.card(title, description, 112.0);
+        let open = crate::i18n::text("ui-open");
+        let width = (text_width(open, 14.0).ceil() + 42.0).max(76.0);
+        let r = self.card(title, description, width);
         self.scene.forward_row(
             r.left,
             r.top,
             r.right - r.left,
-            crate::i18n::text("ui-open"),
+            open,
             action,
         );
         self.scene.controls.last_mut().unwrap().bounds = r;
@@ -543,10 +625,14 @@ impl<'a> SettingsForm<'a> {
         self.y += height + Tokens::GAP;
     }
     pub fn back(&mut self, _label: &str, action: Action) {
+        let label = crate::i18n::text("ui-back");
+        let width = (text_width(label, 14.0).ceil() + Style::ICON_SLOT + Style::ICON_GAP + 28.0)
+            .max(88.0)
+            .min(180.0);
         self.scene.control(
             ControlKind::BackButton,
-            Rect::from_xywh(self.x + self.width - 86.0, 34.0, 86.0, 32.0),
-            crate::i18n::text("ui-back"),
+            Rect::from_xywh(self.x + self.width - width, 22.0, width, 32.0),
+            label,
             action,
             false,
         );
@@ -556,33 +642,38 @@ impl<'a> SettingsForm<'a> {
         let control = self.scene.controls.last_mut().unwrap();
         control.selected = selected;
         control.bounds.bottom = self.y + Tokens::ROW_HEIGHT;
-        self.y += 48.0;
+        self.y += Tokens::ROW_HEIGHT + Tokens::GAP;
     }
     pub fn font_summary(&mut self, selected: &str) {
         self.button(crate::i18n::text("ui-current-font"), selected,
             crate::i18n::text("ui-reset-font"), Action::Font(crate::i18n::default_font().into()));
         self.scene.controls.last_mut().unwrap().enabled = selected != crate::i18n::default_font();
         let card = self.scene.cards.last_mut().unwrap();
-        let top = card.bottom - 8.0;
+        let box_top = card.bottom - 2.0;
         let inner = self.width - 2.0 * Tokens::INSET;
+        let box_pad_x = 12.0;
+        let box_pad_y = 10.0;
+        let text_w = (inner - 2.0 * box_pad_x).max(1.0);
         let sample = crate::i18n::text("font-preview");
-        let sample_height = text_height(sample, 20.0, inner).max(32.0);
+        let sample_height = text_height(sample, 20.0, text_w).max(28.0);
         let fallback = format!("{}: {}", crate::i18n::text("font-fallback"), crate::i18n::default_font());
-        let fallback_height = text_height(&fallback, 12.0, inner).max(20.0);
-        card.bottom = top + sample_height + 4.0 + fallback_height + Tokens::INSET;
-        self.y = card.bottom + Tokens::GAP;
-        self.scene.text(Rect::from_xywh(self.x + Tokens::INSET, top, inner, sample_height), sample, 2);
-        self.scene.text(Rect::from_xywh(self.x + Tokens::INSET, top + sample_height + 4.0, inner, fallback_height), fallback, 6);
+        let fallback_height = text_height(&fallback, 12.0, text_w).max(18.0);
+        let box_height = sample_height + 4.0 + fallback_height + 2.0 * box_pad_y;
+        card.bottom = box_top + box_height + 14.0;
+        self.y = card.bottom + self.row_gap();
+        self.scene.specimen_boxes.push(Rect::from_xywh(self.x + Tokens::INSET, box_top, inner, box_height));
+        self.scene.text(Rect::from_xywh(self.x + Tokens::INSET + box_pad_x, box_top + box_pad_y, text_w, sample_height), sample, 2);
+        self.scene.text(Rect::from_xywh(self.x + Tokens::INSET + box_pad_x, box_top + box_pad_y + sample_height + 4.0, text_w, fallback_height), fallback, 6);
     }
     pub fn font_list_hint(&mut self) {
         let label = crate::i18n::text("font-list-hint");
-        let height = text_height(label, 12.0, self.width).max(20.0);
-        self.scene.text(Rect::from_xywh(self.x, self.y, self.width, height), label, 6);
-        self.y += height + 4.0;
+        let height = text_height(label, 12.0, self.width).max(18.0);
+        self.scene.text(Rect::from_xywh(self.x, self.y - 4.0, self.width, height), label, 6);
+        self.y += height + 8.0;
     }
     pub fn font_option(&mut self, name: &str, selected: bool) {
         self.option(name, Action::Font(name.into()), selected);
-        self.y -= 8.0;
+        self.y -= 6.0;
     }
     pub fn pager(&mut self, label: &str, previous: (Action, bool), next: (Action, bool)) {
         let r = self.card(crate::i18n::text("ui-pages"), label, 232.0);
@@ -603,19 +694,20 @@ impl<'a> SettingsForm<'a> {
         }
     }
     pub fn brand(&mut self) {
-        self.scene.cards.push(Rect::from_xywh(self.x, self.y, self.width, 104.0));
-        self.scene.app_icon = Some(Rect::from_xywh(self.x + 20.0, self.y + 20.0, 64.0, 64.0));
+        let height = 88.0;
+        self.scene.cards.push(Rect::from_xywh(self.x, self.y, self.width, height));
+        self.scene.app_icon = Some(Rect::from_xywh(self.x + Tokens::INSET, self.y + 16.0, 56.0, 56.0));
         self.scene.text(
-            Rect::from_xywh(self.x + 104.0, self.y + 16.0, self.width - 120.0, 32.0),
+            Rect::from_xywh(self.x + 88.0, self.y + 19.0, self.width - 104.0, 26.0),
             "LucidDesk",
             2,
         );
         self.scene.text(
-            Rect::from_xywh(self.x + 104.0, self.y + 54.0, self.width - 120.0, 28.0),
+            Rect::from_xywh(self.x + 88.0, self.y + 49.0, self.width - 104.0, 20.0),
             concat!("v", env!("CARGO_PKG_VERSION"), " (", env!("LUCIDDESK_BUILD_REVISION"), ") · ", env!("CARGO_PKG_AUTHORS"), " · ", env!("CARGO_PKG_LICENSE")),
             6,
         );
-        self.y += 112.0;
+        self.y += height + self.row_gap();
     }
     pub fn colors(&mut self, color: u32) {
         let r = self.card(
@@ -710,29 +802,35 @@ impl<'a> SettingsForm<'a> {
         if options.is_empty() { return; }
         self.card(title, description, 0.0);
         let card = *self.scene.cards.last().unwrap();
-        let inner = self.width - 2.0 * Tokens::INSET;
+        let inner = self.width - 2.0 * Tokens::INSET + 4.0;
         let min_cell = options.iter().map(|(label, _, _)| text_width(label, 14.0) + Tokens::CHECKBOX_INSET)
             .fold(160.0_f32, f32::max);
         let columns = ((inner + Tokens::GAP) / (min_cell + Tokens::GAP)).floor().max(1.0) as usize;
         let columns = columns.min(options.len());
         let cell = (inner - Tokens::GAP * (columns - 1) as f32) / columns as f32;
         let rows = options.len().div_ceil(columns);
-        let top = card.bottom - 8.0;
+        let top = card.bottom - 6.0;
         for (index, (label, action, selected)) in options.into_iter().enumerate() {
-            let x = self.x + Tokens::INSET + (index % columns) as f32 * (cell + Tokens::GAP);
-            let y = top + (index / columns) as f32 * 40.0;
+            let x = self.x + Tokens::INSET - 4.0 + (index % columns) as f32 * (cell + Tokens::GAP);
+            let y = top + (index / columns) as f32 * 36.0;
             self.scene.checkbox(Rect::from_xywh(x, y, cell, 32.0), label, action, selected, true);
         }
-        let bottom = top + rows as f32 * 40.0 + 8.0;
+        let bottom = top + rows as f32 * 36.0 + 8.0;
         self.scene.cards.last_mut().unwrap().bottom = bottom;
-        self.y = bottom + Tokens::GAP;
+        self.y = bottom + self.row_gap();
     }
     pub fn choices(&mut self, title: &str, description: &str, choices: Vec<(&str, Action, bool)>) {
+        let track_pad = 3.0;
+        let segment_gap = 2.0;
         let cell = choices
             .iter()
-            .map(|(label, _, _)| text_width(label, 14.0) + 32.0)
-            .fold(80.0_f32, f32::max);
-        let needed = (cell + Tokens::GAP) * choices.len() as f32 - Tokens::GAP;
+            .map(|(label, _, _)| {
+                text_width_with_weight(label, 14.0, windows_canvas::FontWeight(600)) + 26.0
+            })
+            .fold(72.0_f32, f32::max);
+        let needed = cell * choices.len() as f32
+            + segment_gap * choices.len().saturating_sub(1) as f32
+            + 2.0 * track_pad;
         if needed > self.width - 32.0 {
             self.info(title, description);
             for (label, action, selected) in choices {
@@ -741,15 +839,18 @@ impl<'a> SettingsForm<'a> {
             return;
         }
         let r = self.card(title, description, needed);
-        let width =
-            (r.right - r.left - Tokens::GAP * (choices.len() - 1) as f32) / choices.len() as f32;
+        self.scene.segment_tracks.push(r);
+        let inner_width = r.right - r.left - 2.0 * track_pad;
+        let count = choices.len();
+        let width = (inner_width - segment_gap * count.saturating_sub(1) as f32) / count as f32;
+        let height = Tokens::CONTROL_HEIGHT - 2.0 * track_pad;
         for (index, (label, action, selected)) in choices.into_iter().enumerate() {
-            self.scene.button(
+            self.scene.segment(
                 Rect::from_xywh(
-                    r.left + index as f32 * (width + Tokens::GAP),
-                    r.top,
+                    r.left + track_pad + index as f32 * (width + segment_gap),
+                    r.top + track_pad,
                     width,
-                    32.0,
+                    height,
                 ),
                 label,
                 action,
@@ -765,17 +866,21 @@ impl<'a> SettingsForm<'a> {
         label: &str,
         action: Action,
     ) {
-        let r = self.card(title, description, 232.0);
-        // Reserve only the space needed by the value's format. Keep it stable
-        // while dragging so changing digit counts cannot move the slider endpoint.
-        let value_width = if matches!(action, Action::GridSize(_) | Action::Opacity(_)) {
-            40.0
-        } else {
-            32.0
+        // Reserve only the space needed by the value's format while keeping the
+        // track width fixed at 196px (180px rail) so midpoint drags stay exact at any DPI.
+        let value_width = match action {
+            Action::Strength(_) => text_width(crate::i18n::text("ui-default"), 14.0)
+                .ceil()
+                .max(38.0)
+                + 2.0,
+            Action::GridSize(_) | Action::Opacity(_) => 44.0,
+            _ => 34.0,
         };
-        let gap = 4.0;
+        let gap = 8.0;
+        let track_width = 196.0;
+        let r = self.card(title, description, track_width + gap + value_width);
         self.scene.slider(
-            Rect::from_xywh(r.left, r.top, r.right - r.left - value_width - gap, 32.0),
+            Rect::from_xywh(r.left, r.top, track_width, 32.0),
             value,
             action,
         );
@@ -803,25 +908,26 @@ impl<'a> SettingsForm<'a> {
         self.material_preview(name, Backdrop::Solid { color, opacity });
     }
     pub fn color_button(&mut self, title: &str, value: u32) {
-        let r = self.card(title, &format!("#{value:06X}"), 176.0);
-        self.scene.button(r, crate::i18n::text("ui-edit-colors"), Action::SolidColor, false);
+        let r = self.card(title, &format!("#{value:06X}"), 212.0);
         self.scene.control(ControlKind::Button,
-            Rect::from_xywh(r.left - 36.0, r.top + 2.0, 28.0, 28.0),
+            Rect::from_xywh(r.left, r.top + 2.0, 28.0, 28.0),
             "", Action::SolidColor, false);
+        self.scene.button(
+            Rect::from_xywh(r.left + 36.0, r.top, r.right - r.left - 36.0, Tokens::CONTROL_HEIGHT),
+            crate::i18n::text("ui-edit-colors"), Action::SolidColor, false,
+        );
     }
     pub fn material_preview(&mut self, name: &str, material: Backdrop) {
+        let card_height = 148.0;
         self.scene
             .cards
-            .push(Rect::from_xywh(self.x, self.y, self.width, 152.0));
+            .push(Rect::from_xywh(self.x, self.y, self.width, card_height));
         self.scene.previews.push((
-            Rect::from_xywh(self.x + 16.0, self.y + 16.0, 200.0, 120.0),
+            Rect::from_xywh(self.x + Tokens::INSET, self.y + 14.0, 200.0, 120.0),
             material,
         ));
-        self.scene.text(
-            Rect::from_xywh(self.x + 232.0, self.y + 16.0, self.width - 248.0, 28.0),
-            name,
-            1,
-        );
+        let text_left = self.x + 232.0;
+        let text_width = (self.width - 248.0).max(1.0);
         let description = match material.base() {
             Backdrop::Mica => crate::i18n::text("ui-soft-wallpaper-tones-keep-content-clear"),
             Backdrop::MicaAlt => {
@@ -830,17 +936,34 @@ impl<'a> SettingsForm<'a> {
             Backdrop::Solid { .. } => crate::i18n::text("ui-choose-a-color-and-opacity"),
             _ => crate::i18n::text("ui-frosted-glass-reveals-depth-in-the-background"),
         };
+        let note = crate::i18n::text("ui-illustration-actual-appearance-depends-on-your-wallpaper");
+        let title_h = text_height_with_weight(
+            name,
+            14.0,
+            text_width,
+            windows_canvas::FontWeight(600),
+        )
+        .max(22.0);
+        let desc_h = text_height(description, 12.0, text_width).max(18.0);
+        let note_h = text_height(note, 12.0, text_width).max(18.0);
+        let total_h = title_h + 6.0 + desc_h + 10.0 + note_h;
+        let top = self.y + ((card_height - total_h) * 0.5).max(14.0);
         self.scene.text(
-            Rect::from_xywh(self.x + 232.0, self.y + 48.0, self.width - 248.0, 40.0),
+            Rect::from_xywh(text_left, top, text_width, title_h),
+            name,
+            Tokens::FORM_SECTION,
+        );
+        self.scene.text(
+            Rect::from_xywh(text_left, top + title_h + 6.0, text_width, desc_h),
             description,
             6,
         );
         self.scene.text(
-            Rect::from_xywh(self.x + 232.0, self.y + 92.0, self.width - 248.0, 44.0),
-            crate::i18n::text("ui-illustration-actual-appearance-depends-on-your-wallpaper"),
+            Rect::from_xywh(text_left, top + title_h + 6.0 + desc_h + 10.0, text_width, note_h),
+            note,
             6,
         );
-        self.y += 160.0;
+        self.y += card_height + self.row_gap();
     }
 }
 
@@ -912,13 +1035,14 @@ impl Scene {
     }
     pub fn scroll_to(&mut self, width: f32, height: f32, offset: &mut f32) {
         if self.fixed_list() {
+            let pad = 4.0;
             let top = self
                 .controls
                 .iter()
                 .filter(|c| Self::list_row(c))
                 .map(|c| c.bounds.top)
                 .fold(height - Tokens::MARGIN, f32::min);
-            let bottom = (height - Tokens::MARGIN).max(top + Tokens::ROW_HEIGHT);
+            let bottom = (height - Tokens::MARGIN).max(top + Tokens::ROW_HEIGHT + 2.0 * pad);
             let content_bottom = self
                 .controls
                 .iter()
@@ -931,13 +1055,14 @@ impl Scene {
                 (width - self.content_left - Tokens::MARGIN).min(Tokens::MAX_WIDTH),
                 bottom - top,
             ));
-            self.scroll_max = (content_bottom - bottom).max(0.0);
+            self.scroll_max = (content_bottom + 2.0 * pad - bottom).max(0.0);
             *offset = offset.clamp(0.0, self.scroll_max);
             self.scroll_offset = *offset;
             for c in self.controls.iter_mut().filter(|c| Self::list_row(c)) {
-                c.bounds.top -= *offset;
-                c.bounds.bottom -= *offset;
+                c.bounds.left += 4.0;
                 c.bounds.right -= 16.0;
+                c.bounds.top += pad - *offset;
+                c.bounds.bottom += pad - *offset;
             }
             return;
         }
@@ -958,6 +1083,9 @@ impl Scene {
             if *style != Tokens::CAPTION_TEXT { translate(r); }
         }
         for r in self.cards.iter_mut().chain(&mut self.separators)
+            .chain(&mut self.segment_tracks)
+            .chain(self.status_pills.iter_mut().map(|(bounds, _)| bounds))
+            .chain(&mut self.specimen_boxes)
             .chain(self.section_headers.iter_mut().map(|header| &mut header.bounds))
             .chain(self.destination_changes.iter_mut().map(|change| &mut change.bounds))
             .chain(self.rule_rows.iter_mut().map(|row| &mut row.bounds))

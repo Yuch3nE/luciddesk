@@ -289,7 +289,7 @@ impl Editor {
                     );
                     let mut origin = windows_sys::Win32::Foundation::POINT {
                         x: ((r.left + 40.0) * scale) as i32,
-                        y: ((r.top + 10.0) * scale) as i32,
+                        y: ((r.top + 9.0) * scale) as i32,
                     };
                     ClientToScreen(hwnd, &raw mut origin);
                     SetWindowPos(
@@ -298,7 +298,7 @@ impl Editor {
                         origin.x,
                         origin.y,
                         ((r.right - r.left - 80.0) * scale) as i32,
-                        ((r.bottom - r.top - 20.0) * scale) as i32,
+                        ((r.bottom - r.top - 18.0) * scale) as i32,
                         SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOOWNERZORDER,
                     );
                     let visible = IsWindowVisible(hwnd) != 0

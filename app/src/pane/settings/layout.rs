@@ -59,8 +59,8 @@ pub(super) fn general(
 pub(super) fn desktop_gesture(s: &mut Scene, width: f32, enabled: bool) {
     let bottom = s.cards.iter().map(|r| r.bottom)
         .chain(s.controls.iter().filter(|c| c.bounds.left >= Tokens::content_x()).map(|c| c.bounds.bottom))
-        .fold(120.0_f32, f32::max);
-    let mut form = SettingsForm::continuation(s, width, bottom + 24.0);
+        .fold(100.0_f32, f32::max);
+    let mut form = SettingsForm::continuation(s, width, bottom + Tokens::GAP);
     form.section(crate::i18n::text("desktop-gesture-section"));
     form.toggle(crate::i18n::text("desktop-gesture-title"),
         crate::i18n::text("desktop-gesture-description"), enabled,
@@ -155,42 +155,44 @@ pub(super) fn folder_defaults(
         .collect(),
     );
     form.section(crate::i18n::text("ui-new-panel-defaults"));
-    form.title_badge(crate::i18n::text("new-panels-only-tag")).choices(
-        crate::i18n::text("ui-default-view"),
-        crate::i18n::text("ui-applies-to-new-panels-existing-panels-keep-their-settings"),
-        [
-            (crate::i18n::text("ui-icons"), false),
-            (crate::i18n::text("ui-list"), true),
-        ]
-        .into_iter()
-        .map(|(label, list)| {
-            (
+    form.group(|form| {
+        form.title_badge(crate::i18n::text("new-panels-only-tag")).choices(
+            crate::i18n::text("ui-default-view"),
+            crate::i18n::text("ui-applies-to-new-panels-existing-panels-keep-their-settings"),
+            [
+                (crate::i18n::text("ui-icons"), false),
+                (crate::i18n::text("ui-list"), true),
+            ]
+            .into_iter()
+            .map(|(label, list)| {
+                (
+                    label,
+                    Action::FolderDefaults(folder::Defaults { list, ..value }),
+                    value.list == list,
+                )
+            })
+            .collect(),
+        );
+        form.title_badge(crate::i18n::text("new-panels-only-tag")).checkboxes(
+            crate::i18n::text("folder-columns-title"),
+            crate::i18n::text("folder-columns-description"),
+            [
+                (crate::i18n::text("ui-type"), 1),
+                (crate::i18n::text("ui-modified"), 2),
+                (crate::i18n::text("ui-size"), 3),
+            ].into_iter().map(|(label, column)| (
                 label,
-                Action::FolderDefaults(folder::Defaults { list, ..value }),
-                value.list == list,
-            )
-        })
-        .collect(),
-    );
-    form.title_badge(crate::i18n::text("new-panels-only-tag")).checkboxes(
-        crate::i18n::text("folder-columns-title"),
-        crate::i18n::text("folder-columns-description"),
-        [
-            (crate::i18n::text("ui-type"), 1),
-            (crate::i18n::text("ui-modified"), 2),
-            (crate::i18n::text("ui-size"), 3),
-        ].into_iter().map(|(label, column)| (
-            label,
-            Action::FolderDefaults(folder::Defaults { columns: value.columns ^ (1 << column), ..value }),
-            value.columns & (1 << column) != 0,
-        )).collect(),
-    );
-    form.title_badge(crate::i18n::text("new-panels-only-tag")).button(
-        crate::i18n::text("ui-reset-view-defaults"),
-        crate::i18n::text("ui-reset-the-view-and-columns-for-new-panels"),
-        crate::i18n::text("ui-reset"),
-        Action::FolderDefaults(folder::Defaults::default()),
-    );
+                Action::FolderDefaults(folder::Defaults { columns: value.columns ^ (1 << column), ..value }),
+                value.columns & (1 << column) != 0,
+            )).collect(),
+        );
+        form.title_badge(crate::i18n::text("new-panels-only-tag")).button(
+            crate::i18n::text("ui-reset-view-defaults"),
+            crate::i18n::text("ui-reset-the-view-and-columns-for-new-panels"),
+            crate::i18n::text("ui-reset"),
+            Action::FolderDefaults(folder::Defaults::default()),
+        );
+    });
 }
 
 // Page IDs stay stable; display order is independent of routing.
@@ -202,13 +204,13 @@ pub(super) fn pages() -> Vec<(usize, &'static str, &'static str)> {
         (1, crate::i18n::text("ui-panel-layout"), "\u{f0e2}"),
         (8, crate::i18n::text("ui-folder-panels"), "\u{e8b7}"),
         (4, crate::i18n::text("ui-everything-search"), "\u{e721}"),
-        (16, crate::i18n::text("classification-title"), "\u{e8b7}"),
+        (16, crate::i18n::text("classification-title"), "\u{e8fd}"),
         (3, crate::i18n::text("ui-file-preview"), "\u{e890}"),
         (6, crate::i18n::text("ui-backup-restore"), "\u{e81c}"),
         (5, crate::i18n::text("ui-about"), "\u{e946}"),
     ];
     if !crate::plugins::installed().is_empty() {
-        pages.push((15, crate::i18n::text("plugins-manage"), "\u{e713}"));
+        pages.push((15, crate::i18n::text("plugins-manage"), "\u{e8cb}"));
     }
     pages
 }
@@ -302,16 +304,20 @@ fn scene_with_mica(
     let content_x = Tokens::content_x();
     let mut s = Scene::empty(appearance.1, content_x, TITLE_HEIGHT);
     let entries = navigation();
-    let heading_height = 28.0;
-    let stride = NavigationItem::HEIGHT + 4.0;
+    let heading_height = 22.0;
+    let section_gap = 10.0;
+    let stride = NavigationItem::HEIGHT + 2.0;
     let start = s.text.len();
-    let top = 28.0;
+    let top = 8.0;
     let left = Tokens::NAV_LEFT;
     let mut y = top;
     for entry in &entries {
         if let Some(section) = entry.section {
-            s.text(Rect::from_xywh(Tokens::NAV_LEADING, y + 4.0,
-                content_x - Tokens::MARGIN - Tokens::NAV_LEADING, 20.0), section, 8);
+            if y > top {
+                y += section_gap;
+            }
+            s.text(Rect::from_xywh(Tokens::NAV_LEADING, y,
+                content_x - Tokens::MARGIN - Tokens::NAV_LEADING, heading_height), section, 8);
             y += heading_height;
         }
         let selected = match &entry.action {
@@ -328,7 +334,7 @@ fn scene_with_mica(
     let x = content_x;
     let w = (width - x - Tokens::MARGIN).min(Tokens::MAX_WIDTH);
     s.text(
-        Rect::from_xywh(x, 28.0, w, 44.0),
+        Rect::from_xywh(x, 20.0, w, 36.0),
         plugin.and_then(|id| entries.iter().find(|entry| matches!(&entry.action, Action::PluginPage(target) if target == id)).map(|entry| entry.label.clone())).unwrap_or_else(|| pages().iter().find(|(id, _, _)| *id == page).map_or(
             match page { 9 => crate::i18n::text("ui-manage-backups"), 10 => crate::i18n::text("ui-advanced-options"), _ => crate::i18n::text("ui-colors") },
             |(_, name, _)| *name).to_owned()),
@@ -357,40 +363,42 @@ fn scene_with_mica(
         );
         form.colors(color);
         form.section(crate::i18n::text("ui-custom-color"));
-        for (channel, name) in [
-            crate::i18n::text("ui-red-r"),
-            crate::i18n::text("ui-green-g"),
-            crate::i18n::text("ui-blue-b"),
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            let value = ((color >> ((2 - channel) * 8)) & 255) as u8;
-            form.slider(
-                name,
-                "",
-                Slider {
-                    value: f32::from(value),
-                    max: 255.0,
-                    centered: false,
-                    channel: Some(channel as u8),
-                },
-                &value.to_string(),
-                Action::Channel(channel as u8, value),
+        form.group(|form| {
+            for (channel, name) in [
+                crate::i18n::text("ui-red-r"),
+                crate::i18n::text("ui-green-g"),
+                crate::i18n::text("ui-blue-b"),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let value = ((color >> ((2 - channel) * 8)) & 255) as u8;
+                form.slider(
+                    name,
+                    "",
+                    Slider {
+                        value: f32::from(value),
+                        max: 255.0,
+                        centered: false,
+                        channel: Some(channel as u8),
+                    },
+                    &value.to_string(),
+                    Action::Channel(channel as u8, value),
+                );
+            }
+            form.button(
+                crate::i18n::text("ui-hex-color"),
+                crate::i18n::text("ui-enter-a-six-digit-hex-color-and-press-enter"),
+                &format!("#{color:06X}"),
+                Action::StyleInput(false),
             );
-        }
-        form.button(
-            crate::i18n::text("ui-hex-color"),
-            crate::i18n::text("ui-enter-a-six-digit-hex-color-and-press-enter"),
-            &format!("#{color:06X}"),
-            Action::StyleInput(false),
-        );
-        form.button(
-            crate::i18n::text("ui-reset-solid-color"),
-            crate::i18n::text("ui-restore-the-default-color-and-opacity"),
-            crate::i18n::text("ui-reset"),
-            Action::SolidReset,
-        );
+            form.button(
+                crate::i18n::text("ui-reset-solid-color"),
+                crate::i18n::text("ui-restore-the-default-color-and-opacity"),
+                crate::i18n::text("ui-reset"),
+                Action::SolidReset,
+            );
+        });
         return s;
     }
     if page == 0 {
@@ -658,50 +666,52 @@ fn scene_with_mica(
             crate::i18n::text("ui-connect-a-preview-app-to-preview-files-with-a-shortcut"),
         );
         form.section(crate::i18n::text("ui-preview-service"));
-        form.toggle_enabled(
-            crate::i18n::text("ui-enable-file-preview"),
-            crate::i18n::text("ui-available-after-a-compatible-app-is-found"),
-            value.enabled && resolved.is_some(),
-            resolved.is_some(),
-            Action::PeekEnable,
-        );
-        form.choices(
-            crate::i18n::text("ui-preview-app"),
-            crate::i18n::text("ui-choose-the-app-used-for-file-previews"),
-            [peek::Provider::Peek, peek::Provider::QuickLook]
-                .into_iter()
-                .map(|provider| {
-                    (
-                        provider.name(),
-                        Action::PreviewProvider(provider),
-                        value.provider == provider,
+        form.group(|form| {
+            form.toggle_enabled(
+                crate::i18n::text("ui-enable-file-preview"),
+                crate::i18n::text("ui-available-after-a-compatible-app-is-found"),
+                value.enabled && resolved.is_some(),
+                resolved.is_some(),
+                Action::PeekEnable,
+            );
+            form.choices(
+                crate::i18n::text("ui-preview-app"),
+                crate::i18n::text("ui-choose-the-app-used-for-file-previews"),
+                [peek::Provider::Peek, peek::Provider::QuickLook]
+                    .into_iter()
+                    .map(|provider| {
+                        (
+                            provider.name(),
+                            Action::PreviewProvider(provider),
+                            value.provider == provider,
+                        )
+                    })
+                    .collect(),
+            );
+            let path = resolved
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_else(|| {
+                    crate::i18n::format(
+                        "ui-not-found-select-the-app",
+                        &[("arg0", format!("{}", value.provider.name()))],
                     )
-                })
-                .collect(),
-        );
-        let path = resolved
-            .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_else(|| {
-                crate::i18n::format(
-                    "ui-not-found-select-the-app",
-                    &[("arg0", format!("{}", value.provider.name()))],
-                )
-            });
-        form.path(
-            if value.active_path().is_empty() {
-                crate::i18n::text("ui-app-path-automatic")
-            } else {
-                crate::i18n::text("ui-app-path")
-            },
-            &path,
-            vec![
-                (crate::i18n::text("ui-browse"), Action::PeekBrowse),
-                (
-                    crate::i18n::text("ui-detect-automatically"),
-                    Action::PeekDetect,
-                ),
-            ],
-        );
+                });
+            form.path(
+                if value.active_path().is_empty() {
+                    crate::i18n::text("ui-app-path-automatic")
+                } else {
+                    crate::i18n::text("ui-app-path")
+                },
+                &path,
+                vec![
+                    (crate::i18n::text("ui-browse"), Action::PeekBrowse),
+                    (
+                        crate::i18n::text("ui-detect-automatically"),
+                        Action::PeekDetect,
+                    ),
+                ],
+            );
+        });
         form.section(crate::i18n::text("ui-keyboard-shortcut"));
         form.shortcut(
             crate::i18n::text("ui-preview-shortcut"),
@@ -719,32 +729,34 @@ fn scene_with_mica(
             crate::i18n::text("ui-connect-everything-to-quickly-find-local-files"),
         );
         form.section(crate::i18n::text("ui-search-service"));
-        form.toggle_enabled(
-            crate::i18n::text("ui-enable-search-panel"),
-            crate::i18n::text("ui-available-after-everything-is-found"),
-            search_enabled && resolved.is_some(),
-            resolved.is_some(),
-            Action::Change(Event::ToggleSearch),
-        );
-        let path = resolved
-            .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_else(|| crate::i18n::text("ui-everything-not-found-select-the-app").into());
-        form.path(
-            if value.path.is_empty() {
-                crate::i18n::text("ui-app-path-automatic")
-            } else {
-                crate::i18n::text("ui-app-path")
-            },
-            &path,
-            vec![
-                (crate::i18n::text("ui-browse"), Action::EverythingBrowse),
-                (
-                    crate::i18n::text("ui-detect-automatically"),
-                    Action::EverythingDetect,
-                ),
-                (crate::i18n::text("ui-start"), Action::EverythingLaunch),
-            ],
-        );
+        form.group(|form| {
+            form.toggle_enabled(
+                crate::i18n::text("ui-enable-search-panel"),
+                crate::i18n::text("ui-available-after-everything-is-found"),
+                search_enabled && resolved.is_some(),
+                resolved.is_some(),
+                Action::Change(Event::ToggleSearch),
+            );
+            let path = resolved
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_else(|| crate::i18n::text("ui-everything-not-found-select-the-app").into());
+            form.path(
+                if value.path.is_empty() {
+                    crate::i18n::text("ui-app-path-automatic")
+                } else {
+                    crate::i18n::text("ui-app-path")
+                },
+                &path,
+                vec![
+                    (crate::i18n::text("ui-browse"), Action::EverythingBrowse),
+                    (
+                        crate::i18n::text("ui-detect-automatically"),
+                        Action::EverythingDetect,
+                    ),
+                    (crate::i18n::text("ui-start"), Action::EverythingLaunch),
+                ],
+            );
+        });
     }
 
     s
@@ -771,7 +783,7 @@ pub(super) fn about_updates(
     updates: &crate::updates::Controller,
     auto_check: bool,
 ) {
-    let mut form = SettingsForm::continuation(s, width, 76.0);
+    let mut form = SettingsForm::continuation(s, width, 68.0);
     form.brand();
     let available = updates.available_version().is_some();
     let status = updates.status();
@@ -794,15 +806,17 @@ pub(super) fn about_updates(
         (crate::i18n::text("update-auto-check"), Action::AutoCheckUpdates(!auto_check), auto_check),
         available,
     );
-    form.info(
-        crate::i18n::text("ui-operating-system"),
-        &format!(
-            "{} · {}",
-            crate::system_info::system().summary(),
-            std::env::consts::ARCH
-        ),
-    );
-    form.desktop_connection(connected, copied);
+    form.group(|form| {
+        form.info(
+            crate::i18n::text("ui-operating-system"),
+            &format!(
+                "{} · {}",
+                crate::system_info::system().summary(),
+                std::env::consts::ARCH
+            ),
+        );
+        form.desktop_connection(connected, copied);
+    });
     form.actions(
         crate::i18n::text("ui-project-resources"),
         "",
@@ -839,24 +853,26 @@ pub(super) fn backup_page(
             Action::Page(6),
         );
         form.section(crate::i18n::text("ui-configuration-maintenance"));
-        form.button(
-            crate::i18n::text("ui-configuration-folder"),
-            crate::i18n::text("ui-open-the-folder-containing-your-configuration"),
-            crate::i18n::text("ui-open-folder"),
-            Action::Change(Event::OpenConfigDirectory),
-        );
-        form.button(
-            crate::i18n::text("ui-reload-configuration"),
-            crate::i18n::text("ui-read-configuration-from-disk-and-apply-it-to-this-workspace"),
-            crate::i18n::text("ui-reload"),
-            Action::Change(Event::ReloadConfig),
-        );
-        form.button(
-            crate::i18n::text("ui-export-configuration"),
-            crate::i18n::text("ui-choose-where-to-save-a-configuration-copy"),
-            crate::i18n::text("ui-export"),
-            Action::Change(Event::ExportBackup),
-        );
+        form.group(|form| {
+            form.button(
+                crate::i18n::text("ui-configuration-folder"),
+                crate::i18n::text("ui-open-the-folder-containing-your-configuration"),
+                crate::i18n::text("ui-open-folder"),
+                Action::Change(Event::OpenConfigDirectory),
+            );
+            form.button(
+                crate::i18n::text("ui-reload-configuration"),
+                crate::i18n::text("ui-read-configuration-from-disk-and-apply-it-to-this-workspace"),
+                crate::i18n::text("ui-reload"),
+                Action::Change(Event::ReloadConfig),
+            );
+            form.button(
+                crate::i18n::text("ui-export-configuration"),
+                crate::i18n::text("ui-choose-where-to-save-a-configuration-copy"),
+                crate::i18n::text("ui-export"),
+                Action::Change(Event::ExportBackup),
+            );
+        });
     } else {
         let status = if view.status.is_empty() {
             crate::i18n::text("backup-status-pending")
@@ -960,23 +976,26 @@ pub(super) fn backup_history(s: &mut Scene, width: f32, view: &recovery::View, o
         Action::Change(Event::OpenBackups),
     );
     form.section(crate::i18n::text("ui-backup-history"));
-    for record in view.records.iter().skip(offset).take(6) {
-        form.button(
-            &record.date,
-            &format!(
-                "{} · {}",
-                record.kind,
-                folder::size_text(Some(record.bytes), false)
-            ),
-            crate::i18n::text("ui-manage"),
-            Action::BackupRecord(record.path.clone()),
-        );
-    }
     if view.records.is_empty() {
         form.info(
             crate::i18n::text("ui-no-backups"),
             crate::i18n::text("ui-your-backups-will-appear-here-after-the-first-one-is-created"),
         );
+    } else {
+        form.group(|form| {
+            for record in view.records.iter().skip(offset).take(6) {
+                form.button(
+                    &record.date,
+                    &format!(
+                        "{} · {}",
+                        record.kind,
+                        folder::size_text(Some(record.bytes), false)
+                    ),
+                    crate::i18n::text("ui-manage"),
+                    Action::BackupRecord(record.path.clone()),
+                );
+            }
+        });
     }
     if view.records.len() > 6 {
         form.pager(
@@ -1047,8 +1066,8 @@ pub(super) fn desktop_defaults(s: &mut Scene, width: f32, mode: layout_defaults:
                 .filter(|c| c.bounds.left >= Tokens::content_x())
                 .map(|c| c.bounds.bottom),
         )
-        .fold(120.0_f32, f32::max);
-    let mut form = SettingsForm::continuation(s, width, bottom + 24.0);
+        .fold(100.0_f32, f32::max);
+    let mut form = SettingsForm::continuation(s, width, bottom + Tokens::GAP);
     form.section(crate::i18n::text("ui-icon-arrangement"));
     form.group(|form| {
         form.title_badge(crate::i18n::text("new-panels-only-tag")).toggle(
@@ -1083,8 +1102,8 @@ pub(super) fn show_panels_shortcut(
                 .filter(|c| c.bounds.left >= Tokens::content_x())
                 .map(|c| c.bounds.bottom),
         )
-        .fold(120.0_f32, f32::max);
-    let mut form = SettingsForm::continuation(s, width, bottom + 24.0);
+        .fold(100.0_f32, f32::max);
+    let mut form = SettingsForm::continuation(s, width, bottom + Tokens::GAP);
     form.section(crate::i18n::text("show-panels-hotkey"));
     form.group(|form| {
         form.toggle(
@@ -1111,8 +1130,8 @@ pub(super) fn show_panels_shortcut(
 pub(super) fn panel_reset(s: &mut Scene, width: f32) {
     let bottom = s.cards.iter().map(|r| r.bottom)
         .chain(s.controls.iter().filter(|c| c.bounds.left >= Tokens::content_x()).map(|c| c.bounds.bottom))
-        .fold(120.0_f32, f32::max);
-    let mut form = SettingsForm::continuation(s, width, bottom + 24.0);
+        .fold(100.0_f32, f32::max);
+    let mut form = SettingsForm::continuation(s, width, bottom + 16.0);
     form.button(
         crate::i18n::text("ui-reset-panel-layout"),
         crate::i18n::text("panel-reset-description"),

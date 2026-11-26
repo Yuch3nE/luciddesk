@@ -14,25 +14,27 @@ pub(super) fn draw(scene: &mut Scene, width: f32) {
             description.push('\n');
             description.push_str(&error);
         }
-        form.toggle(
-            &plugin.manifest.name,
-            &description,
-            enabled,
-            Action::PluginEnabled(plugin.manifest.id.clone(), !enabled),
-        );
-        if enabled
-            && plugin.state == luciddesk_plugin_host::PluginState::Ready
-            && plugin
-                .manifest
-                .supports(luciddesk_plugin_api::SETTINGS_PAGE_CAPABILITY)
-        {
-            form.button(
-                crate::i18n::text("ui-settings"),
-                "",
-                crate::i18n::text("ui-open"),
-                Action::PluginPage(plugin.manifest.id.clone()),
+        form.group(|form| {
+            form.toggle(
+                &plugin.manifest.name,
+                &description,
+                enabled,
+                Action::PluginEnabled(plugin.manifest.id.clone(), !enabled),
             );
-        }
+            if enabled
+                && plugin.state == luciddesk_plugin_host::PluginState::Ready
+                && plugin
+                    .manifest
+                    .supports(luciddesk_plugin_api::SETTINGS_PAGE_CAPABILITY)
+            {
+                form.button(
+                    crate::i18n::text("ui-settings"),
+                    "",
+                    crate::i18n::text("ui-open"),
+                    Action::PluginPage(plugin.manifest.id.clone()),
+                );
+            }
+        });
     }
 }
 

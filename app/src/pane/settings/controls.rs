@@ -61,7 +61,6 @@ impl Style {
     pub const NAV_HEADING: f32 = 11.0;
     pub const ICON_SLOT: f32 = super::super::control_style::ICON_SLOT;
     pub const ICON_GAP: f32 = super::super::control_style::ICON_GAP;
-    pub const ROW_INSET: f32 = 16.0;
     pub const ROW_HEIGHT: f32 = 38.0;
     pub const CONTROL_HEIGHT: f32 = super::super::control_style::HEIGHT;
     pub const TEXT_SIZE: f32 = super::super::control_style::TEXT;
@@ -97,6 +96,7 @@ impl Slider {
 pub(super) enum ControlKind {
     Button,
     PrimaryButton,
+    Segment,
     Tab(&'static str),
     QuietButton(&'static str),
     IconButton(&'static str),
@@ -116,9 +116,6 @@ pub(super) enum ControlKind {
 impl ControlKind {
     pub fn is_row(self) -> bool {
         matches!(self, Self::Row | Self::ForwardRow)
-    }
-    pub fn is_back(self) -> bool {
-        matches!(self, Self::BackButton)
     }
 }
 
@@ -289,6 +286,9 @@ impl Scene {
     }
     pub fn button(&mut self, bounds: Rect, label: &str, action: Action, selected: bool) {
         self.control(ControlKind::Button, bounds, label, action, selected);
+    }
+    pub fn segment(&mut self, bounds: Rect, label: &str, action: Action, selected: bool) {
+        self.control(ControlKind::Segment, bounds, label, action, selected);
     }
     pub fn icon_button(
         &mut self,
