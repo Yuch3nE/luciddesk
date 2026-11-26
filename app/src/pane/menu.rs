@@ -123,7 +123,7 @@ fn keyboard_selection(rows: &[Entry], selected: Option<usize>, key: u16) -> Opti
 fn default_material(backdrop: Backdrop, dark: bool) -> Backdrop {
     match backdrop {
         Backdrop::Solid { .. } => Backdrop::Solid {
-            color: if dark { 0x181b20 } else { 0xf5f6f8 },
+            color: luciddesk_window::control_style::Palette::for_theme(dark).flyout,
             opacity: 0.85,
         },
         Backdrop::Translucent { .. } => Backdrop::Translucent { opacity: 1.0 },

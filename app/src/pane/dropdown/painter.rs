@@ -112,14 +112,14 @@ impl Painter {
                 let top = PADDING + (index - model.first) as f32 * ROW_HEIGHT;
                 let row = RoundedRect {
                     rect: Rect::from_xywh(PADDING, top, width - 2.0 * PADDING, ROW_HEIGHT),
-                    radius_x: 5.0,
-                    radius_y: 5.0,
+                    radius_x: style::RADIUS,
+                    radius_y: style::RADIUS,
                 };
                 if model.current == Some(index) {
                     target.fill_rounded_rect(&row, selected);
                     target.fill_rounded_rect(
                         &RoundedRect {
-                            rect: Rect::from_xywh(4.0, top + 7.0, 3.0, 18.0),
+                            rect: Rect::from_xywh(PADDING + 2.0, top + 8.0, 3.0, 16.0),
                             radius_x: 1.5,
                             radius_y: 1.5,
                         },
@@ -166,29 +166,22 @@ impl Painter {
 }
 
 fn colors(dark: bool) -> [ColorF; 7] {
-    let ink = if dark { 0.95 } else { 0.10 };
-    let background = if dark { 0.15 } else { 0.98 };
-    let (red, green, blue) = if dark {
-        (118_u8, 185_u8, 237_u8)
-    } else {
-        (0_u8, 103_u8, 192_u8)
+    let palette = style::Palette::for_theme(dark);
+    let rgba = |v: u32, a: f32| {
+        let [r, g, b, a] = style::Palette::rgba(v, a);
+        ColorF::new(r, g, b, a)
     };
-    let accent = ColorF::new(
-        f32::from(red) / 255.0,
-        f32::from(green) / 255.0,
-        f32::from(blue) / 255.0,
-        1.0,
-    );
+    let neutral = |a: f32| {
+        let [r, g, b, a] = palette.neutral(a);
+        ColorF::new(r, g, b, a)
+    };
     [
-        ColorF::new(background, background, background, 1.0),
-        ColorF::new(ink, ink, ink, 1.0),
-        ColorF::new(ink, ink, ink, 0.4),
-        ColorF::new(ink, ink, ink, 0.14),
-        ColorF::new(ink, ink, ink, 0.06),
-        ColorF {
-            a: if dark { 0.13 } else { 0.08 },
-            ..accent
-        },
-        accent,
+        rgba(palette.flyout, 1.0),
+        rgba(palette.ink, 1.0),
+        rgba(palette.disabled, 1.0),
+        neutral(if dark { 0.11 } else { 0.10 }),
+        neutral(if dark { 0.06 } else { 0.04 }),
+        neutral(if dark { 0.075 } else { 0.048 }),
+        rgba(palette.accent, 1.0),
     ]
 }

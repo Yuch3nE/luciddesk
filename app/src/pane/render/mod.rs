@@ -151,21 +151,21 @@ impl Renderer {
         dark: bool,
     ) -> Result<()> {
         canvas::draw_cached(target, scale, &self.frame_cache, |target| {
-            let ink = if dark { 0.95 } else { 0.10 };
-            let text = canvas_result(target.cached_solid_brush(ColorF::new(ink, ink, ink, 1.0)))?;
+            use luciddesk_window::control_style::{self as style, Palette};
+            let rgba = |[r, g, b, a]: [f32; 4]| ColorF::new(r, g, b, a);
+            let palette = Palette::for_theme(dark);
+            let text = canvas_result(target.cached_solid_brush(rgba(Palette::rgba(palette.ink, 1.0))))?;
             let disabled =
-                canvas_result(target.cached_solid_brush(ColorF::new(ink, ink, ink, 0.4)))?;
-            let subtle =
-                canvas_result(target.cached_solid_brush(ColorF::new(ink, ink, ink, 0.13)))?;
+                canvas_result(target.cached_solid_brush(rgba(Palette::rgba(palette.disabled, 1.0))))?;
+            let border =
+                canvas_result(target.cached_solid_brush(rgba(palette.flyout_border())))?;
+            let divider =
+                canvas_result(target.cached_solid_brush(rgba(palette.divider())))?;
             target.clear(ColorF::new(0.0, 0.0, 0.0, 0.0));
             let width = width as f32 / scale;
             if !native {
-                let background = canvas_result(target.cached_solid_brush(ColorF::new(
-                    if dark { 0.09 } else { 0.96 },
-                    if dark { 0.10 } else { 0.96 },
-                    if dark { 0.12 } else { 0.96 },
-                    1.0,
-                )))?;
+                let background =
+                    canvas_result(target.cached_solid_brush(rgba(Palette::rgba(palette.flyout, 1.0))))?;
                 target.fill_rounded_rect(
                     &RoundedRect {
                         rect: Rect::from_xywh(0.0, 0.0, width, height as f32 / scale),
@@ -181,7 +181,7 @@ impl Renderer {
                     radius_x: super::menu::CORNER_RADIUS,
                     radius_y: super::menu::CORNER_RADIUS,
                 },
-                &*subtle,
+                &*border,
                 1.0,
             );
             for (index, row) in rows.iter().enumerate() {
@@ -189,18 +189,15 @@ impl Renderer {
                 if row.id == 0 {
                     target.fill_rect(
                         &Rect::from_xywh(12.0, top + 4.0, width - 24.0, 1.0),
-                        &*subtle,
+                        &*divider,
                     );
                     continue;
                 }
                 let progress = highlights.get(index).copied().unwrap_or(0.0);
                 if progress > 0.0 {
-                    let hover = canvas_result(target.cached_solid_brush(ColorF::new(
-                        ink,
-                        ink,
-                        ink,
-                        (if dark { 0.09 } else { 0.05 }) * progress,
-                    )))?;
+                    let hover = canvas_result(
+                        target.cached_solid_brush(rgba(palette.flyout_hover(progress))),
+                    )?;
                     target.fill_rounded_rect(
                         &RoundedRect {
                             rect: Rect::from_xywh(
@@ -209,8 +206,8 @@ impl Renderer {
                                 width - 8.0,
                                 super::menu::ROW_HEIGHT - 4.0,
                             ),
-                            radius_x: 5.0,
-                            radius_y: 5.0,
+                            radius_x: style::RADIUS,
+                            radius_y: style::RADIUS,
                         },
                         &*hover,
                     );

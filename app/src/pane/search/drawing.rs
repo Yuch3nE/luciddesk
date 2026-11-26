@@ -199,6 +199,8 @@ impl Drawing {
         let mut playing = activity.is_some() && animate;
         crate::pane::canvas::draw_cached(&target, s, &self.frame_cache, |target| {
             target.clear(ColorF::new(0.0, 0.0, 0.0, 0.0));
+            let palette = luciddesk_window::control_style::Palette::for_theme(model.dark);
+            let [ar, ag, ab] = luciddesk_window::control_style::Palette::unpack_rgb(palette.accent);
             let contrast = crate::pane::theme::panel_contrast(
                 model.backdrop,
                 model.dark,
@@ -216,7 +218,7 @@ impl Drawing {
                     crate::pane::theme::panel_border(model.backdrop),
                     ColorF::new(ink, ink, ink, if contrast.light_text { 0.14 } else { 0.10 }),
                     ColorF::new(ink, ink, ink, 0.06),
-                    if model.dark { ColorF::new(0.48, 0.74, 1.0, 1.0) } else { ColorF::new(0.0, 0.40, 0.76, 1.0) },
+                    ColorF::new(ar, ag, ab, 1.0),
                     ColorF::new(0.95, 0.66, 0.18, 1.0),
                     ColorF::new(ink, ink, ink, if contrast.light_text { 0.12 } else { 0.08 }),
                 ]))?;
@@ -260,7 +262,15 @@ impl Drawing {
                     let hot = state.hovered_action == Some(Action::Clear);
                     let feedback = self.buttons.sample(&Action::Clear, hot, hot && pointer_down, false, now, animate);
                     playing |= feedback.playing;
-                    target.fill_highlight(&RoundedRect { rect, radius_x: 6.0, radius_y: 6.0 }, hovered, feedback.hover);
+                    target.fill_highlight(
+                        &RoundedRect {
+                            rect,
+                            radius_x: crate::pane::control_style::RADIUS,
+                            radius_y: crate::pane::control_style::RADIUS,
+                        },
+                        hovered,
+                        feedback.hover,
+                    );
                     let glyph = canvas_result(target.cached_solid_brush(ColorF::new(ink, ink, ink, 0.58 + 0.42 * feedback.hover)))?;
                     target.clipped_icon("\u{e711}", &self.icon, &rect, &glyph);
                 }
@@ -305,9 +315,27 @@ impl Drawing {
                             let hot = state.hovered_action == Some(action);
                             let feedback = self.buttons.sample(&action, hot, hot && pointer_down, false, now, animate);
                             playing |= feedback.playing;
-                            let shape = RoundedRect { rect, radius_x: 5.0, radius_y: 5.0 };
+                            let shape = RoundedRect {
+                                rect,
+                                radius_x: crate::pane::control_style::RADIUS,
+                                radius_y: crate::pane::control_style::RADIUS,
+                            };
                             target.fill_highlight(&shape, hovered, 1.0 - feedback.hover);
                             target.fill_highlight(&shape, selected, feedback.hover);
+                            let grad = palette.elevation_gradient(
+                                luciddesk_window::control_style::ElevationKind::Control,
+                                feedback.hover,
+                                if hot && pointer_down { 1.0 } else { 0.0 },
+                            );
+                            let to_color = |[r, g, b, a]: [f32; 4]| ColorF::new(r, g, b, a);
+                            target.draw_elevation_border(
+                                &shape,
+                                to_color(grad.top),
+                                to_color(grad.mid),
+                                to_color(grad.bottom),
+                                grad.stop,
+                                1.0,
+                            );
                             target.clipped_text(
                                 label,
                                 &self.path,
@@ -328,7 +356,11 @@ impl Drawing {
                     let feedback = self.rows.sample(&entry.path, state.hovered == Some(row), false,
                         state.selection.contains(&row), now, animate);
                     playing |= feedback.playing;
-                    let shape = RoundedRect { rect: Rect::from_xywh(6.0, y, w - 12.0, ROW - 2.0), radius_x: 6.0, radius_y: 6.0 };
+                    let shape = RoundedRect {
+                        rect: Rect::from_xywh(6.0, y, w - 12.0, ROW - 2.0),
+                        radius_x: crate::pane::control_style::RADIUS,
+                        radius_y: crate::pane::control_style::RADIUS,
+                    };
                     target.fill_highlight(&shape, hovered, feedback.hover * (1.0 - feedback.selected));
                     target.fill_highlight(&shape, selected, feedback.selected);
                     if state.focused == Some(row) && state.selection.contains(&row) {
@@ -351,7 +383,15 @@ impl Drawing {
                             let hot = state.hovered_row_action == Some((row, button));
                             let feedback = self.row_buttons[index].sample(&entry.path, hot, hot && pointer_down, false, now, animate);
                             playing |= feedback.playing;
-                            target.fill_highlight(&RoundedRect { rect, radius_x: 5.0, radius_y: 5.0 }, action_hover, feedback.hover);
+                            target.fill_highlight(
+                                &RoundedRect {
+                                    rect,
+                                    radius_x: crate::pane::control_style::RADIUS,
+                                    radius_y: crate::pane::control_style::RADIUS,
+                                },
+                                action_hover,
+                                feedback.hover,
+                            );
                             let glyph = canvas_result(target.cached_solid_brush(ColorF::new(ink, ink, ink, 0.58 + 0.42 * feedback.hover)))?;
                             target.clipped_icon(if button == RowAction::More { "\u{e712}" } else { "\u{e8b7}" },
                                 &self.action_icon, &rect, &glyph);
