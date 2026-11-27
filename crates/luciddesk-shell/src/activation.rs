@@ -5,9 +5,12 @@ use crate::{
 };
 use std::{borrow::Cow, ffi::OsStr, os::windows::ffi::OsStrExt, path::Path, ptr};
 use windows_sys::Win32::{
-    Foundation::{GetLastError, HWND},
+    Foundation::{ERROR_CANCELLED, ERROR_NO_ASSOCIATION, GetLastError, HWND},
     UI::{
-        Shell::{SEE_MASK_FLAG_NO_UI, SEE_MASK_INVOKEIDLIST, SHELLEXECUTEINFOW, ShellExecuteExW},
+        Shell::{
+            OAIF_EXEC, OPENASINFO, SEE_MASK_FLAG_NO_UI, SEE_MASK_INVOKEIDLIST, SHELLEXECUTEINFOW,
+            SHOpenWithDialog, ShellExecuteExW,
+        },
         WindowsAndMessaging::SW_SHOWNORMAL,
     },
 };
@@ -50,11 +53,11 @@ pub fn drag_shell_identities(
     }
 }
 
-/// Opens a filesystem or virtual Shell identity using the current Shell association.
+/// Opens a filesystem or virtual Shell identity, offering Open With for unassociated files.
 ///
 /// # Errors
 ///
-/// Returns an error when `ShellExecuteExW` rejects the operation.
+/// Returns an error when Shell execution or the Open With dialog fails.
 pub fn open_shell_identity(owner: isize, identity: &ShellIdentity) -> Result<(), ShellError> {
     let path = identity
         .file_system_path()
@@ -89,9 +92,34 @@ pub fn open_shell_identity(owner: isize, identity: &ShellIdentity) -> Result<(),
         ..Default::default()
     };
     if unsafe { ShellExecuteExW(&raw mut info) } == 0 {
-        return Err(ShellError::Execute(unsafe { GetLastError() } as isize));
+        let error = unsafe { GetLastError() };
+        return finish_failed_open(error, path.as_deref(), || {
+            let dialog = OPENASINFO {
+                pcszFile: target.as_ptr(),
+                pcszClass: ptr::null(),
+                oaifInFlags: OAIF_EXEC,
+            };
+            windows::core::HRESULT(unsafe { SHOpenWithDialog(owner as HWND, &raw const dialog) }).ok()
+        });
     }
     Ok(())
+}
+
+fn finish_failed_open(
+    error: u32,
+    path: Option<&Path>,
+    open_with: impl FnOnce() -> windows::core::Result<()>,
+) -> Result<(), ShellError> {
+    if error == ERROR_CANCELLED {
+        return Ok(());
+    }
+    if error != ERROR_NO_ASSOCIATION || !path.is_some_and(Path::is_file) {
+        return Err(ShellError::Execute(error as isize));
+    }
+    match open_with() {
+        Err(error) if error.code() == windows::core::HRESULT::from_win32(ERROR_CANCELLED) => Ok(()),
+        result => result.map_err(Into::into),
+    }
 }
 
 fn wide_null(value: &OsStr) -> Vec<u16> {
@@ -101,6 +129,28 @@ fn wide_null(value: &OsStr) -> Vec<u16> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn open_with_only_handles_unassociated_files_and_cancel_is_benign() {
+        let file = std::env::current_exe().unwrap();
+        let cancelled = windows::core::HRESULT::from_win32(ERROR_CANCELLED);
+        assert!(finish_failed_open(ERROR_NO_ASSOCIATION, Some(&file), || Ok(())).is_ok());
+        assert!(
+            finish_failed_open(ERROR_NO_ASSOCIATION, Some(&file), || Err(cancelled.into())).is_ok()
+        );
+        assert!(finish_failed_open(ERROR_CANCELLED, Some(&file), || unreachable!()).is_ok());
+        for path in [file.parent(), None] {
+            assert!(matches!(
+                finish_failed_open(ERROR_NO_ASSOCIATION, path, || unreachable!()),
+                Err(ShellError::Execute(code)) if code == ERROR_NO_ASSOCIATION as isize
+            ));
+        }
+        let access_denied = windows::Win32::Foundation::E_ACCESSDENIED;
+        assert!(matches!(
+            finish_failed_open(ERROR_NO_ASSOCIATION, Some(&file), || Err(access_denied.into())),
+            Err(ShellError::Com(error)) if error.code() == access_denied
+        ));
+    }
 
     #[test]
     fn opening_missing_file_returns_the_win32_error() {

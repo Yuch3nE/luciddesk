@@ -1,5 +1,7 @@
 //! The actual directory's Explorer classic background menu.
-use super::file_command::{Menu, MenuMessages, menu_invocation};
+use super::file_command::{
+    LAST_SHELL_MENU_COMMAND_ID, Menu, MenuMessages, menu_invocation, shell_menu_command_offset,
+};
 use std::{
     cell::RefCell,
     path::{Path, PathBuf},
@@ -96,7 +98,13 @@ pub fn show_folder_menu(owner: HWND, path: &Path, point: POINT) -> Result<Folder
     unsafe {
         let menu = Menu(CreatePopupMenu()?);
         context
-            .QueryContextMenu(menu.0, 0, 1, 0x7fff, CMF_NORMAL | CMF_SYNCCASCADEMENU)
+            .QueryContextMenu(
+                menu.0,
+                0,
+                1,
+                LAST_SHELL_MENU_COMMAND_ID,
+                CMF_NORMAL | CMF_SYNCCASCADEMENU,
+            )
             .ok()?;
         let messages = MenuMessages::install(owner, &context)?;
         let frame = luciddesk_menu::MenuFrame::install(
@@ -115,14 +123,14 @@ pub fn show_folder_menu(owner: HWND, path: &Path, point: POINT) -> Result<Folder
             None,
         )
         .0;
-        let offset = chosen.saturating_sub(1).max(0) as usize;
-        let mut command = menu_invocation(owner, offset, Some(point));
+        let command = shell_menu_command_offset(chosen)
+            .map(|offset| menu_invocation(owner, offset, Some(point)));
         drop(frame);
         drop(messages);
         drop(theme);
-        if chosen == 0 {
+        let Some(mut command) = command else {
             return Ok(FolderMenuResult::Cancelled);
-        }
+        };
         let directory = HSTRING::from(path.as_os_str());
         command.lpDirectoryW = PCWSTR(directory.as_ptr());
         let invoked = context.InvokeCommand((&raw const command).cast());

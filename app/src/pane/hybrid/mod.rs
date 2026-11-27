@@ -78,7 +78,6 @@ pub(super) fn visibility_hook(s: &PaneApp) -> Option<(Rc<FilterSession>, bool)> 
         h.membership_pending.is_none() && !h.menu_active.get() && is_alive(h)))
 }
 
-struct OleApartment;
 /// Desired Explorer-hidden names, independent of image loading and submitted IPC.
 pub(super) fn desired_membership(s: &PaneApp) -> Vec<String> {
     let mut names: Vec<_> = s
@@ -119,20 +118,8 @@ pub(super) fn membership_status(s: &PaneApp) -> &'static str {
 pub(super) fn is_alive(session: &Session) -> bool {
     session.hook.is_alive()
 }
-impl Drop for OleApartment {
-    fn drop(&mut self) {
-        luciddesk_shell::flush_file_clipboard();
-        unsafe {
-            windows::Win32::System::Ole::OleUninitialize();
-        }
-    }
-}
-
 pub fn run(path: &Path, title: Option<String>) -> Result<(), String> {
-    unsafe {
-        windows::Win32::System::Ole::OleInitialize(None).map_err(|e| e.to_string())?;
-    }
-    let _ole = OleApartment;
+    let _ole = luciddesk_shell::ShellApartment::initialize_sta().map_err(|e| e.to_string())?;
     let _graphics = super::native_graphics::GraphicsLifetime;
     let first_run = !path.exists();
     let mut store = WorkspaceStore::open(path).map_err(|e| e.to_string())?;

@@ -1,13 +1,18 @@
 //! Thread-bound OLE initialization.
-use std::{marker::PhantomData, rc::Rc};
+use std::{cell::Cell, marker::PhantomData, rc::Rc};
 use windows::Win32::System::Ole::{OleInitialize, OleUninitialize};
 
 use crate::ShellError;
+
+thread_local! {
+    static ACTIVE_GUARDS: Cell<usize> = const { Cell::new(0) };
+}
 
 /// Keeps OLE initialized on the calling thread for Shell UI and drag/drop.
 ///
 /// Keep this guard alive until all OLE-dependent resources have been released.
 /// Each successful initialization is balanced by one uninitialization on drop.
+/// The last guard on the thread persists any file clipboard owned by this crate.
 /// The guard cannot be constructed directly, cloned, or sent to another thread.
 ///
 /// ```no_run
@@ -46,6 +51,7 @@ impl ShellApartment {
         // SAFETY: the reserved argument is null. Only a successful call creates
         // a guard, whose thread-bound ownership balances this call in Drop.
         unsafe { OleInitialize(None) }?;
+        ACTIVE_GUARDS.set(ACTIVE_GUARDS.get() + 1);
         Ok(Self {
             _thread_bound: PhantomData,
         })
@@ -54,6 +60,11 @@ impl ShellApartment {
 
 impl Drop for ShellApartment {
     fn drop(&mut self) {
+        if ACTIVE_GUARDS.get() == 1 {
+            // Keep this guard counted while OLE may dispatch reentrant calls.
+            crate::file_command::flush_file_clipboard();
+        }
+        ACTIVE_GUARDS.set(ACTIVE_GUARDS.get() - 1);
         // SAFETY: safe code cannot move this guard off its initializing thread.
         unsafe { OleUninitialize() };
     }

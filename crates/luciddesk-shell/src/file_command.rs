@@ -22,11 +22,10 @@ fn is_current_file_clipboard(data: &IDataObject) -> bool {
 
 /// Persists the current file clipboard, if owned by this STA, before OLE teardown.
 pub fn flush_file_clipboard() {
-    let data = FILE_CLIPBOARD.take();
-    if let Some(data) = data
-        && is_current_file_clipboard(&data)
-    {
-        let _ = unsafe { OleFlushClipboard() };
+    while let Ok(Some(data)) = FILE_CLIPBOARD.try_with(RefCell::take) {
+        if is_current_file_clipboard(&data) {
+            let _ = unsafe { OleFlushClipboard() };
+        }
     }
 }
 
@@ -307,6 +306,14 @@ unsafe extern "system" fn menu_messages(
     }
 }
 
+pub(super) const LAST_SHELL_MENU_COMMAND_ID: u32 = 0x7fff;
+
+pub(super) fn shell_menu_command_offset(chosen: i32) -> Option<usize> {
+    (1..=LAST_SHELL_MENU_COMMAND_ID as i32)
+        .contains(&chosen)
+        .then(|| chosen as usize - 1)
+}
+
 /// Shows a filesystem context menu; true requests inline rename.
 /// # Errors
 /// Returns errors creating the Shell menu or invoking its selected command.
@@ -325,7 +332,13 @@ pub fn show_file_items_menu(
         let context: IContextMenu = shell_items(selected)?.BindToHandler(None, &BHID_SFUIObject)?;
         let menu = Menu(CreatePopupMenu()?);
         context
-            .QueryContextMenu(menu.0, 0, 1, 0x7fff, CMF_NORMAL | CMF_CANRENAME)
+            .QueryContextMenu(
+                menu.0,
+                0,
+                1,
+                LAST_SHELL_MENU_COMMAND_ID,
+                CMF_NORMAL | CMF_CANRENAME,
+            )
             .ok()?;
         add_location_command(menu.0, selected, open_location_label)?;
         let messages = MenuMessages::install(owner, &context)?;
@@ -339,18 +352,18 @@ pub fn show_file_items_menu(
             None,
         )
         .0;
-        let offset = chosen.saturating_sub(1).max(0) as usize;
-        let command = menu_invocation(owner, offset, Some(point));
+        let command = shell_menu_command_offset(chosen)
+            .map(|offset| (offset, menu_invocation(owner, offset, Some(point))));
         drop(frame);
         drop(messages);
         drop(theme);
-        if chosen == 0 {
-            return Ok(false);
-        }
         if chosen as usize == OPEN_LOCATION {
             open_location(&selected[0])?;
             return Ok(false);
         }
+        let Some((offset, command)) = command else {
+            return Ok(false);
+        };
         let verb = canonical_verb(&context, offset);
         if selected.len() == 1
             && verb.as_deref().is_some_and(|verb| verb.eq_ignore_ascii_case("rename"))
@@ -665,6 +678,34 @@ mod tests {
         let ansi: IContextMenu = VerbProvider(false).into();
         assert!(canonical_verb(&unicode, 0).unwrap().eq_ignore_ascii_case("rename"));
         assert!(canonical_verb(&ansi, 0).unwrap().eq_ignore_ascii_case("delete"));
+    }
+
+    #[test]
+    fn popup_selection_only_accepts_shell_command_ids() {
+        let last = LAST_SHELL_MENU_COMMAND_ID as i32;
+        assert_eq!(shell_menu_command_offset(1), Some(0));
+        assert_eq!(shell_menu_command_offset(last), Some(last as usize - 1));
+        for invalid in [-1, 0, OPEN_LOCATION as i32, i32::MAX] {
+            assert_eq!(shell_menu_command_offset(invalid), None);
+        }
+    }
+
+    #[test]
+    fn tracked_file_clipboard_is_released_when_the_last_apartment_guard_drops() {
+        let first = crate::ShellApartment::initialize_sta().unwrap();
+        let second = crate::ShellApartment::initialize_sta().unwrap();
+        let data = FileDrag::new(&[ShellIdentity::FileSystem {
+            path: std::env::current_exe().unwrap(),
+            volume_id: None,
+            file_id: None,
+        }])
+        .unwrap();
+        // Track an object without publishing it to the system clipboard.
+        FILE_CLIPBOARD.replace(Some(data.0));
+        drop(first);
+        assert!(FILE_CLIPBOARD.with(|clipboard| clipboard.borrow().is_some()));
+        drop(second);
+        assert!(FILE_CLIPBOARD.with(|clipboard| clipboard.borrow().is_none()));
     }
 
     #[test]
