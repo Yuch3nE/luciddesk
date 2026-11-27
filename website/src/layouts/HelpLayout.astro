@@ -13,39 +13,69 @@ import { helpPages, type HelpPage } from '~/content/help';
 interface Props { page: HelpPage }
 const { page } = Astro.props;
 const navigation = lang === 'en' ? helpPagesEn : helpPages;
-
 ---
 <Layout title={`${page.label} · LucidDesk`} description={page.description}>
   <div class="help-layout mx-auto max-w-6xl px-5 py-8 sm:px-8 lg:py-12">
-    <nav aria-label={t("当前位置")} class="mb-8 flex items-center gap-2 text-xs text-muted"><a href={localizedPath("/", lang)} class="hover:text-primary">{t("首页")}</a><ChevronRight className="size-3" aria-hidden="true"/><span aria-current="page">{page.label}</span></nav>
-    <div class="grid items-start gap-8 lg:grid-cols-[232px_minmax(0,1fr)] lg:gap-12">
+    <nav aria-label={t("当前位置")} class="mb-7 flex items-center gap-2 text-xs font-medium text-muted">
+      <a href={localizedPath("/", lang)} class="transition-colors hover:text-primary">{t("首页")}</a>
+      <ChevronRight className="size-3 opacity-60" aria-hidden="true"/>
+      <span class="text-heading" aria-current="page">{page.label}</span>
+    </nav>
+
+    <div class="grid items-start gap-8 lg:grid-cols-[248px_minmax(0,1fr)] lg:gap-12">
       <aside class="min-w-0 lg:sticky lg:top-24">
-        <Card className="gap-0 rounded-2xl border-line bg-card/60 p-3 shadow-none backdrop-blur-sm lg:p-4">
-          <nav aria-label={t("帮助文档")}><HelpPageLinks pages={navigation.map(({slug,label}) => ({slug,label}))} current={page.slug}/></nav>
-          <nav aria-label={t("本页目录")} class="mt-4 hidden border-t border-line pt-5 lg:block lg:max-h-[60vh] lg:overflow-y-auto">
-            <p class="mb-3 px-3 text-xs font-medium text-muted">{t("本页内容")}</p>
-            <ul class="grid grid-cols-2 gap-x-2 gap-y-1 lg:grid-cols-1">{page.sections.map((section, index) => <li><a class="flex gap-2 rounded-lg px-3 py-2 text-xs leading-5 text-muted transition-colors hover:bg-primary/5 hover:text-primary" href={`#${section.id}`}><span class="shrink-0 tabular-nums opacity-50" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span><span>{section.title}</span></a></li>)}</ul>
+        <Card className="gap-0 rounded-2xl border-line p-3 lg:p-4">
+          <nav aria-label={t("帮助文档")}>
+            <HelpPageLinks pages={navigation.map(({slug,label}) => ({slug,label}))} current={page.slug}/>
           </nav>
-          <details class="mt-4 border-t border-line pt-4 lg:hidden">
-            <summary class="cursor-pointer px-3 text-sm text-heading">{t("本页内容")} · {page.sections.length}</summary>
+          <nav aria-label={t("本页目录")} class="mt-4 hidden border-t border-line pt-4 lg:block lg:max-h-[60vh] lg:overflow-y-auto">
+            <p class="mb-2.5 px-3 text-[11px] font-semibold tracking-wider text-muted">{t("本页内容")}</p>
+            <ul class="grid grid-cols-2 gap-x-2 gap-y-0.5 lg:grid-cols-1">
+              {page.sections.map((section, index) => (
+                <li>
+                  <a class="flex gap-2 rounded-lg px-3 py-1.5 text-xs leading-5 text-muted transition-colors hover:bg-primary/6 hover:text-primary dark:hover:text-blue-300" href={`#${section.id}`}>
+                    <span class="shrink-0 font-mono tabular-nums opacity-50" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
+                    <span>{section.title}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </nav>
+          <details class="mt-4 border-t border-line pt-3.5 lg:hidden">
+            <summary class="cursor-pointer px-3 text-sm font-medium text-heading">{t("本页内容")} · {page.sections.length}</summary>
             <nav aria-label={t("本页目录")} class="mt-3 max-h-[50vh] overflow-y-auto">
-              <ul class="grid grid-cols-2 gap-2">{page.sections.map((section, index) => <li><a class="block rounded-lg px-3 py-2 text-xs leading-5 text-muted hover:bg-primary/5 hover:text-primary" href={`#${section.id}`}>{String(index + 1).padStart(2, '0')} · {section.title}</a></li>)}</ul>
+              <ul class="grid grid-cols-2 gap-1.5">
+                {page.sections.map((section, index) => (
+                  <li>
+                    <a class="block rounded-lg px-3 py-2 text-xs leading-5 text-muted hover:bg-primary/6 hover:text-primary dark:hover:text-blue-300" href={`#${section.id}`}>
+                      {String(index + 1).padStart(2, '0')} · {section.title}
+                    </a>
+                  </li>
+                ))}
+              </ul>
             </nav>
           </details>
         </Card>
       </aside>
-      <article class="help-article min-w-0 max-w-[44rem]">
-        <header class="mb-9 border-b border-line pb-8">
-          <h1 class="text-2xl font-bold leading-snug tracking-tight text-heading sm:text-3xl">{page.title}</h1>
-          <p class="mt-4 text-sm leading-7 text-muted sm:text-base">{page.description}</p>
+
+      <article class="help-article min-w-0 max-w-[45rem]">
+        <header class="mb-9 border-b border-line pb-7">
+          <p class="section-eyebrow mb-3.5">{page.label}</p>
+          <h1 class="font-heading text-2xl font-bold leading-snug tracking-tight text-heading sm:text-3xl">{page.title}</h1>
+          <p class="mt-3.5 text-sm leading-7 text-muted sm:text-base">{page.description}</p>
         </header>
-        {page.sections.map((section, index) => <section id={section.id} class="help-section border-b border-line py-8 first-of-type:pt-0 last-of-type:border-0">
-          <h2 class="mb-5 flex items-baseline gap-3 text-lg font-semibold leading-relaxed text-heading sm:text-xl"><span class="text-xs font-normal tabular-nums text-muted/60" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>{section.title}</h2>
-          <div class="help-copy" set:html={section.html}/>
-        </section>)}
-        <div class="mt-6 flex flex-wrap gap-3 border-t border-line pt-6">
+        {page.sections.map((section, index) => (
+          <section id={section.id} class="help-section border-b border-line py-8 first-of-type:pt-0 last-of-type:border-0">
+            <h2 class="mb-5 flex items-baseline gap-3 font-heading text-lg font-semibold leading-relaxed text-heading sm:text-xl">
+              <span class="font-mono text-xs font-medium tabular-nums text-primary/70 dark:text-blue-300/70" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
+              <span>{section.title}</span>
+            </h2>
+            <div class="help-copy" set:html={section.html}/>
+          </section>
+        ))}
+        <div class="mt-8 flex flex-wrap gap-3 rounded-2xl border border-line bg-surface/60 p-5">
           <Button href={localizedPath("/#download", lang)} text={t("下载 LucidDesk")} icon="download" variant="primary"/>
-          <Button href={localizedPath("/", lang)} text={t("返回首页")}/>
+          <Button href={localizedPath("/", lang)} text={t("返回首页")} variant="secondary"/>
         </div>
       </article>
     </div>

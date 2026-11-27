@@ -30,8 +30,9 @@ const description = en ? 'New features, thoughtful improvements, and fixes — s
   <div class="release-page mx-auto max-w-6xl px-5 py-10 sm:px-8 lg:py-14">
     <header class="release-page-header release-index-header">
       <div>
-        <h1 class="text-3xl font-bold tracking-tight text-heading sm:text-4xl">{title}</h1>
-        <p class="mt-4 max-w-2xl text-muted">{description}</p>
+        <p class="section-eyebrow mb-3.5">{en ? 'RELEASE HISTORY' : '版本记录'}</p>
+        <h1 class="font-heading text-3xl font-bold tracking-tight text-heading sm:text-4xl">{title}</h1>
+        <p class="mt-3.5 max-w-2xl text-sm leading-7 text-muted sm:text-base">{description}</p>
       </div>
       <a class="release-guide-link" href={path('/installation/#updates')}>
         <BookOpen size={16} aria-hidden="true"/>

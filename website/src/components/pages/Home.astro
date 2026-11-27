@@ -1,10 +1,12 @@
 ---
 import { localeOf, translator } from '~/lib/i18n';
 const lang = localeOf(Astro.url.pathname);
+const en = lang === 'en';
 const t = translator(lang);
 
 import Layout from '~/layouts/PageLayout.astro';
 import { Badge } from '~/components/ui/badge';
+import { ShieldCheck, Globe, RefreshCw, Cpu } from 'lucide-react';
 import repository from '~/data/repository.json';
 import HomeHero from '~/components/widgets/HomeHero.astro';
 import HomeFeatures from '~/components/widgets/HomeFeatures.astro';
@@ -12,38 +14,96 @@ import FAQs from '~/components/widgets/FAQs.astro';
 import Agent from '~/components/widgets/Agent.astro';
 import Downloads from '~/components/widgets/Downloads.astro';
 import WorkspaceIllustration from '~/components/WorkspaceIllustration.astro';
+
+const highlights = [
+  {
+    Icon: ShieldCheck,
+    title: en ? 'Non-destructive' : '不搬动原文件',
+    detail: en ? 'Panels store references only' : '收纳仅保存引用，随时还原',
+  },
+  {
+    Icon: Cpu,
+    title: en ? 'Native Windows' : '原生轻量流畅',
+    detail: en ? 'Built with Rust, Win32 & Direct2D' : 'Rust · Win32 · Direct2D 构建',
+  },
+  {
+    Icon: RefreshCw,
+    title: en ? 'Signed updates' : '应用内签名更新',
+    detail: en ? 'Verify & update in place' : '本地验签，一键原位升级',
+  },
+  {
+    Icon: Globe,
+    title: en ? '7 UI languages' : '7 种界面语言',
+    detail: en ? 'Follows Windows display language' : '自动跟随系统，切换即时生效',
+  },
+];
+
 const faqs = [
   {
-    "title": t("整理面板会移动或删除我的文件吗？"),
-    "description": t("把图标拖入桌面面板只改变收纳方式，原文件留在原处，关闭面板也不会删除文件。文件菜单中的删除、重命名、剪切，以及文件夹面板里的粘贴等操作，会作用于真实文件。")
+    title: t("整理面板会移动或删除我的文件吗？"),
+    description: t("把图标拖入桌面面板只改变收纳方式，原文件留在原处，关闭面板也不会删除文件。文件菜单中的删除、重命名、剪切，以及文件夹面板里的粘贴等操作，会作用于真实文件。")
   },
   {
-    "title": t("搜索和空格预览需要额外安装吗？"),
-    "description": t("需要。搜索依赖 Everything；空格预览可使用 PowerToys Peek 或 QuickLook。这些工具不包含在安装包中，需要单独安装，并在 LucidDesk 设置中启用。")
+    title: en ? 'How do auto-classification and one-click organize work?' : '自动分类和“一键整理”怎么工作？',
+    description: en
+      ? 'Set rules by extension, keyword, regex, or icon type to route items into target panels. Run one-click organize to preview every move before applying, or enable auto-sorting for newly added icons. Original files stay in place.'
+      : '在“设置 → 自动分类”中按扩展名、关键字、正则表达式或图标类型设置规则并指定目标面板。点击“一键整理”可先预览每个图标的去向再应用；开启自动整理新图标后，新出现的未分组图标会按规则归类，磁盘上的原文件仍在原位置。'
   },
   {
-    "title": t("安装版、ZIP 和便携版该怎么选？"),
-    "description": t("日常使用推荐 setup.exe 安装版。普通 ZIP 免安装，配置保存在本地应用数据目录；便携版将配置保存在程序目录的 data 文件夹中。三种发布包功能相同。")
+    title: t("搜索和空格预览需要额外安装吗？"),
+    description: t("需要。搜索依赖 Everything；空格预览可使用 PowerToys Peek 或 QuickLook。这些工具不包含在安装包中，需要单独安装，并在 LucidDesk 设置中启用。")
   },
   {
-    "title": t("需要账号吗？桌面数据存在哪里？"),
-    "description": t("LucidDesk 无需注册账号，设置和布局主要保存在本机。应用默认通过 GitHub 检查更新，可在设置中关闭。外部 Agent 和第三方工具的数据处理遵循其各自设置。<a href=\"/privacy/\">查看应用隐私说明</a>")
+    title: t("安装版、ZIP 和便携版该怎么选？"),
+    description: t("日常使用推荐 setup.exe 安装版。普通 ZIP 免安装，配置保存在本地应用数据目录；便携版将配置保存在程序目录的 data 文件夹中。三种发布包功能相同。")
+  },
+  {
+    title: en ? 'Which Windows versions and languages are supported?' : '支持哪些 Windows 版本和界面语言？',
+    description: en
+      ? 'Requires Windows 10 1809 (build 17763) or later, or Windows 11 (x64). Mica materials require Windows 11. Includes 7 languages — Simplified & Traditional Chinese, English, Japanese, Korean, German, and Russian — switching instantly.'
+      : '支持 Windows 10 1809（Build 17763）及以上与 Windows 11（x64），其中 Mica 系列材质需要 Windows 11。内置简体中文、繁體中文、English、日本語、한국어、Deutsch 和 Русский 共 7 种界面语言，默认跟随系统并支持即时切换。'
+  },
+  {
+    title: t("需要账号吗？桌面数据存在哪里？"),
+    description: t("LucidDesk 无需注册账号，设置和布局主要保存在本机。应用默认通过 GitHub 检查更新，可在设置中关闭。外部 Agent 和第三方工具的数据处理遵循其各自设置。<a href=\"/privacy/\">查看应用隐私说明</a>")
   }
 ];
 ---
 <Layout>
   <HomeHero tagline={t("开源 · 免费 · 为 Windows 打造")} actions={[
     { text: t("下载 Windows 版"), href: '#download', variant: 'primary', icon: 'download' },
-    { text: t("探索功能"), href: '#features' }
+    { text: t("探索功能"), href: '#features', icon: 'arrow-right' }
   ]}>
-    <Fragment slot="title"><span class="block">{t("桌面有序")}</span><span class="block text-primary dark:text-blue-300">{t("专注自在")}</span></Fragment>
+    <Fragment slot="title">
+      <span class="block">{t("桌面有序")}</span>
+      <span class="block text-primary dark:text-blue-400">{t("专注自在")}</span>
+    </Fragment>
     <Fragment slot="subtitle">{t("把零散图标收进面板，让常用文件触手可及。")}</Fragment>
-    <div slot="content" class="mt-5 flex flex-wrap items-center justify-center lg:justify-start gap-x-3 gap-y-2 text-xs text-muted">
-      <a href="/changelog/" aria-label={lang === 'en' ? `Current version ${repository.version}, view changelog` : `当前版本 ${repository.version}，查看更新日志`} class="rounded-full outline-offset-4 transition-opacity hover:opacity-80"><Badge variant="outline" className="rounded-full border-primary/20 bg-primary/5 px-3 py-1 font-medium text-primary dark:text-blue-300">{`${lang === 'en' ? 'Current version' : '当前版本'} ${repository.version}`}</Badge></a>
-      <span>{lang === 'en' ? 'Windows 10 1809+ / Windows 11 · x64' : 'Windows 10 1809 及以上 / Windows 11 · x64'}</span>
+    <div slot="content" class="mt-6 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-xs text-muted lg:justify-start">
+      <a href="/changelog/" aria-label={en ? `Current version ${repository.version}, view changelog` : `当前版本 ${repository.version}，查看更新日志`} class="rounded-full outline-offset-4 transition-opacity hover:opacity-85">
+        <Badge variant="outline" className="rounded-full border-primary/25 bg-primary/8 px-3 py-1 font-medium text-primary dark:border-blue-400/25 dark:bg-blue-400/12 dark:text-blue-300">
+          {`${en ? 'Latest' : '当前版本'} ${repository.version}`}
+        </Badge>
+      </a>
+      <span>{en ? 'Windows 10 1809+ / Windows 11 · x64' : 'Windows 10 1809 及以上 / Windows 11 · x64'}</span>
     </div>
     <figure slot="image" class="mx-auto max-w-5xl"><WorkspaceIllustration/></figure>
+
+    <div slot="footer" class="mt-10 grid grid-cols-2 gap-3 border-t border-line pt-7 lg:mt-14 lg:grid-cols-4 lg:gap-4">
+      {highlights.map(({ Icon, title, detail }) => (
+        <div class="flex items-start gap-3 rounded-2xl border border-line/80 bg-elevated/75 px-4 py-3.5 backdrop-blur-sm">
+          <span class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary dark:bg-blue-400/15 dark:text-blue-300">
+            <Icon size={16} aria-hidden="true" />
+          </span>
+          <div class="min-w-0">
+            <p class="text-sm font-semibold leading-snug text-heading">{title}</p>
+            <p class="mt-0.5 text-xs leading-relaxed text-muted">{detail}</p>
+          </div>
+        </div>
+      ))}
+    </div>
   </HomeHero>
+
   <HomeFeatures/>
   <Agent/>
   <Downloads/>

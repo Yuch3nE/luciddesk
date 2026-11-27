@@ -1,12 +1,22 @@
 ---
 import Layout from '~/layouts/PageLayout.astro';
 import Button from '~/components/ui/Button.astro';
+import { LayoutGrid } from 'lucide-react';
 ---
 <Layout noindex title="页面未找到 · LucidDesk">
-  <section class="mx-auto max-w-3xl px-6 py-28 text-center">
-    <p class="text-sm text-muted">404 / NOT FOUND</p>
-    <h1 class="my-6 text-4xl font-bold">这里暂时没有内容</h1>
-    <p class="mb-8 text-muted">回到首页，重新找到你的工作区。</p>
-    <Button href="/" text="返回首页" icon="chevron-right" />
+  <section class="hero-backdrop mx-auto max-w-3xl px-6 py-24 text-center sm:py-32">
+    <div class="mx-auto mb-6 flex size-14 items-center justify-center rounded-2xl border border-line bg-elevated text-primary shadow-sm dark:text-blue-300">
+      <LayoutGrid size={26} aria-hidden="true"/>
+    </div>
+    <p class="section-eyebrow mb-4">404 · NOT FOUND</p>
+    <h1 class="font-heading text-3xl font-bold tracking-tight text-heading sm:text-4xl">这里暂时没有内容</h1>
+    <p class="mx-auto mt-4 max-w-md text-sm leading-7 text-muted sm:text-base">
+      链接可能已调整或不存在。回到首页，重新找到你的桌面工作区。
+    </p>
+    <div class="mt-8 flex flex-wrap items-center justify-center gap-3">
+      <Button href="/" variant="primary" text="返回首页" icon="arrow-right" />
+      <Button href="/features/" variant="secondary" text="探索功能" />
+      <Button href="/guide/" variant="secondary" text="使用指南" />
+    </div>
   </section>
 </Layout>

@@ -1,8 +1,59 @@
 ---
 import { localeOf, translator, localizedPath } from '~/lib/i18n';
-const lang = localeOf(Astro.url.pathname);
-const t = translator(lang);
-
 import RepositoryLink from "~/components/RepositoryLink";
+const lang = localeOf(Astro.url.pathname);
+const en = lang === 'en';
+const t = translator(lang);
 ---
-<footer class="border-t border-line"><div class="flex flex-col sm:flex-row mx-auto max-w-6xl items-center justify-between gap-6 px-5 py-8 sm:px-8"><aside><a href={localizedPath("/", lang)} class="flex items-center gap-2 text-lg font-bold"><img src="/assets/app-icon.png" width="28" height="28" alt="">LucidDesk</a><p class="mt-2 text-xs text-muted">{t("桌面有序，专注自在。 · MIT 开源许可")}</p></aside><nav class="flex flex-wrap items-center justify-center gap-6 text-xs"><RepositoryLink lang={lang} /><a class="underline underline-offset-4" href="https://github.com/Yuch3nE/luciddesk/issues">{t("反馈问题")}</a><a class="underline underline-offset-4" href={localizedPath("/privacy/", lang)}>{t("应用隐私")}</a><a class="underline underline-offset-4" href={localizedPath("/changelog/", lang)}>{lang === "en" ? "Changelog" : "更新日志"}</a></nav></div></footer>
+<footer class="border-t border-line bg-surface/55">
+  <div class="mx-auto max-w-6xl px-5 py-12 sm:px-8">
+    <div class="grid gap-10 md:grid-cols-[1.35fr_repeat(3,minmax(0,1fr))] md:gap-8">
+      <aside class="max-w-xs">
+        <a href={localizedPath("/", lang)} class="inline-flex items-center gap-2.5 text-lg font-bold tracking-tight text-heading">
+          <img src="/assets/app-icon.png" width="28" height="28" alt="" class="rounded-md" />
+          LucidDesk
+        </a>
+        <p class="mt-3 text-sm leading-6 text-muted">
+          {en ? 'A clear desktop. A clearer mind. Free, open-source desktop organizer built natively for Windows.' : '桌面有序，专注自在。免费、开源的原生 Windows 桌面整理工具。'}
+        </p>
+        <div class="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted">
+          <span class="rounded-md border border-line bg-elevated px-2 py-0.5">MIT License</span>
+          <span class="rounded-md border border-line bg-elevated px-2 py-0.5">Rust · Win32 · Direct2D</span>
+        </div>
+      </aside>
+
+      <nav aria-label={en ? 'Product links' : '产品导航'}>
+        <h3 class="text-xs font-semibold tracking-wider text-heading">{en ? 'PRODUCT' : '产品'}</h3>
+        <ul class="mt-3.5 space-y-2.5 text-sm text-muted">
+          <li><a class="hover:text-primary transition-colors" href={localizedPath("/features/", lang)}>{en ? 'Features' : '探索功能'}</a></li>
+          <li><a class="hover:text-primary transition-colors" href={localizedPath("/#download", lang)}>{en ? 'Download' : '下载 Windows 版'}</a></li>
+          <li><a class="hover:text-primary transition-colors" href={localizedPath("/changelog/", lang)}>{en ? 'Changelog' : '更新日志'}</a></li>
+        </ul>
+      </nav>
+
+      <nav aria-label={en ? 'Documentation links' : '文档导航'}>
+        <h3 class="text-xs font-semibold tracking-wider text-heading">{en ? 'DOCS' : '文档与帮助'}</h3>
+        <ul class="mt-3.5 space-y-2.5 text-sm text-muted">
+          <li><a class="hover:text-primary transition-colors" href={localizedPath("/guide/", lang)}>{t("使用指南")}</a></li>
+          <li><a class="hover:text-primary transition-colors" href={localizedPath("/installation/", lang)}>{t("安装与更新指南")}</a></li>
+          <li><a class="hover:text-primary transition-colors" href={localizedPath("/agent/", lang)}>{t("Agent 联动")}</a></li>
+          <li><a class="hover:text-primary transition-colors" href={localizedPath("/privacy/", lang)}>{t("应用隐私")}</a></li>
+        </ul>
+      </nav>
+
+      <nav aria-label={en ? 'Community links' : '社区与反馈'}>
+        <h3 class="text-xs font-semibold tracking-wider text-heading">{en ? 'COMMUNITY' : '开源与反馈'}</h3>
+        <ul class="mt-3.5 space-y-2.5 text-sm text-muted">
+          <li><RepositoryLink lang={lang} className="-ml-2 h-8 px-2" /></li>
+          <li><a class="hover:text-primary transition-colors" href="https://github.com/Yuch3nE/luciddesk/releases/latest">{en ? 'GitHub Releases' : 'GitHub 发布页'}</a></li>
+          <li><a class="hover:text-primary transition-colors" href="https://github.com/Yuch3nE/luciddesk/issues">{t("反馈问题")}</a></li>
+        </ul>
+      </nav>
+    </div>
+
+    <div class="mt-10 flex flex-col items-start justify-between gap-3 border-t border-line pt-6 text-xs text-muted sm:flex-row sm:items-center">
+      <p>{t("桌面有序，专注自在。 · MIT 开源许可")}</p>
+      <p>{en ? 'Windows 10 1809+ / Windows 11 · x64 · 7 UI languages' : '支持 Windows 10 1809+ / Windows 11 · x64 · 7 种界面语言'}</p>
+    </div>
+  </div>
+</footer>

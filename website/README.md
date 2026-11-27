@@ -70,4 +70,4 @@ shadcn/ui 源码来自官方 `new-york-v4` 注册表，许可见 `SHADCN-LICENSE
 
 更新类型标记由 `src/lib/change-types.ts` 统一归类，`ChangeBadge.tsx` 使用 shadcn Badge 和 Lucide 图标显示新增、优化、修复、性能、文档、发布、移除与维护。列表摘要、版本类型计数与详情逐条复用同一规则；明确的类型分组优先，主题分组按条目动作归类。
 
-首页桌面端使用左文右图，移动端上下排列。`HomeFeatures.astro` 展示面板、文件夹、搜索预览及外观专注，Agent 保持独立章节。宣传图参照 `screenshot/zh/pane.png` 与 `folder.png` 的居中标题和文件列表结构，保留非截图标注。
+首页桌面端使用左文右图，移动端上下排列。`HomeFeatures.astro` 展示面板与标签、自动分类、文件夹面板、搜索预览及外观专注，Agent 保持独立章节。宣传图参照 `screenshot/zh/pane.png` 与 `folder.png` 的面板与文件列表结构，保留非截图标注。

@@ -1,55 +1,340 @@
 ---
 import { localeOf } from '~/lib/i18n';
-import { ChevronDown, Ellipsis, ArrowLeft, House, Folder, FileText } from 'lucide-react';
+import { ChevronDown, Ellipsis, ArrowLeft, House, Folder, FileText, Sparkles, Search } from 'lucide-react';
 const en = localeOf(Astro.url.pathname) === 'en';
 const pick = (zh: string, english: string) => en ? english : zh;
-const files = [pick('设计素材','Design'),pick('项目资料','Projects'),pick('工作计划','Work plan'),pick('参考图片','References'),pick('会议记录','Notes'),pick('已归档','Archive')];
+const files = [
+  pick('设计素材', 'Design'),
+  pick('项目资料', 'Projects'),
+  pick('工作计划', 'Work plan'),
+  pick('参考图片', 'References'),
+  pick('会议记录', 'Notes'),
+  pick('已归档', 'Archive'),
+];
+const folderRows = [
+  { name: pick('品牌素材', 'Brand assets'), type: pick('文件夹', 'Folder'), folder: true },
+  { name: pick('产品文档', 'Product docs'), type: pick('文件夹', 'Folder'), folder: true },
+  { name: pick('版本计划.pdf', 'Roadmap.pdf'), type: 'PDF', folder: false },
+];
 ---
-<div class="desktop-scene" role="img" aria-label={pick('桌面面板界面示意：居中标题、网格图标和文件夹列表。并非实际截图。','Desktop panel illustration with centered titles, grid icons and a folder list. Not a screenshot.')}>
-  <div class="scene-caption">{pick('留给眼前的事，一个清晰的桌面。','A little room for what matters.')}</div>
+<div class="desktop-scene" role="img" aria-label={pick('桌面面板界面示意：包含多标签桌面面板、文件夹面板和自动分类提示。并非实际截图。', 'Desktop workspace illustration with a tabbed desktop panel, folder panel, and auto-classify badge. Not a screenshot.')}>
+  <div class="scene-topbar">
+    <span class="scene-status-pill">
+      <Sparkles size={13} aria-hidden="true" />
+      <span>{pick('自动分类规则已就绪', 'Auto-classify ready')}</span>
+    </span>
+    <span class="scene-search-pill">
+      <Search size={12} aria-hidden="true" />
+      <span>Everything</span>
+    </span>
+  </div>
+
   <div class="scene-panel main-panel">
-    <div class="panel-heading"><strong>{pick('工作项目','Projects')}</strong><span><ChevronDown size={17}/><Ellipsis size={17}/></span></div>
-    <div class="panel-files">{files.map((name,i) => <div class="panel-file">{i < 2 || i === 5 ? <Folder size={34} strokeWidth={1.4} className="folder-icon"/> : <FileText size={34} strokeWidth={1.4} className="document-icon"/>}<span>{name}</span></div>)}</div>
+    <div class="panel-heading panel-tab-heading">
+      <div class="panel-tabs">
+        <span class="panel-tab active">{pick('工作项目', 'Projects')}</span>
+        <span class="panel-tab">{pick('常用工具', 'Tools')}</span>
+        <span class="panel-tab">{pick('归档', 'Archive')}</span>
+      </div>
+      <span class="panel-controls"><ChevronDown size={15} aria-hidden="true" /><Ellipsis size={15} aria-hidden="true" /></span>
+    </div>
+    <div class="panel-files">
+      {files.map((name, i) => (
+        <div class="panel-file">
+          <div class="panel-icon-tile">
+            {i < 2 || i === 5
+              ? <Folder size={30} strokeWidth={1.5} className="folder-icon" aria-hidden="true" />
+              : <FileText size={30} strokeWidth={1.5} className="document-icon" aria-hidden="true" />}
+          </div>
+          <span>{name}</span>
+        </div>
+      ))}
+    </div>
   </div>
+
   <div class="scene-panel folder-panel">
-    <div class="panel-heading"><span class="folder-navigation"><ArrowLeft size={14}/><House size={14}/></span><strong>{pick('资料库','Library')}</strong><span><ChevronDown size={15}/><Ellipsis size={15}/></span></div>
-    <div class="folder-columns"><span>{pick('文件名','Name')}</span><span>{pick('类型','Type')}</span></div>
-    {[pick('品牌素材','Brand assets'),pick('产品文档','Documents'),pick('参考资料','Resources')].map(name => <div class="folder-row"><Folder size={20} className="folder-icon"/><span>{name}</span><small>{pick('文件夹','Folder')}</small></div>)}
+    <div class="panel-heading">
+      <span class="folder-navigation"><ArrowLeft size={13} aria-hidden="true" /><House size={13} aria-hidden="true" /></span>
+      <strong>{pick('资料库', 'Library')}</strong>
+      <span class="panel-controls"><ChevronDown size={14} aria-hidden="true" /><Ellipsis size={14} aria-hidden="true" /></span>
+    </div>
+    <div class="folder-columns">
+      <span>{pick('文件名', 'Name')}</span>
+      <span>{pick('类型', 'Type')}</span>
+    </div>
+    <div class="folder-rows">
+      {folderRows.map((row, idx) => (
+        <div class:list={['folder-row', { 'is-active': idx === 2 }]}>
+          {row.folder
+            ? <Folder size={17} strokeWidth={1.6} className="folder-icon" aria-hidden="true" />
+            : <FileText size={17} strokeWidth={1.6} className="document-icon" aria-hidden="true" />}
+          <span class="folder-row-name">{row.name}</span>
+          <small>{row.type}</small>
+        </div>
+      ))}
+    </div>
   </div>
-  <div class="scene-footnote">{pick('界面示意 · 效果随系统与设置变化','UI illustration · Appearance varies by system and settings')}</div>
+
+  <div class="scene-taskbar" aria-hidden="true">
+    <span class="taskbar-dot accent"></span>
+    <span class="taskbar-dot"></span>
+    <span class="taskbar-dot"></span>
+    <span class="taskbar-dot"></span>
+  </div>
+  <div class="scene-footnote">{pick('界面示意 · 效果随系统与设置变化', 'UI illustration · Appearance varies by system and settings')}</div>
 </div>
+
 <style>
-.desktop-scene { position:relative; isolation:isolate; width:100%; aspect-ratio:1.4; overflow:hidden; border-radius:24px; border:1px solid var(--aw-color-line); background:linear-gradient(135deg,var(--illustration-base),var(--illustration-tint)); color:var(--aw-color-text-heading); }
-.scene-caption { position:absolute; top:7%; left:7%; right:7%; font-size:clamp(11px,1.15vw,14px); letter-spacing:.04em; }
-.scene-panel { position:absolute; background:var(--illustration-panel); border:1px solid var(--aw-color-line); border-radius:10px; box-shadow:0 12px 28px -20px rgb(0 0 0 / .25); }
-.main-panel { left:7%; top:17%; width:72%; }
-.panel-heading { position:relative; margin:0 8px; height:43px; border-bottom:1px solid var(--aw-color-line); display:flex; align-items:center; justify-content:center; }
-.panel-heading strong { font-size:13px; font-weight:600; }
-.panel-heading > span { position:absolute; right:2px; display:flex; gap:9px; }
-.panel-heading > .folder-navigation { left:2px; right:auto; gap:6px; opacity:.65; }
-.panel-files { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:22px 4px; padding:22px 8px 26px; }
-.panel-file { display:flex; flex-direction:column; gap:7px; align-items:center; font-size:11px; }
-.folder-icon { color:var(--illustration-folder-stroke); fill:var(--illustration-folder-fill); }
-.document-icon { color:var(--illustration-document-stroke); fill:var(--illustration-document-fill); }
-.folder-panel { width:66%; right:5%; bottom:12%; }
-.folder-columns { display:flex; justify-content:space-between; padding:7px 14px; margin:0 8px; border-bottom:1px solid var(--aw-color-line); font-size:10px; opacity:.7; }
-.folder-row { display:flex; align-items:center; gap:8px; padding:7px 16px; font-size:11px; }
-.folder-row:last-child { padding-bottom:13px; }
-.folder-row small { margin-left:auto; font-size:10px; opacity:.65; }
-.scene-footnote { position:absolute; bottom:4%; left:7%; right:5%; font-size:10px; opacity:.75; }
-/* Scale panel details together while keeping the compact, overlapping composition. */
-.desktop-scene { container-type:inline-size; }
-.panel-heading { height:7cqw; }
-.panel-heading strong { font-size:2.3cqw; }
-.panel-heading :global(svg) { width:2.8cqw; height:2.8cqw; }
-.panel-files { gap:3cqw 1cqw; padding:3cqw 1.5cqw 4cqw; }
-.panel-file { gap:1.2cqw; font-size:2cqw; }
-.panel-file :global(svg) { width:5.5cqw; height:5.5cqw; }
-.folder-panel { bottom:8%; }
-.folder-columns { font-size:1.8cqw; padding:1.1cqw 2cqw; }
-.folder-row { font-size:2cqw; padding:1cqw 2.7cqw; gap:1.3cqw; }
-.folder-row :global(svg) { width:3.4cqw; height:3.4cqw; }
-.folder-row small { font-size:1.8cqw; }
-.folder-row:last-child { padding-bottom:2cqw; }
-.scene-footnote { bottom:2%; font-size:1.7cqw; }
+.desktop-scene {
+  position: relative;
+  isolation: isolate;
+  container-type: inline-size;
+  width: 100%;
+  aspect-ratio: 1.38;
+  overflow: hidden;
+  border-radius: 24px;
+  border: 1px solid var(--aw-color-line);
+  background: var(--scene-wallpaper);
+  color: var(--aw-color-text-heading);
+  box-shadow: 0 24px 56px -34px rgb(15 23 42 / .28), inset 0 1px 0 rgb(255 255 255 / .45);
+}
+:global(.dark) .desktop-scene {
+  box-shadow: 0 28px 64px -32px rgb(0 0 0 / .7), inset 0 1px 0 rgb(255 255 255 / .08);
+}
+
+.scene-topbar {
+  position: absolute;
+  top: 5%;
+  left: 5.5%;
+  right: 5.5%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2cqw;
+}
+.scene-status-pill,
+.scene-search-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 1.1cqw;
+  padding: 1cqw 2cqw;
+  border-radius: 9999px;
+  background: var(--scene-surface);
+  border: 1px solid var(--scene-surface-border);
+  box-shadow: 0 6px 18px -12px var(--scene-surface-outer);
+  font-size: 1.85cqw;
+  font-weight: 500;
+  color: var(--aw-color-text-heading);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.scene-status-pill :global(svg) {
+  width: 2.3cqw;
+  height: 2.3cqw;
+  color: var(--aw-color-primary);
+}
+:global(.dark) .scene-status-pill :global(svg) { color: #93c5fd; }
+.scene-search-pill {
+  color: var(--aw-color-text-muted);
+}
+.scene-search-pill :global(svg) {
+  width: 2.1cqw;
+  height: 2.1cqw;
+}
+
+.scene-panel {
+  position: absolute;
+  background: var(--scene-surface);
+  border: 1px solid var(--scene-surface-border);
+  border-radius: 14px;
+  box-shadow: 0 18px 40px -22px var(--scene-surface-outer), 0 2px 6px -2px rgb(15 23 42 / .08);
+  backdrop-filter: blur(18px) saturate(135%);
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
+}
+.main-panel {
+  left: 5.5%;
+  top: 15.5%;
+  width: 71%;
+}
+.folder-panel {
+  width: 63%;
+  right: 5.5%;
+  bottom: 12.5%;
+}
+
+.panel-heading {
+  position: relative;
+  margin: 0 1.8cqw;
+  height: 7.4cqw;
+  border-bottom: 1px solid color-mix(in srgb, var(--aw-color-line) 75%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.panel-tab-heading {
+  justify-content: space-between;
+  padding-inline: .6cqw;
+  gap: 1.5cqw;
+}
+.panel-tabs {
+  display: flex;
+  align-items: center;
+  gap: .8cqw;
+  min-width: 0;
+}
+.panel-tab {
+  padding: .9cqw 1.8cqw;
+  border-radius: 7px;
+  font-size: 2cqw;
+  color: var(--aw-color-text-muted);
+  white-space: nowrap;
+}
+.panel-tab.active {
+  background: color-mix(in srgb, var(--aw-color-primary) 13%, transparent);
+  color: var(--aw-color-primary);
+  font-weight: 600;
+}
+:global(.dark) .panel-tab.active {
+  background: rgb(59 130 246 / .2);
+  color: #93c5fd;
+}
+
+.panel-heading strong {
+  font-size: 2.2cqw;
+  font-weight: 600;
+}
+.panel-controls {
+  display: flex;
+  align-items: center;
+  gap: 1.4cqw;
+  color: var(--aw-color-text-muted);
+}
+.folder-panel .panel-controls {
+  position: absolute;
+  right: .6cqw;
+}
+.folder-navigation {
+  position: absolute;
+  left: .6cqw;
+  display: flex;
+  align-items: center;
+  gap: 1.2cqw;
+  color: var(--aw-color-text-muted);
+}
+.panel-heading :global(svg) {
+  width: 2.5cqw;
+  height: 2.5cqw;
+}
+
+.panel-files {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2.2cqw 1.2cqw;
+  padding: 2.8cqw 2.4cqw 3.8cqw;
+}
+.panel-file {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1cqw;
+  align-items: center;
+  font-size: 1.95cqw;
+  color: var(--aw-color-text-default);
+}
+.panel-icon-tile {
+  display: grid;
+  place-items: center;
+  width: 8.6cqw;
+  height: 7.4cqw;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--aw-color-surface) 65%, transparent);
+}
+.panel-file :global(svg) {
+  width: 5.2cqw;
+  height: 5.2cqw;
+}
+.folder-icon {
+  color: var(--illustration-folder-stroke);
+  fill: var(--illustration-folder-fill);
+}
+.document-icon {
+  color: var(--illustration-document-stroke);
+  fill: var(--illustration-document-fill);
+}
+
+.folder-columns {
+  display: flex;
+  justify-content: space-between;
+  padding: 1.1cqw 2cqw;
+  margin: 0 1.8cqw;
+  border-bottom: 1px solid color-mix(in srgb, var(--aw-color-line) 70%, transparent);
+  font-size: 1.75cqw;
+  color: var(--aw-color-text-muted);
+}
+.folder-rows {
+  padding: 1cqw 1.8cqw 1.8cqw;
+  display: flex;
+  flex-direction: column;
+  gap: .5cqw;
+}
+.folder-row {
+  display: flex;
+  align-items: center;
+  gap: 1.4cqw;
+  padding: 1.1cqw 1.5cqw;
+  border-radius: 8px;
+  font-size: 1.95cqw;
+}
+.folder-row.is-active {
+  background: color-mix(in srgb, var(--aw-color-primary) 10%, transparent);
+}
+.folder-row-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.folder-row :global(svg) {
+  flex-shrink: 0;
+  width: 3.1cqw;
+  height: 3.1cqw;
+}
+.folder-row small {
+  margin-left: auto;
+  font-size: 1.7cqw;
+  color: var(--aw-color-text-muted);
+}
+
+.scene-taskbar {
+  position: absolute;
+  bottom: 5.2%;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 1.6cqw;
+  padding: 1cqw 2.4cqw;
+  border-radius: 9999px;
+  background: var(--scene-surface);
+  border: 1px solid var(--scene-surface-border);
+  box-shadow: 0 6px 18px -10px var(--scene-surface-outer);
+}
+.taskbar-dot {
+  width: 1.7cqw;
+  height: 1.7cqw;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--aw-color-text-muted) 35%, transparent);
+}
+.taskbar-dot.accent {
+  background: var(--aw-color-primary);
+}
+.scene-footnote {
+  position: absolute;
+  bottom: 1.5%;
+  left: 5.5%;
+  right: 5.5%;
+  text-align: center;
+  font-size: 1.65cqw;
+  color: var(--aw-color-text-muted);
+  opacity: .85;
+}
 </style>

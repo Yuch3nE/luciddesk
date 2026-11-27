@@ -18,7 +18,7 @@ const canonical = new URL(basePath, Astro.site);
     <meta charset="UTF-8" />
     <ClientRouter fallback="swap" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#f8fafc" />
+    <meta name="theme-color" content="#f8f9fb" />
     <title>{title}</title>
     <meta name="description" content={description} />
     {noindex ? <meta name="robots" content="noindex, follow" /> : <link rel="canonical" href={canonical} />}
@@ -30,10 +30,10 @@ const canonical = new URL(basePath, Astro.site);
     <meta property="og:image" content={new URL('/assets/app-icon.png', Astro.site)} />
     <script is:inline src="/theme.js"></script>
   </head>
-  <body class="bg-page text-default antialiased">
-    <a href="#main" class="rounded-xl border border-line px-6 py-3 font-semibold bg-page fixed -top-24 left-4 z-50 focus:top-4">{t("跳到主要内容")}</a>
+  <body class="flex min-h-screen flex-col bg-page text-default antialiased selection:bg-primary/15 selection:text-heading">
+    <a href="#main" class="rounded-xl border border-line px-6 py-3 font-semibold bg-elevated fixed -top-24 left-4 z-50 focus:top-4">{t("跳到主要内容")}</a>
     <Header />
-    <main id="main"><slot /></main>
+    <main id="main" class="flex-1"><slot /></main>
     <Footer />
     <script is:inline defer src="/motion.js"></script>
     <script is:inline defer src="/language.js"></script>

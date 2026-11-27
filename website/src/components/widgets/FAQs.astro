@@ -1,5 +1,6 @@
 ---
 import { localeOf } from '~/lib/i18n';
+import { ArrowRight } from 'lucide-react';
 const en = localeOf(Astro.url.pathname) === 'en';
 import Section from '~/components/ui/Section.astro';
 import FAQAccordion from '~/components/FAQAccordion';
@@ -7,14 +8,19 @@ interface Props { title: string; subtitle?: string; tagline?: string; id?: strin
 const {title, subtitle, tagline, items = [], id} = Astro.props;
 ---
 <Section id={id}>
-  <div class="grid gap-8 border-t border-line pt-10 lg:grid-cols-[0.65fr_1.35fr] lg:gap-20">
+  <div class="grid gap-10 border-t border-line pt-12 lg:grid-cols-[0.68fr_1.32fr] lg:gap-16">
     <div>
-      <p class="mb-4 text-xs font-semibold tracking-widest text-primary dark:text-blue-300">{tagline || (en ? 'GOOD TO KNOW' : '使用之前')}</p>
-      <h2 class="text-3xl font-bold tracking-tight text-heading">{title}</h2>
-      <p class="mt-4 text-sm leading-7 text-muted">{subtitle || (en ? 'A few details to help you get started with confidence.' : '关于文件、下载和数据，先把这些小事说清楚。')}</p>
-      <a href="/guide/" class="mt-5 inline-block text-sm font-medium text-primary dark:text-blue-300">{en ? 'Read the user guide →' : '阅读使用指南 →'}</a>
+      <p class="section-eyebrow mb-4">{tagline || (en ? 'GOOD TO KNOW' : '使用之前')}</p>
+      <h2 class="font-heading text-3xl font-bold tracking-tight text-heading">{title}</h2>
+      <p class="mt-4 text-sm leading-7 text-muted">{subtitle || (en ? 'A few details to help you get started with confidence.' : '关于文件安全、自动分类、下载与隐私，先把这些细节说清楚。')}</p>
+      <a href="/guide/" class="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-primary dark:text-blue-300">
+        {en ? 'Read the user guide' : '阅读使用指南'}
+        <ArrowRight size={15} aria-hidden="true"/>
+      </a>
     </div>
-    <div class="min-w-0"><FAQAccordion items={items} client:load /></div>
+    <div class="min-w-0 rounded-2xl border border-line bg-elevated px-5 sm:px-7">
+      <FAQAccordion items={items} client:load />
+    </div>
   </div>
   <noscript><dl class="mx-auto max-w-3xl space-y-5">{items.map(item => <div><dt class="font-semibold">{item.title}</dt><dd class="mt-2 text-sm text-muted" set:html={item.description}/></div>)}</dl></noscript>
 </Section>

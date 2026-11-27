@@ -3,99 +3,379 @@ import Layout from '~/layouts/PageLayout.astro';
 import Button from '~/components/ui/Button.astro';
 import { Card } from '~/components/ui/card';
 import WorkspaceIllustration from '~/components/WorkspaceIllustration.astro';
-import { LayoutGrid, FolderOpen, Search, Focus, Sparkles, Archive, Check, FileText, Folder, ArrowRight } from 'lucide-react';
+import {
+  LayoutGrid, WandSparkles, FolderOpen, Search, Focus, Sparkles, Archive,
+  Check, FileText, Folder, ArrowRight
+} from 'lucide-react';
 import { localeOf } from '~/lib/i18n';
 const en = localeOf(Astro.url.pathname) === 'en';
 const pick = (zh: string, english: string) => en ? english : zh;
+
 const features = [
-  {id:'panels', Icon:LayoutGrid, title:pick('文件有分组，桌面有条理','A place for every project'),
-    description:pick('把零散的文件和快捷方式收进面板，按项目或用途分类。正在做的事和常用工具，各有自己的位置。','Bring files, folders and shortcuts into desktop panels, keeping active work and everyday tools in sight.'),
-    items:en ? ['Group items into panels and switch between tabs.','Use an automatic grid, keep empty spaces, or position icons freely.','Move, resize, collapse and lock panels to fit your workflow.'] : ['用不同面板区分工作、学习和个人项目，标签页让同类内容集中管理。','支持自动排列、保留空位的网格和自由摆放，也可按名称、类型或时间排序。','面板可移动、缩放、折叠和锁定，让布局适应你的工作习惯。'],
-    example:pick('一个面板放当前项目，一个面板放常用工具；不同任务用标签切换。','Keep your current project in one panel and everyday tools in another. Use tabs to switch tasks.'),
-    note:pick('收纳只保存文件引用，不搬动原文件；文件菜单中的删除等操作会影响真实文件。','Organizing stores references without moving originals. File commands such as Delete still affect real files.'), href:'/guide/#organize'},
-  {id:'folders', Icon:FolderOpen, title:pick('常用文件夹，抬眼就能找到','Your folders, right on the desktop'),
-    description:pick('把下载、素材或项目目录放到桌面。直接浏览最新内容，少开几个窗口，少找几层文件夹。','Map a frequently used folder to a panel and cut down on trips to File Explorer.'),
-    items:en ? ['Browse folder contents with automatic refresh when files change.','Open subfolders inside the panel and go back with Alt + Left.','Sort and manage files from the panel.'] : ['目录内容随文件变化自动刷新，适合下载、素材和项目文件夹。','默认双击进入子文件夹，按 Alt + ← 返回，也可设置为在资源管理器中打开。','在面板内排序、复制、重命名和管理文件。'],
-    example:pick('下载完成后，直接在桌面的文件夹面板找到新文件。','Find a new download directly in your desktop folder panel.'),
-    note:pick('文件夹面板直接操作真实目录。拖入文件会复制到当前目录，删除会影响原文件。','Folder panels work with real directories. Dropping files copies them into the folder; deleting affects the originals.'), href:'/guide/#panels'},
-  {id:'search', Icon:Search, title:pick('快速找到，打开前先预览','Find it, then take a quick look'),
-    description:pick('记得文件名，却不记得放在哪？在桌面搜索，再快速预览内容，找到真正需要的那一份。','Remember the name but not the folder? Search from your desktop and preview the contents to find the file you need.'),
-    items:en ? ['Connect Everything to search local files by name or query syntax.','Open a result or reveal it in File Explorer.','Select a file and press Space to preview with Peek or QuickLook.'] : ['连接 Everything 搜索本机文件，支持文件名与查询语法。','搜索结果可直接打开，也可定位到资源管理器中的所在位置。','选中文件后按空格，通过 PowerToys Peek 或 QuickLook 快速预览。'],
-    example:pick('输入 ext:pdf 筛选文档，按空格确认内容，再打开需要的文件。','Search ext:pdf to find a document, then preview it before opening.'),
-    note:pick('Everything 与预览工具需单独安装，并在 LucidDesk 设置中启用。','Install Everything and your preview tool separately, then enable them in LucidDesk settings.'), href:'/guide/#search'},
-  {id:'focus', Icon:Focus, title:pick('收起干扰，留下专注','Less clutter, more focus'),
-    description:pick('专注时收起图标和面板，需要时双击回到熟悉的工作区。配色与材质也能按你的喜好调整。','Keep your desktop useful while leaving room to focus.'),
-    items:en ? ['Enable double-click to hide desktop icons and panels, then double-click to restore.','Adjust colors, fonts and rounded corners to suit your desktop.','Choose solid, acrylic or mica materials and light or dark appearance.'] : ['启用双击隐藏桌面后，双击空白处收起图标与面板，再次双击恢复。','调整字体、颜色与圆角，让面板和桌面风格协调。','支持浅色、深色及纯色、亚克力、云母等背景材质。'],
-    example:pick('开始写作或演示前收起桌面，结束后恢复原来的工作区。','Clear the desktop before writing or presenting, then bring your workspace back.'),
-    note:pick('Mica 系列材质仅在 Windows 11 提供，显示效果会随系统与壁纸变化。','Mica materials require Windows 11. Appearance varies with your system and wallpaper.'), href:'/guide/#shortcuts'},
-  {id:'agent', Icon:Sparkles, title:pick('你提需求，Agent 帮你整理','Your request. An agent’s helping hand.'),
-    description:pick('用自然语言描述想要的布局。配套 Skill 与 CLI 让外部 Agent 先了解当前桌面，再规划和执行整理。','Describe the layout you want in everyday language. The companion Skill and CLI let an external agent inspect, plan and organize your workspace.'),
-    items:en ? ['Inspect panels, icons and the current workspace layout.','Plan groups and panel positions from your request.','Preview changes before applying and checking the result.'] : ['读取面板、图标和现有布局，先了解工作区状态。','按项目分组、调整面板尺寸和位置，生成整理方案。','先预览差异，再应用并检查结果，保留对改动的掌控。'],
-    example:pick('“把工作文件放在左边，常用工具放在右边。”','“Put work files on the left and everyday tools on the right.”'),
-    note:pick('需使用外部 Agent，并启用应用中的 CLI 控制；不是内置聊天助手。','Requires an external agent and enabled CLI control; this is not a built-in chat assistant.'), href:'/agent/'},
-  {id:'backup', Icon:Archive, title:pick('熟悉的布局，随时找回来','Keep the layout that works for you'),
-    description:pick('整理好的桌面不必从头再来。保存设置、面板布局与收纳关系，调整或升级前多一份安心。','Save settings and desktop layouts so you have a way back before changing or updating your setup.'),
-    items:en ? ['Export a backup or restore one in Backup and restore settings.','Automatic backups record changes to settings and layouts.','Keep the data folder when updating a portable copy.'] : ['在“备份与恢复”中导出备份，或从已有文件恢复。','自动备份记录设置和布局变化，未变化时不重复生成。','便携版升级时保留 data 目录，延续自己的设置与布局。'],
-    example:pick('尝试新的桌面布局前导出备份，不习惯时再恢复。','Export a backup before reorganizing, so you can return to a familiar layout.'),
-    note:pick('备份包含设置、布局和收纳关系，不包含真实文件内容。','Backups contain settings, layouts and organization references, not the contents of your files.'), href:'/guide/#backup'},
+  {
+    id: 'panels',
+    Icon: LayoutGrid,
+    category: pick('面板与标签', 'Panels & tabs'),
+    navLabel: pick('面板收纳', 'Panels'),
+    title: pick('文件有分组，桌面有条理', 'A place for every project'),
+    description: pick(
+      '把零散的文件和快捷方式收进桌面面板，按项目或用途分类。合并或分离标签页，让正在做的事和常用工具各有位置。',
+      'Bring files, folders, and shortcuts into desktop panels. Merge or split tabs so active work and everyday tools each have a clear home.'
+    ),
+    items: en
+      ? [
+          'Combine panels into tabs with full-width or left-aligned tab bars.',
+          'Configure icon, list, or icon-only view and icon size independently per panel.',
+          'Auto-arrange, snap to grid, or position freely; lock panels and drag items into Windows Terminal.',
+        ]
+      : [
+          '支持多标签页合并与分离，标签栏可在“铺满”与“左对齐”间切换。',
+          '每个面板独立选择图标、列表或纯图标视图及大中小图标，悬停纯图标可查看完整名称。',
+          '支持自动排列、网格对齐或自由摆放，可锁定位置尺寸，也支持把文件拖入 Windows Terminal。',
+        ],
+    example: pick('一个面板放当前项目，一个面板放常用工具；不同任务用标签切换。', 'Keep your current project in one panel and everyday tools in another, switching tasks with tabs.'),
+    note: pick('收纳只保存文件引用，不搬动原文件；文件菜单中的删除等操作会影响真实文件。', 'Organizing stores references without moving originals. File commands such as Delete still affect real files.'),
+    href: '/guide/#panels',
+  },
+  {
+    id: 'classify',
+    Icon: WandSparkles,
+    category: pick('自动分类', 'Auto-classification'),
+    navLabel: pick('自动分类', 'Auto-classify'),
+    title: pick('设好规则，一键整理桌面', 'Rules that keep your desktop tidy'),
+    description: pick(
+      '不想每次手动拖动新下载的桌面文件？用规则告诉 LucidDesk 哪些图标该去哪个面板，一键预览整理或自动收纳新图标。',
+      'Stop sorting new desktop clutter by hand. Define rules to route icons into target panels, preview one-click organization, or sort new items automatically.'
+    ),
+    items: en
+      ? [
+          'Match items by file extension, keyword, regular expression, or icon type (file, folder, shortcut).',
+          'Use built-in templates, drag to set rule priority, toggle rules individually, and undo recent deletions.',
+          'Preview every move in One-Click Organize before applying, or enable auto-sorting for newly added icons.',
+        ]
+      : [
+          '支持按扩展名、关键字、正则表达式或图标类型（文件、文件夹、快捷方式）匹配目标面板。',
+          '内置规则模板，支持优先级排序、单独启停以及撤销最近一次规则删除。',
+          '“一键整理”先预览所有去向与跳过原因再应用；开启自动整理后，新出现的未分组图标自动归位。',
+        ],
+    example: pick('把 PDF 与文档规则指向“工作资料”，截图和设计稿自动归入“素材面板”。', 'Route PDFs and docs to Work, while screenshots and assets flow automatically into Design.'),
+    note: pick('自动分类同样只整理桌面图标引用，磁盘上的文件始终保留在原位置。', 'Auto-classification only organizes desktop references; original files remain in place on disk.'),
+    href: '/guide/#panels',
+  },
+  {
+    id: 'folders',
+    Icon: FolderOpen,
+    category: pick('文件夹浏览', 'Folder access'),
+    navLabel: pick('文件夹面板', 'Folders'),
+    title: pick('常用文件夹，抬眼就能找到', 'Your folders, right on the desktop'),
+    description: pick(
+      '把下载、素材或项目目录直接放到桌面。文件变动自动刷新，直接浏览最新内容，少开几个窗口，少翻几层目录。',
+      'Map frequently used folders straight to your desktop. Contents refresh automatically so you spend less time jumping through File Explorer.'
+    ),
+    items: en
+      ? [
+          'Browse real directories with automatic refresh whenever files change.',
+          'Enter subfolders directly inside the panel and go back with Alt + Left.',
+          'Switch between icon, icon-only, and detailed list views with sortable columns.',
+        ]
+      : [
+          '目录内容随文件变化自动刷新，非常适合下载、素材和活跃项目目录。',
+          '默认双击进入子文件夹，按 Alt + ← 返回上级，也可设为在资源管理器中打开。',
+          '独立切换图标、纯图标或列表视图，列表表头支持排序与自定义显示列。',
+        ],
+    example: pick('文件刚下载完成，直接在桌面的文件夹面板里找到并打开。', 'Find a new download right away in your desktop folder panel.'),
+    note: pick('文件夹面板直接操作真实目录。拖入文件会复制到当前目录，删除会影响原文件。', 'Folder panels work with real directories. Dropping files copies them in; deleting affects originals.'),
+    href: '/guide/#folders',
+  },
+  {
+    id: 'search',
+    Icon: Search,
+    category: pick('搜索与预览', 'Search & preview'),
+    navLabel: pick('搜索与预览', 'Search & preview'),
+    title: pick('快速找到，打开前先预览', 'Find it, then take a quick look'),
+    description: pick(
+      '记得文件名，却不记得放在哪？在桌面直接搜索并查看彩色文件图标，按空格先预览内容，找到真正需要的那一份。',
+      'Remember the filename but not the folder? Search from your desktop with full-color file icons and press Space to preview before opening.'
+    ),
+    items: en
+      ? [
+          'Connect Everything to search local files by name or advanced query syntax.',
+          'Double-click to open a result, or press Ctrl + Enter to reveal it in File Explorer.',
+          'Select a file and press Space to preview instantly with PowerToys Peek or QuickLook.',
+        ]
+      : [
+          '连接 Everything 搜索本机文件，支持文件名与 ext:pdf、folder: 等查询语法。',
+          '搜索结果展示彩色文件图标，双击直接打开，按 Ctrl + Enter 在资源管理器中定位。',
+          '选中任意文件按空格键，通过 PowerToys Peek 或 QuickLook 快速预览内容。',
+        ],
+    example: pick('输入 ext:pdf 筛选文档，按空格确认内容，再打开需要的文件。', 'Search ext:pdf to filter documents, press Space to confirm the contents, then open it.'),
+    note: pick('Everything 与预览工具需单独安装，并在 LucidDesk 设置中启用。', 'Install Everything and your preview tool separately, then enable them in LucidDesk settings.'),
+    href: '/guide/#search',
+  },
+  {
+    id: 'focus',
+    Icon: Focus,
+    category: pick('专注与外观', 'Focus & appearance'),
+    navLabel: pick('外观与专注', 'Appearance'),
+    title: pick('收起干扰，留下专注', 'Less clutter, more focus'),
+    description: pick(
+      '专注时一键隐藏桌面，需要时双击回到熟悉的工作区。配色、材质、渲染风格与界面语言都可按你的偏好调整。',
+      'Clear your desktop when you need focus, then bring it right back. Tune themes, backdrop materials, rendering style, and UI language.'
+    ),
+    items: en
+      ? [
+          'Enable double-click on empty desktop space to hide icons and panels, and double-click again to restore.',
+          'Choose light or dark mode, Solid, Acrylic, Mica, or Mica Alt materials, plus system or custom corner rendering.',
+          'Customize fonts, snap spacing, and switch instantly across 7 built-in interface languages.',
+        ]
+      : [
+          '启用“双击隐藏桌面”后，双击空白处收起图标与面板，再次双击或点击托盘图标恢复。',
+          '支持浅色／深色及纯色、亚克力、Mica、Mica Alt 材质，可选系统渲染或自定义圆角。',
+          '自由调整字体与吸附间距，内置简繁中文、英、日、韩、德、俄 7 种界面语言并即时生效。',
+        ],
+    example: pick('开始写作、录屏或演示前双击清空桌面，结束后再双击恢复原样。', 'Clear the desktop before writing, recording, or presenting, then restore your workspace in one double-click.'),
+    note: pick('Mica 系列材质仅在 Windows 11 提供，显示效果会随系统与壁纸变化。', 'Mica materials require Windows 11. Appearance varies with your system and wallpaper.'),
+    href: '/guide/#organize',
+  },
+  {
+    id: 'agent',
+    Icon: Sparkles,
+    category: pick('Agent 协作', 'Agent assistance'),
+    navLabel: pick('Agent 联动', 'Agent'),
+    title: pick('你提需求，Agent 帮你整理', 'Your request. An agent’s helping hand.'),
+    description: pick(
+      '用自然语言描述想要的布局。配套 Skill 与 CLI 让外部 Agent 先读取现状、输出变更摘要与预览，再按你的确认执行整理。',
+      'Describe the workspace you want in plain language. The bundled Skill and CLI let an external agent inspect, preview a diff summary, and apply approved changes.'
+    ),
+    items: en
+      ? [
+          'Inspect panels, icons, per-panel view settings, and current workspace layout live.',
+          'Generate a structured plan with a change summary and full diff before applying.',
+          'List, create, export, and restore configuration backups with optional diagnostic logging.',
+        ]
+      : [
+          '实时读取面板、图标、独立视图选项与现有布局，基于最新状态生成方案。',
+          '操作预览提供变更摘要与完整差异，先确认再提交，避免误操作。',
+          '同样支持通过 CLI 查看、创建、导出与恢复配置备份，并提供可选诊断日志。',
+        ],
+    example: pick('“把工作文件放在左边，常用工具放在右边，先给我预览方案。”', '“Put work files on the left and everyday tools on the right — preview the plan first.”'),
+    note: pick('需使用外部 Agent 并启用应用内 CLI 控制；不内置大模型，无需配置 API 密钥。', 'Requires an external agent and enabled CLI control; no built-in LLM or API key needed.'),
+    href: '/agent/',
+  },
+  {
+    id: 'backup',
+    Icon: Archive,
+    category: pick('备份与更新', 'Backup & updates'),
+    navLabel: pick('备份与更新', 'Backup & updates'),
+    title: pick('熟悉的布局，随时找回来', 'Keep the layout that works for you'),
+    description: pick(
+      '整理好的桌面不必从头再来。自动与手动备份守护设置和布局，升级时还可在应用内验证签名并一键原位更新。',
+      'Save settings and desktop layouts before experimenting, and stay up to date with locally verified signed in-app updates.'
+    ),
+    items: en
+      ? [
+          'Export a manual backup or restore anytime in Backup & restore settings; pre-restore snapshots protect current state.',
+          'Automatic backups record changes to settings and layouts without duplicating unchanged snapshots.',
+          'Download and verify signed in-app updates directly in Settings → About across Installer, ZIP, and Portable builds.',
+        ]
+      : [
+          '在“备份与恢复”中随时导出或恢复快照，恢复前自动保存当前状态，变更冲突时自动取消以防误覆盖。',
+          '自动备份按需记录设置和布局变化，未变动时不重复占用空间。',
+          '支持签名应用内更新：安装版、普通 ZIP 与便携版均可在“设置 → 关于”本地验签后一键升级。',
+        ],
+    example: pick('尝试新的桌面布局或升级前保存一份备份，随时一键回到熟悉的工作区。', 'Export a backup before trying a new layout so you can return to your familiar setup anytime.'),
+    note: pick('备份包含设置、布局和收纳关系，不包含真实文件内容。', 'Backups contain settings, layouts, and organization references, not the contents of your files.'),
+    href: '/guide/#backup',
+  },
 ];
-const categories = en ? ['Panels & tabs','Folder access','Search & preview','Focus & appearance','Agent assistance','Backup & restore'] : ['面板与标签','文件夹浏览','搜索与预览','专注与外观','Agent 协作','备份与恢复'];
-const title = pick('让桌面配合你的工作方式','A desktop that works the way you do.');
-const description = pick('把文件放顺手，把时间留给工作。探索面板收纳、文件查找和 Agent 协作，找到适合自己的桌面用法。','Keep files within reach and make room for your work. Explore panels, file search and agent assistance to find a setup that fits your day.');
+
+const classifyPreview = [
+  { rule: '*.pdf, *.docx', target: pick('工作文档', 'Documents'), tag: pick('扩展名', 'Extension') },
+  { rule: pick('包含 “截图”', 'Contains "Shot"'), target: pick('设计素材', 'Assets'), tag: pick('关键字', 'Keyword') },
+  { rule: '^PROJ-\\d+', target: pick('当前项目', 'Active'), tag: pick('正则', 'Regex') },
+];
+
+const title = pick('让桌面配合你的工作方式', 'A desktop that works the way you do.');
+const description = pick(
+  '把文件放顺手，把时间留给工作。探索面板收纳、自动分类、文件夹面板、搜索预览与 Agent 协作，找到适合自己的桌面用法。',
+  'Keep files within reach and make room for your work. Explore desktop panels, auto-classification, folder access, search, previews, and agent assistance.'
+);
 ---
-<Layout title={`${pick('探索 LucidDesk','Explore LucidDesk')} · LucidDesk`} description={description}>
-  <div class="mx-auto max-w-6xl px-5 py-12 sm:px-8 lg:py-16">
+<Layout title={`${pick('探索 LucidDesk', 'Explore LucidDesk')} · LucidDesk`} description={description}>
+  <div class="hero-backdrop mx-auto max-w-6xl px-5 py-12 sm:px-8 lg:py-16">
     <header class="mx-auto max-w-3xl text-center">
-      <p class="mb-4 text-xs font-semibold tracking-widest text-primary dark:text-blue-300">{pick('探索','EXPLORE')}</p>
-      <h1 class="text-balance text-3xl font-bold leading-snug tracking-tight text-heading sm:text-4xl">{title}</h1>
+      <p class="section-eyebrow mb-4">{pick('功能全览', 'EXPLORE FEATURES')}</p>
+      <h1 class="text-balance font-heading text-3xl font-bold leading-snug tracking-tight text-heading sm:text-5xl">{title}</h1>
       <p class="mx-auto mt-5 max-w-2xl text-base leading-8 text-muted">{description}</p>
-      <div class="mt-7 flex flex-wrap justify-center gap-3"><Button href="/#download" variant="primary" icon="download" text={pick('下载 LucidDesk','Download LucidDesk')}/><Button href="/guide/" text={pick('阅读使用指南','Read the user guide')}/></div>
+      <div class="mt-7 flex flex-wrap justify-center gap-3">
+        <Button href="/#download" variant="primary" icon="download" text={pick('下载 LucidDesk', 'Download LucidDesk')}/>
+        <Button href="/guide/" variant="secondary" icon="book-open" text={pick('阅读使用指南', 'Read the user guide')}/>
+      </div>
     </header>
-    <nav aria-label={pick('功能目录','Feature sections')} class="my-10 flex flex-wrap justify-center gap-2 text-xs text-muted">
-      {features.map(({id, Icon}, index) => <a href={`#${id}`} class="inline-flex min-h-10 items-center gap-2 rounded-full px-3 py-2 transition-colors hover:bg-primary/10 hover:text-primary"><Icon className="size-4" aria-hidden="true"/>{(en ? ['Panels','Folders','Search & preview','Focus & appearance','Agent','Backup'] : ['面板收纳','文件夹浏览','搜索与预览','专注与外观','Agent 联动','备份恢复'])[index]}</a>)}
+
+    <nav aria-label={pick('功能目录', 'Feature sections')} class="my-10 flex flex-wrap justify-center gap-2 text-xs">
+      {features.map(({ id, Icon, navLabel }) => (
+        <a
+          href={`#${id}`}
+          class="inline-flex min-h-10 items-center gap-2 rounded-full border border-line bg-elevated px-3.5 py-2 font-medium text-muted shadow-xs transition-colors hover:border-primary/35 hover:bg-primary/5 hover:text-primary dark:hover:text-blue-300"
+        >
+          <Icon className="size-3.5" aria-hidden="true"/>
+          <span>{navLabel}</span>
+        </a>
+      ))}
     </nav>
+
     <div>
-      {features.slice(0, 3).map((feature, index) => <section id={feature.id} class="feature-story grid items-center gap-10 border-t border-line py-12 lg:grid-cols-2 lg:gap-14 lg:py-16">
-        <div class:list={["min-w-0", {"lg:order-2": index === 1}]}>
-          <div class="mb-4 flex items-center gap-2.5 text-primary dark:text-blue-300"><feature.Icon className="size-5" aria-hidden="true"/><p class="text-xs font-semibold tracking-wide">{categories[index]}</p></div>
-          <h2 class="text-balance text-2xl font-semibold leading-snug tracking-tight text-heading sm:text-3xl">{feature.title}</h2>
-          <p class="mt-4 text-sm leading-7 text-muted">{feature.description}</p>
-          <ul class="mt-5 space-y-2">{feature.items.map(item => <li class="flex gap-3 text-sm leading-7 text-muted"><Check className="mt-1.5 size-4 shrink-0 text-primary dark:text-blue-300" aria-hidden="true"/><span>{item}</span></li>)}</ul>
-          <p class="mt-5 text-xs leading-6 text-muted">{feature.note}</p>
-          <div class="mt-4"><Button href={feature.href} variant="link" class="h-auto px-0 py-1 text-primary dark:text-blue-300" icon="chevron-right" text={`${categories[index]}${en ? ' guide' : '指南'}`}/></div>
-        </div>
-        <figure class="min-w-0">
-          {index === 0 ? <WorkspaceIllustration/> : index === 1 ? <Card className="illustration-window gap-0 overflow-hidden rounded-2xl border-line bg-card/50 p-0 shadow-none backdrop-blur-sm">
-            <div class="flex items-center gap-3 border-b border-line px-6 py-4 text-sm font-medium text-heading"><FolderOpen className="size-5 text-primary dark:text-blue-300" aria-hidden="true"/>{pick('项目资料','Project files')}<span class="ml-auto text-xs font-normal text-muted">{pick('文件夹面板','Folder panel')}</span></div>
-            <div class="grid grid-cols-3 gap-x-3 gap-y-7 px-5 py-8">{[pick('设计素材','Assets'),pick('参考资料','References'),pick('已归档','Archive'),pick('项目计划','Plan'),pick('会议记录','Notes'),pick('交付清单','Checklist')].map((label,i) => <div class="flex min-w-0 flex-col items-center gap-3 text-center text-xs text-muted">{i < 3 ? <Folder className="size-9 illustration-folder" strokeWidth={1.5} aria-hidden="true"/> : <FileText className="size-9 illustration-document" strokeWidth={1.5} aria-hidden="true"/>}<span>{label}</span></div>)}</div>
-            <div class="border-t border-line px-6 py-3 text-xs text-muted">{pick('文件变化，内容同步刷新','Contents refresh as files change')}</div>
-          </Card> : <Card className="illustration-window gap-0 rounded-2xl border-line bg-card/50 p-5 shadow-none backdrop-blur-sm sm:p-7">
-            <div class="flex items-center gap-3 border-b border-line pb-4 text-sm text-heading"><Search className="size-5 text-primary dark:text-blue-300" aria-hidden="true"/><span>ext:pdf</span><span class="ml-auto text-xs text-muted">Everything</span></div>
-            <div class="my-5 flex items-center gap-3 rounded-xl bg-primary/5 p-4"><FileText className="size-8 shrink-0 illustration-document" strokeWidth={1.5} aria-hidden="true"/><div class="min-w-0"><p class="text-sm font-medium text-heading">{pick('项目提案.pdf','Project proposal.pdf')}</p><p class="mt-1 text-xs text-muted">{pick('项目资料 / 文档','Project files / Documents')}</p></div></div>
-            <div class="flex items-center justify-center gap-3 py-3 text-sm text-muted"><span class="rounded-md border border-line bg-card px-3 py-1.5 text-xs">Space</span><ArrowRight className="size-4" aria-hidden="true"/><span>{pick('先预览，再打开','Preview before opening')}</span></div>
-          </Card>}
-          <figcaption class="mx-auto mt-5 max-w-md text-center text-xs leading-6 text-muted">{feature.example}</figcaption>
-        </figure>
-      </section>)}
+      {features.slice(0, 4).map((feature, index) => (
+        <section id={feature.id} class="grid items-center gap-10 border-t border-line py-12 lg:grid-cols-2 lg:gap-14 lg:py-16">
+          <div class:list={["min-w-0", { "lg:order-2": index % 2 === 1 }]}>
+            <div class="mb-4 inline-flex items-center gap-2 text-primary dark:text-blue-300">
+              <span class="flex size-8 items-center justify-center rounded-lg bg-primary/10 dark:bg-blue-400/15">
+                <feature.Icon className="size-4.5" aria-hidden="true"/>
+              </span>
+              <p class="text-xs font-semibold tracking-wider">{feature.category}</p>
+            </div>
+            <h2 class="text-balance font-heading text-2xl font-bold leading-snug tracking-tight text-heading sm:text-3xl">{feature.title}</h2>
+            <p class="mt-4 text-sm leading-7 text-muted">{feature.description}</p>
+            <ul class="mt-5 space-y-2.5">
+              {feature.items.map(item => (
+                <li class="flex gap-3 text-sm leading-7 text-default">
+                  <Check className="mt-1.5 size-4 shrink-0 text-primary dark:text-blue-300" aria-hidden="true"/>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+            <p class="mt-5 text-xs leading-6 text-muted">{feature.note}</p>
+            <div class="mt-4">
+              <Button href={feature.href} variant="link" class="h-auto px-0 py-1 text-primary dark:text-blue-300" icon="chevron-right" text={`${feature.category}${en ? ' guide' : '指南'}`}/>
+            </div>
+          </div>
+
+          <figure class="min-w-0">
+            {index === 0 && <WorkspaceIllustration/>}
+
+            {index === 1 && (
+              <Card className="illustration-window gap-0 overflow-hidden rounded-2xl border-line p-0 shadow-sm">
+                <div class="flex items-center justify-between gap-3 border-b border-line px-5 py-4 text-sm font-semibold text-heading">
+                  <span class="flex items-center gap-2.5"><WandSparkles className="size-4.5 text-primary dark:text-blue-300" aria-hidden="true"/>{pick('自动分类 · 规则管理', 'Auto-classify · Rules')}</span>
+                  <span class="rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-medium text-primary dark:bg-blue-400/15 dark:text-blue-300">{pick('按优先级匹配', 'Priority order')}</span>
+                </div>
+                <div class="space-y-2.5 p-5">
+                  {classifyPreview.map((row, idx) => (
+                    <div class="flex items-center gap-3 rounded-xl border border-line bg-page/80 px-3.5 py-3 text-xs">
+                      <span class="flex size-5 shrink-0 items-center justify-center rounded-md bg-surface font-mono text-[10px] font-semibold text-muted">{idx + 1}</span>
+                      <code class="rounded bg-surface px-2 py-0.5 font-mono text-[11px] text-heading">{row.rule}</code>
+                      <ArrowRight className="size-3.5 shrink-0 text-muted" aria-hidden="true"/>
+                      <span class="min-w-0 truncate font-medium text-heading">{row.target}</span>
+                      <span class="ml-auto shrink-0 rounded-full border border-line px-2 py-0.5 text-[10px] text-muted">{row.tag}</span>
+                    </div>
+                  ))}
+                </div>
+                <div class="flex items-center justify-between border-t border-line bg-surface/60 px-5 py-3 text-xs">
+                  <span class="font-medium text-primary dark:text-blue-300">{pick('一键整理 · 先预览去向再应用', 'One-click organize · Preview before apply')}</span>
+                  <span class="text-muted">{pick('原文件不移动', 'Originals stay')}</span>
+                </div>
+              </Card>
+            )}
+
+            {index === 2 && (
+              <Card className="illustration-window gap-0 overflow-hidden rounded-2xl border-line p-0 shadow-sm">
+                <div class="flex items-center gap-3 border-b border-line px-6 py-4 text-sm font-semibold text-heading">
+                  <FolderOpen className="size-5 text-primary dark:text-blue-300" aria-hidden="true"/>
+                  {pick('项目资料', 'Project files')}
+                  <span class="ml-auto rounded-full bg-surface px-2.5 py-0.5 text-xs font-normal text-muted">{pick('文件夹面板', 'Folder panel')}</span>
+                </div>
+                <div class="grid grid-cols-3 gap-x-3 gap-y-6 px-5 py-7">
+                  {[pick('设计素材', 'Assets'), pick('参考资料', 'References'), pick('已归档', 'Archive'), pick('项目计划', 'Plan'), pick('会议记录', 'Notes'), pick('交付清单', 'Checklist')].map((label, i) => (
+                    <div class="flex min-w-0 flex-col items-center gap-2.5 text-center text-xs text-default">
+                      <span class="flex size-12 items-center justify-center rounded-xl bg-surface/75">
+                        {i < 3
+                          ? <Folder className="size-8 illustration-folder" strokeWidth={1.5} aria-hidden="true"/>
+                          : <FileText className="size-8 illustration-document" strokeWidth={1.5} aria-hidden="true"/>}
+                      </span>
+                      <span>{label}</span>
+                    </div>
+                  ))}
+                </div>
+                <div class="border-t border-line bg-surface/60 px-6 py-3 text-xs text-muted">
+                  {pick('文件变化，内容同步刷新 · 双击进入子文件夹', 'Contents refresh automatically · Double-click to enter subfolders')}
+                </div>
+              </Card>
+            )}
+
+            {index === 3 && (
+              <Card className="illustration-window gap-0 overflow-hidden rounded-2xl border-line p-0 shadow-sm">
+                <div class="p-5 sm:p-6">
+                  <div class="flex items-center gap-3 rounded-xl border border-line bg-page px-4 py-3 text-sm text-heading">
+                    <Search className="size-4.5 text-primary dark:text-blue-300" aria-hidden="true"/>
+                    <span class="font-mono text-xs sm:text-sm">ext:pdf</span>
+                    <span class="ml-auto rounded bg-surface px-2 py-0.5 text-xs text-muted">Everything</span>
+                  </div>
+                  <div class="mt-4 flex items-center gap-3.5 rounded-xl border border-primary/20 bg-primary/[0.06] p-4 dark:border-blue-400/20 dark:bg-blue-400/[0.08]">
+                    <FileText className="size-8 shrink-0 illustration-document" strokeWidth={1.5} aria-hidden="true"/>
+                    <div class="min-w-0">
+                      <p class="text-sm font-semibold text-heading">{pick('项目提案.pdf', 'Project proposal.pdf')}</p>
+                      <p class="mt-0.5 text-xs text-muted">{pick('项目资料 / 文档 · 2.4 MB', 'Project files / Documents · 2.4 MB')}</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="flex items-center justify-center gap-3 border-t border-line bg-surface/60 px-5 py-3.5 text-xs text-muted">
+                  <kbd class="rounded-md border border-line border-b-2 bg-elevated px-2.5 py-1 font-mono text-[11px] text-heading">Space</kbd>
+                  <ArrowRight className="size-3.5" aria-hidden="true"/>
+                  <span>{pick('先预览，再打开', 'Preview before opening')}</span>
+                </div>
+              </Card>
+            )}
+
+            <figcaption class="mx-auto mt-4 max-w-md text-center text-xs leading-6 text-muted">{feature.example}</figcaption>
+          </figure>
+        </section>
+      ))}
     </div>
+
     <div class="border-t border-line py-4">
-      {features.slice(3).map((feature, index) => <section id={feature.id} class="grid gap-5 border-b border-line py-10 md:grid-cols-[0.8fr_1.4fr] md:gap-12">
-        <div>
-          <div class="mb-3 flex items-center gap-2.5 text-primary dark:text-blue-300"><feature.Icon className="size-5" aria-hidden="true"/><p class="text-xs font-semibold tracking-wide">{categories[index + 3]}</p></div>
-          <h2 class="text-xl font-semibold leading-snug text-heading sm:text-2xl">{feature.title}</h2>
-          <div class="mt-4"><Button href={feature.href} variant="link" class="h-auto px-0 py-1 text-primary dark:text-blue-300" icon="chevron-right" text={`${categories[index + 3]}${en ? ' guide' : '指南'}`}/></div>
-        </div>
-        <div class="min-w-0">
-          <p class="text-sm leading-7 text-muted">{feature.description}</p>
-          <ul class="mt-4 space-y-2">{feature.items.map(item => <li class="flex gap-3 text-sm leading-7 text-muted"><Check className="mt-1.5 size-4 shrink-0 text-primary dark:text-blue-300" aria-hidden="true"/><span>{item}</span></li>)}</ul>
-          <p class="mt-5 border-l-2 border-primary/30 pl-4 text-sm leading-7 text-heading">{feature.example}</p>
-          <p class="mt-4 text-xs leading-6 text-muted">{feature.note}</p>
-        </div>
-      </section>)}
+      {features.slice(4).map(feature => (
+        <section id={feature.id} class="grid gap-6 border-b border-line py-10 md:grid-cols-[0.82fr_1.38fr] md:gap-12">
+          <div>
+            <div class="mb-3 inline-flex items-center gap-2 text-primary dark:text-blue-300">
+              <span class="flex size-8 items-center justify-center rounded-lg bg-primary/10 dark:bg-blue-400/15">
+                <feature.Icon className="size-4.5" aria-hidden="true"/>
+              </span>
+              <p class="text-xs font-semibold tracking-wider">{feature.category}</p>
+            </div>
+            <h2 class="font-heading text-xl font-bold leading-snug text-heading sm:text-2xl">{feature.title}</h2>
+            <div class="mt-4">
+              <Button href={feature.href} variant="link" class="h-auto px-0 py-1 text-primary dark:text-blue-300" icon="chevron-right" text={`${feature.category}${en ? ' guide' : '指南'}`}/>
+            </div>
+          </div>
+          <div class="min-w-0">
+            <p class="text-sm leading-7 text-muted">{feature.description}</p>
+            <ul class="mt-4 space-y-2.5">
+              {feature.items.map(item => (
+                <li class="flex gap-3 text-sm leading-7 text-default">
+                  <Check className="mt-1.5 size-4 shrink-0 text-primary dark:text-blue-300" aria-hidden="true"/>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+            <p class="mt-5 rounded-r-xl border-l-2 border-primary/45 bg-surface/70 py-2.5 pr-4 pl-4 text-sm leading-7 text-heading">{feature.example}</p>
+            <p class="mt-3.5 text-xs leading-6 text-muted">{feature.note}</p>
+          </div>
+        </section>
+      ))}
     </div>
-    <div class="mt-8 flex flex-wrap items-center justify-between gap-5 py-6">
-      <div><h2 class="text-xl font-semibold text-heading">{pick('从一个面板开始','Start with one panel.')}</h2><p class="mt-2 text-sm text-muted">{pick('免费、开源，无需注册账号。Windows 10 1809 及以上 / Windows 11 x64。','Free and open source. No account required. Windows 10 1809+ / Windows 11 x64.')}</p></div>
-      <Button href="/#download" variant="primary" icon="download" text={pick('选择下载版本','Choose a download')}/>
+
+    <div class="mt-10 flex flex-wrap items-center justify-between gap-6 rounded-3xl border border-line bg-elevated p-6 shadow-sm sm:p-8">
+      <div>
+        <h2 class="font-heading text-xl font-bold text-heading sm:text-2xl">{pick('从一个面板开始', 'Start with one panel.')}</h2>
+        <p class="mt-2 text-sm text-muted">
+          {pick('免费、开源，无需注册账号。Windows 10 1809 及以上 / Windows 11 x64，内置 7 种语言。', 'Free and open source. No account required. Windows 10 1809+ / Windows 11 x64 with 7 UI languages.')}
+        </p>
+      </div>
+      <div class="flex flex-wrap gap-3">
+        <Button href="/#download" variant="primary" icon="download" text={pick('选择下载版本', 'Choose a download')}/>
+        <Button href="/changelog/" variant="secondary" text={pick('查看更新日志', 'View changelog')}/>
+      </div>
     </div>
   </div>
 </Layout>
