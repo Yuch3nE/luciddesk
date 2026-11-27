@@ -13,6 +13,9 @@ const SWITCH_HEIGHT: f32 = 24.0;
 const SWITCH_ACTION_GAP: f32 = INSET;
 const BUTTON_GAP: f32 = GAP;
 const HEADING_SIZE: f32 = 12.0;
+const HEADING_HEIGHT: f32 = 24.0;
+const SUMMARY_HEIGHT: f32 = 18.0;
+const WIDE_CONDITIONS_MIN: f32 = 320.0;
 const CONDITION_LABELS: [&str; 4] = [
     "classification-item-type",
     "classification-extensions",
@@ -38,25 +41,37 @@ fn item_type_label(item_type: Option<ClassificationItemType>) -> &'static str {
 
 struct Columns {
     left: f32,
-    widths: [f32; 4],
-    gaps: [f32; 4],
+    widths: [f32; 5],
+    gaps: [f32; 5],
+    show_conditions: bool,
 }
 
 impl Columns {
     fn new(left: f32, width: f32, enabled_label: &str, show_grip: bool) -> Self {
         let actions = CONTROL + CONTROL + BUTTON_GAP;
-        let status = text_width(enabled_label, HEADING_SIZE).ceil().max(SWITCH_WIDTH);
+        let status = text_width_with_weight(enabled_label, HEADING_SIZE, SEMIBOLD)
+            .ceil()
+            .max(SWITCH_WIDTH);
         let grip = if show_grip { RuleRow::GRIP_WIDTH } else { 0.0 };
-        let gaps = [if show_grip { GAP } else { 0.0 }, INSET, SWITCH_ACTION_GAP, 0.0];
-        let target = (width - grip - actions - status - gaps.iter().sum::<f32>()).max(1.0);
+        let grip_gap = if show_grip { GAP } else { 0.0 };
+        let available = (width - grip - grip_gap - status - SWITCH_ACTION_GAP - actions - INSET).max(1.0);
+        let show_conditions = available >= WIDE_CONDITIONS_MIN;
+        let (target, conditions, target_gap) = if show_conditions {
+            let target = (available * 0.34).clamp(140.0, 210.0);
+            let conditions = (available - target - INSET).max(1.0);
+            (target, conditions, INSET)
+        } else {
+            (available, 0.0, 0.0)
+        };
         Self {
             left,
-            widths: [grip, target, status, actions],
-            gaps,
+            widths: [grip, target, conditions, status, actions],
+            gaps: [grip_gap, target_gap, INSET, SWITCH_ACTION_GAP, 0.0],
+            show_conditions,
         }
     }
 
-    fn cells(&self, top: f32, height: f32) -> [Rect; 4] {
+    fn cells(&self, top: f32, height: f32) -> [Rect; 5] {
         let mut left = self.left;
         std::array::from_fn(|index| {
             let width = self.widths[index];
@@ -79,6 +94,7 @@ pub(super) fn draw(
     let right = bounds.right - INSET;
     let width = right - left;
     let enabled_label = t("classification-enabled");
+    let actions_label = t("classification-actions");
     let leaving = presence.and_then(|(row, progress)| {
         let RulePresenceRows::Leaving { index, original, details } = &row.rows else { return None; };
         let rule = editor.deleted.as_ref()?.rules.get(original)?;
@@ -86,29 +102,32 @@ pub(super) fn draw(
     });
     let show_grip = rules.len() + usize::from(leaving.is_some()) > 1;
     let columns = Columns::new(left, width, enabled_label, show_grip);
-    let header_top = bounds.top + GAP / 2.0;
-    let [_, target, status, actions] = columns.cells(header_top, CONTROL);
-    let actions_label = t("classification-actions");
-    let header_cells = [
-        summary_target(target),
-        centered_label(status, enabled_label, status.right - SWITCH_WIDTH / 2.0),
-        centered_label(actions, actions_label, (actions.left + actions.right) / 2.0),
-    ];
-    let labels = [
-        t("classification-target"),
-        enabled_label,
-        actions_label,
-    ];
-    let heading = header_cells
-        .iter()
-        .zip(labels)
-        .map(|(cell, label)| text_height(label, HEADING_SIZE, cell.right - cell.left))
-        .fold(CONTROL, f32::max);
-    for (mut cell, label) in header_cells.into_iter().zip(labels) {
-        cell.bottom = cell.top + heading;
-        scene.text(cell, label, 6);
+    let header_top = bounds.top + GAP;
+    let [_, target, conditions, status, actions] = columns.cells(header_top, HEADING_HEIGHT);
+    let mut header_items = Vec::with_capacity(4);
+    header_items.push((summary_target(target), t("classification-target")));
+    if columns.show_conditions {
+        header_items.push((conditions, t("classification-conditions")));
     }
-    let first_row_top = header_top + heading + GAP / 2.0;
+    header_items.push((
+        centered_label(status, enabled_label, status.right - SWITCH_WIDTH / 2.0),
+        enabled_label,
+    ));
+    header_items.push((
+        centered_label(actions, actions_label, (actions.left + actions.right) / 2.0),
+        actions_label,
+    ));
+    let heading = header_items
+        .iter()
+        .map(|(cell, label)| {
+            text_height_with_weight(label, HEADING_SIZE, (cell.right - cell.left).max(1.0), SEMIBOLD)
+        })
+        .fold(HEADING_HEIGHT, f32::max);
+    for (mut cell, label) in header_items {
+        cell.bottom = cell.top + heading;
+        scene.text(cell, label, 8);
+    }
+    let first_row_top = header_top + heading + GAP;
     let mut y = first_row_top;
     let now = Instant::now();
     let draw_row = |scene: &mut Scene, y, rule: &ClassificationRule, index, details| {
@@ -120,6 +139,7 @@ pub(super) fn draw(
         let bottom = saved_row(
             scene,
             columns.cells(y + GAP, CONTROL),
+            columns.show_conditions,
             panels,
             rule,
             index,
@@ -606,7 +626,9 @@ fn skip_reason(reason: hybrid::SkipReason) -> &'static str {
 }
 
 fn centered_label(cell: Rect, label: &str, center: f32) -> Rect {
-    let width = text_width(label, HEADING_SIZE).ceil().min(cell.right - cell.left);
+    let width = text_width_with_weight(label, HEADING_SIZE, SEMIBOLD)
+        .ceil()
+        .min(cell.right - cell.left);
     let left = (center - width / 2.0).clamp(cell.left, cell.right - width);
     Rect::from_xywh(left, cell.top, width, cell.bottom - cell.top)
 }
@@ -626,15 +648,35 @@ fn switch_bounds(cell: Rect) -> Rect {
 }
 
 fn action_buttons(cell: Rect) -> [Rect; 2] {
+    let total = CONTROL + CONTROL + BUTTON_GAP;
+    let left = cell.left + ((cell.right - cell.left - total) / 2.0).max(0.0);
     [
-        Rect::from_xywh(cell.left, cell.top, CONTROL, CONTROL),
-        Rect::from_xywh(cell.right - CONTROL, cell.top, CONTROL, CONTROL),
+        Rect::from_xywh(left, cell.top, CONTROL, CONTROL),
+        Rect::from_xywh(left + CONTROL + BUTTON_GAP, cell.top, CONTROL, CONTROL),
     ]
+}
+
+fn rule_summary(rule: &ClassificationRule) -> String {
+    let mut parts = Vec::with_capacity(4);
+    if let Some(item_type) = rule.item_type {
+        parts.push(item_type_label(Some(item_type)).to_owned());
+    }
+    if !rule.extensions.is_empty() {
+        parts.push(rule.extensions.join(", "));
+    }
+    if let Some(keyword) = &rule.name_contains {
+        parts.push(keyword.clone());
+    }
+    if let Some(regex) = &rule.name_regex {
+        parts.push(format!("/{regex}/"));
+    }
+    parts.join(" · ")
 }
 
 fn saved_row(
     scene: &mut Scene,
-    [_, target, status, actions]: [Rect; 4],
+    [_, target, conditions, status, actions]: [Rect; 5],
+    show_conditions: bool,
     panels: &[Panel],
     rule: &ClassificationRule,
     index: usize,
@@ -644,14 +686,44 @@ fn saved_row(
         .iter()
         .find(|panel| panel.id().get() == rule.target_panel && panel.supports_tabs());
     let label = destination.map_or(t("classification-missing"), Panel::title);
+    let summary = rule_summary(rule);
+    let (disclosure_bounds, summary_width) = if show_conditions {
+        (
+            Rect { right: conditions.right, ..target },
+            (conditions.right - target.right).max(0.0),
+        )
+    } else {
+        (target, 0.0)
+    };
     scene.control(
-        ControlKind::RuleDisclosure { missing_target: destination.is_none() },
-        target,
+        ControlKind::RuleDisclosure {
+            missing_target: destination.is_none(),
+            enabled: rule.enabled,
+            summary_width,
+        },
+        disclosure_bounds,
         label,
         Command::ToggleDetails(index).action(),
         expanded,
     );
-    let target = summary_target(target);
+    let target_text = summary_target(target);
+    let base_bottom = if show_conditions {
+        if !summary.is_empty() {
+            scene.text(conditions, summary, 0);
+        }
+        actions.bottom
+    } else {
+        let subtitle = Rect::from_xywh(
+            target_text.left,
+            target.bottom,
+            (target.right - target_text.left).max(1.0),
+            SUMMARY_HEIGHT,
+        );
+        if !summary.is_empty() {
+            scene.text(subtitle, summary, 0);
+        }
+        subtitle.bottom
+    };
     scene.toggle(
         switch_bounds(status),
         Command::Toggle(index).action(),
@@ -676,24 +748,29 @@ fn saved_row(
         true,
     );
     if expansion == 0.0 {
-        return actions.bottom;
+        return base_bottom;
     }
     let first_detail = scene.text.len();
-    let full_bottom = draw_details(scene, target.left, actions.right, actions.bottom + INSET, rule);
-    let bottom = actions.bottom + (full_bottom - actions.bottom) * expansion;
+    let full_bottom = draw_details(scene, target_text.left, actions.right, base_bottom + INSET, rule);
+    let bottom = base_bottom + (full_bottom - base_bottom) * expansion;
     if expansion < 1.0 {
-        let clip = Rect::from_xywh(target.left, actions.bottom, actions.right - target.left, bottom - actions.bottom);
+        let clip = Rect::from_xywh(
+            target_text.left,
+            base_bottom,
+            actions.right - target_text.left,
+            bottom - base_bottom,
+        );
         scene.disclosure_clips.push(DisclosureClip {
             text: first_detail..scene.text.len(),
             separators: 0..0,
             bounds: clip,
         });
     }
-    if bottom >= actions.bottom + GAP + 1.0 {
+    if bottom >= base_bottom + GAP + 1.0 {
         scene.separators.push(Rect::from_xywh(
-            target.left,
-            actions.bottom + GAP,
-            actions.right - target.left,
+            target_text.left,
+            base_bottom + GAP,
+            actions.right - target_text.left,
             1.0,
         ));
     }
@@ -727,7 +804,10 @@ fn draw_details(
         .ceil()
         .min(width * 0.35);
     let value_left = left + label_width + INSET;
-    for (label, value) in rule_conditions(rule) {
+    for (index, (label, value)) in rule_conditions(rule).enumerate() {
+        if index > 0 {
+            top += GAP;
+        }
         let value = value.as_ref();
         let height = text_height(value, 14.0, (right - value_left).max(1.0))
             .max(text_height(label, 12.0, label_width))
@@ -738,7 +818,7 @@ fn draw_details(
             value,
             1,
         );
-        top += height + GAP;
+        top += height;
     }
     top
 }
@@ -972,7 +1052,7 @@ mod tests {
         for (width, enabled_label) in [(360.0, "启用"), (620.0, "Enabled for this rule")] {
             let left = 16.0;
             let columns = Columns::new(left, width, enabled_label, true);
-            let [grip, target, status, actions] = columns.cells(100.0, CONTROL);
+            let [grip, target, conditions, status, actions] = columns.cells(100.0, CONTROL);
             let toggle = switch_bounds(status);
             let [first, second] = action_buttons(actions);
             let close = |actual: f32, expected: f32| {
@@ -980,7 +1060,12 @@ mod tests {
             };
 
             assert!(grip.right < target.left);
-            assert!(target.right <= toggle.left);
+            if columns.show_conditions {
+                assert!(target.right < conditions.left);
+                assert!(conditions.right <= toggle.left);
+            } else {
+                assert!(target.right <= toggle.left);
+            }
             close(first.left - toggle.right, SWITCH_ACTION_GAP);
             close(second.left - first.right, BUTTON_GAP);
             close(second.right, left + width);

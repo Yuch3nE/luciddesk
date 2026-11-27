@@ -728,11 +728,21 @@ impl Painter {
                                 glyph, selected: animation.disclosure.map_or(open, |progress| progress > 0.0),
                             })
                         }
-                        ControlKind::RuleDisclosure { missing_target } => {
-                            let mut section_canvas = WidgetCanvas { leading_text: Some((Tokens::GROUP_TITLE, 0.0)), ..widget_canvas };
+                        ControlKind::RuleDisclosure { missing_target, enabled, summary_width } => {
+                            if state.enabled && hover_amount > 0.0 {
+                                let mut hover_canvas = WidgetCanvas { ..widget_canvas };
+                                hover_canvas.motion.hover = Some(hover_amount);
+                                widgets::Canvas::fill(&mut hover_canvas, bounds, style::RADIUS, Tone::Hover);
+                            }
+                            let mut section_canvas = WidgetCanvas {
+                                leading_text: Some((Tokens::GROUP_TITLE, summary_width)),
+                                ..widget_canvas
+                            };
                             if missing_target {
                                 section_canvas.brushes[Tone::Ink as usize] = red;
                                 section_canvas.brushes[Tone::AccentInk as usize] = red;
+                            } else if !enabled {
+                                section_canvas.brushes[Tone::Ink as usize] = muted;
                             }
                             InlineControl::Disclosure { expanded: c.selected, tinted: false }
                                 .paint(&mut section_canvas, bounds, &c.label, state);

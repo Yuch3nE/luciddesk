@@ -1,6 +1,6 @@
 use super::*;
 
-fn test_state() -> (tempfile::TempDir, Rc<RefCell<PaneApp>>) {
+pub(super) fn test_state() -> (tempfile::TempDir, Rc<RefCell<PaneApp>>) {
     let state = Rc::new(RefCell::new(crate::pane::tests::test_state()));
     let directory = tempfile::tempdir().unwrap();
     state.borrow_mut().store =
@@ -909,7 +909,10 @@ fn classification_details_show_one_rule_without_writing_settings() {
     );
     let unavailable = collapsed.controls.iter().find(|control| Command::ToggleDetails(1).is_control(&control.action)).unwrap();
     assert_eq!(unavailable.label, t("classification-missing"));
-    assert!(matches!(unavailable.kind, ControlKind::RuleDisclosure { missing_target: true }));
+    assert!(matches!(
+        unavailable.kind,
+        ControlKind::RuleDisclosure { missing_target: true, enabled: false, .. }
+    ));
     assert!(collapsed.controls.iter().any(|control| Command::Toggle(1).is_control(&control.action) && !control.selected));
     for (bounds, _, _) in &collapsed.text {
         assert!(bounds.left >= Tokens::MARGIN && bounds.right <= 480.0 - Tokens::MARGIN);
@@ -1043,7 +1046,7 @@ fn classification_editing_survives_tab_switch_and_only_saves_valid_input() {
                 control.label == "Group 1"
                     && control.bounds.top == grip.top
                     && control.bounds.left > grip.right
-                    && matches!(control.kind, ControlKind::RuleDisclosure { missing_target: false })
+                    && matches!(control.kind, ControlKind::RuleDisclosure { missing_target: false, enabled: true, .. })
             }));
         }
         assert!(body.controls.iter().any(|control| {
@@ -1523,4 +1526,106 @@ fn editor_missing_target_reveals_target_dropdown_and_input_supports_focus_sync_a
         drop(editor);
         SendMessageW(hwnd, WM_CLOSE, 0, 0);
     }
+}
+
+#[test]
+fn skipped_only_preview_defaults_collapsed_and_rule_table_shows_condition_summary() {
+    let _sta = crate::pane::test_support::apartment();
+    let (_directory, state) = test_state();
+    let mut config = load(&state.borrow()).unwrap();
+    config.rules[0].item_type = Some(ClassificationItemType::File);
+    config.rules[0].extensions = vec!["pdf".into(), "docx".into()];
+    config.rules[0].name_contains = Some("报告".into());
+    config.rules[1].enabled = false;
+    config.rules[1].extensions = vec!["png".into()];
+    config.rules[1].name_regex = Some("^shot-[0-9]+$".into());
+    save(&state.borrow(), &config).unwrap();
+
+    // 1. Skip-only preview (0 moves) defaults to collapsed until toggled.
+    let skip_only = hybrid::OrganizePreview::fixture(
+        vec![hybrid::PreviewEntry::Skip {
+            identity: ShellIdentity::FileSystem {
+                path: "Loose.tmp".into(),
+                volume_id: None,
+                file_id: None,
+            },
+            item_name: "Loose.tmp".into(),
+            reason: hybrid::SkipReason::NoMatch,
+        }],
+        None,
+    );
+    let mut editor = Editor {
+        preview: Some(skip_only),
+        ..Editor::default()
+    };
+    let closed = window_scene((780.0, 620.0), Backdrop::Mica, Tab::Organize, &[], None, &editor, false);
+    let skipped_toggle = closed
+        .controls
+        .iter()
+        .find(|control| Command::ToggleSkipped.is_control(&control.action))
+        .unwrap();
+    assert!(!skipped_toggle.selected);
+    assert!(!closed.text.iter().any(|(_, text, _)| text == "Loose.tmp"));
+    editor.execute(&state, std::ptr::null_mut(), Command::ToggleSkipped);
+    let opened = window_scene((780.0, 620.0), Backdrop::Mica, Tab::Organize, &[], None, &editor, false);
+    assert!(opened.text.iter().any(|(_, text, _)| text == "Loose.tmp"));
+
+    // 2. Wide rule table shows the Conditions column, compact summary, and disabled flag.
+    let (panels, settings) = {
+        let owner = state.borrow();
+        (owner.workspace.panels().to_vec(), owner.store.settings().unwrap())
+    };
+    let wide = window_scene(
+        (780.0, 620.0),
+        Backdrop::Mica,
+        Tab::Rules,
+        &panels,
+        settings.get(KEY),
+        &Editor::default(),
+        false,
+    );
+    assert!(wide.text.iter().any(|(_, text, style)| text == t("classification-conditions") && *style == 8));
+    let expected_first = format!("{} · pdf, docx · 报告", t("classification-item-type-file"));
+    assert!(wide.text.iter().any(|(_, text, style)| text == &expected_first && *style == 0));
+    assert!(wide.text.iter().any(|(_, text, style)| text == "png · /^shot-[0-9]+$/" && *style == 0));
+    let first_disclosure = wide
+        .controls
+        .iter()
+        .find(|control| Command::ToggleDetails(0).is_control(&control.action))
+        .unwrap();
+    let second_disclosure = wide
+        .controls
+        .iter()
+        .find(|control| Command::ToggleDetails(1).is_control(&control.action))
+        .unwrap();
+    assert!(matches!(
+        first_disclosure.kind,
+        ControlKind::RuleDisclosure { missing_target: false, enabled: true, summary_width } if summary_width > 0.0
+    ));
+    assert!(matches!(
+        second_disclosure.kind,
+        ControlKind::RuleDisclosure { missing_target: false, enabled: false, summary_width } if summary_width > 0.0
+    ));
+
+    // 3. Narrow rule table omits the separate column header and stacks the summary under the group name.
+    let narrow = window_scene(
+        (480.0, 380.0),
+        Backdrop::Mica,
+        Tab::Rules,
+        &panels,
+        settings.get(KEY),
+        &Editor::default(),
+        false,
+    );
+    assert!(!narrow.text.iter().any(|(_, text, _)| text == t("classification-conditions")));
+    assert!(narrow.text.iter().any(|(_, text, style)| text == &expected_first && *style == 0));
+    let narrow_first = narrow
+        .controls
+        .iter()
+        .find(|control| Command::ToggleDetails(0).is_control(&control.action))
+        .unwrap();
+    assert!(matches!(
+        narrow_first.kind,
+        ControlKind::RuleDisclosure { summary_width, .. } if summary_width == 0.0
+    ));
 }

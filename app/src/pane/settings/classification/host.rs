@@ -33,7 +33,7 @@ pub(super) fn show(state: &Rc<RefCell<PaneApp>>, tab: Tab) -> Result<(), String>
     let (dropdown_sender, dropdown_receiver) = mpsc::channel();
     let mut organizer = Organizer::new()?;
     let window = windows_window::Window::new(t("organizer-window-title"))
-        .size(780, 620)
+        .size(DEFAULT_WINDOW_WIDTH as i32, DEFAULT_WINDOW_HEIGHT as i32)
         .style(WS_OVERLAPPEDWINDOW)
         .ex_style(WS_EX_APPWINDOW | WS_EX_NOREDIRECTIONBITMAP | WS_EX_NOACTIVATE)
         .on_message(move |raw, msg, wp, lp| {
@@ -146,7 +146,6 @@ pub(super) fn show(state: &Rc<RefCell<PaneApp>>, tab: Tab) -> Result<(), String>
                 }
                 WM_TIMER if wp == ORGANIZE_TIMER => {
                     if organizer.editor.poll_organize() {
-                        organizer.preview_fit_pending = organizer.editor.previewing();
                         organizer.tab_scroll[Tab::Organize as usize] = 0.0;
                         if organizer.tab == Tab::Organize {
                             organizer.scroll = 0.0;
@@ -181,14 +180,7 @@ pub(super) fn show(state: &Rc<RefCell<PaneApp>>, tab: Tab) -> Result<(), String>
                     redraw(hwnd);
                 }
                 WM_THEMECHANGED => redraw(hwnd),
-                WM_SIZING => {
-                    organizer.auto_fit_preview = false;
-                    return None;
-                }
                 WM_SIZE => {
-                    if wp == SIZE_MAXIMIZED as usize {
-                        organizer.auto_fit_preview = false;
-                    }
                     organizer.clear_hover();
                     redraw(hwnd);
                 }
@@ -279,8 +271,8 @@ pub(super) fn show(state: &Rc<RefCell<PaneApp>>, tab: Tab) -> Result<(), String>
         crate::window_visibility::prepare_canvas(hwnd);
         let scale = GetDpiForWindow(hwnd).max(96) as f32 / 96.0;
         let work = monitor_info(hwnd).rcWork;
-        let width = ((780.0 * scale).round() as i32).min(work.right - work.left);
-        let height = ((620.0 * scale).round() as i32).min(work.bottom - work.top);
+        let width = ((DEFAULT_WINDOW_WIDTH * scale).round() as i32).min(work.right - work.left);
+        let height = ((DEFAULT_WINDOW_HEIGHT * scale).round() as i32).min(work.bottom - work.top);
         let left = work.left + (work.right - work.left - width) / 2;
         let top = work.top + (work.bottom - work.top - height) / 2;
         position(
@@ -441,8 +433,6 @@ struct Organizer {
     scroll: f32,
     tab_scroll: [f32; 2],
     opened_preview: bool,
-    auto_fit_preview: bool,
-    preview_fit_pending: bool,
     scroll_grab: Option<f32>,
     scroll_hover: Option<usize>,
     interface_motion: motions::InterfaceMotion,
@@ -516,8 +506,6 @@ impl Organizer {
             scroll: 0.0,
             tab_scroll: [0.0; 2],
             opened_preview: false,
-            auto_fit_preview: true,
-            preview_fit_pending: true,
             scroll_grab: None,
             scroll_hover: None,
             interface_motion: motions::InterfaceMotion::default(),
@@ -561,9 +549,8 @@ impl Organizer {
         redraw(hwnd);
     }
 
-    fn layout(&mut self, state: &Rc<RefCell<PaneApp>>, hwnd: HWND, bounds: RECT, scale: f32) -> f32 {
+    fn layout(&mut self, state: &Rc<RefCell<PaneApp>>, hwnd: HWND, bounds: RECT, scale: f32) {
         let (width, height) = (bounds.right as f32 / scale, bounds.bottom as f32 / scale);
-        let mut preferred_height = height;
         if let Ok(owner) = state.try_borrow() {
             let appearance = owner.workspace.appearance().or_else(|| {
                 owner
@@ -609,9 +596,6 @@ impl Organizer {
                 width,
                 unsafe { IsZoomed(hwnd) } != 0,
             );
-            if self.auto_fit_preview && self.preview_fit_pending && self.tab == Tab::Organize && self.editor.previewing() {
-                preferred_height = preferred_preview_height(&scene);
-            }
             if let Some(command) = self.editor.take_reveal(self.tab)
                 && let Some(index) = scene
                     .controls
@@ -644,11 +628,10 @@ impl Organizer {
             }
             self.scene = Some(scene);
         }
-        preferred_height
     }
 
     fn paint(&mut self, state: &Rc<RefCell<PaneApp>>, hwnd: HWND, scale: f32) {
-        let mut bounds = client_bounds(hwnd);
+        let bounds = client_bounds(hwnd);
         unsafe {
             let mut paint = PAINTSTRUCT::default();
             BeginPaint(hwnd, &raw mut paint);
@@ -657,16 +640,7 @@ impl Organizer {
         if bounds.right <= 0 || bounds.bottom <= 0 {
             return;
         }
-        let preferred_height = self.layout(state, hwnd, bounds, scale);
-        if self.tab == Tab::Organize && self.editor.previewing() {
-            self.preview_fit_pending = false;
-        }
-        if preferred_height != bounds.bottom as f32 / scale && resize_preview(hwnd, preferred_height, scale) {
-            bounds = client_bounds(hwnd);
-            self.clear_hover();
-            self.pressed = None;
-            self.layout(state, hwnd, bounds, scale);
-        }
+        self.layout(state, hwnd, bounds, scale);
         let (width, height) = (bounds.right as f32 / scale, bounds.bottom as f32 / scale);
         let Some(scene) = &self.scene else {
             return;
@@ -831,7 +805,7 @@ impl Organizer {
         }
         let previous = self.editor.expanded;
         let previous_skipped = if command == Command::ToggleSkipped {
-            self.editor.preview.as_ref().map(|preview| self.editor.skipped_expanded(preview))
+            self.editor.preview.as_ref().map(|_| self.editor.skipped_expanded())
         } else {
             None
         };
@@ -854,15 +828,11 @@ impl Organizer {
             self.schedule_animations(hwnd);
         }
         if let Some(previous) = previous_skipped {
-            self.preview_fit_pending = false;
             if self.editor.animate_skipped(previous, Instant::now(), scrollbar::animations_enabled()) {
                 self.schedule_animations(hwnd);
             }
         }
         if self.tab == Tab::Organize {
-            if command == Command::Run && self.editor.organize_error.is_none() && self.editor.previewing() {
-                self.preview_fit_pending = true;
-            }
             let failed_submission = matches!(command, Command::ApplyPreview | Command::UndoOrganize)
                 && self.editor.organize_error.is_some();
             if matches!(command, Command::Run | Command::CancelPreview)
@@ -900,7 +870,8 @@ impl Organizer {
     fn visible_focus(&self, scene: &Scene) -> Option<usize> {
         self.focus.filter(|&index| {
             scene.controls.get(index).is_some_and(|control| {
-                self.keyboard_focus || !matches!(control.kind, ControlKind::SectionDisclosure { .. })
+                self.keyboard_focus
+                    || matches!(control.action, Action::Classification(Command::Input(_)))
             })
         })
     }
@@ -1155,8 +1126,10 @@ impl Organizer {
                     .and_then(|index| scene.controls.get(index))
                     .filter(|control| match control.kind {
                         ControlKind::IconButton(_) => true,
-                        ControlKind::RuleDisclosure { .. } => {
-                            let inset = luciddesk_window::controls::InlineControl::DISCLOSURE_LABEL_INSET + Style::ICON_GAP;
+                        ControlKind::RuleDisclosure { summary_width, .. } => {
+                            let inset = luciddesk_window::controls::InlineControl::DISCLOSURE_LABEL_INSET
+                                + Style::ICON_GAP
+                                + summary_width;
                             components::text_width_with_weight(&control.label, SectionHeader::TITLE_SIZE, SectionHeader::TITLE_WEIGHT)
                                 > control.bounds.right - control.bounds.left - inset
                         }
@@ -1436,8 +1409,8 @@ fn monitor_info(hwnd: HWND) -> MONITORINFO {
         }
     }
     let bounds = RECT {
-        right: 780,
-        bottom: 620,
+        right: DEFAULT_WINDOW_WIDTH as i32,
+        bottom: DEFAULT_WINDOW_HEIGHT as i32,
         ..Default::default()
     };
     monitor.rcMonitor = bounds;
@@ -1456,27 +1429,6 @@ fn position(hwnd: HWND, bounds: &RECT) {
             bounds.bottom - bounds.top,
             SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
         );
-    }
-}
-
-fn resize_preview(hwnd: HWND, preferred_height: f32, scale: f32) -> bool {
-    let mut window = RECT::default();
-    unsafe {
-        if IsIconic(hwnd) != 0 || IsZoomed(hwnd) != 0 || GetWindowRect(hwnd, &raw mut window) == 0 {
-            return false;
-        }
-    }
-    let work = monitor_info(hwnd).rcWork;
-    let height = ((preferred_height * scale).ceil() as i32).min(work.bottom - work.top);
-    if window.bottom - window.top == height {
-        return false;
-    }
-    let top = window.top.clamp(work.top, work.bottom - height);
-    unsafe {
-        SetWindowPos(
-            hwnd, std::ptr::null_mut(), window.left, top,
-            window.right - window.left, height, SWP_NOZORDER | SWP_NOACTIVATE,
-        ) != 0
     }
 }
 
@@ -1509,27 +1461,52 @@ fn clipped_destination_names_can_be_read_without_hiding_rule_numbers() {
 }
 
 #[test]
-fn preview_resize_keeps_window_width_and_fits_the_monitor() {
-    let window = windows_window::Window::new("Organizer resize test")
-        .size(480, 620)
-        .create()
-        .unwrap();
+fn organizer_default_size_matches_across_entries_and_mouse_click_hides_focus_ring() {
+    let _sta = crate::pane::test_support::apartment();
+    let window_size = |tab| {
+        let (_dir, state) = super::tests::test_state();
+        show(&state, tab).unwrap();
+        let hwnd: HWND = state.borrow().organizer.as_ref().unwrap().hwnd().cast();
+        let mut rect = RECT::default();
+        assert_ne!(unsafe { GetWindowRect(hwnd, &raw mut rect) }, 0);
+        unsafe { SendMessageW(hwnd, WM_CLOSE, 0, 0); }
+        (rect.right - rect.left, rect.bottom - rect.top)
+    };
+    let rules_size = window_size(Tab::Rules);
+    let organize_size = window_size(Tab::Organize);
+    assert_eq!(rules_size, organize_size);
+
+    let (_dir, state) = super::tests::test_state();
+    let window = windows_window::Window::new("Rule focus test").create().unwrap();
     let hwnd = window.hwnd().cast();
-    let scale = unsafe { GetDpiForWindow(hwnd) }.max(96) as f32 / 96.0;
-    let work = monitor_info(hwnd).rcWork;
-    let mut before = RECT::default();
-    assert_ne!(unsafe { GetWindowRect(hwnd, &raw mut before) }, 0);
-    let preferred = 420.0;
-    let expected = ((preferred * scale).ceil() as i32).min(work.bottom - work.top);
-    assert_eq!(resize_preview(hwnd, preferred, scale), before.bottom - before.top != expected);
-    let mut after = RECT::default();
-    assert_ne!(unsafe { GetWindowRect(hwnd, &raw mut after) }, 0);
-    assert_eq!(after.bottom - after.top, expected);
-    assert_eq!(after.right - after.left, before.right - before.left);
-    if before.bottom - before.top != expected {
-        assert!(after.top >= work.top && after.bottom <= work.bottom);
-    }
-    assert!(!resize_preview(hwnd, preferred, scale));
+    let bounds = RECT { right: 780, bottom: 620, ..Default::default() };
+    let mut organizer = Organizer::new().unwrap();
+    organizer.layout(&state, hwnd, bounds, 1.0);
+    let (index, row_bounds) = {
+        let scene = organizer.scene.as_ref().unwrap();
+        scene
+            .controls
+            .iter()
+            .enumerate()
+            .find(|(_, control)| Command::ToggleDetails(0).is_control(&control.action))
+            .map(|(index, control)| (index, control.bounds))
+            .unwrap()
+    };
+    let point = POINT {
+        x: (row_bounds.left + Tokens::INSET) as i32,
+        y: ((row_bounds.top + row_bounds.bottom) / 2.0) as i32,
+    };
+    let (sender, _receiver) = mpsc::channel();
+    organizer.pointer(hwnd, WM_LBUTTONDOWN, point, 1.0);
+    let clicked = organizer.pointer(hwnd, WM_LBUTTONUP, point, 1.0).unwrap();
+    organizer.invoke(&state, hwnd, &clicked, 1.0, &sender);
+    organizer.layout(&state, hwnd, bounds, 1.0);
+    assert_eq!(organizer.focus, Some(index));
+    assert_eq!(organizer.visible_focus(organizer.scene.as_ref().unwrap()), None);
+
+    assert!(organizer.key(&state, hwnd, (WM_KEYDOWN, VK_SPACE, 0), 1.0, &sender));
+    organizer.layout(&state, hwnd, bounds, 1.0);
+    assert_eq!(organizer.visible_focus(organizer.scene.as_ref().unwrap()), Some(index));
 }
 
 #[test]
@@ -1693,7 +1670,6 @@ fn skipped_disclosure_only_shows_focus_after_keyboard_interaction() {
     let bounds = RECT { right: 800, bottom: 560, ..Default::default() };
     let mut organizer = Organizer::new().unwrap();
     organizer.tab = Tab::Organize;
-    organizer.editor.show_skipped = Some(false);
     organizer.editor.preview = Some(hybrid::OrganizePreview::fixture(vec![hybrid::PreviewEntry::Skip {
         identity: ShellIdentity::FileSystem { path: "Draft.txt".into(), volume_id: None, file_id: None },
         item_name: "Draft.txt".into(),
@@ -1705,7 +1681,7 @@ fn skipped_disclosure_only_shows_focus_after_keyboard_interaction() {
             .find(|(_, control)| Command::ToggleSkipped.is_control(&control.action)).unwrap();
         (index, control.bounds, control.selected, organizer.visible_focus(scene))
     };
-    assert_ne!(organizer.layout(&state, hwnd, bounds, 1.0), bounds.bottom as f32);
+    organizer.layout(&state, hwnd, bounds, 1.0);
     let (index, heading, expanded, _) = disclosure(&organizer);
     assert!(!expanded);
     let point = POINT {
@@ -1716,12 +1692,12 @@ fn skipped_disclosure_only_shows_focus_after_keyboard_interaction() {
     organizer.pointer(hwnd, WM_LBUTTONDOWN, point, 1.0);
     let clicked = organizer.pointer(hwnd, WM_LBUTTONUP, point, 1.0).unwrap();
     organizer.invoke(&state, hwnd, &clicked, 1.0, &sender);
-    assert_eq!(organizer.layout(&state, hwnd, bounds, 1.0), bounds.bottom as f32);
+    organizer.layout(&state, hwnd, bounds, 1.0);
     assert_eq!(organizer.focus, Some(index));
     assert_eq!(disclosure(&organizer), (index, heading, true, None));
 
     assert!(organizer.key(&state, hwnd, (WM_KEYDOWN, VK_SPACE, 0), 1.0, &sender));
-    assert_eq!(organizer.layout(&state, hwnd, bounds, 1.0), bounds.bottom as f32);
+    organizer.layout(&state, hwnd, bounds, 1.0);
     assert_eq!(disclosure(&organizer), (index, heading, false, Some(index)));
 }
 
@@ -1781,10 +1757,7 @@ fn long_preview_keeps_its_review_state_and_footer_when_switching_tabs() {
         assert!(scene.accepts_pointer(apply, apply.bounds.left + 2.0, apply.bounds.top + 2.0));
         apply.bounds.top
     };
-    let fitted = organizer.layout(&state, hwnd, bounds, 1.0);
-    assert_eq!(fitted, MAX_PREVIEW_HEIGHT);
-    organizer.auto_fit_preview = false;
-    assert_eq!(organizer.layout(&state, hwnd, bounds, 1.0), bounds.bottom as f32);
+    organizer.layout(&state, hwnd, bounds, 1.0);
     let button_top = apply_button_top(&organizer);
     organizer.run_command(&state, hwnd, Command::ToggleSkipped);
     organizer.editor.finish_disclosure_animations();
@@ -1822,7 +1795,6 @@ fn long_preview_enqueue_failure_shows_the_error_and_keeps_the_preview() {
     let bounds = RECT { right: 480, bottom: 380, ..Default::default() };
     let mut organizer = Organizer::new().unwrap();
     organizer.tab = Tab::Organize;
-    organizer.auto_fit_preview = false;
     organizer.editor.show_skipped = Some(true);
     let preview = long_preview();
     let entries = preview.entries.clone();

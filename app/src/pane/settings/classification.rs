@@ -23,7 +23,10 @@ pub(super) enum Tab {
 const TAB_TOP: f32 = Tokens::GAP;
 const SIDE_MARGIN: f32 = Tokens::INSET;
 const BODY_TOP: f32 = TAB_TOP + NavigationItem::HEIGHT + Tokens::INSET;
+const DEFAULT_WINDOW_WIDTH: f32 = 780.0;
+const DEFAULT_WINDOW_HEIGHT: f32 = 620.0;
 const MIN_WINDOW_HEIGHT: f32 = 380.0;
+#[cfg(test)]
 const MAX_PREVIEW_HEIGHT: f32 = 800.0;
 
 pub(in crate::pane) fn show_organize_preview(state: &Rc<RefCell<PaneApp>>) -> Result<(), String> {
@@ -265,8 +268,8 @@ impl Editor {
         self.preview.is_some()
     }
 
-    fn skipped_expanded(&self, preview: &hybrid::OrganizePreview) -> bool {
-        self.show_skipped.unwrap_or(preview.move_count() == 0)
+    fn skipped_expanded(&self) -> bool {
+        self.show_skipped.unwrap_or(false)
     }
 
     fn skipped_fraction(&self, expanded: bool, now: Instant) -> f32 {
@@ -521,8 +524,8 @@ impl Editor {
                 return Ok(());
             }
             Command::ToggleSkipped => {
-                if let Some(preview) = &self.preview {
-                    self.show_skipped = Some(!self.skipped_expanded(preview));
+                if self.preview.is_some() {
+                    self.show_skipped = Some(!self.skipped_expanded());
                     self.reveal(command);
                 }
                 return Ok(());
@@ -815,6 +818,7 @@ fn window_scene(
     scene
 }
 
+#[cfg(test)]
 fn preferred_preview_height(scene: &Scene) -> f32 {
     (scene.content_bottom() + Tokens::MARGIN + scene.footer_height)
         .clamp(MIN_WINDOW_HEIGHT, MAX_PREVIEW_HEIGHT)
@@ -922,7 +926,7 @@ fn draw_organize(
         }
         let (scene, mut bounds) = form.into_content();
         table::draw_preview_summary(scene, &mut bounds, preview, preview.is_stale(value), undo);
-        let expanded = editor.skipped_expanded(preview);
+        let expanded = editor.skipped_expanded();
         let reveal = editor.skipped_fraction(expanded, Instant::now());
         table::draw_preview(scene, bounds, preview, (expanded, reveal));
         return;

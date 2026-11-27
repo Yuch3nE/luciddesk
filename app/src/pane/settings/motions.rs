@@ -198,6 +198,7 @@ impl InterfaceMotion {
                         | ControlKind::QuietButton(_)
                         | ControlKind::Combo
                         | ControlKind::Checkbox
+                        | ControlKind::RuleDisclosure { .. }
                         | ControlKind::SectionDisclosure { .. }
                         | ControlKind::Tab(_)
                         | ControlKind::Navigation(_)
