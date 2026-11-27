@@ -211,6 +211,9 @@ ui-peek-not-found-select-powertoys-peek-ui-exe-in-settings = { "找不到 PowerT
 
 # 无法打开 PowerToys Peek：{error}
 ui-could-not-open-powertoys-peek = { "无法使用 PowerToys Peek 预览此项目。\u000A\u000A错误详情：\u000A" }{ $error }
+ui-peek-service-not-running = 请启动 PowerToys 并启用 Peek（速览）。
+ui-peek-handoff-failed = 无法将选中的项目交给 PowerToys Peek。
+ui-peek-did-not-load-selection = PowerToys Peek 未能加载选中的项目。
 
 # 此项目没有文件路径
 ui-this-item-has-no-file-path = { "此项目没有文件系统路径，无法使用当前方式预览。" }
@@ -353,6 +356,8 @@ ui-could-not-attach-group-editing-state = { "无法在此面板中开始重命�
 
 # 重命名失败
 ui-rename-failed = { "重命名失败" }
+ui-rename-invalid-item-name = 请输入名称，并去掉路径分隔符。
+ui-rename-no-shell-result = Windows 未返回重命名结果。
 
 # 重命名失败：{error}
 ui-rename-failed-9e1f = { "未能完成重命名。\u000A\u000A错误详情：\u000A" }{ $error }
@@ -485,6 +490,7 @@ ui-desktop-audit-thread-stopped-restarting = { "桌面检查线程已退出，�
 
 # 桌面正在变化，暂不更新面板清单
 ui-desktop-is-changing-group-refresh-deferred = { "桌面正在变化，暂不更新面板清单" }
+ui-desktop-read-failed = 无法读取 Windows 桌面。
 
 # 桌面清单包含重复身份，暂不更新面板
 ui-duplicate-desktop-identities-group-refresh-deferred = { "桌面清单包含重复身份，暂不更新面板" }

@@ -37,7 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let _frame = (enabled && path.is_none()).then(|| luciddesk_menu::MenuFrame::install(hwnd, POINT { x: point.x, y: point.y })).flatten();
                     if let Some(path) = &path {
                         let item = luciddesk_shell::ShellIdentity::FileSystem { path: path.into(), volume_id: None, file_id: None };
-                        eprintln!("result={:?}", luciddesk_shell::show_file_items_menu(windows::Win32::Foundation::HWND(hwnd), &[item], point));
+                        eprintln!("result={:?}", luciddesk_shell::show_file_items_menu(windows::Win32::Foundation::HWND(hwnd), &[item], point, "Open file location"));
                     } else {
                         let menu = CreatePopupMenu();
                         AppendMenuW(menu, MF_STRING, 1, windows_sys::w!("Open (&O)"));

@@ -1,21 +1,45 @@
 //! Canonical Shell verbs preserve Explorer clipboard formats and file dialogs.
 use luciddesk_core::ShellIdentity;
+use std::{cell::RefCell, rc::Rc};
 use windows::{
     Win32::{
-        Foundation::HWND,
+        Foundation::{HWND, POINT, S_OK},
+        System::{Com::IDataObject, Ole::OleFlushClipboard},
         UI::{Shell::*, WindowsAndMessaging::*},
     },
-    core::{HSTRING, PCSTR, PSTR, Result},
+    core::{HSTRING, Interface, PCSTR, PCWSTR, PSTR, Result},
 };
+
+thread_local! {
+    static FILE_CLIPBOARD: RefCell<Option<IDataObject>> = const { RefCell::new(None) };
+}
+
+fn is_current_file_clipboard(data: &IDataObject) -> bool {
+    // S_FALSE also succeeds as an HRESULT, but means ownership has changed.
+    let code = unsafe { windows_sys::Win32::System::Ole::OleIsCurrentClipboard(data.as_raw()) };
+    code == S_OK.0
+}
+
+/// Persists the current file clipboard, if owned by this STA, before OLE teardown.
+pub fn flush_file_clipboard() {
+    let data = FILE_CLIPBOARD.take();
+    if let Some(data) = data
+        && is_current_file_clipboard(&data)
+    {
+        let _ = unsafe { OleFlushClipboard() };
+    }
+}
 
 // Only an explicit Windows cancellation is benign. Do not hide generic E_ABORT,
 // permission failures or an extension's unknown error as user cancellation.
 pub(crate) fn command_completed(result: Result<()>) -> Result<bool> {
+    let win32_cancelled =
+        windows::core::HRESULT::from_win32(windows::Win32::Foundation::ERROR_CANCELLED.0);
     match result {
         Ok(()) => Ok(true),
-        Err(error) if error.code() == windows::core::HRESULT::from_win32(
-            windows::Win32::Foundation::ERROR_CANCELLED.0,
-        ) => Ok(false),
+        Err(error) if error.code() == COPYENGINE_E_USER_CANCELLED || error.code() == win32_cancelled => {
+            Ok(false)
+        }
         Err(error) => Err(error),
     }
 }
@@ -56,12 +80,12 @@ pub enum FileCommand {
 }
 
 impl FileCommand {
-    fn verb(self) -> &'static [u8] {
+    fn verb(self) -> &'static str {
         match self {
-            Self::Copy => b"copy\0",
-            Self::Cut => b"cut\0",
-            Self::Paste => b"paste\0",
-            Self::Delete => b"delete\0",
+            Self::Copy => "copy",
+            Self::Cut => "cut",
+            Self::Paste => "paste",
+            Self::Delete => "delete",
         }
     }
 }
@@ -171,46 +195,76 @@ pub fn drag_file_items(
     FileDrag::new(selected)?.run(owner, image)
 }
 
-pub(super) struct MenuMessages {
+struct MenuMessageState {
     context: IContextMenu,
+}
+
+pub(super) struct MenuMessages {
+    state: Rc<MenuMessageState>,
     owner: HWND,
 }
 
 impl MenuMessages {
     const SUBCLASS_ID: usize = 0x4c50464d;
 
-    pub(super) fn install(owner: HWND, context: &IContextMenu) -> Result<Box<Self>> {
-        let messages = Box::new(Self {
+    pub(super) fn install(owner: HWND, context: &IContextMenu) -> Result<Self> {
+        let state = Rc::new(MenuMessageState {
             context: context.clone(),
-            owner,
         });
-        // The box keeps callback data at a stable address until Drop detaches it.
+        // The subclass owns a strong reference until it is detached.
+        let registered = Rc::into_raw(Rc::clone(&state));
         if unsafe {
             windows_sys::Win32::UI::Shell::SetWindowSubclass(
                 owner.0,
                 Some(menu_messages),
                 Self::SUBCLASS_ID,
-                (&raw const *messages) as usize,
+                registered as usize,
             )
         } == 0
         {
-            return Err(windows::core::Error::from_thread());
+            let error = windows::core::Error::from_thread();
+            unsafe { drop(Rc::from_raw(registered)) };
+            return Err(error);
         }
-        Ok(messages)
+        Ok(Self { state, owner })
     }
 }
 
 impl Drop for MenuMessages {
     fn drop(&mut self) {
         unsafe {
-            windows_sys::Win32::UI::Shell::RemoveWindowSubclass(
+            use windows_sys::Win32::UI::Shell::GetWindowSubclass;
+            let registered = Rc::as_ptr(&self.state);
+            let mut data = 0;
+            if GetWindowSubclass(
                 self.owner.0,
                 Some(menu_messages),
                 Self::SUBCLASS_ID,
-            );
+                &raw mut data,
+            ) != 0 && data == registered as usize
+            {
+                detach_menu_messages(self.owner.0, data as *const MenuMessageState);
+            }
         }
     }
 }
+
+unsafe fn detach_menu_messages(
+    hwnd: windows_sys::Win32::Foundation::HWND,
+    registered: *const MenuMessageState,
+) {
+    unsafe {
+        if windows_sys::Win32::UI::Shell::RemoveWindowSubclass(
+            hwnd,
+            Some(menu_messages),
+            MenuMessages::SUBCLASS_ID,
+        ) != 0
+        {
+            drop(Rc::from_raw(registered));
+        }
+    }
+}
+
 unsafe extern "system" fn menu_messages(
     hwnd: windows_sys::Win32::Foundation::HWND,
     msg: u32,
@@ -222,23 +276,31 @@ unsafe extern "system" fn menu_messages(
     use windows::Win32::Foundation::{LPARAM, WPARAM};
     use windows::core::Interface;
     unsafe {
-        let state = &*(data as *const MenuMessages);
+        let registered = data as *const MenuMessageState;
+        Rc::increment_strong_count(registered);
+        let state = Rc::from_raw(registered);
+        if msg == WM_NCDESTROY {
+            detach_menu_messages(hwnd, registered);
+        }
+        let owner_draw = matches!(msg, WM_DRAWITEM | WM_MEASUREITEM);
         if matches!(
             msg,
             WM_INITMENUPOPUP | WM_DRAWITEM | WM_MEASUREITEM | WM_MENUCHAR
-        ) {
+        ) && (!owner_draw || (wp == 0 && lp != 0))
+        {
             if let Ok(context) = state.context.cast::<IContextMenu3>() {
                 let mut result = windows::Win32::Foundation::LRESULT::default();
                 if context
                     .HandleMenuMsg2(msg, WPARAM(wp), LPARAM(lp), Some(&raw mut result))
                     .is_ok()
                 {
-                    return result.0;
+                    return if owner_draw { 1 } else { result.0 };
                 }
-            } else if let Ok(context) = state.context.cast::<IContextMenu2>() {
-                if context.HandleMenuMsg(msg, WPARAM(wp), LPARAM(lp)).is_ok() {
-                    return 0;
-                }
+            } else if msg != WM_MENUCHAR
+                && let Ok(context) = state.context.cast::<IContextMenu2>()
+                && context.HandleMenuMsg(msg, WPARAM(wp), LPARAM(lp)).is_ok()
+            {
+                return isize::from(owner_draw);
             }
         }
         windows_sys::Win32::UI::Shell::DefSubclassProc(hwnd, msg, wp, lp)
@@ -251,11 +313,13 @@ unsafe extern "system" fn menu_messages(
 pub fn show_file_items_menu(
     owner: HWND,
     selected: &[ShellIdentity],
-    point: windows::Win32::Foundation::POINT,
+    point: POINT,
+    open_location_label: &str,
 ) -> Result<bool> {
     if selected.is_empty() {
         return Ok(false);
     }
+    let _active = crate::native_menu::ActiveMenu::acquire()?;
     let theme = luciddesk_menu::apply_scoped_theme(owner.0);
     unsafe {
         let context: IContextMenu = shell_items(selected)?.BindToHandler(None, &BHID_SFUIObject)?;
@@ -263,7 +327,7 @@ pub fn show_file_items_menu(
         context
             .QueryContextMenu(menu.0, 0, 1, 0x7fff, CMF_NORMAL | CMF_CANRENAME)
             .ok()?;
-        add_location_command(menu.0, selected)?;
+        add_location_command(menu.0, selected, open_location_label)?;
         let messages = MenuMessages::install(owner, &context)?;
         let frame = luciddesk_menu::MenuFrame::install(owner.0, windows_sys::Win32::Foundation::POINT { x: point.x, y: point.y });
         let chosen = TrackPopupMenuEx(
@@ -275,6 +339,8 @@ pub fn show_file_items_menu(
             None,
         )
         .0;
+        let offset = chosen.saturating_sub(1).max(0) as usize;
+        let command = menu_invocation(owner, offset, Some(point));
         drop(frame);
         drop(messages);
         drop(theme);
@@ -285,27 +351,14 @@ pub fn show_file_items_menu(
             open_location(&selected[0])?;
             return Ok(false);
         }
-        let offset = chosen as usize - 1;
-        let mut verb = [0u8; 256];
-        let _ = context.GetCommandString(
-            offset,
-            GCS_VERBA,
-            None,
-            PSTR(verb.as_mut_ptr()),
-            verb.len() as u32,
-        );
-        if selected.len() == 1 && verb.starts_with(b"rename\0") {
+        let verb = canonical_verb(&context, offset);
+        if selected.len() == 1
+            && verb.as_deref().is_some_and(|verb| verb.eq_ignore_ascii_case("rename"))
+        {
             return Ok(true);
         }
-        let command = CMINVOKECOMMANDINFO {
-            cbSize: size_of::<CMINVOKECOMMANDINFO>() as u32,
-            hwnd: owner,
-            lpVerb: PCSTR(offset as *const u8),
-            nShow: SW_SHOWNORMAL.0,
-            ..Default::default()
-        };
-        let result = context.InvokeCommand(&command);
-        if verb.starts_with(b"delete\0") {
+        let result = context.InvokeCommand((&raw const command).cast());
+        if verb.as_deref().is_some_and(|verb| verb.eq_ignore_ascii_case("delete")) {
             file_command_completed(FileCommand::Delete, result)?;
         } else {
             command_completed(result)?;
@@ -314,20 +367,104 @@ pub fn show_file_items_menu(
     }
 }
 
+pub(super) fn menu_invocation(
+    owner: HWND,
+    offset: usize,
+    point: Option<POINT>,
+) -> CMINVOKECOMMANDINFOEX {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_SHIFT};
+    let mut flags = SEE_MASK_UNICODE;
+    if point.is_some() {
+        flags |= CMIC_MASK_PTINVOKE;
+        if unsafe { GetKeyState(i32::from(VK_SHIFT)) } < 0 {
+            flags |= CMIC_MASK_SHIFT_DOWN;
+        }
+        if unsafe { GetKeyState(i32::from(VK_CONTROL)) } < 0 {
+            flags |= CMIC_MASK_CONTROL_DOWN;
+        }
+    }
+    CMINVOKECOMMANDINFOEX {
+        cbSize: size_of::<CMINVOKECOMMANDINFOEX>() as u32,
+        fMask: flags,
+        hwnd: owner,
+        lpVerb: PCSTR(offset as *const u8),
+        lpVerbW: PCWSTR(offset as *const u16),
+        nShow: SW_SHOWNORMAL.0,
+        ptInvoke: point.unwrap_or_default(),
+        ..Default::default()
+    }
+}
+
+fn canonical_verb(context: &IContextMenu, offset: usize) -> Option<String> {
+    let mut wide = [0u16; 256];
+    if unsafe {
+        context.GetCommandString(
+            offset, GCS_VERBW, None, PSTR(wide.as_mut_ptr().cast()), wide.len() as u32,
+        )
+    }.is_ok()
+        && let Some(end) = wide.iter().position(|&unit| unit == 0).filter(|&end| end != 0)
+        && let Ok(verb) = String::from_utf16(&wide[..end])
+    {
+        return Some(verb);
+    }
+
+    let mut ansi = [0u8; 256];
+    unsafe {
+        context.GetCommandString(offset, GCS_VERBA, None, PSTR(ansi.as_mut_ptr()), ansi.len() as u32)
+    }.ok()?;
+    let end = ansi.iter().position(|&byte| byte == 0).filter(|&end| end != 0)?;
+    // The canonical verbs we recognize contain only ASCII.
+    std::str::from_utf8(&ansi[..end]).ok().map(str::to_owned)
+}
+
 // Outside the range assigned to Shell extensions by QueryContextMenu.
 const OPEN_LOCATION: usize = 0x8000;
 
-fn add_location_command(menu: HMENU, selected: &[ShellIdentity]) -> Result<()> {
+fn add_location_command(menu: HMENU, selected: &[ShellIdentity], label: &str) -> Result<()> {
     if selected.len() == 1
         && selected[0].file_system_path().and_then(std::path::Path::parent).is_some()
     {
         unsafe {
-            InsertMenuW(menu, 1, MF_BYPOSITION | MF_STRING, OPEN_LOCATION,
-                windows::core::w!("打开所在文件夹"))?;
+            let label = HSTRING::from(label);
+            InsertMenuW(menu, 1, MF_BYPOSITION | MF_STRING, OPEN_LOCATION, &label)?;
             InsertMenuW(menu, 2, MF_BYPOSITION | MF_SEPARATOR, 0, None)?;
         }
     }
     Ok(())
+}
+
+fn find_menu_command(
+    menu: HMENU,
+    last_id: u32,
+    matches: &mut impl FnMut(usize) -> bool,
+) -> Result<Option<(usize, bool)>> {
+    let count = unsafe { GetMenuItemCount(Some(menu)) };
+    if count < 0 {
+        return Err(windows::core::Error::from_thread());
+    }
+    for position in 0..count as u32 {
+        let mut item = MENUITEMINFOW {
+            cbSize: size_of::<MENUITEMINFOW>() as u32,
+            fMask: MIIM_FTYPE | MIIM_ID | MIIM_STATE | MIIM_SUBMENU,
+            ..Default::default()
+        };
+        unsafe { GetMenuItemInfoW(menu, position, true, &raw mut item) }?;
+        if item.fType & MFT_SEPARATOR != MENU_ITEM_TYPE(0) {
+            continue;
+        }
+        let enabled = item.fState & (MFS_DISABLED | MFS_GRAYED) == MENU_ITEM_STATE(0);
+        if !item.hSubMenu.is_invalid() {
+            if let Some((offset, child_enabled)) = find_menu_command(item.hSubMenu, last_id, matches)? {
+                return Ok(Some((offset, enabled && child_enabled)));
+            }
+        } else if (1..=last_id).contains(&item.wID) {
+            let offset = item.wID as usize - 1;
+            if matches(offset) {
+                return Ok(Some((offset, enabled)));
+            }
+        }
+    }
+    Ok(None)
 }
 
 fn open_location(identity: &ShellIdentity) -> Result<()> {
@@ -352,7 +489,7 @@ impl Drop for Menu {
 }
 
 fn shell_item(identity: &ShellIdentity) -> Result<IShellItem> {
-    let name = HSTRING::from(identity.activation_name().to_string_lossy().as_ref());
+    let name = HSTRING::from(identity.activation_name());
     unsafe { SHCreateItemFromParsingName(&name, None) }
 }
 
@@ -381,13 +518,13 @@ fn shell_items(selected: &[ShellIdentity]) -> Result<IShellItemArray> {
 fn invoke_batch(owner: HWND, selected: &[ShellIdentity], command: FileCommand) -> Result<bool> {
     use windows::Win32::System::{
         Com::{
-            CLSCTX_INPROC_SERVER, CoCreateInstance, DVASPECT_CONTENT, FORMATETC, IDataObject,
+            CLSCTX_INPROC_SERVER, CoCreateInstance, DVASPECT_CONTENT, FORMATETC,
             STGMEDIUM, STGMEDIUM_0, TYMED_HGLOBAL,
         },
         DataExchange::RegisterClipboardFormatW,
         Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalUnlock},
         Ole::{
-            DROPEFFECT_COPY, DROPEFFECT_MOVE, OleFlushClipboard, OleSetClipboard, ReleaseStgMedium,
+            DROPEFFECT_COPY, DROPEFFECT_MOVE, OleSetClipboard, ReleaseStgMedium,
         },
     };
     unsafe {
@@ -437,7 +574,11 @@ fn invoke_batch(owner: HWND, selected: &[ShellIdentity], command: FileCommand) -
             return Err(error);
         }
         OleSetClipboard(&data)?;
-        OleFlushClipboard()?;
+        // A nested command may have replaced the clipboard while OLE pumped messages.
+        if is_current_file_clipboard(&data) {
+            let previous = FILE_CLIPBOARD.replace(Some(data));
+            drop(previous);
+        }
         Ok(true)
     }
 }
@@ -476,41 +617,78 @@ pub fn invoke_file_commands(
         let menu = Menu(CreatePopupMenu()?);
         let result = context.QueryContextMenu(menu.0, 0, 1, 0x7fff, CMF_NORMAL);
         result.ok()?;
-        for offset in 0..(result.0 as u32 & 0xffff) {
-            let mut verb = [0u8; 256];
-            if context
-                .GetCommandString(
-                    offset as usize,
-                    GCS_VERBA,
-                    None,
-                    PSTR(verb.as_mut_ptr()),
-                    verb.len() as u32,
-                )
-                .is_err()
-                || !verb.starts_with(command.verb())
-            {
-                continue;
-            }
-            let flags = GetMenuState(menu.0, offset + 1, MF_BYCOMMAND);
-            if flags == u32::MAX || flags & (MF_DISABLED.0 | MF_GRAYED.0) != 0 {
-                return Ok(false);
-            }
-            // No shift/permanent-delete or no-confirmation flags are supplied.
-            let info = CMINVOKECOMMANDINFO {
-                cbSize: size_of::<CMINVOKECOMMANDINFO>() as u32,
-                hwnd: owner,
-                lpVerb: PCSTR(offset as usize as *const u8),
-                nShow: SW_SHOWNORMAL.0,
-                ..Default::default()
-            };
-            return file_command_completed(command, context.InvokeCommand(&info));
-        }
-        Ok(false)
+        let Some((offset, true)) = find_menu_command(menu.0, result.0 as u32 & 0xffff, &mut |offset| {
+            canonical_verb(&context, offset)
+                .is_some_and(|verb| verb.eq_ignore_ascii_case(command.verb()))
+        })? else {
+            return Ok(false);
+        };
+        // Keyboard/application commands retain their ordinary Shell behavior.
+        let info = menu_invocation(owner, offset, None);
+        file_command_completed(command, context.InvokeCommand((&raw const info).cast()))
     }
 }
 
 #[cfg(test)]
 mod tests {
+    #[windows::core::implement(IContextMenu)]
+    struct VerbProvider(bool);
+
+    impl IContextMenu_Impl for VerbProvider_Impl {
+        fn QueryContextMenu(&self, _: HMENU, _: u32, _: u32, _: u32, _: u32) -> windows::core::HRESULT {
+            S_OK
+        }
+
+        fn InvokeCommand(&self, _: *const CMINVOKECOMMANDINFO) -> Result<()> {
+            Ok(())
+        }
+
+        fn GetCommandString(&self, _: usize, kind: u32, _: *const u32, text: PSTR, max: u32) -> Result<()> {
+            if kind == GCS_VERBW && self.0 {
+                let verb: Vec<u16> = "ReNaMe\0".encode_utf16().collect();
+                assert!(max as usize >= verb.len());
+                unsafe { std::ptr::copy_nonoverlapping(verb.as_ptr(), text.as_ptr().cast(), verb.len()) };
+            } else if kind == GCS_VERBA {
+                let verb = b"DeLeTe\0";
+                assert!(max as usize >= verb.len());
+                unsafe { std::ptr::copy_nonoverlapping(verb.as_ptr(), text.as_ptr(), verb.len()) };
+            } else {
+                return Err(windows::Win32::Foundation::E_NOTIMPL.into());
+            }
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn canonical_verbs_prefer_unicode_and_fall_back_to_ansi() {
+        let unicode: IContextMenu = VerbProvider(true).into();
+        let ansi: IContextMenu = VerbProvider(false).into();
+        assert!(canonical_verb(&unicode, 0).unwrap().eq_ignore_ascii_case("rename"));
+        assert!(canonical_verb(&ansi, 0).unwrap().eq_ignore_ascii_case("delete"));
+    }
+
+    #[test]
+    fn shortcut_lookup_only_queries_real_menu_commands() {
+        use super::*;
+
+        unsafe {
+            let menu = Menu(CreatePopupMenu().unwrap());
+            let label = windows::core::w!("Item");
+            AppendMenuW(menu.0, MF_STRING, 2, label).unwrap();
+            AppendMenuW(menu.0, MF_SEPARATOR, 0, None).unwrap();
+            AppendMenuW(menu.0, MF_STRING | MF_GRAYED, 9, label).unwrap();
+            AppendMenuW(menu.0, MF_STRING, 14, label).unwrap();
+
+            let mut queried = Vec::new();
+            let command = find_menu_command(menu.0, 9, &mut |offset| {
+                queried.push(offset);
+                offset == 8
+            }).unwrap();
+            assert_eq!(command, Some((8, false)));
+            assert_eq!(queried, [1, 8]);
+        }
+    }
+
     #[test]
     fn recycling_completion_reconciles_partial_failures_without_masking_results() {
         use std::cell::Cell;
@@ -538,8 +716,13 @@ mod tests {
         use windows::Win32::Foundation::{ERROR_CANCELLED, E_ACCESSDENIED, E_ABORT};
         use windows::core::{Error, HRESULT};
         assert!(super::command_completed(Ok(())).unwrap());
-        assert!(!super::command_completed(Err(Error::from_hresult(HRESULT::from_win32(ERROR_CANCELLED.0)))).unwrap());
-        for code in [E_ACCESSDENIED, E_ABORT] {
+        for code in [
+            HRESULT::from_win32(ERROR_CANCELLED.0),
+            super::COPYENGINE_E_USER_CANCELLED,
+        ] {
+            assert!(!super::command_completed(Err(Error::from_hresult(code))).unwrap());
+        }
+        for code in [E_ACCESSDENIED, E_ABORT, super::COPYENGINE_E_CANCELLED] {
             assert_eq!(super::command_completed(Err(Error::from_hresult(code))).unwrap_err().code(), code);
         }
     }
@@ -578,13 +761,13 @@ mod tests {
         unsafe {
             let menu = Menu(CreatePopupMenu().unwrap());
             AppendMenuW(menu.0, MF_STRING, 1, windows::core::w!("Shell command")).unwrap();
-            add_location_command(menu.0, std::slice::from_ref(&item)).unwrap();
+            add_location_command(menu.0, std::slice::from_ref(&item), "Open file location").unwrap();
             assert_eq!(GetMenuItemCount(Some(menu.0)), 3);
             assert_eq!(GetMenuItemID(menu.0, 0), 1);
             assert_eq!(GetMenuItemID(menu.0, 1), OPEN_LOCATION as u32);
             for items in [vec![], vec![item.clone(), item], vec![ShellIdentity::Namespace { parsing_name: "virtual".into() }]] {
                 let menu = Menu(CreatePopupMenu().unwrap());
-                add_location_command(menu.0, &items).unwrap();
+                add_location_command(menu.0, &items, "Open file location").unwrap();
                 assert_eq!(GetMenuItemCount(Some(menu.0)), 0);
             }
         }

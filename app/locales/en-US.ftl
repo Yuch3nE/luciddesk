@@ -211,6 +211,9 @@ ui-peek-not-found-select-powertoys-peek-ui-exe-in-settings = { "Peek not found. 
 
 # 无法打开 PowerToys Peek：{error}
 ui-could-not-open-powertoys-peek = { "Could not open PowerToys Peek: " }{ $error }
+ui-peek-service-not-running = Start PowerToys and enable Peek.
+ui-peek-handoff-failed = Could not hand the selected item to PowerToys Peek.
+ui-peek-did-not-load-selection = PowerToys Peek did not load the selected item.
 
 # 此项目没有文件路径
 ui-this-item-has-no-file-path = { "This item has no file path" }
@@ -353,6 +356,8 @@ ui-could-not-attach-group-editing-state = { "Could not start renaming in this pa
 
 # 重命名失败
 ui-rename-failed = { "Rename failed" }
+ui-rename-invalid-item-name = Enter a name without path separators.
+ui-rename-no-shell-result = Windows did not report the rename result.
 
 # 重命名失败：{error}
 ui-rename-failed-9e1f = { "Rename failed: " }{ $error }
@@ -485,6 +490,7 @@ ui-desktop-audit-thread-stopped-restarting = { "Desktop audit thread stopped; re
 
 # 桌面正在变化，暂不更新面板清单
 ui-desktop-is-changing-group-refresh-deferred = { "Desktop is changing; panel refresh deferred" }
+ui-desktop-read-failed = Could not read the Windows desktop.
 
 # 桌面清单包含重复身份，暂不更新面板
 ui-duplicate-desktop-identities-group-refresh-deferred = { "Duplicate desktop identities; panel refresh deferred" }

@@ -30,7 +30,11 @@ impl fmt::Display for ShellError {
             Self::Com(error) => write!(formatter, "Windows Shell COM error: {error}"),
             Self::Utf16(error) => write!(formatter, "invalid UTF-16 from Windows Shell: {error}"),
             Self::Windows(code) => write!(formatter, "Windows Shell error 0x{code:08x}"),
-            Self::Execute(code) => write!(formatter, "ShellExecuteW failed with code {code}"),
+            Self::Execute(code) => write!(
+                formatter,
+                "ShellExecuteExW failed: {}",
+                io::Error::from_raw_os_error(*code as i32)
+            ),
             Self::ChangeNotification => {
                 write!(
                     formatter,

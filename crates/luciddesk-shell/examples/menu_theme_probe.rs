@@ -22,6 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             x: i32::from(lparam as u16 as i16),
                             y: i32::from((lparam >> 16) as u16 as i16),
                         },
+                        "Open file location",
                     );
                     println!("popup_result={result:?}");
                     Some(0)

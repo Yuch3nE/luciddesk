@@ -1,5 +1,5 @@
 //! The actual directory's Explorer classic background menu.
-use super::file_command::{Menu, MenuMessages};
+use super::file_command::{Menu, MenuMessages, menu_invocation};
 use std::{
     cell::RefCell,
     path::{Path, PathBuf},
@@ -14,7 +14,7 @@ use windows::{
         },
         UI::{Shell::*, WindowsAndMessaging::*},
     },
-    core::{GUID, HSTRING, Interface, PCSTR, PCWSTR, Result, implement},
+    core::{GUID, HSTRING, IUnknown, Interface, PCWSTR, Result, implement},
 };
 use windows_core::IUnknownImpl;
 
@@ -73,17 +73,25 @@ fn background_context(owner: HWND, path: &Path) -> Result<IContextMenu> {
     }
 }
 
+struct MenuSite(IObjectWithSite);
+
+impl Drop for MenuSite {
+    fn drop(&mut self) {
+        let _ = unsafe { self.0.SetSite(None::<&IUnknown>) };
+    }
+}
+
 /// Shows the real directory background menu, including its registered extensions.
 /// Missing directories fail instead of falling back to the desktop or mapped root.
 pub fn show_folder_menu(owner: HWND, path: &Path, point: POINT) -> Result<FolderMenuResult> {
+    let _active = crate::native_menu::ActiveMenu::acquire()?;
     let context = background_context(owner, path)?;
     let created = Rc::new(RefCell::new(None));
     let site: INewMenuClient = NewClient(Rc::clone(&created)).into();
-    if let Ok(with_site) = context.cast::<IObjectWithSite>() {
-        unsafe {
-            let _ = with_site.SetSite(&site);
-        }
-    }
+    let site_binding = context.cast::<IObjectWithSite>().ok().and_then(|with_site| {
+        unsafe { with_site.SetSite(&site) }.ok()?;
+        Some(MenuSite(with_site))
+    });
     let theme = luciddesk_menu::apply_scoped_theme(owner.0);
     unsafe {
         let menu = Menu(CreatePopupMenu()?);
@@ -107,6 +115,8 @@ pub fn show_folder_menu(owner: HWND, path: &Path, point: POINT) -> Result<Folder
             None,
         )
         .0;
+        let offset = chosen.saturating_sub(1).max(0) as usize;
+        let mut command = menu_invocation(owner, offset, Some(point));
         drop(frame);
         drop(messages);
         drop(theme);
@@ -114,19 +124,12 @@ pub fn show_folder_menu(owner: HWND, path: &Path, point: POINT) -> Result<Folder
             return Ok(FolderMenuResult::Cancelled);
         }
         let directory = HSTRING::from(path.as_os_str());
-        let command = CMINVOKECOMMANDINFOEX {
-            cbSize: size_of::<CMINVOKECOMMANDINFOEX>() as u32,
-            // CMIC_MASK_UNICODE is the Shell header alias for SEE_MASK_UNICODE.
-            fMask: SEE_MASK_UNICODE | CMIC_MASK_PTINVOKE,
-            hwnd: owner,
-            lpVerb: PCSTR((chosen as usize - 1) as *const u8),
-            lpVerbW: PCWSTR((chosen as usize - 1) as *const u16),
-            lpDirectoryW: PCWSTR(directory.as_ptr()),
-            nShow: SW_SHOWNORMAL.0,
-            ptInvoke: point,
-            ..Default::default()
-        };
-        context.InvokeCommand((&raw const command).cast())?;
+        command.lpDirectoryW = PCWSTR(directory.as_ptr());
+        let invoked = context.InvokeCommand((&raw const command).cast());
+        if !crate::file_command::command_completed(invoked)? {
+            return Ok(FolderMenuResult::Cancelled);
+        }
+        drop(site_binding);
         Ok(FolderMenuResult::Invoked {
             created: created.borrow_mut().take(),
         })
@@ -136,6 +139,33 @@ pub fn show_folder_menu(owner: HWND, path: &Path, point: POINT) -> Result<Folder
 #[cfg(test)]
 mod tests {
     use super::*;
+    use windows::{Win32::System::Ole::IObjectWithSite_Impl, core::Ref};
+
+    #[implement(IObjectWithSite)]
+    struct SiteRecorder(Rc<RefCell<Vec<bool>>>);
+
+    impl IObjectWithSite_Impl for SiteRecorder_Impl {
+        fn SetSite(&self, site: Ref<IUnknown>) -> Result<()> {
+            self.0.borrow_mut().push(site.as_ref().is_some());
+            Ok(())
+        }
+
+        fn GetSite(&self, _: *const GUID, _: *mut *mut std::ffi::c_void) -> Result<()> {
+            Err(E_NOINTERFACE.into())
+        }
+    }
+
+    #[test]
+    fn menu_site_is_detached_when_the_guard_exits() {
+        let calls = Rc::new(RefCell::new(Vec::new()));
+        let context: IObjectWithSite = SiteRecorder(Rc::clone(&calls)).into();
+        let client: INewMenuClient = NewClient(Rc::new(RefCell::new(None))).into();
+        unsafe { context.SetSite(&client) }.unwrap();
+        let site = MenuSite(context);
+        assert_eq!(*calls.borrow(), [true]);
+        drop(site);
+        assert_eq!(*calls.borrow(), [true, false]);
+    }
     #[test]
     fn context_targets_current_directory_and_rejects_missing_destinations() {
         let _sta = crate::ShellApartment::initialize_sta().unwrap();

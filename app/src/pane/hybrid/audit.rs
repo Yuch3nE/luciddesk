@@ -46,12 +46,12 @@ impl DesktopAudit {
                             let revision = (
                                 reader.revision().inspect_err(|error| {
                                     diagnostics::failure(Operation::NativeSnapshot, error)
-                                })?,
+                                }).map_err(crate::pane::desktop_ready::desktop_inventory_error)?,
                                 luciddesk_shell::desktop_source_revision()
                                     .inspect_err(|error| {
                                         diagnostics::failure(Operation::EnumerateSource, error)
                                     })
-                                    .map_err(|error| error.to_string())?,
+                                    .map_err(|_| crate::i18n::text("ui-desktop-read-failed"))?,
                                 keys.clone(),
                             );
                             if !force && previous.as_ref() == Some(&revision) {

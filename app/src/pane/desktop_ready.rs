@@ -11,7 +11,9 @@ pub(super) struct Desktop {
 
 impl Desktop {
     fn current() -> Result<Self, String> {
-        let view = luciddesk_explorer::desktop_view()?;
+        let view = luciddesk_explorer::desktop_view()
+            .inspect_err(|error| super::diagnostics::failure(super::diagnostics::Operation::DiscoverView, error))
+            .map_err(|_| crate::i18n::text("ui-desktop-read-failed"))?;
         let mut process = 0;
         unsafe { GetWindowThreadProcessId(view as _, &mut process); }
         if process == 0 { return Err("Desktop window is no longer available".into()); }
@@ -65,12 +67,28 @@ fn detect() -> Result<Desktop, String> {
     let _apartment = luciddesk_shell::ShellApartment::initialize_sta().map_err(|e| e.to_string())?;
     // Reads view metrics and a consistent pair of item-ID snapshots, without
     // resolving file metadata, loading icons or attaching the desktop hook.
-    let revision = luciddesk_shell::NativeDesktopReader::default().revision()?;
+    let revision = luciddesk_shell::NativeDesktopReader::default().revision()
+        .inspect_err(|error| super::diagnostics::failure(super::diagnostics::Operation::NativeSnapshot, error))
+        .map_err(|error| {
+            if error.is_changed() {
+                crate::i18n::text("ui-desktop-view-changed-while-reading-reconnecting")
+            } else {
+                crate::i18n::text("ui-desktop-read-failed")
+            }
+        })?;
     desktop.validate()?;
     if unsafe { GetParent(desktop.view as _) } as isize != revision.view_window() {
         return Err("Shell interface and desktop window do not match; retrying".into());
     }
     Ok(desktop)
+}
+
+pub(super) fn desktop_inventory_error(error: luciddesk_shell::NativeDesktopError) -> String {
+    crate::i18n::text(if error.is_changed() {
+        "ui-desktop-is-changing-group-refresh-deferred"
+    } else {
+        "ui-desktop-read-failed"
+    }).into()
 }
 
 #[cfg(test)]

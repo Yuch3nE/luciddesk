@@ -53,7 +53,7 @@ fn native_menus_restore_process_theme_after_cancel_and_failure() {
         for prior in [2, 3] {
             preferred(prior);
             assert_ne!(SetTimer(hwnd, 0x4c545443, 500, Some(cancel)), 0);
-            let result = crate::show_file_items_menu(owner, &[identity(path.clone())], point);
+            let result = crate::show_file_items_menu(owner, &[identity(path.clone())], point, "Open file location");
             KillTimer(hwnd, 0x4c545443);
             assert!(!result.unwrap(), "cancelling must not request rename");
             assert_eq!(preferred(prior), prior, "file popup must restore process preference");
@@ -64,7 +64,7 @@ fn native_menus_restore_process_theme_after_cancel_and_failure() {
             assert!(matches!(result.unwrap(), crate::FolderMenuResult::Cancelled));
             assert_eq!(preferred(prior), prior, "folder popup must restore process preference");
 
-            assert!(crate::show_file_items_menu(owner, &[identity(root.join("missing.txt"))], point).is_err());
+            assert!(crate::show_file_items_menu(owner, &[identity(root.join("missing.txt"))], point, "Open file location").is_err());
             assert_eq!(preferred(prior), prior, "failed file menu creation must restore process preference");
             assert!(crate::show_folder_menu(owner, &root.join("missing"), point).is_err());
             assert_eq!(preferred(prior), prior, "failed folder menu creation must preserve process preference");

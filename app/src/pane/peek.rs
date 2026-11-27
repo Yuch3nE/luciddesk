@@ -373,7 +373,23 @@ pub(super) fn open(owner: isize, identity: &ShellIdentity) -> Result<(), String>
         .ok_or(crate::i18n::text("ui-peek-not-found-select-powertoys-peek-ui-exe-in-settings"))?;
     let _signals = ensure_running(&path)?;
     luciddesk_shell::peek_desktop_item(windows::Win32::Foundation::HWND(owner as _), identity)
-        .map_err(|error| crate::i18n::format("ui-could-not-open-powertoys-peek", &[("error", format!("{}", error))]))
+        .map_err(peek_error_message)
+}
+
+fn peek_error_message(error: luciddesk_shell::PeekError) -> String {
+    use luciddesk_shell::PeekError;
+    luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Warn, "pane.peek", "{error}");
+    match error {
+        PeekError::Unavailable(_) => crate::i18n::text("ui-peek-service-not-running").into(),
+        PeekError::SelectionMismatch | PeekError::ForegroundUnavailable =>
+            crate::i18n::text("ui-peek-handoff-failed").into(),
+        PeekError::TimedOut => crate::i18n::text("ui-peek-did-not-load-selection").into(),
+        PeekError::Cancelled => crate::i18n::text("ui-preview-canceled").into(),
+        PeekError::Shell(error) => crate::i18n::format(
+            "ui-could-not-open-powertoys-peek",
+            &[("error", error.to_string())],
+        ),
+    }
 }
 
 pub(super) fn open_path(identity: &ShellIdentity) -> Result<(), String> {

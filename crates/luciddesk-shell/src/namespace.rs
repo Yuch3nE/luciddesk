@@ -1,8 +1,8 @@
 //! Shell namespace enumeration, display names, and stable file identity.
 use crate::{ShellError, ShellIdentity};
-use std::os::windows::{ffi::OsStringExt, fs::OpenOptionsExt, io::AsRawHandle};
+use std::os::windows::{ffi::{OsStrExt, OsStringExt}, fs::OpenOptionsExt, io::AsRawHandle};
 use std::{
-    ffi::c_void,
+    ffi::{OsString, c_void},
     fs::{self, OpenOptions},
     path::{Path, PathBuf},
     ptr,
@@ -24,10 +24,9 @@ use windows::Win32::{
 };
 use windows_sys::Win32::{
     Storage::FileSystem::{
-        FILE_FLAG_BACKUP_SEMANTICS, FILE_ID_INFO, FILE_SHARE_DELETE, FILE_SHARE_READ,
-        FILE_SHARE_WRITE, FileIdInfo, GetFileInformationByHandleEx,
+        FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_ID_INFO, FILE_SHARE_DELETE,
+        FILE_SHARE_READ, FILE_SHARE_WRITE, FileIdInfo, GetFileInformationByHandleEx,
     },
-    System::Com::CoTaskMemFree,
     UI::Shell::{FOLDERID_LocalAppData, SHGetKnownFolderPath},
 };
 
@@ -70,20 +69,31 @@ pub fn local_app_data_path() -> Result<PathBuf, ShellError> {
             &raw mut raw_path,
         )
     };
+    // A failure can still leave an allocation for the caller to release.
+    let raw_path = TaskMemWide(windows::core::PWSTR(raw_path));
     if result < 0 {
         return Err(ShellError::Windows(result));
     }
 
-    let path = unsafe {
-        let mut length = 0;
-        while *raw_path.add(length) != 0 {
-            length += 1;
+    Ok(PathBuf::from(std::ffi::OsString::from_wide(raw_path.as_wide()?)))
+}
+
+struct TaskMemWide(windows::core::PWSTR);
+impl TaskMemWide {
+    fn as_wide(&self) -> Result<&[u16], ShellError> {
+        if self.0.is_null() {
+            return Err(windows::core::Error::new(
+                windows::Win32::Foundation::E_POINTER,
+                "Shell returned a null string",
+            ).into());
         }
-        let value = std::ffi::OsString::from_wide(std::slice::from_raw_parts(raw_path, length));
-        CoTaskMemFree(raw_path.cast::<c_void>());
-        PathBuf::from(value)
-    };
-    Ok(path)
+        Ok(unsafe { self.0.as_wide() })
+    }
+}
+impl Drop for TaskMemWide {
+    fn drop(&mut self) {
+        unsafe { CoTaskMemFreeCom(Some(self.0.0.cast())) };
+    }
 }
 
 /// Enumerates the Windows Desktop Shell Namespace, including virtual Shell items.
@@ -137,9 +147,7 @@ pub fn desktop_source_revision() -> Result<Vec<Vec<u8>>, ShellError> {
                 if fetched == 0 {
                     break;
                 }
-                let child = Pidl::new(child[0]);
-                let length = windows::Win32::UI::Shell::ILGetSize(Some(child.as_ptr())) as usize;
-                ids.push(std::slice::from_raw_parts(child.as_ptr().cast(), length).to_vec());
+                ids.push(Pidl::new(child[0])?.bytes()?);
             }
         }
         ids.sort();
@@ -246,18 +254,12 @@ fn enumerate_shell_folder(
             }
             break;
         }
-        let child = Pidl::new(child[0]);
         let resolved = (|| -> Result<ShellEntry, ShellError> {
+            let child = unsafe { Pidl::new(child[0]) }?;
             let shell_item: IShellItem =
                 unsafe { SHCreateItemWithParent(None, desktop, child.as_ptr()) }?;
-            let mut item = shell_entry(&shell_item)?;
             let parsing = shell_item_name(&shell_item, SIGDN_DESKTOPABSOLUTEPARSING)?;
-            if parsing.starts_with("::{") {
-                item.identity = ShellIdentity::Namespace {
-                    parsing_name: parsing,
-                };
-            }
-            Ok(item)
+            shell_entry_with_parsing_name(&shell_item, None, Ok(parsing))
         })();
         match resolved {
             Ok(item) => items.push(item),
@@ -284,29 +286,33 @@ pub(crate) fn shell_entry_with_display_fallback(
     item: &IShellItem,
     fallback: Option<&str>,
 ) -> Result<ShellEntry, ShellError> {
+    shell_entry_with_parsing_name(
+        item,
+        fallback,
+        shell_item_name(item, SIGDN_DESKTOPABSOLUTEPARSING),
+    )
+}
+
+fn shell_entry_with_parsing_name(
+    item: &IShellItem,
+    fallback: Option<&str>,
+    parsing_name: Result<OsString, ShellError>,
+) -> Result<ShellEntry, ShellError> {
     let display_name = shell_item_name(item, SIGDN_NORMALDISPLAY)
+        .map(|name| name.to_string_lossy().into_owned())
         .or_else(|error| fallback.map(str::to_owned).ok_or(error))?;
-    let identity = shell_item_name(item, SIGDN_FILESYSPATH)
-        .ok()
-        .filter(|value| !value.is_empty())
-        .map_or_else(
-            || {
-                shell_item_name(item, SIGDN_DESKTOPABSOLUTEPARSING)
-                    .map(|parsing_name| ShellIdentity::Namespace { parsing_name })
-            },
-            |path| {
-                let path = PathBuf::from(path);
-                let (volume_id, file_id) = stable_file_identity(&path)
-                    .map_or((None, None), |(volume_id, file_id)| {
-                        (Some(volume_id), Some(file_id))
-                    });
-                Ok(ShellIdentity::FileSystem {
-                    path,
-                    volume_id,
-                    file_id,
-                })
-            },
-        )?;
+    let path = shell_item_path(item);
+    let mut identity = shell_identity_from_names(parsing_name, || path.clone())?;
+    if let ShellIdentity::FileSystem {
+        path,
+        volume_id,
+        file_id,
+    } = &mut identity
+        && let Some((volume, file)) = stable_file_identity(path)
+    {
+        *volume_id = Some(volume);
+        *file_id = Some(file);
+    }
     let attribute_mask = SFGAO_FOLDER
         | SFGAO_FILESYSTEM
         | SFGAO_LINK
@@ -315,10 +321,55 @@ pub(crate) fn shell_entry_with_display_fallback(
         | SFGAO_CANDELETE;
     let raw_attributes =
         unsafe { item.GetAttributes(attribute_mask) }.map_or(0, |attributes| attributes.0);
-    let metadata = identity
-        .file_system_path()
-        .and_then(|path| fs::metadata(path).ok());
-    let path_is_link = identity.file_system_path().is_some_and(|path| {
+    Ok(shell_entry_from_attributes(
+        identity,
+        display_name,
+        path.as_deref(),
+        raw_attributes,
+    ))
+}
+
+pub(crate) fn shell_item_path(item: &IShellItem) -> Option<PathBuf> {
+    shell_item_name(item, SIGDN_FILESYSPATH)
+        .ok()
+        .filter(|path| !path.is_empty())
+        .map(PathBuf::from)
+}
+
+pub(crate) fn shell_identity_from_names(
+    parsing_name: Result<OsString, ShellError>,
+    file_system_path: impl FnOnce() -> Option<PathBuf>,
+) -> Result<ShellIdentity, ShellError> {
+    // Known-folder desktop objects can have distinct icons and verbs even
+    // when the Shell also exposes the path of their underlying directory.
+    if !parsing_name.as_ref().is_ok_and(|name| {
+        name.encode_wide().take(3).eq("::{".encode_utf16())
+    })
+        && let Some(path) = file_system_path()
+    {
+        return Ok(ShellIdentity::FileSystem {
+            path,
+            volume_id: None,
+            file_id: None,
+        });
+    }
+    let parsing_name = parsing_name?.into_string().map_err(|_| {
+        windows::core::Error::new(
+            windows::Win32::Foundation::E_INVALIDARG,
+            "Shell namespace parsing name is not valid Unicode",
+        )
+    })?;
+    Ok(ShellIdentity::Namespace { parsing_name })
+}
+
+pub(crate) fn shell_entry_from_attributes(
+    identity: ShellIdentity,
+    display_name: String,
+    path: Option<&Path>,
+    raw_attributes: u32,
+) -> ShellEntry {
+    let metadata = path.and_then(|path| fs::metadata(path).ok());
+    let path_is_link = path.is_some_and(|path| {
         path.extension()
             .is_some_and(|extension| extension.eq_ignore_ascii_case("lnk"))
     });
@@ -326,8 +377,7 @@ pub(crate) fn shell_entry_with_display_fallback(
         folder: raw_attributes & SFGAO_FOLDER.0 != 0
             || metadata.as_ref().is_some_and(fs::Metadata::is_dir),
         filesystem_directory: metadata.as_ref().map(fs::Metadata::is_dir),
-        file_system: raw_attributes & SFGAO_FILESYSTEM.0 != 0
-            || identity.file_system_path().is_some(),
+        file_system: raw_attributes & SFGAO_FILESYSTEM.0 != 0 || path.is_some(),
         link: raw_attributes & SFGAO_LINK.0 != 0 || path_is_link,
         hidden: raw_attributes & SFGAO_HIDDEN.0 != 0,
         can_rename: raw_attributes & SFGAO_CANRENAME.0 != 0,
@@ -339,21 +389,22 @@ pub(crate) fn shell_entry_with_display_fallback(
         .map(fs::Metadata::len);
     let created = metadata.as_ref().and_then(|metadata| metadata.created().ok());
     let modified = metadata.and_then(|metadata| metadata.modified().ok());
-    Ok(ShellEntry {
+    ShellEntry {
         identity,
         display_name,
         attributes,
         created,
         modified,
         size,
-    })
+    }
 }
 
 pub(crate) fn stable_file_identity(path: &Path) -> Option<(u64, u128)> {
     let file = OpenOptions::new()
         .access_mode(0)
         .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
-        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+        // The desktop entry owns the identity, including a dangling link.
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
         .open(path)
         .ok()?;
     let mut info = FILE_ID_INFO::default();
@@ -376,31 +427,75 @@ pub(crate) fn stable_file_identity(path: &Path) -> Option<(u64, u128)> {
 pub(crate) fn shell_item_name(
     item: &IShellItem,
     kind: windows::Win32::UI::Shell::SIGDN,
-) -> Result<String, ShellError> {
-    let raw = unsafe { item.GetDisplayName(kind) }?;
-    let value = unsafe { raw.to_string() };
-    unsafe {
-        CoTaskMemFreeCom(Some(raw.0.cast()));
-    }
-    value.map_err(Into::into)
+) -> Result<OsString, ShellError> {
+    let raw = TaskMemWide(unsafe { item.GetDisplayName(kind) }?);
+    Ok(OsString::from_wide(raw.as_wide()?))
 }
 
-pub(crate) struct Pidl(*mut windows::Win32::UI::Shell::Common::ITEMIDLIST);
+pub(crate) struct Pidl(std::ptr::NonNull<windows::Win32::UI::Shell::Common::ITEMIDLIST>);
 
 impl Pidl {
-    pub(crate) fn new(value: *mut windows::Win32::UI::Shell::Common::ITEMIDLIST) -> Self {
-        Self(value)
+    /// Takes ownership of a Shell-allocated PIDL, or rejects a null result.
+    /// A non-null value must be valid for ILGetSize and owned by the caller.
+    pub(crate) unsafe fn new(
+        value: *mut windows::Win32::UI::Shell::Common::ITEMIDLIST,
+    ) -> windows::core::Result<Self> {
+        std::ptr::NonNull::new(value).map(Self).ok_or_else(|| {
+            windows::core::Error::new(windows::Win32::Foundation::E_POINTER, "Shell returned a null PIDL")
+        })
     }
 
     pub(crate) const fn as_ptr(&self) -> *const windows::Win32::UI::Shell::Common::ITEMIDLIST {
-        self.0
+        self.0.as_ptr()
+    }
+
+    pub(crate) fn bytes(&self) -> windows::core::Result<Vec<u8>> {
+        let len = unsafe { windows::Win32::UI::Shell::ILGetSize(Some(self.as_ptr())) } as usize;
+        if !(size_of::<u16>()..=isize::MAX as usize).contains(&len) {
+            return Err(windows::core::Error::new(
+                windows::Win32::Foundation::E_UNEXPECTED,
+                "Shell returned an invalid PIDL size",
+            ));
+        }
+        // The Shell supplied an owned ITEMIDLIST, including its terminator.
+        Ok(unsafe { std::slice::from_raw_parts(self.as_ptr().cast(), len) }.to_vec())
     }
 }
 
 impl Drop for Pidl {
     fn drop(&mut self) {
         unsafe {
-            CoTaskMemFreeCom(Some(self.0.cast()));
+            CoTaskMemFreeCom(Some(self.0.as_ptr().cast()));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn null_pidl_is_rejected_before_reading_its_size() {
+        assert!(matches!(unsafe { Pidl::new(ptr::null_mut()) }, Err(error)
+            if error.code() == windows::Win32::Foundation::E_POINTER));
+    }
+
+    #[test]
+    fn desktop_namespace_identity_takes_precedence_over_its_file_system_path() {
+        let parsing_name = "::{59031A47-3F72-44A7-89C5-5595FE6B30EE}".to_owned();
+        let identity = shell_identity_from_names(Ok(parsing_name.clone().into()), || {
+            Some(PathBuf::from(r"C:\Users\Test"))
+        })
+        .unwrap();
+        assert_eq!(identity, ShellIdentity::Namespace { parsing_name });
+    }
+
+    #[test]
+    fn filesystem_identity_preserves_unpaired_surrogates() {
+        let path = PathBuf::from(r"C:\Desktop").join(OsString::from_wide(&[0xd800]));
+        let identity = shell_identity_from_names(Ok(path.as_os_str().to_os_string()), || {
+            Some(path.clone())
+        }).unwrap();
+        assert_eq!(identity.file_system_path(), Some(path.as_path()));
     }
 }

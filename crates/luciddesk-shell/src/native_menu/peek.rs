@@ -26,7 +26,45 @@ impl Drop for EventHandle {
     }
 }
 
-fn peek_has_item(name: &str) -> bool {
+#[derive(Debug)]
+pub enum PeekError {
+    Unavailable(Error),
+    SelectionMismatch,
+    ForegroundUnavailable,
+    Cancelled,
+    TimedOut,
+    Shell(Error),
+}
+
+impl std::fmt::Display for PeekError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unavailable(error) => write!(formatter, "Open the PowerToys Peek signal: {error}"),
+            Self::SelectionMismatch => formatter.write_str("The desktop selection does not match the Peek target"),
+            Self::ForegroundUnavailable => formatter.write_str("The desktop could not take foreground focus for Peek"),
+            Self::Cancelled => formatter.write_str("The preview was cancelled"),
+            Self::TimedOut => formatter.write_str("Peek did not acknowledge the requested desktop item"),
+            Self::Shell(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl std::error::Error for PeekError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Unavailable(error) | Self::Shell(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+
+impl From<Error> for PeekError {
+    fn from(error: Error) -> Self {
+        Self::Shell(error)
+    }
+}
+
+fn peek_has_item(name: &str, file_name: Option<&str>, path: &mut [u16]) -> bool {
     unsafe {
         let hwnd = GetForegroundWindow();
         let mut pid = 0;
@@ -35,7 +73,6 @@ fn peek_has_item(name: &str) -> bool {
         if process.is_null() {
             return false;
         }
-        let mut path = [0u16; 32768];
         let mut length = path.len() as u32;
         let ok = QueryFullProcessImageNameW(process, 0, path.as_mut_ptr(), &raw mut length);
         CloseRawHandle(process);
@@ -51,15 +88,24 @@ fn peek_has_item(name: &str) -> bool {
         let title = String::from_utf16_lossy(&title[..length.max(0) as usize]);
         // Peek sets its title after the synchronous Shell-item query. Activation
         // alone happens before that query on first launch and is not sufficient.
-        title == name || title.starts_with(&format!("{name} - "))
+        matches_peek_title(&title, name, file_name)
     }
+}
+
+fn matches_peek_title(title: &str, name: &str, file_name: Option<&str>) -> bool {
+    let matches_name = |candidate: &str| !candidate.is_empty()
+        && (candidate == name || file_name == Some(candidate));
+    matches_name(title)
+        || title.rsplit_once(" - ").is_some_and(|(item, suffix)| {
+            !suffix.is_empty() && matches_name(item)
+        })
 }
 
 /// Preview a desktop namespace member through PowerToys' running Peek service.
 /// Caller must permit temporary hidden desktop selection and release model borrows.
 /// # Errors
 /// Fails if Peek is unavailable, the item cannot be resolved, or handoff times out.
-pub fn peek_desktop_item(owner: HWND, identity: &ShellIdentity) -> Result<()> {
+pub fn peek_desktop_item(owner: HWND, identity: &ShellIdentity) -> std::result::Result<(), PeekError> {
     let _active = ActiveMenu::acquire()?;
     unsafe {
         let signal = EventHandle(OpenEventW(
@@ -68,15 +114,23 @@ pub fn peek_desktop_item(owner: HWND, identity: &ShellIdentity) -> Result<()> {
             windows_sys::w!("Local\\ShowPeekEvent"),
         ));
         if signal.0.is_null() {
-            return Err(Error::new(E_FAIL, "请启动 PowerToys 并启用 Peek（速览）"));
+            return Err(PeekError::Unavailable(Error::from_thread()));
         }
         let shell: IShellWindows = CoCreateInstance(&ShellWindows, None, CLSCTX_ALL)?;
         let view = crate::desktop::shell_view(&shell)?;
         let folder: IFolderView2 = view.cast()?;
-        let index = selection::resolve(&folder, &identity.activation_name().to_string_lossy())?;
+        let index = selection::resolve(&folder, identity.activation_name())?;
         let item = selection::item_at(&folder, index)?;
         let name = crate::namespace::shell_item_name(&item, SIGDN_NORMALDISPLAY)
-            .map_err(|e| Error::new(E_FAIL, e.to_string()))?;
+            .map_err(|error| match error {
+                crate::ShellError::Com(error) => crate::error::com_context(error, "Read Peek target display name"),
+                other => Error::new(E_FAIL, other.to_string()),
+            })?;
+        let name = name.to_string_lossy();
+        let path = crate::namespace::shell_item_path(&item);
+        let file_name = path.as_deref()
+            .and_then(std::path::Path::file_name)
+            .map(std::ffi::OsStr::to_string_lossy);
         let hwnd = view.GetWindow()?.0;
         let restore = selection::RestoreSelection::deselect_on_close(&folder);
         let _focus = ReturnFocus {
@@ -90,38 +144,46 @@ pub fn peek_desktop_item(owner: HWND, identity: &ShellIdentity) -> Result<()> {
         // Refuse to wake Peek with a stale/different desktop selection.
         let selected: windows::Win32::UI::Shell::IShellItemArray = folder.Items(SVGIO_SELECTION)?;
         if selected.GetCount()? != 1 || !selection::matches(&selected.GetItemAt(0)?, &item)? {
-            return Err(Error::new(E_FAIL, "无法将选中项目交给 Peek"));
+            return Err(PeekError::SelectionMismatch);
         }
         let mut pid = 0;
         GetWindowThreadProcessId(hwnd, &raw mut pid);
         if AllowSetForegroundWindow(pid) == 0
             || SetForegroundWindow(GetAncestor(hwnd, GA_ROOT)) == 0
         {
-            return Err(Error::new(E_FAIL, "无法切换到桌面预览入口"));
+            return Err(PeekError::ForegroundUnavailable);
         }
         view.UIActivate(SVUIA_ACTIVATE_FOCUS.0 as u32)?;
         if SetEvent(signal.0) == 0 {
-            return Err(Error::from_thread());
+            return Err(crate::error::com_context(Error::from_thread(), "Signal PowerToys Peek").into());
         }
+        let mut process_path = vec![0u16; 32768];
         let deadline = Instant::now() + Duration::from_secs(5);
         while Instant::now() < deadline {
-            if peek_has_item(&name) {
-                return restore.finish();
+            if peek_has_item(&name, file_name.as_deref(), &mut process_path) {
+                return Ok(restore.finish()?);
             }
-            let mut message = MSG::default();
-            while PeekMessageW(&raw mut message, std::ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
-                if message.message == WM_QUIT {
-                    PostQuitMessage(message.wParam as i32);
-                    return Err(Error::new(E_FAIL, "预览已取消"));
-                }
-                TranslateMessage(&raw const message);
-                DispatchMessageW(&raw const message);
+            if !lifetime::pump_messages() {
+                return Err(PeekError::Cancelled);
             }
             MsgWaitForMultipleObjectsEx(0, std::ptr::null(), 25, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
         }
-        Err(Error::new(
-            E_FAIL,
-            "Peek 未读取到选中项目，请确认 PowerToys 已运行且 Peek 已启用",
-        ))
+        Err(PeekError::TimedOut)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::matches_peek_title;
+
+    #[test]
+    fn peek_matches_the_display_name_or_full_filename() {
+        let name = "report - draft";
+        let file_name = Some("report - draft.txt");
+        assert!(matches_peek_title(name, name, file_name));
+        assert!(matches_peek_title("report - draft - Peek", name, file_name));
+        assert!(matches_peek_title("report - draft.txt - Peek", name, file_name));
+        assert!(!matches_peek_title("report - draft - other.txt - Peek", name, file_name));
+        assert!(!matches_peek_title("Peek", "", None));
     }
 }

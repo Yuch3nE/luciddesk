@@ -8,9 +8,10 @@ macro_rules! trace {
 }
 use std::{
     collections::HashMap,
+    ffi::{OsStr, OsString},
     sync::{Mutex, OnceLock},
 };
-use windows::Win32::System::Com::CoTaskMemFree;
+use windows::Win32::{Foundation::{E_FAIL, E_POINTER}, System::Com::CoTaskMemFree};
 use windows::Win32::UI::Shell::{
     IFolderView2, IShellFolder, IShellItem, SHCreateItemFromParsingName, SHCreateItemWithParent,
     SICHINT_CANONICAL, SICHINT_TEST_FILESYSPATH_IF_NOT_EQUAL, SVGIO_ALLVIEW, SVSI_DESELECTOTHERS,
@@ -18,10 +19,10 @@ use windows::Win32::UI::Shell::{
 };
 use windows::core::{HSTRING, Result};
 
-static INDEX_HINTS: OnceLock<Mutex<HashMap<String, i32>>> = OnceLock::new();
+static INDEX_HINTS: OnceLock<Mutex<HashMap<OsString, i32>>> = OnceLock::new();
 
 /// Refresh from an already captured desktop inventory, without extra Shell calls.
-pub(crate) fn update_hints(items: impl Iterator<Item = (String, i32)>) {
+pub(crate) fn update_hints(items: impl Iterator<Item = (OsString, i32)>) {
     let next = items.collect();
     if let Ok(mut cache) = INDEX_HINTS.get_or_init(Mutex::default).lock() {
         *cache = next;
@@ -49,6 +50,9 @@ fn item_with_parent(
 ) -> Result<IShellItem> {
     unsafe {
         let pidl = folder.Item(index)?;
+        if pidl.is_null() {
+            return Err(E_POINTER.into());
+        }
         let item = SHCreateItemWithParent(None, parent, pidl);
         CoTaskMemFree(Some(pidl.cast()));
         item
@@ -56,20 +60,30 @@ fn item_with_parent(
 }
 
 pub fn find(folder: &IFolderView2, target: &IShellItem) -> Result<Option<i32>> {
-    unsafe {
-        let parent: IShellFolder = folder.GetFolder()?;
-        for index in 0..folder.ItemCount(SVGIO_ALLVIEW)? {
-            // The merged desktop namespace and a filesystem parsing path can describe
-            // the same file with different PIDLs. Let Shell compare their file paths too.
-            if matches(&item_with_parent(folder, &parent, index)?, target)? {
-                return Ok(Some(index));
+    let parent: IShellFolder = unsafe { folder.GetFolder()? };
+    let count = unsafe { folder.ItemCount(SVGIO_ALLVIEW)? };
+    find_match(count, |index| {
+        // The merged desktop namespace and a filesystem path can have different PIDLs.
+        matches(&item_with_parent(folder, &parent, index)?, target)
+    })
+}
+
+fn find_match(count: i32, mut compare: impl FnMut(i32) -> Result<bool>) -> Result<Option<i32>> {
+    let mut first_error = None;
+    for index in 0..count {
+        match compare(index) {
+            Ok(true) => return Ok(Some(index)),
+            Ok(false) => {}
+            Err(error) => {
+                first_error.get_or_insert(error);
             }
         }
     }
-    Ok(None)
+    first_error.map_or(Ok(None), Err)
 }
 
-pub fn resolve(folder: &IFolderView2, name: &str) -> Result<i32> {
+pub fn resolve(folder: &IFolderView2, name: impl AsRef<OsStr>) -> Result<i32> {
+    let name = name.as_ref();
     let target: IShellItem = unsafe { SHCreateItemFromParsingName(&HSTRING::from(name), None)? };
     // Never trust cached indices after sorting, deletion or an Explorer restart.
     // Release the lock before every COM call (COM can re-enter the message loop).
@@ -94,7 +108,7 @@ pub fn resolve(folder: &IFolderView2, name: &str) -> Result<i32> {
         if cache.len() >= 1024 {
             cache.clear();
         }
-        cache.insert(name.to_string(), index);
+        cache.insert(name.to_os_string(), index);
     }
     Ok(index)
 }
@@ -106,20 +120,38 @@ pub struct RestoreSelection {
     restore_previous: bool,
 }
 
+fn focused_index(folder: &IFolderView2) -> Result<Option<i32>> {
+    match unsafe { folder.GetFocusedItem() } {
+        Ok(index) => Ok(Some(index)),
+        // When the view cannot supply an index, check focus on each item below.
+        Err(error) if error.code() == E_FAIL => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+fn selection_flags(folder: &IFolderView2, index: i32, focused: Option<i32>) -> Result<u32> {
+    let actual = unsafe {
+        let pidl = folder.Item(index)?;
+        if pidl.is_null() {
+            return Err(E_POINTER.into());
+        }
+        let flags = folder.GetSelectionState(pidl);
+        CoTaskMemFree(Some(pidl.cast()));
+        flags?
+    };
+    let selected = actual & SVSI_SELECT.0.cast_unsigned();
+    let focused = focused.map_or(actual & SVSI_FOCUSED.0.cast_unsigned() != 0, |at| at == index);
+    Ok(selected | if focused { SVSI_FOCUSED.0.cast_unsigned() } else { 0 })
+}
+
 impl RestoreSelection {
     #[cfg(feature = "desktop-menu-diagnostics")]
     pub fn capture(folder: &IFolderView2) -> Result<Self> {
         let mut selected = Vec::new();
         unsafe {
-            let focused = folder.GetFocusedItem()?;
+            let focused = focused_index(folder)?;
             for index in 0..folder.ItemCount(SVGIO_ALLVIEW)? {
-                let pidl = folder.Item(index)?;
-                let flags = folder.GetSelectionState(pidl);
-                CoTaskMemFree(Some(pidl.cast()));
-                let mut flags = flags? & SVSI_SELECT.0.cast_unsigned();
-                if index == focused {
-                    flags |= SVSI_FOCUSED.0.cast_unsigned();
-                }
+                let flags = selection_flags(folder, index, focused)?;
                 if flags != 0 {
                     selected.push((item_at(folder, index)?, flags));
                 }
@@ -167,15 +199,9 @@ impl RestoreSelection {
             for &(index, flags) in &resolved {
                 self.folder.SelectItem(index, flags)?;
             }
-            let focused = self.folder.GetFocusedItem()?;
+            let focused = focused_index(&self.folder)?;
             for index in 0..self.folder.ItemCount(SVGIO_ALLVIEW)? {
-                let pidl = self.folder.Item(index)?;
-                let actual = self.folder.GetSelectionState(pidl);
-                CoTaskMemFree(Some(pidl.cast()));
-                let mut actual = actual? & SVSI_SELECT.0.cast_unsigned();
-                if focused == index {
-                    actual |= SVSI_FOCUSED.0.cast_unsigned();
-                }
+                let actual = selection_flags(&self.folder, index, focused)?;
                 let expected = resolved
                     .iter()
                     .find(|(i, _)| *i == index)
@@ -192,6 +218,23 @@ impl RestoreSelection {
         }
         trace!("desktop_selection_and_focus_verified=true");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn view_lookup_continues_past_failed_rows_but_keeps_an_inconclusive_error() {
+        let compare = |index: i32| match index {
+            0 => Err(E_POINTER.into()),
+            1 => Ok(false),
+            _ => Ok(true),
+        };
+        assert_eq!(find_match(3, compare).unwrap(), Some(2));
+        assert_eq!(find_match(2, compare).unwrap_err().code(), E_POINTER);
+        assert_eq!(find_match(2, |_| Ok(false)).unwrap(), None);
     }
 }
 

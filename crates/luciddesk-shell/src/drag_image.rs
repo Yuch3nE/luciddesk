@@ -94,8 +94,12 @@ fn set_boolean(data: &IDataObject, name: windows::core::PCWSTR, value: bool) -> 
         Ole::ReleaseStgMedium,
     };
     unsafe {
+        let format_id = RegisterClipboardFormatW(name);
+        if format_id == 0 {
+            return Err(windows::core::Error::from_thread());
+        }
         let format = FORMATETC {
-            cfFormat: RegisterClipboardFormatW(name) as u16,
+            cfFormat: format_id as u16,
             dwAspect: DVASPECT_CONTENT.0,
             lindex: -1,
             tymed: TYMED_HGLOBAL.0 as u32,

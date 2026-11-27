@@ -19,8 +19,8 @@ pub use drag_image::FileDragImage;
 pub use luciddesk_core::ShellIdentity;
 pub use error::ShellError;
 pub use file_command::{
-    FileCommand, FileDrag, copy_to_folder, drag_file_items, invoke_file_commands, paste_into_folder,
-    show_file_items_menu,
+    FileCommand, FileDrag, copy_to_folder, drag_file_items, flush_file_clipboard,
+    invoke_file_commands, paste_into_folder, show_file_items_menu,
 };
 pub use folder_menu::{FolderMenuResult, show_folder_menu};
 pub use namespace::{
@@ -28,13 +28,16 @@ pub use namespace::{
     enumerate_desktop_source, enumerate_folder, local_app_data_path,
 };
 pub use native_layout::{
-    NativeDesktopReader, NativeDesktopRevision, NativeDesktopSnapshot, native_desktop_snapshot,
+    NativeDesktopError, NativeDesktopReader, NativeDesktopRevision, NativeDesktopSnapshot,
+    native_desktop_snapshot,
 };
-pub use native_menu::{MenuInvocation, peek_desktop_item, show_isolated_item_menu};
+pub use native_menu::{MenuInvocation, PeekError, peek_desktop_item, show_isolated_item_menu};
 #[cfg(feature = "desktop-menu-diagnostics")]
 pub use native_menu::{show_desktop_item_menu, show_desktop_items_menu};
 pub use notification::DesktopChangeSubscription;
-pub use rename::{CommittedRename, commit_shell_rename, rename_shell_identity, rename_shell_item};
+pub use rename::{
+    CommittedRename, RenameError, commit_shell_rename, rename_shell_identity, rename_shell_item,
+};
 
 #[cfg(test)]
 mod tests;

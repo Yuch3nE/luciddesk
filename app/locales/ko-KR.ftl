@@ -211,6 +211,9 @@ ui-peek-not-found-select-powertoys-peek-ui-exe-in-settings = { "Peek를 찾을 �
 
 # 无法打开 PowerToys Peek：{error}
 ui-could-not-open-powertoys-peek = { "PowerToys Peek 열기 실패: " }{ $error }
+ui-peek-service-not-running = PowerToys를 시작하고 Peek를 활성화하세요.
+ui-peek-handoff-failed = 선택한 항목을 PowerToys Peek에 전달할 수 없습니다.
+ui-peek-did-not-load-selection = PowerToys Peek에서 선택한 항목을 불러오지 못했습니다.
 
 # 此项目没有文件路径
 ui-this-item-has-no-file-path = { "이 항목에는 파일 경로가 없습니다" }
@@ -353,6 +356,8 @@ ui-could-not-attach-group-editing-state = { "이 패널에서 이름 바꾸기�
 
 # 重命名失败
 ui-rename-failed = { "이름 변경 실패" }
+ui-rename-invalid-item-name = 경로 구분 기호가 없는 이름을 입력하세요.
+ui-rename-no-shell-result = Windows에서 이름 변경 결과를 반환하지 않았습니다.
 
 # 重命名失败：{error}
 ui-rename-failed-9e1f = { "이름 변경 실패: " }{ $error }
@@ -485,6 +490,7 @@ ui-desktop-audit-thread-stopped-restarting = { "바탕 화면 검사 스레드�
 
 # 桌面正在变化，暂不更新面板清单
 ui-desktop-is-changing-group-refresh-deferred = { "바탕 화면이 변경 중이므로 패널 갱신을 미룹니다" }
+ui-desktop-read-failed = Windows 바탕 화면을 읽을 수 없습니다.
 
 # 桌面清单包含重复身份，暂不更新面板
 ui-duplicate-desktop-identities-group-refresh-deferred = { "바탕 화면 식별자가 중복되어 패널 갱신을 미룹니다" }

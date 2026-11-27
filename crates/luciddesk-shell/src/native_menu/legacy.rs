@@ -48,7 +48,7 @@ pub fn show_desktop_items_menu(
         let indices: Vec<_> = identities
             .iter()
             .map(|identity| {
-                selection::resolve(&folder, &identity.activation_name().to_string_lossy())
+                selection::resolve(&folder, identity.activation_name())
             })
             .collect::<Result<_>>()?;
         timings.mark("target-resolved");

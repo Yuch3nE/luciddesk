@@ -121,6 +121,7 @@ pub(super) fn is_alive(session: &Session) -> bool {
 }
 impl Drop for OleApartment {
     fn drop(&mut self) {
+        luciddesk_shell::flush_file_clipboard();
         unsafe {
             windows::Win32::System::Ole::OleUninitialize();
         }
@@ -339,7 +340,8 @@ pub(super) fn connect(state: &Rc<RefCell<PaneApp>>, _path: &Path) -> Result<(), 
     // Hidden icons are a display preference, not evidence of an unusable Shell
     // view. Validate discovery, enumeration and COM capabilities below.
     let view = luciddesk_explorer::desktop_view()
-        .inspect_err(|error| failure(Operation::DiscoverView, error))?;
+        .inspect_err(|error| failure(Operation::DiscoverView, error))
+        .map_err(|_| crate::i18n::text("ui-desktop-read-failed"))?;
     let dirty = Rc::new(Cell::new(false));
     let notify = Rc::clone(&dirty);
     let icons_dirty = Rc::new(RefCell::new(icon_changes::Pending::default()));
@@ -427,10 +429,10 @@ pub(super) fn connect(state: &Rc<RefCell<PaneApp>>, _path: &Path) -> Result<(), 
     // End the app borrow before Shell enumeration can dispatch COM callbacks.
     let managed = managed_identities(&state.borrow());
     let snapshot = inventory::capture(&managed)
-        .inspect_err(|error| failure(Operation::InitialInventory, error))
-        .map_err(|error| format!("桌面连接准备失败 (Inventory): {error}"))?;
+        .inspect_err(|error| failure(Operation::InitialInventory, error))?;
     if luciddesk_explorer::desktop_view()
-        .inspect_err(|error| failure(Operation::ValidateView, error))?
+        .inspect_err(|error| failure(Operation::ValidateView, error))
+        .map_err(|_| crate::i18n::text("ui-desktop-view-changed-while-reading-reconnecting"))?
         != view
     {
         let error = crate::i18n::text("ui-desktop-view-changed-while-reading-reconnecting");

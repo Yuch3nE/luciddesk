@@ -514,7 +514,7 @@ unsafe fn finish(edit: HWND, pointer: *mut Editor, commit: bool) {
             windows::Win32::Foundation::HWND(owner),
             &identity,
             &name,
-        ).map_err(|error| error.to_string())
+        ).map_err(shell_rename_error)
     };
     // Shell can pump messages, including closing the owning pane.
     if unsafe { GetPropW(owner, PROPERTY) } != edit {
@@ -536,6 +536,17 @@ unsafe fn finish(edit: HWND, pointer: *mut Editor, commit: bool) {
         },
     }
 }
+
+pub(super) fn shell_rename_error(error: luciddesk_shell::RenameError) -> String {
+    use luciddesk_shell::RenameError;
+    luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Warn, "pane.rename", "{error}");
+    match error {
+        RenameError::InvalidName => crate::i18n::text("ui-rename-invalid-item-name").into(),
+        RenameError::MissingResult => crate::i18n::text("ui-rename-no-shell-result").into(),
+        RenameError::Shell(error) => error.to_string(),
+    }
+}
+
 unsafe extern "system" fn edit_proc(
     edit: HWND,
     msg: u32,

@@ -211,6 +211,9 @@ ui-peek-not-found-select-powertoys-peek-ui-exe-in-settings = { "Peek nicht gefun
 
 # 无法打开 PowerToys Peek：{error}
 ui-could-not-open-powertoys-peek = { "PowerToys Peek konnte nicht geöffnet werden: " }{ $error }
+ui-peek-service-not-running = Starten Sie PowerToys und aktivieren Sie Peek.
+ui-peek-handoff-failed = Das ausgewählte Element konnte nicht an PowerToys Peek übergeben werden.
+ui-peek-did-not-load-selection = PowerToys Peek hat das ausgewählte Element nicht geladen.
 
 # 此项目没有文件路径
 ui-this-item-has-no-file-path = { "Dieses Element hat keinen Dateipfad" }
@@ -353,6 +356,8 @@ ui-could-not-attach-group-editing-state = { "Das Umbenennen in diesem Panel konn
 
 # 重命名失败
 ui-rename-failed = { "Umbenennen fehlgeschlagen" }
+ui-rename-invalid-item-name = Geben Sie einen Namen ohne Pfadtrennzeichen ein.
+ui-rename-no-shell-result = Windows hat das Ergebnis der Umbenennung nicht gemeldet.
 
 # 重命名失败：{error}
 ui-rename-failed-9e1f = { "Umbenennen fehlgeschlagen: " }{ $error }
@@ -485,6 +490,7 @@ ui-desktop-audit-thread-stopped-restarting = { "Desktop-Prüfthread beendet; Neu
 
 # 桌面正在变化，暂不更新面板清单
 ui-desktop-is-changing-group-refresh-deferred = { "Desktop ändert sich; Panelaktualisierung verschoben" }
+ui-desktop-read-failed = Der Windows-Desktop konnte nicht gelesen werden.
 
 # 桌面清单包含重复身份，暂不更新面板
 ui-duplicate-desktop-identities-group-refresh-deferred = { "Doppelte Desktop-Identitäten; Aktualisierung verschoben" }

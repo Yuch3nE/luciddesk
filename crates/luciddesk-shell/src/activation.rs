@@ -1,10 +1,15 @@
 //! Shell activation and decoding of incoming drag identities.
-use crate::{ShellError, ShellIdentity, namespace::shell_item_name};
-use std::{ffi::OsStr, os::windows::ffi::OsStrExt, path::PathBuf, ptr};
-use windows::Win32::UI::Shell::SIGDN_FILESYSPATH;
+use crate::{
+    ShellError, ShellIdentity,
+    namespace::{shell_identity_from_names, shell_item_name, shell_item_path},
+};
+use std::{borrow::Cow, ffi::OsStr, os::windows::ffi::OsStrExt, path::Path, ptr};
 use windows_sys::Win32::{
-    Foundation::HWND,
-    UI::{Shell::ShellExecuteW, WindowsAndMessaging::SW_SHOWNORMAL},
+    Foundation::{GetLastError, HWND},
+    UI::{
+        Shell::{SEE_MASK_FLAG_NO_UI, SEE_MASK_INVOKEIDLIST, SHELLEXECUTEINFOW, ShellExecuteExW},
+        WindowsAndMessaging::SW_SHOWNORMAL,
+    },
 };
 
 /// Decode filesystem and virtual desktop items from an OLE drag without moving files.
@@ -31,23 +36,14 @@ pub fn drag_shell_identities(
             // resolve names here: opening files for IDs and reading metadata
             // delays that handoff. The target matches these names against its
             // existing inventory and keeps the inventory's stable identities.
-            let parsing_name =
-                shell_item_name(&shell_item, SIGDN_DESKTOPABSOLUTEPARSING).map_err(|e| {
-                    windows::core::Error::new(windows::Win32::Foundation::E_FAIL, e.to_string())
-                })?;
-            let identity = if parsing_name.starts_with("::{") {
-                ShellIdentity::Namespace { parsing_name }
-            } else if let Ok(path) = shell_item_name(&shell_item, SIGDN_FILESYSPATH)
-                && !path.is_empty()
-            {
-                ShellIdentity::FileSystem {
-                    path: PathBuf::from(path),
-                    volume_id: None,
-                    file_id: None,
-                }
-            } else {
-                ShellIdentity::Namespace { parsing_name }
+            let to_com_error = |e: ShellError| {
+                windows::core::Error::new(windows::Win32::Foundation::E_FAIL, e.to_string())
             };
+            let parsing_name =
+                shell_item_name(&shell_item, SIGDN_DESKTOPABSOLUTEPARSING).map_err(to_com_error)?;
+            let identity =
+                shell_identity_from_names(Ok(parsing_name), || shell_item_path(&shell_item))
+                    .map_err(to_com_error)?;
             identities.push(identity);
         }
         Ok(identities)
@@ -58,25 +54,70 @@ pub fn drag_shell_identities(
 ///
 /// # Errors
 ///
-/// Returns an error when `ShellExecuteW` rejects the operation.
+/// Returns an error when `ShellExecuteExW` rejects the operation.
 pub fn open_shell_identity(owner: isize, identity: &ShellIdentity) -> Result<(), ShellError> {
-    let target = wide_null(identity.activation_name());
-    let result = unsafe {
-        ShellExecuteW(
-            owner as HWND,
-            windows_sys::w!("open"),
-            target.as_ptr(),
-            ptr::null(),
-            ptr::null(),
-            SW_SHOWNORMAL,
-        )
+    let path = identity
+        .file_system_path()
+        .map(|path| {
+            if path.is_absolute() {
+                Ok(Cow::Borrowed(path))
+            } else {
+                std::path::absolute(path).map(Cow::Owned)
+            }
+        })
+        .transpose()?;
+    let target = wide_null(
+        path.as_deref()
+            .map_or_else(|| identity.activation_name(), Path::as_os_str),
+    );
+    let directory = path
+        .as_deref()
+        .and_then(Path::parent)
+        .map(|parent| wide_null(parent.as_os_str()));
+    let mut mask = SEE_MASK_FLAG_NO_UI;
+    if matches!(identity, ShellIdentity::Namespace { .. }) {
+        // A fully qualified parsing name can invoke the namespace handler directly.
+        mask |= SEE_MASK_INVOKEIDLIST;
+    }
+    let mut info = SHELLEXECUTEINFOW {
+        cbSize: size_of::<SHELLEXECUTEINFOW>() as u32,
+        fMask: mask,
+        hwnd: owner as HWND,
+        lpFile: target.as_ptr(),
+        lpDirectory: directory.as_ref().map_or(ptr::null(), |path| path.as_ptr()),
+        nShow: SW_SHOWNORMAL,
+        ..Default::default()
     };
-    if result as isize <= 32 {
-        return Err(ShellError::Execute(result as isize));
+    if unsafe { ShellExecuteExW(&raw mut info) } == 0 {
+        return Err(ShellError::Execute(unsafe { GetLastError() } as isize));
     }
     Ok(())
 }
 
 fn wide_null(value: &OsStr) -> Vec<u16> {
     value.encode_wide().chain(std::iter::once(0)).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn opening_missing_file_returns_the_win32_error() {
+        let _sta = crate::ShellApartment::initialize_sta().unwrap();
+        let suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let identity = ShellIdentity::FileSystem {
+            path: std::env::temp_dir().join(format!("luciddesk-missing-{suffix}.exe")),
+            volume_id: None,
+            file_id: None,
+        };
+        assert!(matches!(
+            open_shell_identity(0, &identity),
+            Err(ShellError::Execute(code))
+                if code == windows_sys::Win32::Foundation::ERROR_FILE_NOT_FOUND as isize
+        ));
+    }
 }

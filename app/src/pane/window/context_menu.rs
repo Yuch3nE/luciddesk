@@ -117,6 +117,7 @@ pub(super) fn show<F: FnMut(Event) -> bool>(
                     x: anchor.x,
                     y: anchor.y,
                 },
+                crate::i18n::text("ui-open-file-location"),
             );
             match result {
                 Ok(true) => {

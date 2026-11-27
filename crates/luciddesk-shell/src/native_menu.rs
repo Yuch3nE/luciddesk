@@ -12,7 +12,7 @@ mod performance;
 mod selection;
 #[cfg(feature = "desktop-menu-diagnostics")]
 pub use legacy::{show_desktop_item_menu, show_desktop_items_menu};
-pub use peek::peek_desktop_item;
+pub use peek::{PeekError, peek_desktop_item};
 pub(crate) use selection::update_hints;
 
 use std::cell::Cell;

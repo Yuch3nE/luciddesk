@@ -211,6 +211,9 @@ ui-peek-not-found-select-powertoys-peek-ui-exe-in-settings = { "Peek не най
 
 # 无法打开 PowerToys Peek：{error}
 ui-could-not-open-powertoys-peek = { "Не удалось открыть PowerToys Peek: " }{ $error }
+ui-peek-service-not-running = Запустите PowerToys и включите Peek.
+ui-peek-handoff-failed = Не удалось передать выбранный элемент в PowerToys Peek.
+ui-peek-did-not-load-selection = PowerToys Peek не загрузил выбранный элемент.
 
 # 此项目没有文件路径
 ui-this-item-has-no-file-path = { "У этого элемента нет пути к файлу" }
@@ -353,6 +356,8 @@ ui-could-not-attach-group-editing-state = { "Не удалось начать п
 
 # 重命名失败
 ui-rename-failed = { "Не удалось переименовать" }
+ui-rename-invalid-item-name = Введите имя без разделителей пути.
+ui-rename-no-shell-result = Windows не сообщила результат переименования.
 
 # 重命名失败：{error}
 ui-rename-failed-9e1f = { "Ошибка переименования: " }{ $error }
@@ -485,6 +490,7 @@ ui-desktop-audit-thread-stopped-restarting = { "Поток проверки ра
 
 # 桌面正在变化，暂不更新面板清单
 ui-desktop-is-changing-group-refresh-deferred = { "Рабочий стол изменяется; обновление панелей отложено" }
+ui-desktop-read-failed = Не удалось прочитать рабочий стол Windows.
 
 # 桌面清单包含重复身份，暂不更新面板
 ui-duplicate-desktop-identities-group-refresh-deferred = { "Повторяющиеся идентификаторы; обновление отложено" }

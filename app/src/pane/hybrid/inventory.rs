@@ -26,7 +26,8 @@ pub(super) fn revision_keys(managed: &[ShellIdentity]) -> Vec<String> {
 
 pub(super) fn capture(managed: &[ShellIdentity]) -> Result<Inventory, String> {
     let native = luciddesk_shell::native_desktop_snapshot()
-        .inspect_err(|error| diagnostics::failure(Operation::NativeSnapshot, error))?;
+        .inspect_err(|error| diagnostics::failure(Operation::NativeSnapshot, error))
+        .map_err(crate::pane::desktop_ready::desktop_inventory_error)?;
     if !native.is_complete() {
         let error = crate::i18n::text("ui-desktop-is-changing-group-refresh-deferred");
         diagnostics::failure(Operation::ValidateSnapshot, error);
@@ -36,7 +37,7 @@ pub(super) fn capture(managed: &[ShellIdentity]) -> Result<Inventory, String> {
     if !managed.is_empty() {
         let source = luciddesk_shell::enumerate_desktop_source()
             .inspect_err(|error| diagnostics::failure(Operation::EnumerateSource, error))
-            .map_err(|error| error.to_string())?;
+            .map_err(|_| crate::i18n::text("ui-desktop-read-failed"))?;
         merge_managed(&mut items, source, managed);
     }
     items.sort_by_cached_key(|item| item.identity.persistent_key());

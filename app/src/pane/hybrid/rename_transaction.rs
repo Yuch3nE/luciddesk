@@ -53,7 +53,7 @@ pub(in crate::pane) fn commit(
             old,
             name,
         )
-        .map_err(|e| e.to_string());
+        .map_err(crate::pane::rename::shell_rename_error);
     };
     if let Err(error) = hook.begin_update() {
         // Also release a late acknowledged freeze after an IPC timeout.
@@ -68,7 +68,7 @@ pub(in crate::pane) fn commit(
     };
     let renamed =
         luciddesk_shell::commit_shell_rename(windows::Win32::Foundation::HWND(owner), old, name)
-            .map_err(|e| e.to_string())?;
+            .map_err(crate::pane::rename::shell_rename_error)?;
     let Some(renamed) = renamed else {
         update.finish()?;
         return Ok(false);

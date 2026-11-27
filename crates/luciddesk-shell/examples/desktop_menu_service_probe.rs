@@ -50,11 +50,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let start = std::time::Instant::now();
                 assert_eq!(menu_selection::find(&folder, &item)?, Some(expected));
                 let scan = start.elapsed();
-                menu_selection::update_hints(std::iter::once((value.clone(), expected)));
+                menu_selection::update_hints(std::iter::once((value.clone().into(), expected)));
                 let start = std::time::Instant::now();
                 assert_eq!(menu_selection::resolve(&folder, &value)?, expected);
                 println!("index={expected}/{count} full_scan_ms={:.3} validated_hint_ms={:.3}", scan.as_secs_f64()*1000.0, start.elapsed().as_secs_f64()*1000.0);
-                menu_selection::update_hints(std::iter::once((value.clone(), (expected + 1) % count)));
+                menu_selection::update_hints(std::iter::once((value.clone().into(), (expected + 1) % count)));
                 assert_eq!(menu_selection::resolve(&folder, &value)?, expected, "Stale hint must fall back to exact Shell identity");
             }
             println!("PASS: live first/middle/last identities and stale-index fallback; no selection or menu changes");

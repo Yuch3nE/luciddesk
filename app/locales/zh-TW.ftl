@@ -211,6 +211,9 @@ ui-peek-not-found-select-powertoys-peek-ui-exe-in-settings = { "找不到 Peek�
 
 # 无法打开 PowerToys Peek：{error}
 ui-could-not-open-powertoys-peek = { "無法開啟 PowerToys Peek：" }{ $error }
+ui-peek-service-not-running = 請啟動 PowerToys 並啟用 Peek。
+ui-peek-handoff-failed = 無法將選取的項目交給 PowerToys Peek。
+ui-peek-did-not-load-selection = PowerToys Peek 未能載入選取的項目。
 
 # 此项目没有文件路径
 ui-this-item-has-no-file-path = { "此項目沒有檔案路徑" }
@@ -353,6 +356,8 @@ ui-could-not-attach-group-editing-state = { "無法在此面板中開始重新�
 
 # 重命名失败
 ui-rename-failed = { "重新命名失敗" }
+ui-rename-invalid-item-name = 請輸入名稱，並移除路徑分隔符號。
+ui-rename-no-shell-result = Windows 未傳回重新命名的結果。
 
 # 重命名失败：{error}
 ui-rename-failed-9e1f = { "重新命名失敗：" }{ $error }
@@ -485,6 +490,7 @@ ui-desktop-audit-thread-stopped-restarting = { "桌面檢查執行緒已結束�
 
 # 桌面正在变化，暂不更新面板清单
 ui-desktop-is-changing-group-refresh-deferred = { "桌面正在變更，暫不更新面板清單" }
+ui-desktop-read-failed = 無法讀取 Windows 桌面。
 
 # 桌面清单包含重复身份，暂不更新面板
 ui-duplicate-desktop-identities-group-refresh-deferred = { "桌面清單包含重複識別碼，暫不更新面板" }

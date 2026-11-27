@@ -10,6 +10,29 @@ use crate::namespace::Pidl;
 const SNAPSHOT_CHANGED: windows::core::HRESULT =
     windows::core::HRESULT::from_win32(windows::Win32::Foundation::ERROR_RETRY.0);
 
+/// Carries the Shell failure and distinguishes a changing desktop from a failed read.
+#[derive(Debug)]
+pub struct NativeDesktopError(windows::core::Error);
+
+impl NativeDesktopError {
+    #[must_use]
+    pub fn is_changed(&self) -> bool {
+        matches!(self.0.code(), windows::Win32::Foundation::E_BOUNDS | SNAPSHOT_CHANGED)
+    }
+}
+
+impl std::fmt::Display for NativeDesktopError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+impl std::error::Error for NativeDesktopError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
+    }
+}
+
 // Retry only races, never permission/connection failures. Each attempt starts
 // from a fresh view and discards all data from the unsuccessful attempt.
 fn retry_snapshot<T>(
@@ -47,7 +70,7 @@ fn validate_revision(
     {
         return Err(windows::core::Error::new(
             SNAPSHOT_CHANGED,
-            "桌面列表在读取期间变化，丢弃本次快照",
+            "Desktop view changed during capture; snapshot discarded",
         ));
     }
     Ok(())
@@ -118,7 +141,7 @@ impl NativeDesktopSnapshot {
 /// Captures the actual desktop view, including its visibility preferences and display names.
 /// # Errors
 /// Returns an error when Explorer's desktop COM view cannot be reached.
-pub fn native_desktop_snapshot() -> Result<NativeDesktopSnapshot, String> {
+pub fn native_desktop_snapshot() -> Result<NativeDesktopSnapshot, NativeDesktopError> {
     capture_desktop_snapshot()
 }
 
@@ -135,12 +158,12 @@ impl NativeDesktopReader {
     ///
     /// # Errors
     /// Returns an error when Explorer's desktop COM view cannot be reached.
-    pub fn revision(&mut self) -> Result<NativeDesktopRevision, String> {
+    pub fn revision(&mut self) -> Result<NativeDesktopRevision, NativeDesktopError> {
         let result = retry_snapshot(|| self.capture_revision());
         if result.is_err() {
             self.shell = None;
         }
-        result.map_err(|error| format!("读取桌面项目标识失败：{error}"))
+        result.map_err(|error| NativeDesktopError(com_context(error, "Read desktop view revision")))
     }
 
     fn capture_revision(&mut self) -> windows::core::Result<NativeDesktopRevision> {
@@ -170,11 +193,11 @@ fn capture_revision(shell: &IShellWindows) -> windows::core::Result<NativeDeskto
         if index > 0 && index % 8 == 0 {
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
-        let pidl = Pidl::new(
-            unsafe { folder.Item(index) }
-                .map_err(|error| read_error(error, "IFolderView2::Item", index, count))?,
+        let pidl = unsafe { folder.Item(index).and_then(|raw| Pidl::new(raw)) }
+            .map_err(|error| read_error(error, "IFolderView2::Item", index, count))?;
+        revision.item_ids.push(
+            pidl.bytes().map_err(|error| read_error(error, "ILGetSize", index, count))?,
         );
-        revision.item_ids.push(item_id(&pidl));
     }
     if unsafe {
         folder
@@ -184,7 +207,7 @@ fn capture_revision(shell: &IShellWindows) -> windows::core::Result<NativeDeskto
     {
         return Err(windows::core::Error::new(
             SNAPSHOT_CHANGED,
-            "桌面项目数量在读取期间变化",
+            "Desktop item count changed during capture",
         ));
     }
     Ok(revision)
@@ -214,16 +237,6 @@ fn revision_header(
     }
 }
 
-fn item_id(pidl: &Pidl) -> Vec<u8> {
-    if pidl.as_ptr().is_null() {
-        return Vec::new();
-    }
-    unsafe {
-        let size = windows::Win32::UI::Shell::ILGetSize(Some(pidl.as_ptr())) as usize;
-        std::slice::from_raw_parts(pidl.as_ptr().cast::<u8>(), size).to_vec()
-    }
-}
-
 fn desktop_folder(
     shell: &IShellWindows,
 ) -> windows::core::Result<(IFolderView2, windows::Win32::Foundation::HWND)> {
@@ -239,7 +252,7 @@ fn desktop_folder(
     }
 }
 
-fn capture_desktop_snapshot() -> Result<NativeDesktopSnapshot, String> {
+fn capture_desktop_snapshot() -> Result<NativeDesktopSnapshot, NativeDesktopError> {
     unsafe {
         let capture = || -> windows::core::Result<NativeDesktopSnapshot> {
             let shell: IShellWindows = CoCreateInstance(&ShellWindows, None, CLSCTX_ALL)
@@ -257,12 +270,11 @@ fn capture_desktop_snapshot() -> Result<NativeDesktopSnapshot, String> {
                 .ItemCount(SVGIO_ALLVIEW)
                 .map_err(|e| com_context(e, "IFolderView2::ItemCount"))?;
             for index in 0..count {
-                let pidl = Pidl::new(
-                    folder
-                        .Item(index)
-                        .map_err(|error| read_error(error, "IFolderView2::Item", index, count))?,
+                let pidl = folder.Item(index).and_then(|raw| Pidl::new(raw))
+                    .map_err(|error| read_error(error, "IFolderView2::Item", index, count))?;
+                revision.item_ids.push(
+                    pidl.bytes().map_err(|error| read_error(error, "ILGetSize", index, count))?,
                 );
-                revision.item_ids.push(item_id(&pidl));
                 let position = folder.GetItemPosition(pidl.as_ptr()).map_err(|error| {
                     read_error(error, "IFolderView2::GetItemPosition", index, count)
                 })?;
@@ -271,23 +283,15 @@ fn capture_desktop_snapshot() -> Result<NativeDesktopSnapshot, String> {
                         .map_err(|error| {
                             read_error(error, "SHCreateItemWithParent", index, count)
                         })?;
-                let mut entry = crate::namespace::shell_entry(&item).map_err(|error| {
+                let entry = crate::namespace::shell_entry(&item).map_err(|error| {
                     let name = crate::namespace::shell_item_name(
                         &item,
                         windows::Win32::UI::Shell::SIGDN_DESKTOPABSOLUTEPARSING,
                     )
                     .ok();
+                    let name = name.as_deref().map(std::ffi::OsStr::to_string_lossy);
                     entry_error(error, index, count, name.as_deref())
                 })?;
-                // Known-folder desktop objects can expose a filesystem path but have a
-                // different icon and verbs from the underlying directory (e.g. User Files).
-                if let Ok(parsing_name) = crate::namespace::shell_item_name(
-                    &item,
-                    windows::Win32::UI::Shell::SIGDN_DESKTOPABSOLUTEPARSING,
-                ) && parsing_name.starts_with("::{")
-                {
-                    entry.identity = luciddesk_core::ShellIdentity::Namespace { parsing_name };
-                }
                 items.push((entry, position.x + origin.x, position.y + origin.y));
                 view_indices.push(index);
             }
@@ -302,19 +306,9 @@ fn capture_desktop_snapshot() -> Result<NativeDesktopSnapshot, String> {
             })
         };
         let snapshot = retry_snapshot(capture)
-            .map_err(|error| format!("读取原生桌面布局失败（最多 3 次尝试）：{error}"))?;
+            .map_err(|error| NativeDesktopError(com_context(error, "Capture native desktop layout")))?;
         super::native_menu::update_hints(snapshot.items.iter().zip(&snapshot.view_indices).map(
-            |((item, _, _), &index)| {
-                let name = match &item.identity {
-                    luciddesk_core::ShellIdentity::FileSystem { path, .. } => {
-                        path.to_string_lossy().into_owned()
-                    }
-                    luciddesk_core::ShellIdentity::Namespace { parsing_name } => {
-                        parsing_name.clone()
-                    }
-                };
-                (name, index)
-            },
+            |((item, _, _), &index)| (item.identity.activation_name().to_os_string(), index),
         ));
         Ok(snapshot)
     }

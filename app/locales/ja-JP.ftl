@@ -211,6 +211,9 @@ ui-peek-not-found-select-powertoys-peek-ui-exe-in-settings = { "Peek があり�
 
 # 无法打开 PowerToys Peek：{error}
 ui-could-not-open-powertoys-peek = { "PowerToys Peek を開けません：" }{ $error }
+ui-peek-service-not-running = PowerToys を起動し、Peek を有効にしてください。
+ui-peek-handoff-failed = 選択した項目を PowerToys Peek に渡せませんでした。
+ui-peek-did-not-load-selection = PowerToys Peek が選択した項目を読み込めませんでした。
 
 # 此项目没有文件路径
 ui-this-item-has-no-file-path = { "この項目にはファイルパスがありません" }
@@ -353,6 +356,8 @@ ui-could-not-attach-group-editing-state = { "このパネルで名前の変更�
 
 # 重命名失败
 ui-rename-failed = { "名前の変更に失敗しました" }
+ui-rename-invalid-item-name = パス区切り文字を含まない名前を入力してください。
+ui-rename-no-shell-result = Windows から名前変更の結果が返されませんでした。
 
 # 重命名失败：{error}
 ui-rename-failed-9e1f = { "名前の変更に失敗しました：" }{ $error }
@@ -485,6 +490,7 @@ ui-desktop-audit-thread-stopped-restarting = { "デスクトップ確認スレ�
 
 # 桌面正在变化，暂不更新面板清单
 ui-desktop-is-changing-group-refresh-deferred = { "デスクトップが変更中のため、更新を延期します" }
+ui-desktop-read-failed = Windows デスクトップを読み取れませんでした。
 
 # 桌面清单包含重复身份，暂不更新面板
 ui-duplicate-desktop-identities-group-refresh-deferred = { "項目の識別子が重複しているため、更新を延期します" }
