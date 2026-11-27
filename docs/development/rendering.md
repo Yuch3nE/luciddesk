@@ -11,8 +11,8 @@
 | `app/src/pane/composition/recovery.rs` | 普通/文件夹、搜索与设置窗口的有限失败重试 |
 | `app/src/pane/canvas.rs` | 绘制作用域、裁剪、文字回退与离屏读回 |
 | `app/src/pane/composition.rs` | 窗口 Surface、交换链、尺寸调整与呈现重试 |
-| `app/src/pane/native_graphics.rs` | 设备缓存、绑定转换与图形资源退出顺序 |
-| `crates/luciddesk-graphics/src/layer.rs` | DirectComposition 设备缓存与内容层 |
+| `app/src/pane/native_graphics/mod.rs` | 设备缓存、绑定转换与图形资源退出顺序 |
+| `app/src/pane/native_graphics/layer.rs` | DirectComposition 设备缓存与内容层 |
 | `app/src/pane/acrylic/mod.rs` | WinRT 材质视觉树及合成提交 |
 | `app/src/pane/settings/host.rs`、`settings/painter.rs` | 设置窗口首帧、绘制及材质编辑 |
 | `app/src/pane/scaled_icons.rs` | 线程内 CPU 图标缩放缓存 |
@@ -74,9 +74,9 @@ UI 线程复用 D3D/D2D 设备，同一 DXGI 设备还复用 DirectComposition �
 
 ## 绑定互操作
 
-应用的 `windows`/`windows-core` 使用 0.62.2；Canvas、动画与私有生成绑定使用 0.100.0。相同 COM ABI 不代表相同 Rust 类型。
+应用的 `windows`/`windows-core` 使用 0.62.2，Canvas 和动画使用 0.100.0。DComp 生成绑定使用应用侧的 `windows-core`；DWM 保留生成的 C API 声明。相同 COM ABI 不代表相同 Rust 类型。
 
-转换集中在 `native_graphics.rs`：
+`native_graphics` 模块集中处理以下转换。
 
 | 入口 | 用途 |
 | --- | --- |
@@ -89,7 +89,7 @@ UI 线程复用 D3D/D2D 设备，同一 DXGI 设备还复用 DirectComposition �
 
 ## 生成绑定
 
-`tools/windows-bindings` 是独立工具。`dwm.txt` 筛选 C API 和常量，`dcomp.txt` 筛选内容层需要的 COM 方法，结果保存到 `crates/luciddesk-graphics/src/bindings`。
+`tools/windows-bindings` 是独立工具。`dwm.txt` 筛选 C API 和常量，`dcomp.txt` 筛选内容层需要的 COM 方法，结果保存到 `app/src/pane/native_graphics/bindings/`。生成器使用 `windows-bindgen` 0.100.0，并将 DComp 输出中的 `Type` 路径适配到应用的 `windows-core` 0.62。
 
 不要手工修改生成结果。变更 API 清单后重新生成并运行 `--check`；命令见[构建与验证](build.md)。生成器不参与每次应用构建，API 清单、工具锁文件和生成源码应保持一致。
 

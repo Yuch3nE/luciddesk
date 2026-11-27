@@ -108,10 +108,10 @@ windows-window.workspace = true
 windows-numerics.workspace = true
 windows-canvas = { version = "=0.100.0", default-features = false }
 canvas-core = { package = "windows-core", version = "=0.100.0", default-features = false }
+windows-link = "=0.100.0"
 windows-animation = "=0.100.0"
 windows-version = "=0.100.0"
 windows-registry = "=0.100.0"
-luciddesk-graphics = { path = "../crates/luciddesk-graphics" }
 fluent-bundle = "0.16"
 flate2 = { version = "1.1.11", default-features = false, features = ["zlib-rs"] }
 unic-langid = "0.9"

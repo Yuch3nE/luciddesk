@@ -10,7 +10,7 @@
 | `luciddesk-storage` | 配置、数据库、事务与备份 | 输入校验、提交范围、恢复失败及错误传播 |
 | `luciddesk-shell` | Shell 操作和 OLE apartment 守卫 | 线程要求、取消语义、COM 与原生对象所有权 |
 | `app/src/pane` | UI 状态、窗口与后台结果协调 | 重入、窗口销毁、异步结果是否仍适用 |
-| `native_graphics.rs`、`luciddesk-graphics` | 绑定互操作与图形资源 | 引用计数、设备身份、释放顺序 |
+| `app/src/pane/native_graphics/` | 绑定互操作与图形资源 | 引用计数、设备身份、释放顺序 |
 
 模块入口负责声明与重导出，具体实现放在所属模块。身份、模型校验和持久化规则应通过所属模块复用，避免在多个 UI 入口各自实现。
 
@@ -68,7 +68,7 @@ API 应区分“操作失败”“用户取消”和“成功但无变化”，�
 
 ## Windows 绑定与 unsafe 边界
 
-不同版本的 Windows Rust 绑定即使使用相同 ABI，也不是相同 Rust 类型。图形接口转换集中在 `app/src/pane/native_graphics.rs`；`native_interface` 通过 QueryInterface 获取独立引用，`create_layer` 借用调用方接口。不能把借用指针当成所有权转移，转换后的错误通过 `canvas_result` 回到应用侧类型。
+不同版本的 Windows Rust 绑定即使使用相同 ABI，也不是相同 Rust 类型。图形接口转换集中在 `app/src/pane/native_graphics/`；`native_interface` 通过 QueryInterface 获取独立引用，`create_layer` 借用调用方接口。不能把借用指针当成所有权转移，转换后的错误通过 `canvas_result` 回到应用侧类型。
 
 每处 `unsafe` 应能回答以下问题：
 

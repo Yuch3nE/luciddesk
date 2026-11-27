@@ -8,7 +8,6 @@ members = [
     "crates/luciddesk-api",
     "crates/luciddesk-diagnostics",
     "crates/luciddesk-core",
-    "crates/luciddesk-graphics",
     "crates/luciddesk-shell",
     "crates/luciddesk-menu",
     "crates/luciddesk-storage",

@@ -217,7 +217,7 @@ cargo run --locked --offline --manifest-path tools/windows-bindings/Cargo.toml
 cargo run --locked --offline --manifest-path tools/windows-bindings/Cargo.toml -- --check
 ```
 
-第一条更新生成源码，第二条生成到临时目录并核对一致性。修改 API 筛选清单时，同时提交筛选文件、工具锁文件和生成结果，不手工编辑生成文件。边界说明见[绘图与绑定](rendering.md)。
+第一条更新 `app/src/pane/native_graphics/bindings/` 下的生成源码。第二条生成到临时目录并逐字节核对，Windows CI 也运行此检查。修改 API 筛选清单时，同时提交筛选文件、工具锁文件和生成结果，不手工编辑生成文件。边界说明见[绘图与绑定](rendering.md)。
 
 ## 探针与真实桌面验证
 
@@ -295,6 +295,6 @@ CI 使用滚动更新的 `windows-2025-vs2026` 镜像，MSVC 和 Windows SDK 跟
 常规测试和发布构建已编译主程序、CLI、协议、存储、诊断及插件目标，因此不再单独对整个工作区执行 `cargo check --all-targets`。保留两组定向检查：
 
 - app、Shell、Explorer 的诊断 examples；插件 examples 由真实 DLL 验证构建。
-- Explorer、graphics、menu、window 的测试目标；这些 crate 的库虽作为依赖编译，但 `cfg(test)` 代码仍需独立检查。
+- Explorer、menu、window 的测试目标。这些库的 `cfg(test)` 代码仍需独立检查。应用图形模块的测试目标随主程序检查。
 
 Rust 文档测试只覆盖实际含代码示例的 core、Shell、plugin-host。plugin-host 的 `compile_fail` 测试已由 `test-plugins.ps1` 中的包测试执行，独立文档步骤只运行 core 与 Shell，插件宿主的单元、真实 DLL 和文档测试统一在测试 DLL 部署后执行一次。缺少监控插件的第二轮只重跑内容、面板生命周期与设置测试；不依赖 DLL 的控制器 IPC／生命周期测试仅在第一轮执行。新增 crate、测试目标或文档代码示例时，需同步复核 CI 清单。诊断 feature 未启用的示例仍按既有 Cargo `required-features` 规则跳过。

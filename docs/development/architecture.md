@@ -61,7 +61,8 @@ Explorer 继续负责未收纳图标的绘制、排列、命中和原生交互�
 | `luciddesk-shell` | Shell 查询、通知、菜单、文件操作和 OLE 能力 |
 | `luciddesk-menu` | 两侧共用的原生菜单主题与边框，不依赖 Shell 或 Explorer 实现 |
 | `luciddesk-explorer` | 控制端会话、IPC、DLL 引导、成员过滤与控制端存活监测 |
-| `luciddesk-graphics`、`luciddesk-window` | 分别提供合成层与生成绑定、显示器枚举与错误提示 |
+| `app/src/pane/native_graphics/` | 图形设备与合成层的生命周期、绑定转换和生成绑定 |
+| `luciddesk-window` | 显示器枚举、原生控件与对话框 |
 
 表中的 `tray.rs`、`i18n.rs` 位于 `app/src/`。crate 的公共入口与内部目录见 [crates 导航](../../crates/README.md)；新增模块按实际功能归属放置，具体规则见[目录结构](structure.md#新增文件约定)。
 
@@ -89,7 +90,7 @@ OLE Drop 在 Shell 拖动辅助对象和临时描述清理结束后才提交应�
 
 Runtime 由通知和截止时间唤醒，统一安排重连、显示布局、备份及缓存回收。后台结果回到 UI 后核验身份或修订，再更新模型；不能让迟到结果覆盖新的用户操作。必要的兜底检查、动画及重试仍保留，见[后台调度](event-driven-runtime.md)。
 
-面板使用 Canvas 与合成层绘制。纯像素结果可进入 CPU 缓存，COM 绘图资源保留在所属线程；`native_graphics.rs` 集中处理绑定之间的 COM 引用和 HRESULT 转换。图形生命周期与缓存策略见[绘图与绑定](rendering.md)和[图标内存管理](memory-optimization.md)。
+面板使用 Canvas 与合成层绘制。纯像素结果可进入 CPU 缓存，COM 绘图资源保留在所属线程；`native_graphics/` 集中处理绑定之间的 COM 引用和 HRESULT 转换。图形生命周期与缓存策略见[绘图与绑定](rendering.md)和[图标内存管理](memory-optimization.md)。
 
 ## 启动、连接与退出
 

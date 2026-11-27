@@ -27,7 +27,7 @@ pub struct Surface {
     #[cfg(test)]
     context: ID3D11DeviceContext,
     drawing: ID2D1DeviceContext,
-    layer: Option<luciddesk_graphics::Layer>,
+    layer: Option<Layer>,
     swap: SwapChain,
     material: Option<Backdrop>,
     effects_enabled: Option<bool>,
@@ -61,13 +61,13 @@ impl Surface {
         }
         crate::pane::render_debug::render_trace(format_args!("hwnd={:?} opacity {} -> {opacity}", self.hwnd, self.opacity.get()));
         if let Some(layer) = &self.layer {
-            canvas_result(layer.opacity(opacity))?;
+            layer.opacity(opacity)?;
         }
         if let Some(acrylic) = &self.acrylic {
             acrylic.opacity(opacity)?;
         }
         if let Some(layer) = &self.layer {
-            canvas_result(layer.commit())?;
+            layer.commit()?;
         }
         self.opacity.set(opacity);
         Ok(())
@@ -337,7 +337,7 @@ impl Surface {
         }
         self.end_frame()?;
         if let Some(layer) = &self.layer {
-            canvas_result(layer.commit())?;
+            layer.commit()?;
         }
         Ok(())
     }

@@ -67,7 +67,7 @@ app/
         ├── canvas/brushes.rs  # 固定数量的 GPU 画刷复用
         ├── composition.rs     # Surface、交换链与呈现背压
         ├── composition/recovery.rs # 窗口绘制失败的有限重试
-        ├── native_graphics.rs # 图形绑定转换与生命周期
+        ├── native_graphics/  # 图形绑定转换、合成层及 bindings/ 下的生成文件
         ├── scaled_icons.rs    # CPU 缩放图像缓存
         ├── assets.rs          # 图像资源入口
         ├── assets/            # 图像资源辅助模块
@@ -91,7 +91,7 @@ rg -n 'mod |pub.*use ' app/src/pane/mod.rs
 | 文件夹导航与视图偏好 | `folder/mod.rs`、`folder/entry_mode.rs`、`folder/preferences.rs` | [使用说明](../usage.md) |
 | 搜索与面板快捷键 | `search/mod.rs`、`search/everything.rs`、`search/everything_settings.rs`、`show_hotkey.rs` | [后台调度](event-driven-runtime.md) |
 | 设置布局与多语言 | `settings/layout.rs`、`i18n.rs`、`app/locales/` | [本地化指南](localization.md) |
-| 绘制、材质和图形资源 | `render/mod.rs`、`native_graphics.rs`、`acrylic/` | [绘图与绑定](rendering.md) |
+| 绘制、材质和图形资源 | `render/mod.rs`、`native_graphics/`、`acrylic/` | [绘图与绑定](rendering.md) |
 | MSIX 桌面 DLL 路径 | `app/src/desktop_component.rs`、`tools/package-msix.ps1` | [MSIX 打包](../msix.md) |
 
 表中未写完整前缀的面板模块均位于 `app/src/pane/`；`i18n.rs` 位于 `app/src/`。搜索配置保留在 `search/`，显示面板快捷键位于 `show_hotkey.rs`，拖放描述保留在 `drag_drop/`；多个功能共享的窗口、模型和绘图能力留在共同父模块。
@@ -107,12 +107,11 @@ rg -n 'mod |pub.*use ' app/src/pane/mod.rs
 | `luciddesk-shell` | `src/` 按身份、桌面查询、通知、激活、COM/OLE、文件操作和菜单划分 |
 | `luciddesk-explorer` | `src/discovery.rs` 负责发现与冲突检测；`filter.rs`、`filter/` 包含控制端、IPC 和 Explorer 端实现；`filter/menu/` 管理菜单宿主 |
 | `luciddesk-menu` | `theme.rs`、`frame.rs` 提供应用与 Explorer 共用的原生菜单外观 |
-| `luciddesk-graphics` | `src/layer.rs` 管理合成层；`src/bindings/` 保存生成的 DWM/DComp 绑定 |
 | `luciddesk-window` | `src/lib.rs` 与 `src/monitors.rs` 提供错误提示及显示器能力 |
 
 各库公共入口与依赖边界见 [crates 导航](../../crates/README.md)。`luciddesk-explorer` 同时包含控制端和 DLL 侧代码，定位问题时应先确认执行进程与线程，不能只按 crate 名判断运行位置。
 
-生成绑定由 `tools/windows-bindings/` 维护，修改时同步生成器、筛选清单与输出。图标生成与验证分别由 `tools/assets/generate-app-icon.ps1`、`tools/assets/verify-app-icon.ps1` 负责；资源规则见[应用资源说明](../../app/assets/README.md)。
+`tools/windows-bindings/` 将生成绑定写入 `app/src/pane/native_graphics/bindings/`。修改绑定时同步生成器、筛选清单与输出。图标生成与验证分别由 `tools/assets/generate-app-icon.ps1`、`tools/assets/verify-app-icon.ps1` 负责；资源规则见[应用资源说明](../../app/assets/README.md)。
 
 ## 打包、测试与诊断工具
 

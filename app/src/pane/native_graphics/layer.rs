@@ -1,6 +1,6 @@
 //! Composition device caching and visual layer lifetime.
-use crate::dcomp;
-use windows_core::{IUnknown, Interface, Result};
+use super::dcomp;
+use windows::core::{IUnknown, Interface, Result};
 
 pub struct Layer {
     device: dcomp::IDCompositionDevice,
@@ -16,7 +16,7 @@ thread_local! {
 
 /// Release cached composition resources on the UI thread before COM teardown.
 /// All layers must have been dropped first.
-pub fn clear_thread_cache() {
+pub(super) fn clear_thread_cache() {
     let cached = DEVICE.with(|cache| cache.borrow_mut().take());
     drop(cached);
 }
@@ -52,7 +52,7 @@ impl Layer {
     /// `dxgi` must borrow an actual IDXGIDevice interface pointer, and `content`
     /// must refer to a composition-compatible swap chain from that device.
     /// COM must be initialized. The caller retains ownership of both arguments.
-    pub unsafe fn new(
+    pub(super) unsafe fn new(
         hwnd: *mut core::ffi::c_void,
         dxgi: &IUnknown,
         content: &IUnknown,

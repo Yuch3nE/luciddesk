@@ -306,7 +306,6 @@ dependencies = [
  "luciddesk-core",
  "luciddesk-diagnostics",
  "luciddesk-explorer",
- "luciddesk-graphics",
  "luciddesk-plugin-api",
  "luciddesk-plugin-host",
  "luciddesk-shell",
@@ -324,6 +323,7 @@ dependencies = [
  "windows-collections",
  "windows-core 0.100.0",
  "windows-core 0.62.2",
+ "windows-link 0.100.0",
  "windows-numerics 0.3.1",
  "windows-registry",
  "windows-sys 0.61.2",
@@ -374,14 +374,6 @@ dependencies = [
  "windows",
  "windows-core 0.62.2",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "luciddesk-graphics"
-version = "0.26.1"
-dependencies = [
- "windows-core 0.100.0",
- "windows-link 0.100.0",
 ]
 
 [[package]]

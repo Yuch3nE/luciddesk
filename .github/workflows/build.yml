@@ -73,9 +73,14 @@ jobs:
           workspaces: . -> target/ci-tests
           env-vars: CARGO CC CFLAGS CXX CMAKE RUST LUCIDDESK_WINDOWS_BUILD_ENVIRONMENT
           cache-bin: false
-      - name: Fetch locked Windows dependencies once
+      - name: Fetch locked Windows and binding generator dependencies
         timeout-minutes: 10
-        run: cargo fetch --locked --target x86_64-pc-windows-msvc
+        run: |
+          cargo fetch --locked --target x86_64-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo fetch --manifest-path tools/windows-bindings/Cargo.toml --locked --target x86_64-pc-windows-msvc
+      - name: Verify generated application graphics bindings
+        run: cargo run --manifest-path tools/windows-bindings/Cargo.toml --locked --offline -- --check
       - name: Test signed updates and ZIP recovery offline
         shell: pwsh
         run: cargo test -p luciddesk --bin updater --locked --offline
@@ -92,7 +97,7 @@ jobs:
       - name: Check diagnostic examples
         run: cargo check -p luciddesk -p luciddesk-shell -p luciddesk-explorer --examples --locked --offline
       - name: Check remaining library test targets
-        run: cargo check -p luciddesk-explorer -p luciddesk-graphics -p luciddesk-menu -p luciddesk-window --tests --locked --offline
+        run: cargo check -p luciddesk-explorer -p luciddesk-menu -p luciddesk-window --tests --locked --offline
       - name: Test CLI, protocol, workspace rules, storage and diagnostics
         run: >-
           cargo test -p luciddesk-cli -p luciddesk-api -p luciddesk-core -p luciddesk-storage -p luciddesk-diagnostics
@@ -104,6 +109,13 @@ jobs:
         run: cargo test -p luciddesk-shell --lib drag_image::tests::alpha_conversion_preserves_transparency_and_edge_colors --locked --offline -- --exact
       - name: Test Canvas compatibility with WARP
         run: cargo test -p luciddesk --test canvas_compat --locked --offline -- --test-threads=1
+      - name: Test graphics shutdown with WARP
+        env:
+          LUCIDDESK_RENDERER: warp
+        run: >-
+          cargo test -p luciddesk --bin luciddesk --locked --offline --
+          pane::native_graphics::shutdown_tests::graphics_caches_release_before_apartment_and_process_exit
+          --exact --test-threads=1
       - name: Test plugin DLL boundary and optional loading
         timeout-minutes: 10
         run: ./tools/validation/test-plugins.ps1 -TargetDirectory target/ci-tests -Offline

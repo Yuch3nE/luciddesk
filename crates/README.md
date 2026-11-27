@@ -13,7 +13,6 @@
 | `luciddesk-shell` | Shell 枚举、通知、文件操作和菜单 | [lib.rs](luciddesk-shell/src/lib.rs) |
 | `luciddesk-explorer` | 过滤控制端、DLL 入口、成员恢复与独立 Shell 菜单 | [lib.rs](luciddesk-explorer/src/lib.rs) |
 | `luciddesk-menu` | 应用与 Explorer 共用的原生菜单主题和边框 | [lib.rs](luciddesk-menu/src/lib.rs) |
-| `luciddesk-graphics` | DWM/DComp 绑定和合成层 | [lib.rs](luciddesk-graphics/src/lib.rs) |
 | `luciddesk-window` | 显示器枚举和启动错误提示 | [lib.rs](luciddesk-window/src/lib.rs) |
 
 ## 内部组织
@@ -51,21 +50,16 @@ luciddesk-explorer/src/
 luciddesk-menu/src/
   lib.rs, theme.rs, frame.rs # 原生菜单外观，无 Shell 枚举或 IPC
 
-luciddesk-graphics/src/
-  lib.rs, layer.rs
-  bindings/dcomp.rs, bindings/dwm.rs
-
 luciddesk-window/src/
   lib.rs, monitors.rs
 ```
 
 ## 维护边界
 
-- 公共导入路径保持 `luciddesk_storage::WorkspaceStore`、`luciddesk_shell::ShellApartment`、`luciddesk_graphics::Layer` 等形式；内部模块不作为新的公共 API。
+- 公共导入路径保持 `luciddesk_storage::WorkspaceStore`、`luciddesk_shell::ShellApartment` 等形式；内部模块不作为新的公共 API。
 - 存储实现放在 `store/`，配置和恢复作为其子模块共享私有状态，避免把连接字段公开到 crate 外部。
 - Shell 内部的身份／PIDL 帮助函数通过明确的 `namespace` 路径复用，不塞回根入口。
 - `luciddesk-core` 不依赖 Windows 或数据库；当前 `luciddesk-storage`、`luciddesk-shell`、`luciddesk-window` 使用其领域类型。
-- 修改生成绑定时同步相应工具、筛选清单和生成结果。
 - 原生菜单外观通过 `luciddesk-menu` 显式依赖共享，不跨 crate 用 `#[path]` 引入实现。
 - `luciddesk-explorer` 输出 `luciddesk_explorer.dll`；Rust 导入名为 `luciddesk_explorer`，同时包含应用侧客户端与 Explorer 侧实现。
 - 小库无需为了目录对称而继续拆分。`luciddesk-window` 的显示器模块和错误入口已足够清楚。

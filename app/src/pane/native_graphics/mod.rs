@@ -1,13 +1,35 @@
-//! Interoperation between application bindings and the Canvas/generated graphics ABI.
-use canvas_core::Interface as _;
+//! Application graphics and interoperation with the Canvas and generated bindings.
 pub use dwm::{
     DWMNCRP_DISABLED, DWMSBT_NONE, DWMWA_BORDER_COLOR, DWMWA_NCRENDERING_POLICY,
     DWMWA_SYSTEMBACKDROP_TYPE, DWMWA_USE_HOSTBACKDROPBRUSH, DWMWA_USE_IMMERSIVE_DARK_MODE,
     DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND, DWMWCP_ROUND, MARGINS,
 };
-use luciddesk_graphics::dwm;
 use windows::Win32::Foundation::HWND;
 use windows::core::{Error, HRESULT, IUnknown, Interface, Result};
+
+#[allow(
+    dead_code,
+    non_snake_case,
+    non_upper_case_globals,
+    non_camel_case_types,
+    clippy::upper_case_acronyms
+)]
+mod dcomp {
+    include!("bindings/dcomp.rs");
+}
+
+#[allow(
+    dead_code,
+    non_snake_case,
+    non_upper_case_globals,
+    non_camel_case_types
+)]
+mod dwm {
+    include!("bindings/dwm.rs");
+}
+
+mod layer;
+pub(super) use layer::Layer;
 
 thread_local! {
     static DEVICE: std::cell::RefCell<Option<windows_canvas::GpuDevice>> = const { std::cell::RefCell::new(None) };
@@ -23,7 +45,7 @@ impl Drop for GraphicsLifetime {
         crate::pane::render_debug::render_trace(format_args!("shutdown: graphics caches begin"));
         crate::plugins::shutdown();
         super::acrylic::clear_thread_cache();
-        luciddesk_graphics::clear_thread_cache();
+        layer::clear_thread_cache();
         let device = DEVICE.with(|slot| slot.borrow_mut().take());
         drop(device);
         crate::pane::render_debug::render_trace(format_args!("shutdown: graphics caches released"));
@@ -80,24 +102,14 @@ pub unsafe fn extend_frame(hwnd: HWND, margins: &MARGINS) -> Result<()> {
     HRESULT(unsafe { dwm::DwmExtendFrameIntoClientArea(hwnd.0, margins) }).ok()
 }
 
-pub fn create_layer(
+pub(super) fn create_layer(
     hwnd: HWND,
     dxgi: &windows::Win32::Graphics::Dxgi::IDXGIDevice,
     content: &windows::Win32::Graphics::Dxgi::IDXGISwapChain1,
     opacity: f32,
     above_children: bool,
-) -> Result<luciddesk_graphics::Layer> {
-    let dxgi_ptr = dxgi.as_raw();
-    let content_ptr = content.as_raw();
-    canvas_result(unsafe {
-        luciddesk_graphics::Layer::new(
-            hwnd.0,
-            canvas_core::IUnknown::from_raw_borrowed(&dxgi_ptr).unwrap(),
-            canvas_core::IUnknown::from_raw_borrowed(&content_ptr).unwrap(),
-            opacity,
-            above_children,
-        )
-    })
+) -> Result<Layer> {
+    unsafe { Layer::new(hwnd.0, dxgi.into(), content.into(), opacity, above_children) }
 }
 
 /// QueryInterface returns an owned reference without transferring the source's ownership.
