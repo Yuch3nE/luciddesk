@@ -15,7 +15,10 @@ use windows_sys::Win32::{
     Foundation::{HWND, LPARAM},
     UI::{
         Shell::{SHELLSTATEA, SHGetSetSettings, SSF_HIDEICONS},
-        WindowsAndMessaging::{EnumWindows, FindWindowExW, GetShellWindow, IsWindowVisible},
+        WindowsAndMessaging::{
+            EnumWindows, FindWindowExW, GetClassNameW, GetShellWindow, GetWindowThreadProcessId,
+            IsWindowVisible,
+        },
     },
 };
 
@@ -60,30 +63,43 @@ pub fn desktop_icons_hidden() -> bool {
 }
 
 fn desktop_list_view() -> Option<HWND> {
+    struct Search {
+        process: u32,
+        view: Option<HWND>,
+    }
     unsafe extern "system" fn enumerate_window(window: HWND, state: LPARAM) -> i32 {
-        let result = unsafe { &mut *(state as *mut HWND) };
-        if let Some(view) = unsafe { list_view_under(window) } {
-            *result = view;
-            0
-        } else {
-            1
+        let search = unsafe { &mut *(state as *mut Search) };
+        if window_process(window) == Some(search.process) {
+            let mut class = [0u16; 16];
+            let length = unsafe { GetClassNameW(window, class.as_mut_ptr(), class.len() as i32) };
+            if length > 0 && ["Progman", "WorkerW"].iter().any(|name| {
+                class[..length as usize].iter().copied().eq(name.encode_utf16())
+            }) {
+                search.view = list_view_under(window, search.process);
+            }
         }
+        i32::from(search.view.is_none())
     }
 
     let shell = unsafe { GetShellWindow() };
-    if !shell.is_null()
-        && let Some(view) = unsafe { list_view_under(shell) }
-    {
+    let process = window_process(shell)?;
+    if let Some(view) = list_view_under(shell, process) {
         return Some(view);
     }
-    let mut result: HWND = ptr::null_mut();
+    let mut search = Search { process, view: None };
     unsafe {
-        EnumWindows(Some(enumerate_window), (&raw mut result) as LPARAM);
+        EnumWindows(Some(enumerate_window), (&raw mut search) as LPARAM);
     }
-    (!result.is_null()).then_some(result)
+    search.view
 }
 
-unsafe fn list_view_under(window: HWND) -> Option<HWND> {
+fn window_process(window: HWND) -> Option<u32> {
+    let mut process = 0;
+    let thread = unsafe { GetWindowThreadProcessId(window, &raw mut process) };
+    (thread != 0 && process != 0).then_some(process)
+}
+
+fn list_view_under(window: HWND, process: u32) -> Option<HWND> {
     let definition = unsafe {
         FindWindowExW(
             window,
@@ -92,7 +108,7 @@ unsafe fn list_view_under(window: HWND) -> Option<HWND> {
             ptr::null(),
         )
     };
-    if definition.is_null() {
+    if window_process(definition) != Some(process) {
         return None;
     }
     let named = unsafe {
@@ -103,7 +119,7 @@ unsafe fn list_view_under(window: HWND) -> Option<HWND> {
             windows_sys::w!("FolderView"),
         )
     };
-    if !named.is_null() {
+    if window_process(named) == Some(process) {
         return Some(named);
     }
     let unnamed = unsafe {
@@ -114,5 +130,5 @@ unsafe fn list_view_under(window: HWND) -> Option<HWND> {
             ptr::null(),
         )
     };
-    (!unnamed.is_null()).then_some(unnamed)
+    (window_process(unnamed) == Some(process)).then_some(unnamed)
 }

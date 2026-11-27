@@ -6,43 +6,55 @@ use std::{
 };
 use windows_sys::Win32::{
     Foundation::HWND,
-    UI::WindowsAndMessaging::{EnumWindows, FindWindowExW, FindWindowW, GetWindowThreadProcessId},
+    UI::WindowsAndMessaging::{
+        EnumWindows, FindWindowExW, GetClassNameW, GetShellWindow, GetWindowThreadProcessId,
+    },
 };
+
+const DESKTOP_VIEW_UNAVAILABLE: &str = "Explorer desktop icon view is unavailable";
 
 /// Finds the real desktop `ListView`; never creates or hides a replacement icon layer.
 /// # Errors
 /// Returns an error when the current Shell desktop cannot be found.
 pub fn desktop_view() -> Result<isize, String> {
-    unsafe {
-        let progman = FindWindowW(windows_sys::w!("Progman"), null());
-        let defview = FindWindowExW(
-            progman,
-            null_mut(),
-            windows_sys::w!("SHELLDLL_DefView"),
-            null(),
-        );
-        if !defview.is_null() {
-            let view = FindWindowExW(
-                defview,
-                null_mut(),
-                windows_sys::w!("SysListView32"),
-                null(),
-            );
-            if !view.is_null() {
-                return Ok(view as isize);
-            }
-        }
-        let mut result: HWND = null_mut();
-        EnumWindows(Some(find_view), (&raw mut result) as isize);
-        if result.is_null() {
-            Err("找不到 Explorer 原生桌面图标视图".into())
-        } else {
-            Ok(result as isize)
-        }
+    let shell = unsafe { GetShellWindow() };
+    let process = window_process(shell).ok_or(DESKTOP_VIEW_UNAVAILABLE)?;
+    if let Some(view) = list_view_under(shell, process) {
+        return Ok(view as isize);
     }
+    let mut search = DesktopSearch { process, view: None };
+    unsafe {
+        EnumWindows(Some(find_view), (&raw mut search) as isize);
+    }
+    search.view.map(|view| view as isize).ok_or_else(|| DESKTOP_VIEW_UNAVAILABLE.into())
+}
+
+struct DesktopSearch {
+    process: u32,
+    view: Option<HWND>,
+}
+
+fn window_process(window: HWND) -> Option<u32> {
+    let mut process = 0;
+    let thread = unsafe { GetWindowThreadProcessId(window, &raw mut process) };
+    (thread != 0 && process != 0).then_some(process)
 }
 
 unsafe extern "system" fn find_view(hwnd: HWND, lp: isize) -> i32 {
+    let search = unsafe { &mut *(lp as *mut DesktopSearch) };
+    if window_process(hwnd) == Some(search.process) {
+        let mut class = [0u16; 16];
+        let length = unsafe { GetClassNameW(hwnd, class.as_mut_ptr(), class.len() as i32) };
+        if length > 0 && ["Progman", "WorkerW"].iter().any(|name| {
+            class[..length as usize].iter().copied().eq(name.encode_utf16())
+        }) {
+            search.view = list_view_under(hwnd, search.process);
+        }
+    }
+    i32::from(search.view.is_none())
+}
+
+fn list_view_under(hwnd: HWND, process: u32) -> Option<HWND> {
     let defview = unsafe {
         FindWindowExW(
             hwnd,
@@ -51,23 +63,13 @@ unsafe extern "system" fn find_view(hwnd: HWND, lp: isize) -> i32 {
             null(),
         )
     };
-    if !defview.is_null() {
-        let view = unsafe {
-            FindWindowExW(
-                defview,
-                null_mut(),
-                windows_sys::w!("SysListView32"),
-                null(),
-            )
-        };
-        if !view.is_null() {
-            unsafe {
-                *(lp as *mut HWND) = view;
-            }
-            return 0;
-        }
+    if window_process(defview) != Some(process) {
+        return None;
     }
-    1
+    let view = unsafe {
+        FindWindowExW(defview, null_mut(), windows_sys::w!("SysListView32"), null())
+    };
+    (window_process(view) == Some(process)).then_some(view)
 }
 
 /// Detect another active desktop organizer before allowing work-area changes.
