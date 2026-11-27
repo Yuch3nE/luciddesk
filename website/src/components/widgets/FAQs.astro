@@ -9,10 +9,10 @@ const {title, subtitle, tagline, items = [], id} = Astro.props;
 ---
 <Section id={id}>
   <div class="grid gap-10 border-t border-line pt-12 lg:grid-cols-[0.68fr_1.32fr] lg:gap-16">
-    <div>
+    <div class="lg:sticky lg:top-28 lg:self-start">
       <p class="section-eyebrow mb-4">{tagline || (en ? 'GOOD TO KNOW' : '使用之前')}</p>
       <h2 class="font-heading text-3xl font-bold tracking-tight text-heading">{title}</h2>
-      <p class="mt-4 text-sm leading-7 text-muted">{subtitle || (en ? 'A few details to help you get started with confidence.' : '关于文件安全、自动分类、下载与隐私，先把这些细节说清楚。')}</p>
+      <p class="mt-4 text-sm leading-7 text-muted">{subtitle || (en ? 'Key details on file safety, auto-classification, packages, and privacy—up front.' : '关于文件安全、自动分类、版本选择与隐私，先把关键细节说清楚。')}</p>
       <a href="/guide/" class="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-primary dark:text-blue-300">
         {en ? 'Read the user guide' : '阅读使用指南'}
         <ArrowRight size={15} aria-hidden="true"/>

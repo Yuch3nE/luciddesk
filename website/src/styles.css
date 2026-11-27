@@ -126,26 +126,42 @@
 /* Subtle Fluent/Mica ambient surface backdrop behind the hero. */
 .hero-backdrop {
   position: relative;
+  isolation: isolate;
   overflow-x: clip;
 }
 .hero-backdrop::before {
   content: '';
   position: absolute;
   inset: -4rem 0 auto 0;
-  height: 36rem;
+  height: 38rem;
   pointer-events: none;
   z-index: -1;
   background:
-    radial-gradient(52% 62% at 18% 18%, rgb(37 99 235 / .085), transparent 72%),
-    radial-gradient(48% 58% at 84% 24%, rgb(14 165 233 / .075), transparent 70%);
+    radial-gradient(46% 60% at 24% 18%, rgb(37 99 235 / .09), transparent 72%),
+    radial-gradient(44% 56% at 76% 24%, rgb(14 165 233 / .08), transparent 70%);
+}
+.hero-backdrop::after {
+  content: '';
+  position: absolute;
+  inset: -2rem 0 auto 0;
+  height: 30rem;
+  pointer-events: none;
+  z-index: -1;
+  background-image: radial-gradient(rgb(15 23 42 / .07) 1px, transparent 1px);
+  background-size: 24px 24px;
+  -webkit-mask-image: radial-gradient(64% 78% at 50% 25%, #000 10%, transparent 78%);
+  mask-image: radial-gradient(64% 78% at 50% 25%, #000 10%, transparent 78%);
 }
 .dark .hero-backdrop::before {
   background:
-    radial-gradient(52% 62% at 18% 18%, rgb(59 130 246 / .14), transparent 72%),
-    radial-gradient(48% 58% at 84% 24%, rgb(56 189 248 / .09), transparent 70%);
+    radial-gradient(46% 60% at 24% 18%, rgb(59 130 246 / .14), transparent 72%),
+    radial-gradient(44% 56% at 76% 24%, rgb(56 189 248 / .095), transparent 70%);
+}
+.dark .hero-backdrop::after {
+  background-image: radial-gradient(rgb(255 255 255 / .06) 1px, transparent 1px);
 }
 @media (prefers-reduced-transparency: reduce) {
-  .hero-backdrop::before { display: none; }
+  .hero-backdrop::before, .hero-backdrop::after { display: none; }
 }
 
 /* Section eyebrow pills for clean visual rhythm across pages. */
@@ -190,9 +206,15 @@
 .manual-table table { width: 100%; border-collapse: collapse; font-size: .875rem; }
 .manual-table th, .manual-table td { min-width: 8rem; padding: .8rem 1rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--aw-color-line); }
 .manual-table th { background: var(--aw-color-surface); color: var(--aw-color-text-heading); font-weight: 600; }
+.manual-table tbody tr { transition: background-color 140ms ease; }
+.manual-table tbody tr:hover { background: color-mix(in srgb, var(--aw-color-surface) 55%, transparent); }
 .manual-table tr:last-child td { border-bottom: 0; }
-.help-copy details { border: 1px solid var(--aw-color-line); border-radius: .875rem; background: var(--aw-color-surface-elevated); padding: 1rem 1.15rem; }
-.help-copy summary { cursor: pointer; color: var(--aw-color-text-heading); font-weight: 500; }
+.help-copy details { border: 1px solid var(--aw-color-line); border-radius: .875rem; background: var(--aw-color-surface-elevated); padding: .95rem 1.15rem; transition: border-color 160ms ease, background-color 160ms ease; }
+.help-copy details[open] { border-color: color-mix(in srgb, var(--aw-color-primary) 26%, var(--aw-color-line)); }
+.help-copy summary { display: flex; align-items: center; justify-content: space-between; gap: .75rem; cursor: pointer; color: var(--aw-color-text-heading); font-weight: 600; list-style: none; }
+.help-copy summary::-webkit-details-marker { display: none; }
+.help-copy summary::after { content: ''; width: .45rem; height: .45rem; border-right: 1.5px solid var(--aw-color-text-muted); border-bottom: 1.5px solid var(--aw-color-text-muted); transform: rotate(-45deg); transition: transform 180ms ease, border-color 160ms ease; flex-shrink: 0; margin-right: .25rem; }
+.help-copy details[open] > summary::after { transform: rotate(45deg); border-color: var(--aw-color-primary); }
 .help-copy details[open] > :not(summary) { margin-top: 1rem; }
 
 /* Shared translucent Fluent glass surfaces. */
@@ -244,6 +266,27 @@
   box-shadow: var(--glass-shadow);
   -webkit-backdrop-filter: blur(20px) saturate(135%);
   backdrop-filter: blur(20px) saturate(135%);
+}
+.site-header {
+  transition: box-shadow 200ms ease, border-color 200ms ease, background-color 200ms ease;
+}
+.site-header[data-scrolled="true"] {
+  box-shadow: 0 12px 32px -22px rgb(15 23 42 / .28), 0 1px 0 rgb(15 23 42 / .04);
+}
+.dark .site-header[data-scrolled="true"] {
+  box-shadow: 0 14px 36px -18px rgb(0 0 0 / .72), 0 1px 0 rgb(255 255 255 / .05);
+}
+
+.help-toc a[aria-current="location"] {
+  background: color-mix(in srgb, var(--aw-color-primary) 10%, var(--aw-color-surface-elevated));
+  color: var(--aw-color-primary);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--aw-color-primary) 18%, transparent);
+}
+.dark .help-toc a[aria-current="location"] {
+  background: rgb(59 130 246 / .15);
+  color: #93c5fd;
+  box-shadow: inset 0 0 0 1px rgb(96 165 250 / .22);
 }
 
 @supports not (backdrop-filter: blur(1px)) {

@@ -19,22 +19,22 @@ const highlights = [
   {
     Icon: ShieldCheck,
     title: en ? 'Non-destructive' : '不搬动原文件',
-    detail: en ? 'Panels store references only' : '收纳仅保存引用，随时还原',
+    detail: en ? 'References only—originals stay put' : '收纳仅存引用，随时拖回桌面',
   },
   {
     Icon: Cpu,
-    title: en ? 'Native Windows' : '原生轻量流畅',
-    detail: en ? 'Built with Rust, Win32 & Direct2D' : 'Rust · Win32 · Direct2D 构建',
+    title: en ? 'Fast & native' : '原生轻量流畅',
+    detail: en ? 'Built with Rust, Win32 & Direct2D' : 'Rust · Win32 · Direct2D 打造',
   },
   {
     Icon: RefreshCw,
     title: en ? 'Signed updates' : '应用内签名更新',
-    detail: en ? 'Verify & update in place' : '本地验签，一键原位升级',
+    detail: en ? 'Verified locally, updated in place' : '本地验签，确认后原位升级',
   },
   {
     Icon: Globe,
     title: en ? '7 UI languages' : '7 种界面语言',
-    detail: en ? 'Follows Windows display language' : '自动跟随系统，切换即时生效',
+    detail: en ? 'Follows Windows locale, switches live' : '自动跟随系统，切换即时生效',
   },
 ];
 
@@ -44,10 +44,10 @@ const faqs = [
     description: t("把图标拖入桌面面板只改变收纳方式，原文件留在原处，关闭面板也不会删除文件。文件菜单中的删除、重命名、剪切，以及文件夹面板里的粘贴等操作，会作用于真实文件。")
   },
   {
-    title: en ? 'How do auto-classification and one-click organize work?' : '自动分类和“一键整理”怎么工作？',
+    title: en ? 'How do auto-classification and Organize now work?' : '自动分类和「一键整理」如何运作？',
     description: en
-      ? 'Set rules by extension, keyword, regex, or icon type to route items into target panels. Run one-click organize to preview every move before applying, or enable auto-sorting for newly added icons. Original files stay in place.'
-      : '在“设置 → 自动分类”中按扩展名、关键字、正则表达式或图标类型设置规则并指定目标面板。点击“一键整理”可先预览每个图标的去向再应用；开启自动整理新图标后，新出现的未分组图标会按规则归类，磁盘上的原文件仍在原位置。'
+      ? 'Create rules by extension, keyword, regex, or icon type to route items into target panels. Use Organize now to preview every move and skipped item before applying, or turn on auto-sorting for newly added icons. Original files stay untouched on disk.'
+      : '在「设置 → 自动分类」打开桌面整理窗口，按扩展名、关键字、正则表达式或图标类型设置规则并指定目标分组。点击「一键整理」可先预览去向与跳过原因再应用；开启自动整理后，此后新增的未分组图标会自动归位，磁盘上的原文件始终保留在原位。'
   },
   {
     title: t("搜索和空格预览需要额外安装吗？"),
@@ -60,8 +60,8 @@ const faqs = [
   {
     title: en ? 'Which Windows versions and languages are supported?' : '支持哪些 Windows 版本和界面语言？',
     description: en
-      ? 'Requires Windows 10 1809 (build 17763) or later, or Windows 11 (x64). Mica materials require Windows 11. Includes 7 languages — Simplified & Traditional Chinese, English, Japanese, Korean, German, and Russian — switching instantly.'
-      : '支持 Windows 10 1809（Build 17763）及以上与 Windows 11（x64），其中 Mica 系列材质需要 Windows 11。内置简体中文、繁體中文、English、日本語、한국어、Deutsch 和 Русский 共 7 种界面语言，默认跟随系统并支持即时切换。'
+      ? 'Requires Windows 10 1809 (build 17763) or later, or Windows 11 (x64); Mica materials require Windows 11. Includes 7 UI languages—Simplified & Traditional Chinese, English, Japanese, Korean, German, and Russian—with instant switching.'
+      : '支持 Windows 10 1809（Build 17763）及以上与 Windows 11（x64），其中 Mica 与 Mica Alt 材质需 Windows 11。内置简繁中文、英、日、韩、德、俄 7 种界面语言，默认跟随系统并支持即时切换。'
   },
   {
     title: t("需要账号吗？桌面数据存在哪里？"),
@@ -76,7 +76,7 @@ const faqs = [
   ]}>
     <Fragment slot="title">
       <span class="block">{t("桌面有序")}</span>
-      <span class="block text-primary dark:text-blue-400">{t("专注自在")}</span>
+      <span class="block bg-gradient-to-r from-primary to-sky-500 bg-clip-text text-transparent dark:from-blue-400 dark:to-sky-300">{t("专注自在")}</span>
     </Fragment>
     <Fragment slot="subtitle">{t("把零散图标收进面板，让常用文件触手可及。")}</Fragment>
     <div slot="content" class="mt-6 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-xs text-muted lg:justify-start">
@@ -91,8 +91,8 @@ const faqs = [
 
     <div slot="footer" class="mt-10 grid grid-cols-2 gap-3 border-t border-line pt-7 lg:mt-14 lg:grid-cols-4 lg:gap-4">
       {highlights.map(({ Icon, title, detail }) => (
-        <div class="flex items-start gap-3 rounded-2xl border border-line/80 bg-elevated/75 px-4 py-3.5 backdrop-blur-sm">
-          <span class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary dark:bg-blue-400/15 dark:text-blue-300">
+        <div class="motion-card flex items-start gap-3 rounded-2xl border border-line/85 bg-elevated/80 px-4 py-3.5 backdrop-blur-sm">
+          <span class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-inset ring-primary/15 dark:bg-blue-400/15 dark:text-blue-300 dark:ring-blue-400/20">
             <Icon size={16} aria-hidden="true" />
           </span>
           <div class="min-w-0">

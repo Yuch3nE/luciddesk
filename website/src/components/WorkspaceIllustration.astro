@@ -40,7 +40,7 @@ const folderRows = [
     </div>
     <div class="panel-files">
       {files.map((name, i) => (
-        <div class="panel-file">
+        <div class:list={['panel-file', { 'is-selected': i === 2 }]}>
           <div class="panel-icon-tile">
             {i < 2 || i === 5
               ? <Folder size={30} strokeWidth={1.5} className="folder-icon" aria-hidden="true" />
@@ -147,9 +147,13 @@ const folderRows = [
   background: var(--scene-surface);
   border: 1px solid var(--scene-surface-border);
   border-radius: 14px;
-  box-shadow: 0 18px 40px -22px var(--scene-surface-outer), 0 2px 6px -2px rgb(15 23 42 / .08);
+  box-shadow: 0 18px 40px -22px var(--scene-surface-outer), 0 2px 6px -2px rgb(15 23 42 / .08), inset 0 1px 0 rgb(255 255 255 / .45);
   backdrop-filter: blur(18px) saturate(135%);
   -webkit-backdrop-filter: blur(18px) saturate(135%);
+  transition: transform 320ms cubic-bezier(.22, 1, .36, 1), box-shadow 320ms ease;
+}
+:global(.dark) .scene-panel {
+  box-shadow: 0 20px 44px -20px var(--scene-surface-outer), inset 0 1px 0 rgb(255 255 255 / .08);
 }
 .main-panel {
   left: 5.5%;
@@ -160,6 +164,13 @@ const folderRows = [
   width: 63%;
   right: 5.5%;
   bottom: 12.5%;
+  background: color-mix(in srgb, var(--aw-color-surface-elevated) 92%, transparent);
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+}
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .desktop-scene:hover .main-panel { transform: translate(-2px, -2px); }
+  .desktop-scene:hover .folder-panel { transform: translate(2px, 2px); }
 }
 
 .panel-heading {
@@ -237,8 +248,20 @@ const folderRows = [
   flex-direction: column;
   gap: 1.1cqw;
   align-items: center;
+  padding: 1cqw .6cqw;
+  border-radius: 10px;
   font-size: 1.95cqw;
   color: var(--aw-color-text-default);
+}
+.panel-file.is-selected {
+  background: color-mix(in srgb, var(--aw-color-primary) 10%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--aw-color-primary) 22%, transparent);
+  color: var(--aw-color-text-heading);
+  font-weight: 500;
+}
+:global(.dark) .panel-file.is-selected {
+  background: rgb(59 130 246 / .16);
+  box-shadow: inset 0 0 0 1px rgb(96 165 250 / .24);
 }
 .panel-icon-tile {
   display: grid;

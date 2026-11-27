@@ -28,13 +28,13 @@ const navigation = lang === 'en' ? helpPagesEn : helpPages;
           <nav aria-label={t("帮助文档")}>
             <HelpPageLinks pages={navigation.map(({slug,label}) => ({slug,label}))} current={page.slug}/>
           </nav>
-          <nav aria-label={t("本页目录")} class="mt-4 hidden border-t border-line pt-4 lg:block lg:max-h-[60vh] lg:overflow-y-auto">
+          <nav aria-label={t("本页目录")} class="help-toc mt-4 hidden border-t border-line pt-4 lg:block lg:max-h-[60vh] lg:overflow-y-auto">
             <p class="mb-2.5 px-3 text-[11px] font-semibold tracking-wider text-muted">{t("本页内容")}</p>
             <ul class="grid grid-cols-2 gap-x-2 gap-y-0.5 lg:grid-cols-1">
               {page.sections.map((section, index) => (
                 <li>
                   <a class="flex gap-2 rounded-lg px-3 py-1.5 text-xs leading-5 text-muted transition-colors hover:bg-primary/6 hover:text-primary dark:hover:text-blue-300" href={`#${section.id}`}>
-                    <span class="shrink-0 font-mono tabular-nums opacity-50" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
+                    <span class="shrink-0 font-mono tabular-nums opacity-55" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
                     <span>{section.title}</span>
                   </a>
                 </li>
@@ -43,7 +43,7 @@ const navigation = lang === 'en' ? helpPagesEn : helpPages;
           </nav>
           <details class="mt-4 border-t border-line pt-3.5 lg:hidden">
             <summary class="cursor-pointer px-3 text-sm font-medium text-heading">{t("本页内容")} · {page.sections.length}</summary>
-            <nav aria-label={t("本页目录")} class="mt-3 max-h-[50vh] overflow-y-auto">
+            <nav aria-label={t("本页目录")} class="help-toc mt-3 max-h-[50vh] overflow-y-auto">
               <ul class="grid grid-cols-2 gap-1.5">
                 {page.sections.map((section, index) => (
                   <li>

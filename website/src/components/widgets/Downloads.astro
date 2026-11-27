@@ -33,15 +33,15 @@ const editions = [
     filename: '*.zip',
     configPath: '%LOCALAPPDATA%\\LucidDesk',
     description: en
-      ? 'No installer needed; keeps app files and user configuration separate.'
-      : '解压即用免安装，程序文件与本地用户配置分开保存，适合偏好绿色解压的用户。',
+      ? 'No installer required—extract and run while keeping settings in your Windows app data folder.'
+      : '免安装解压即用，程序文件与本地用户配置分开保存，适合偏好绿色解压的用户。',
   },
 ];
 
 const perks = en
   ? [
       'Windows 10 1809 (build 17763)+ or Windows 11 · x64',
-      'Signed in-app updates with local verification',
+      'Locally verified signed updates—upgrade in place',
       'Free, MIT open source, no account, 7 UI languages',
     ]
   : [
@@ -77,22 +77,34 @@ const perks = en
         </p>
       </div>
 
-      <div class="divide-y divide-line rounded-2xl border border-line bg-page/75 px-5 sm:px-6">
+      <div class="space-y-3">
         {editions.map(({ Icon, title, recommended, filename, configPath, description }) => (
-          <div class="py-5">
+          <div class:list={[
+            'motion-card rounded-2xl border p-5 transition-colors',
+            recommended
+              ? 'border-primary/30 bg-primary/[0.04] dark:border-blue-400/30 dark:bg-blue-400/[0.07]'
+              : 'border-line bg-page/75'
+          ]}>
             <div class="flex flex-wrap items-center justify-between gap-2.5">
-              <h3 class="flex items-center gap-2 text-base font-semibold text-heading">
-                <Icon size={17} className="text-primary dark:text-blue-300" aria-hidden="true"/>
+              <h3 class="flex items-center gap-2.5 text-base font-semibold text-heading">
+                <span class:list={[
+                  'flex size-8 items-center justify-center rounded-lg',
+                  recommended
+                    ? 'bg-primary/15 text-primary dark:bg-blue-400/20 dark:text-blue-300'
+                    : 'bg-surface text-primary dark:text-blue-300'
+                ]}>
+                  <Icon size={16} aria-hidden="true"/>
+                </span>
                 <span>{title}</span>
               </h3>
               {recommended && (
-                <Badge className="rounded-full border-0 bg-primary/12 px-2.5 py-0.5 text-[11px] font-semibold text-primary dark:bg-blue-400/18 dark:text-blue-300">
+                <Badge className="rounded-full border-0 bg-primary/14 px-2.5 py-0.5 text-[11px] font-semibold text-primary dark:bg-blue-400/20 dark:text-blue-300">
                   {t("日常使用推荐")}
                 </Badge>
               )}
             </div>
-            <p class="mt-2 text-sm leading-6 text-muted">{description}</p>
-            <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
+            <p class="mt-2.5 text-sm leading-6 text-muted">{description}</p>
+            <div class="mt-3.5 flex flex-wrap items-center gap-2 text-xs">
               <code class="rounded-md border border-line bg-elevated px-2.5 py-1 font-medium text-heading">{filename}</code>
               <span class="text-muted">· {en ? 'Config:' : '配置：'} <code class="text-[11px] text-default">{configPath}</code></span>
             </div>
@@ -102,7 +114,7 @@ const perks = en
     </div>
 
     <div class="mt-8 flex flex-col justify-between gap-4 border-t border-line pt-6 text-xs text-muted sm:flex-row sm:items-center">
-      <p>{en ? 'All three editions support signed in-app updates from Settings → About.' : '三种发布包均支持在“设置 → 关于”中进行签名应用内更新。'}</p>
+      <p>{en ? 'All three packages support signed in-app updates from Settings → About.' : '三种发布包均支持在「设置 → 关于」中进行签名应用内更新。'}</p>
       <div class="flex flex-wrap gap-5 font-medium text-default">
         <a class="underline decoration-line underline-offset-4 hover:text-primary hover:decoration-primary" href={localizedPath("/changelog/", lang)}>{en ? 'What’s new' : '查看更新内容'}</a>
         <a class="underline decoration-line underline-offset-4 hover:text-primary hover:decoration-primary" href={localizedPath("/installation/#updates", lang)}>{t("安装与更新指南")}</a>

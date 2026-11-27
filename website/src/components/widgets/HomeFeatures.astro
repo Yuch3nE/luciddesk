@@ -3,7 +3,7 @@ import Section from '~/components/ui/Section.astro';
 import Button from '~/components/ui/Button.astro';
 import {
   LayoutGrid, FolderOpen, Search, WandSparkles, ArrowRight, Sun, Moon,
-  MousePointer2, Folder, FileText, ChevronDown, Ellipsis, ArrowLeft, Check
+  MousePointer2, Folder, FileText, ChevronDown, ChevronRight, Ellipsis, ArrowLeft, Check, GripVertical
 } from 'lucide-react';
 import { localeOf } from '~/lib/i18n';
 const en = localeOf(Astro.url.pathname) === 'en';
@@ -16,10 +16,10 @@ const features = [
     wide: true,
     title: pick('按项目收纳，按习惯摆放', 'A place for every project'),
     description: pick(
-      '把文件、文件夹和快捷方式收进桌面面板，用标签页区分任务。每个面板独立设置图标、列表或纯图标视图，支持自动排列、自由摆放、锁定与拖入 Windows Terminal。',
-      'Group files, folders and shortcuts into desktop panels with tabs. Customize icon, list, or icon-only view per panel, arrange freely or in grids, lock panels, and drag items to Windows Terminal.'
+      '把文件、文件夹和快捷方式收进桌面面板，用标签页区分不同任务。每个面板均可独立设置图标、列表或纯图标视图，支持自动排列、自由摆放、锁定，以及直接拖入 Windows Terminal。',
+      'Collect files, folders, and shortcuts into desktop panels organized by tabs. Customize icon, list, or icon-only view per panel—with auto-arrange, free placement, panel locking, and direct drag-and-drop into Windows Terminal.'
     ),
-    note: pick('收纳只保存引用，不搬动原文件。', 'Organizing stores references without moving originals.'),
+    note: pick('收纳仅保存引用，不会移动或删除原文件。', 'Panels store icon references only—original files never move.'),
     href: '/features/#panels',
   },
   {
@@ -28,42 +28,42 @@ const features = [
     wide: false,
     title: pick('自动分类，一键整理桌面', 'Auto-classify with one click'),
     description: pick(
-      '用扩展名、关键字、正则表达式或图标类型设定规则。通过“一键整理”先预览再归类现有图标，开启自动整理后新图标也会自动进入对应面板。',
-      'Route icons by extension, keyword, regex, or type. Preview every move with one-click organize, and automatically sort new ungrouped icons into target panels.'
+      '按扩展名、关键字、正则表达式或图标类型设定规则，规则表直观呈现匹配条件。通过「一键整理」先预览去向再应用，开启自动整理后新图标也会自动归位。',
+      'Route icons by extension, keyword, regex, or icon type, with inline condition summaries right in the rules table. Preview every move with Organize now, or sort newly added icons automatically.'
     ),
-    note: pick('规则支持模板、优先级和单独启停，磁盘文件保持原位。', 'Supports templates, priority order, and per-rule toggles; originals stay in place.'),
+    note: pick('支持内置模板、拖拽或 Alt+↑/↓ 排序与撤销删除，原文件保留在原位。', 'Includes built-in templates, drag or Alt+↑/↓ reordering, and undo—originals stay in place.'),
     href: '/features/#classify',
   },
   {
     id: 'folders',
     Icon: FolderOpen,
     wide: false,
-    title: pick('常用目录，就在桌面', 'Your folders, right on desktop'),
+    title: pick('常用目录，抬眼直达', 'Your folders, right on the desktop'),
     description: pick(
-      '把下载、素材和项目文件夹直接映射到桌面。文件变动自动刷新，面板内双击进入子目录、按 Alt + ← 返回，少切几个窗口。',
-      'Map downloads, assets, and project directories to desktop panels. Contents refresh automatically, and you can browse subfolders in place with Alt + Left.'
+      '把下载、素材和活跃项目目录直接映射到桌面。文件变动自动刷新，面板内双击进入子目录、按 Alt + ← 返回上级，少切几个资源管理器窗口。',
+      'Pin downloads, assets, and active project folders straight to your desktop. Contents refresh automatically—double-click into subfolders and press Alt + Left to go back without juggling Explorer windows.'
     ),
-    note: pick('文件夹面板中的操作会作用于真实文件。', 'Folder panel operations affect the actual files.'),
+    note: pick('文件夹面板直接操作真实目录，拖入或删除会作用于原文件。', 'Folder panels work directly on real directories—drops copy files and deletes affect originals.'),
     href: '/features/#folders',
   },
   {
     id: 'search',
     Icon: Search,
     wide: true,
-    title: pick('快速找到，打开前先预览', 'Find it. Preview it. Open it.'),
+    title: pick('即搜即得，打开前先预览', 'Find it. Preview it. Open it.'),
     description: pick(
-      '连接 Everything 按文件名或查询语法检索本机文件，彩色图标清晰辨认；选中任意文件按空格，即可通过 PowerToys Peek 或 QuickLook 预览内容。',
-      'Connect Everything to search local files by name or syntax with full-color file icons. Select any file and press Space to preview with PowerToys Peek or QuickLook.'
+      '接入 Everything 按文件名或查询语法极速检索本机文件，彩色图标一目了然；选中任意文件按空格，即可调用 PowerToys Peek 或 QuickLook 预览内容。',
+      'Search local files instantly with Everything using filenames or query syntax and full-color file icons. Select any file and press Space to preview with PowerToys Peek or QuickLook.'
     ),
-    note: pick('需另行安装 Everything 及 Peek 或 QuickLook，并在设置中启用。', 'Requires Everything and Peek or QuickLook, installed separately and enabled in Settings.'),
+    note: pick('需另行安装 Everything 及 Peek 或 QuickLook，并在设置中开启。', 'Requires Everything and Peek or QuickLook, installed separately and enabled in Settings.'),
     href: '/features/#search',
   },
 ];
 
 const classifyRules = [
-  { pattern: '*.pdf, *.docx', target: pick('工作文档', 'Documents'), matched: 5 },
-  { pattern: '*.png, *.svg', target: pick('设计素材', 'Design'), matched: 8 },
-  { pattern: '*.lnk', target: pick('常用工具', 'Tools'), matched: 4 },
+  { target: pick('工作文档', 'Documents'), summary: pick('文件 · pdf, docx · 报告', 'File · pdf, docx · report'), enabled: true },
+  { target: pick('设计素材', 'Design'), summary: 'png, jpg, svg, webp', enabled: true },
+  { target: pick('常用工具', 'Tools'), summary: pick('快捷方式 · lnk, url', 'Shortcut · lnk, url'), enabled: false },
 ];
 
 const materials = [
@@ -134,16 +134,24 @@ const materials = [
           {index === 1 && (
             <div class="demo-window">
               <div class="demo-title">
-                <span class="flex items-center gap-2"><WandSparkles size={14} className="text-primary dark:text-blue-300"/>{pick('自动分类规则', 'Classification rules')}</span>
+                <span class="flex items-center gap-2"><WandSparkles size={14} className="text-primary dark:text-blue-300"/>{pick('规则管理', 'Manage rules')}</span>
                 <span class="demo-pill-badge">{pick('预览优先', 'Preview first')}</span>
+              </div>
+              <div class="demo-rule-head">
+                <span>{pick('目标分组', 'Target group')}</span>
+                <span>{pick('匹配条件', 'Conditions')}</span>
+                <span class="text-right">{pick('启用', 'Enabled')}</span>
               </div>
               <div class="demo-rules">
                 {classifyRules.map(rule => (
-                  <div class="demo-rule-row">
-                    <code class="demo-rule-pattern">{rule.pattern}</code>
-                    <ArrowRight size={12} className="text-muted shrink-0"/>
-                    <span class="demo-rule-target">{rule.target}</span>
-                    <span class="demo-rule-count">{rule.matched}</span>
+                  <div class:list={['demo-rule-row', { 'is-disabled': !rule.enabled }]}>
+                    <span class="demo-rule-target">
+                      <GripVertical size={12} className="text-muted/60 shrink-0"/>
+                      <ChevronRight size={12} className="text-muted shrink-0"/>
+                      <span class="truncate">{rule.target}</span>
+                    </span>
+                    <span class="demo-rule-summary">{rule.summary}</span>
+                    <span class:list={['demo-switch', { 'is-on': rule.enabled }]} aria-hidden="true"><span></span></span>
                   </div>
                 ))}
               </div>
@@ -221,14 +229,14 @@ const materials = [
 <Section id="appearance">
   <div class="rounded-3xl border border-line bg-elevated/85 p-6 shadow-sm sm:p-10 lg:grid lg:grid-cols-[1.05fr_1fr] lg:items-center lg:gap-16 lg:p-12">
     <div data-motion>
-      <p class="section-eyebrow mb-4">{pick('外观与专注', 'MAKE IT YOURS')}</p>
+      <p class="section-eyebrow mb-4">{pick('外观与专注', 'APPEARANCE & FOCUS')}</p>
       <h2 class="font-heading text-3xl font-bold leading-snug tracking-tight text-heading md:text-4xl">
-        {pick('你的桌面，你的风格。', 'Make yourself at home.')}
+        {pick('你的桌面，随你定义。', 'Make yourself at home.')}
       </h2>
       <p class="mt-4 text-sm leading-7 text-muted">
         {pick(
-          '自由切换浅色或深色主题，搭配纯色、亚克力、Mica 与 Mica Alt 材质；可按喜好微调圆角、字体、吸附间距与标签栏对齐。需要专注时，双击桌面空白处即可隐藏全部图标与面板。',
-          'Switch between light and dark modes with Solid, Acrylic, Mica, or Mica Alt backdrops. Fine-tune corners, fonts, snap spacing, and tab alignment — and double-click empty desktop space to hide clutter when you need focus.'
+          '自由切换浅色或深色主题，搭配纯色、亚克力、Mica 与 Mica Alt 材质；细致调节圆角、字体、吸附间距与标签栏对齐。需要专注时，双击桌面空白处即可隐去全部图标与面板。',
+          'Switch between light and dark themes with Solid, Acrylic, Mica, or Mica Alt backdrops. Fine-tune corners, fonts, snap gaps, and tab alignment—then double-click empty desktop space to clear distractions anytime.'
         )}
       </p>
       <div class="mt-5 flex flex-wrap gap-2">
@@ -254,10 +262,10 @@ const materials = [
     <div data-motion class="mt-8 grid grid-cols-2 gap-4 lg:mt-0" aria-label={pick('浅色与深色外观示意', 'Light and dark appearance illustrations')}>
       {[false, true].map(dark => (
         <div class:list={[
-          'overflow-hidden rounded-2xl border p-4 sm:p-5',
+          'motion-card relative overflow-hidden rounded-2xl border p-4 sm:p-5',
           dark
-            ? 'border-slate-700/80 bg-gradient-to-br from-slate-900 to-slate-800 text-slate-100 shadow-lg shadow-black/25'
-            : 'border-slate-200 bg-gradient-to-br from-white to-slate-100 text-slate-800 shadow-sm'
+            ? 'border-slate-700/80 bg-[radial-gradient(circle_at_20%_15%,rgb(59_130_246/.24),transparent_55%),linear-gradient(145deg,#0f172a,#1e293b)] text-slate-100 shadow-lg shadow-black/25'
+            : 'border-slate-200/90 bg-[radial-gradient(circle_at_20%_15%,rgb(96_165_250/.22),transparent_55%),linear-gradient(145deg,#ffffff,#e8eff8)] text-slate-800 shadow-sm'
         ]}>
           <div class="flex items-center justify-between">
             <span class:list={[
@@ -266,27 +274,31 @@ const materials = [
             ]}>
               {dark ? <Moon size={16}/> : <Sun size={16}/>}
             </span>
-            <span class:list={['text-xs font-semibold', dark ? 'text-slate-300' : 'text-slate-600']}>
+            <span class:list={['text-xs font-semibold', dark ? 'text-slate-200' : 'text-slate-700']}>
               {dark ? pick('深色 · 亚克力', 'Dark · Acrylic') : pick('浅色 · Mica', 'Light · Mica')}
             </span>
           </div>
           <div class:list={[
-            'mt-4 rounded-xl border p-3',
-            dark ? 'border-white/10 bg-white/5' : 'border-slate-200/90 bg-white/90'
+            'mt-4 rounded-xl border p-3 backdrop-blur-md',
+            dark ? 'border-white/12 bg-slate-900/65 shadow-inner' : 'border-white/90 bg-white/80 shadow-xs'
           ]} aria-hidden="true">
             <div class:list={['mb-2.5 flex items-center justify-between border-b pb-2', dark ? 'border-white/10' : 'border-slate-200/80']}>
-              <span class:list={['h-1.5 w-10 rounded-full', dark ? 'bg-blue-400/70' : 'bg-blue-600/60']}></span>
+              <span class:list={['rounded px-1.5 py-0.5 text-[9px] font-semibold', dark ? 'bg-blue-400/20 text-blue-200' : 'bg-blue-600/10 text-blue-700']}>
+                {pick('工作', 'Work')}
+              </span>
               <span class:list={['h-1.5 w-4 rounded-full', dark ? 'bg-slate-600' : 'bg-slate-300']}></span>
             </div>
             <div class="grid grid-cols-3 gap-2">
               {[0, 1, 2].map(i => (
                 <div class="flex flex-col items-center gap-1.5">
                   <span class:list={[
-                    'size-6 rounded-md',
-                    i === 0
-                      ? (dark ? 'bg-amber-400/35' : 'bg-amber-400/45')
-                      : (dark ? 'bg-blue-400/30' : 'bg-blue-500/20')
-                  ]}></span>
+                    'flex size-7 items-center justify-center rounded-lg',
+                    dark ? 'bg-white/6' : 'bg-slate-100/90'
+                  ]}>
+                    {i === 0
+                      ? <Folder size={15} strokeWidth={1.6} className="illustration-folder"/>
+                      : <FileText size={15} strokeWidth={1.6} className="illustration-document"/>}
+                  </span>
                   <span class:list={['h-1 w-6 rounded-full', dark ? 'bg-slate-600' : 'bg-slate-300']}></span>
                 </div>
               ))}
@@ -459,55 +471,76 @@ const materials = [
 :global(.dark) .demo-pill-badge {
   color: #93c5fd;
 }
+.demo-rule-head {
+  display: grid;
+  grid-template-columns: 1.05fr 1.35fr 2.2rem;
+  gap: 8px;
+  padding: 7px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--aw-color-line) 75%, transparent);
+  background: color-mix(in srgb, var(--aw-color-surface) 45%, transparent);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--aw-color-text-muted);
+}
 .demo-rules {
-  padding: 10px 12px;
+  padding: 4px 10px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
 }
 .demo-rule-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1.05fr 1.35fr 2.2rem;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
-  border-radius: 9px;
-  border: 1px solid color-mix(in srgb, var(--aw-color-line) 75%, transparent);
-  background: color-mix(in srgb, var(--aw-color-bg-page) 65%, transparent);
+  padding: 9px 4px;
   font-size: 11px;
 }
-.demo-rule-pattern {
-  font-size: 10.5px;
-  padding: 2px 6px;
-  border-radius: 5px;
-  background: var(--aw-color-surface);
-  color: var(--aw-color-text-heading);
-  white-space: nowrap;
+.demo-rule-row + .demo-rule-row {
+  border-top: 1px solid color-mix(in srgb, var(--aw-color-line) 55%, transparent);
 }
 .demo-rule-target {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-weight: 600;
+  color: var(--aw-color-text-heading);
+}
+.demo-rule-row.is-disabled .demo-rule-target {
+  color: var(--aw-color-text-muted);
+}
+.demo-rule-summary {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 500;
-  color: var(--aw-color-text-heading);
+  font-size: 10.5px;
+  color: var(--aw-color-text-muted);
 }
-.demo-rule-count {
-  margin-left: auto;
-  min-width: 20px;
-  height: 20px;
-  padding-inline: 5px;
+.demo-switch {
+  justify-self: end;
+  width: 26px;
+  height: 14px;
+  padding: 2px;
   border-radius: 9999px;
+  border: 1px solid var(--aw-color-line);
+  background: var(--aw-color-surface);
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  background: color-mix(in srgb, var(--aw-color-primary) 10%, transparent);
-  color: var(--aw-color-primary);
-  font-size: 10px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
 }
-:global(.dark) .demo-rule-count {
-  color: #93c5fd;
+.demo-switch > span {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--aw-color-text-muted);
+}
+.demo-switch.is-on {
+  justify-content: flex-end;
+  border-color: var(--aw-color-primary);
+  background: var(--aw-color-primary);
+}
+.demo-switch.is-on > span {
+  background: #fff;
 }
 
 .demo-footer-bar {
