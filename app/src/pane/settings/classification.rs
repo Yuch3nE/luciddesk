@@ -141,18 +141,42 @@ fn encode(config: &Classification) -> Result<String, String> {
     serde_json::to_string(config).map_err(|e| e.to_string())
 }
 
-fn save(s: &PaneApp, config: &Classification) -> Result<(), String> {
-    config.compile().map_err(|error| match error {
-        ClassificationError::InvalidRegex(_) => t("classification-regex-invalid").into(),
-        error => error.to_string(),
-    })?;
+fn rule_feedback(error: &ClassificationError) -> (&'static str, Option<Field>) {
+    match error {
+        ClassificationError::TooManyRules => ("classification-rule-limit", None),
+        ClassificationError::MissingTarget => ("classification-no-target", None),
+        ClassificationError::MissingCondition => ("classification-condition-required", Some(Field::Extensions)),
+        ClassificationError::ConflictingKeywords => ("classification-keyword-conflict", Some(Field::Keyword)),
+        ClassificationError::BlankKeyword => ("classification-keyword-blank", Some(Field::Keyword)),
+        ClassificationError::InvalidExtension => ("classification-extension-invalid", Some(Field::Extensions)),
+        ClassificationError::InvalidRegex(_) => ("classification-regex-invalid", Some(Field::Keyword)),
+    }
+}
+
+#[derive(Debug)]
+enum SaveError {
+    Rule(ClassificationError),
+    Other(String),
+}
+
+impl SaveError {
+    fn message(self) -> String {
+        match self {
+            Self::Rule(error) => t(rule_feedback(&error).0).into(),
+            Self::Other(error) => error,
+        }
+    }
+}
+
+fn save(s: &PaneApp, config: &Classification) -> Result<(), SaveError> {
+    config.compile().map_err(SaveError::Rule)?;
     s.store
         .save_settings(
-            &[(KEY.into(), SettingValue::Text(encode(config)?))]
+            &[(KEY.into(), SettingValue::Text(encode(config).map_err(SaveError::Other)?))]
                 .into_iter()
                 .collect(),
         )
-        .map_err(|e| e.to_string())
+        .map_err(|e| SaveError::Other(e.to_string()))
 }
 
 fn targets(panels: &[Panel]) -> impl Iterator<Item = &Panel> {
@@ -294,12 +318,12 @@ impl Editor {
         &mut self,
         hwnd: HWND,
         command: Command,
-        start: impl FnOnce() -> Result<std::sync::mpsc::Receiver<Result<hybrid::OrganizeOutcome, String>>, String>,
+        start: impl FnOnce(&mut Option<hybrid::OrganizePreview>) -> Result<std::sync::mpsc::Receiver<Result<hybrid::OrganizeOutcome, String>>, String>,
     ) -> Result<(), String> {
         if unsafe { SetTimer(hwnd, ORGANIZE_TIMER, 100, None) } == 0 {
             return Err(std::io::Error::last_os_error().to_string());
         }
-        match start() {
+        match start(&mut self.preview) {
             Ok(receiver) => {
                 self.applying = Some(PendingOrganize { command, result: receiver });
                 self.result = None;
@@ -420,7 +444,7 @@ impl Editor {
         }
         let rule = config.rules.remove(from);
         config.rules.insert(to, rule);
-        save(state, config)?;
+        save(state, config).map_err(SaveError::message)?;
         self.deleted = None;
         Ok(())
     }
@@ -429,6 +453,15 @@ impl Editor {
         if let Some(draft) = &mut self.draft {
             draft.inputs.focus(field);
         }
+    }
+
+    fn report_rule_error(&mut self, error: &ClassificationError) -> String {
+        let (key, field) = rule_feedback(error);
+        if let Some(field) = field {
+            self.focus(field);
+            self.reveal(Command::Input(field));
+        }
+        t(key).into()
     }
 
     pub fn field_for(&self, hwnd: HWND) -> Option<Field> {
@@ -442,14 +475,6 @@ impl Editor {
             self.organize_error = self.apply(state, hwnd, command).err();
         } else {
             self.error = self.apply(state, hwnd, command).err();
-            if command == Command::Save && self.editing() {
-                let field = match self.error.as_deref() {
-                    Some(error) if error == t("classification-regex-invalid") => Field::Keyword,
-                    _ => Field::Extensions,
-                };
-                self.focus(field);
-                self.reveal(Command::Input(field));
-            }
         }
     }
 
@@ -468,12 +493,15 @@ impl Editor {
                 return Ok(());
             }
             Command::ApplyPreview if self.applying.is_none() => {
-                if let Some(preview) = self.preview.take() {
+                if let Some(preview) = &self.preview {
+                    if preview.move_count() > 0 {
+                        self.start_organize(hwnd, command, |preview| {
+                            hybrid::apply_organize(&mut state.borrow_mut(), preview)
+                        })?;
+                    }
+                    self.preview = None;
                     self.skipped_motion = None;
                     self.reveal(Command::Run);
-                    if preview.move_count() > 0 {
-                        return self.start_organize(hwnd, command, || hybrid::apply_organize(&mut state.borrow_mut(), preview));
-                    }
                 }
                 return Ok(());
             }
@@ -494,7 +522,7 @@ impl Editor {
                 return Ok(());
             }
             Command::UndoOrganize if self.applying.is_none() => {
-                self.start_organize(hwnd, command, || hybrid::undo_organize(&mut state.borrow_mut()))?;
+                self.start_organize(hwnd, command, |_| hybrid::undo_organize(&mut state.borrow_mut()))?;
                 self.preview = None;
                 self.show_skipped = None;
                 self.skipped_motion = None;
@@ -603,7 +631,9 @@ impl Editor {
                     return Err(t("classification-no-target").into());
                 }
                 let rule = draft.edited_rule();
-                if let Some(index) = draft.index {
+                let index = draft.index;
+                rule.validate_extensions().map_err(|error| self.report_rule_error(&error))?;
+                if let Some(index) = index {
                     *config
                         .rules
                         .get_mut(index)
@@ -611,7 +641,10 @@ impl Editor {
                 } else {
                     config.rules.push(rule);
                 }
-                save(&state.borrow(), &config)?;
+                save(&state.borrow(), &config).map_err(|error| match error {
+                    SaveError::Rule(error) => self.report_rule_error(&error),
+                    SaveError::Other(message) => message,
+                })?;
                 self.deleted = None;
                 self.finish();
                 return Ok(());
@@ -647,7 +680,7 @@ impl Editor {
             }
             _ => return Ok(()),
         }
-        save(&state.borrow(), &config)?;
+        save(&state.borrow(), &config).map_err(SaveError::message)?;
         let previous = self.deleted.take();
         if let Some((index, original, rule, continues)) = deleted {
             let mut batch = previous.filter(|_| continues).unwrap_or_default();

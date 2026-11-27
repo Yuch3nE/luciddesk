@@ -11,7 +11,7 @@ pub struct Classification {
     pub rules: Vec<ClassificationRule>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClassificationRule {
     pub target_panel: u64,
@@ -41,14 +41,24 @@ const fn enabled() -> bool {
 
 #[derive(Debug)]
 pub enum ClassificationError {
-    InvalidRule(&'static str),
+    TooManyRules,
+    MissingTarget,
+    MissingCondition,
+    ConflictingKeywords,
+    BlankKeyword,
+    InvalidExtension,
     InvalidRegex(regex::Error),
 }
 
 impl fmt::Display for ClassificationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidRule(message) => f.write_str(message),
+            Self::TooManyRules => f.write_str("at most 256 classification rules are supported"),
+            Self::MissingTarget => f.write_str("classification rules require a target panel"),
+            Self::MissingCondition => f.write_str("classification rules require a matching condition"),
+            Self::ConflictingKeywords => f.write_str("classification rules accept one keyword condition per rule"),
+            Self::BlankKeyword => f.write_str("classification keyword conditions must not be blank"),
+            Self::InvalidExtension => f.write_str("classification extensions must be nonempty and contain no whitespace, control characters or invalid filename characters"),
             Self::InvalidRegex(error) => write!(f, "invalid keyword regular expression: {error}"),
         }
     }
@@ -64,9 +74,7 @@ impl Classification {
     /// Validate and prepare the ordered rules once for a classification pass.
     pub fn compile(&self) -> Result<Vec<CompiledClassificationRule<'_>>, ClassificationError> {
         if self.rules.len() > 256 {
-            return Err(ClassificationError::InvalidRule(
-                "at most 256 classification rules are supported",
-            ));
+            return Err(ClassificationError::TooManyRules);
         }
         self.rules.iter().map(ClassificationRule::compile).collect()
     }
@@ -83,34 +91,40 @@ pub struct CompiledClassificationRule<'a> {
 }
 
 impl ClassificationRule {
+    /// Validate extensions entered in a rule editor or supplied in a settings update.
+    /// Inventory matching and config loading accept the older file format so users can repair it.
+    pub fn validate_extensions(&self) -> Result<(), ClassificationError> {
+        if self.extensions.iter().any(|extension| {
+            extension.trim_start_matches('.').is_empty() || extension.chars().any(|ch| {
+                ch.is_whitespace() || ch.is_control() || r#"/\*?:<>"|"#.contains(ch)
+            })
+        }) {
+            return Err(ClassificationError::InvalidExtension);
+        }
+        Ok(())
+    }
+
     fn compile(&self) -> Result<CompiledClassificationRule<'_>, ClassificationError> {
         let literal = self.name_contains.as_deref();
         let pattern = self.name_regex.as_deref();
-        if self.target_panel == 0
-            || (self.item_type.is_none()
-                && self.extensions.is_empty()
-                && literal.is_none()
-                && pattern.is_none())
-        {
-            return Err(ClassificationError::InvalidRule(
-                "classification rules require a target panel and a condition",
-            ));
+        if self.target_panel == 0 {
+            return Err(ClassificationError::MissingTarget);
+        }
+        if self.item_type.is_none() && self.extensions.is_empty() && literal.is_none() && pattern.is_none() {
+            return Err(ClassificationError::MissingCondition);
         }
         if literal.is_some() && pattern.is_some() {
-            return Err(ClassificationError::InvalidRule(
-                "classification rules accept one keyword condition per rule",
-            ));
+            return Err(ClassificationError::ConflictingKeywords);
         }
-        if literal
-            .or(pattern)
-            .is_some_and(|value| value.trim().is_empty())
-            || self.extensions.iter().any(|s| {
-                s.trim_start_matches('.').is_empty() || s.contains(['/', '\\', '*', '?', ' '])
-            })
-        {
-            return Err(ClassificationError::InvalidRule(
-                "classification conditions must not be blank or contain wildcard extensions",
-            ));
+        if literal.or(pattern).is_some_and(|value| value.trim().is_empty()) {
+            return Err(ClassificationError::BlankKeyword);
+        }
+        // This check also runs when opening old config files. Apply the stricter
+        // extension rules only to new input so an old rule can still be edited.
+        if self.extensions.iter().any(|s| {
+            s.trim_start_matches('.').is_empty() || s.contains(['/', '\\', '*', '?', ' '])
+        }) {
+            return Err(ClassificationError::InvalidExtension);
         }
         let keyword = if let Some(pattern) = pattern {
             let regex = RegexBuilder::new(pattern)
@@ -189,6 +203,25 @@ mod tests {
             },
             "Report",
         )
+    }
+
+    #[test]
+    fn newly_edited_extensions_reject_whitespace_and_invalid_filename_characters() {
+        let mut rule = ClassificationRule {
+            target_panel: 1,
+            enabled: true,
+            item_type: None,
+            extensions: vec![".PDF".into()],
+            name_contains: None,
+            name_regex: None,
+        };
+        assert!(rule.validate_extensions().is_ok());
+        for extension in ["", ".", "*.pdf", "a/b", "a\\b", "a?b", "a:b", "a<b", "a>b", "a\"b", "a|b", "pdf\tdocx", "pdf\u{3000}docx", "a\u{0007}b"] {
+            rule.extensions = vec![extension.into()];
+            assert!(matches!(rule.validate_extensions(), Err(ClassificationError::InvalidExtension)), "{extension:?}");
+        }
+        rule.extensions = vec!["pdf\tdocx".into()];
+        assert!(rule.compile().is_ok(), "the existing rule must remain readable for repair");
     }
 
     #[test]

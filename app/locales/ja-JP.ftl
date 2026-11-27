@@ -1464,6 +1464,11 @@ classification-target = Target group
 classification-extensions-hint = 拡張子は pdf, docx のようにカンマで区切ります。キーワードはアイコンの表示名と照合します。種類を指定するか、条件を1つ以上入力してください。
 classification-regex-hint = 正規表現の例は ^(報告|契約)[0-9]+$ です。拡張子はカンマで区切ります。種類を指定するか、条件を1つ以上入力してください。
 classification-regex-invalid = 正規表現が無効です。構文と長さを確認してください。
+classification-condition-required = アイコンの種類を選択するか、一致条件を1つ以上入力してください。
+classification-keyword-conflict = 1つのルールに指定できるキーワード条件は、通常の文字列または正規表現のどちらか一方です。
+classification-keyword-blank = キーワードまたは正規表現を入力してください。
+classification-extension-invalid = pdf や .pdf のような拡張子を入力してください。空白、ワイルドカード、ファイル名に使用できない文字は指定できません。
+classification-rule-limit = 分類ルールは最大256件まで保存できます。
 classification-save = Save
 classification-cancel = Cancel
 

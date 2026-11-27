@@ -210,6 +210,14 @@ pub(super) fn finish_move(state: &mut PaneApp, before: Workspace, source: PanelI
     Ok(())
 }
 
+/// Returns members whose rank changed in an explicit reorder of the same pane membership.
+pub(super) fn reordered_keys(
+    before: impl IntoIterator<Item = String>,
+    after: impl IntoIterator<Item = String>,
+) -> impl Iterator<Item = String> {
+    before.into_iter().zip(after).filter_map(|(old, new)| (old != new).then_some(old))
+}
+
 pub(super) fn file_details(identity: &ShellIdentity) -> ItemDetails {
     let ShellIdentity::FileSystem { path, .. } = identity else { return ItemDetails::default(); };
     let Ok(metadata) = std::fs::symlink_metadata(path) else { return ItemDetails::default(); };
@@ -250,7 +258,15 @@ pub(super) fn poll(state: &mut PaneApp) {
         let applied = if pending.order.0 == 0 { apply(&mut state.workspace, id, pending.order.1) }
             else { apply_order(&mut state.workspace, id, false, Some(&ranks)) };
         let result = applied.and_then(|changed| {
-            if changed { save(state)?; refresh_views(state); }
+            if changed {
+                save(state)?;
+                if !pending.panel.fixed_grid() && let Some(undo) = &mut state.last_organize {
+                    let keys = |workspace| ordered_desktop_items(workspace, id).into_iter()
+                        .map(|item| item.identity().persistent_key());
+                    undo.forget_moves(reordered_keys(keys(&previous), keys(&state.workspace)));
+                }
+                refresh_views(state);
+            }
             Ok(())
         });
         if let Err(error) = result {

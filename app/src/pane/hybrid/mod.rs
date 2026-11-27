@@ -601,21 +601,29 @@ pub(super) fn register_drop(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result
                 }
                 let old = s.workspace.clone();
                 normalize_pane_orders(&mut s);
+                let mut reordered = Vec::new();
                 if s.workspace.panel(id).is_some_and(Panel::fixed_grid) {
                     let keys: Vec<_> = keys.iter().filter(|key| !matches!(s.workspace.desktop_item(key).unwrap().placement(), DesktopPlacement::Pane { pane_id, .. } if *pane_id == id))
                         .map(ShellIdentity::persistent_key).collect();
                     fixed_grid::place(&mut s.workspace, id, &keys, GridPosition::new(0, 0));
                 } else {
-                    let mut at = items_for(&s, id).len();
-                    for identity in keys {
+                    let before = items_for(&s, id);
+                    let mut at = before.len();
+                    for identity in &keys {
                         s.workspace
-                            .desktop_item_mut(&identity)
+                            .desktop_item_mut(identity)
                             .unwrap()
                             .set_placement(DesktopPlacement::Pane {
                                 pane_id: id,
                                 position: GridPosition::new(at as u32, 0),
                             });
                         at += 1;
+                    }
+                    if s.last_organize.is_some() {
+                        let dropped: std::collections::HashSet<_> = keys.iter().map(ShellIdentity::persistent_key).collect();
+                        let order = |items: Vec<Item>| items.into_iter().map(|item| item.identity.persistent_key());
+                        reordered.extend(sorting::reordered_keys(order(before), order(items_for(&s, id)))
+                            .filter(|key| dropped.contains(key)));
                     }
                 }
                 if let Err(error) = save_placement(&mut s) {
@@ -625,6 +633,8 @@ pub(super) fn register_drop(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result
                         "collection rollback: save={error}; restored={}", restored.is_ok()
                     ));
                     luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Error, "pane.hybrid", &format!("Desktop collection rejected: {error}"));
+                } else if let Some(undo) = &mut s.last_organize {
+                    undo.forget_moves(&reordered);
                 }
                 refresh_views(&mut s);
             })

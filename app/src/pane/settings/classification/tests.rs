@@ -24,6 +24,48 @@ fn test_state() -> (tempfile::TempDir, Rc<RefCell<PaneApp>>) {
 }
 
 #[test]
+fn legacy_extensions_can_be_reopened_and_repaired_one_rule_at_a_time() {
+    let (directory, state) = test_state();
+    let legacy = r#"{"enabled":false,"rules":[{"target_panel":1,"extensions":["pdf\tdocx"]},{"target_panel":1,"extensions":["bad:name"]}]}"#;
+    state.borrow().store.save_settings(&[(KEY.into(), SettingValue::Text(legacy.into()))].into_iter().collect()).unwrap();
+    let database = directory.path().join("workspace.db");
+    state.borrow_mut().store = WorkspaceStore::open(&database).unwrap();
+    let initial = load(&state.borrow()).unwrap();
+    assert_eq!(initial.rules[0].extensions, ["pdf\tdocx"]);
+    assert_eq!(initial.rules[1].extensions, ["bad:name"]);
+
+    let window = windows_window::Window::new("Legacy classification extensions").create().unwrap();
+    let hwnd = window.hwnd().cast();
+    let mut editor = Editor::default();
+    editor.execute(&state, hwnd, Command::Edit(0));
+    let extensions = unsafe { GetDlgItem(hwnd, Field::Extensions.id()) };
+    assert!(!extensions.is_null());
+    for (input, key) in [(windows_sys::w!("*.pdf"), "classification-extension-invalid"),
+        (windows_sys::w!(""), "classification-condition-required")] {
+        assert_ne!(unsafe { SetWindowTextW(extensions, input) }, 0);
+        editor.execute(&state, hwnd, Command::Save);
+        assert_eq!(editor.error.as_deref(), Some(t(key)));
+        assert!(matches!(editor.reveal[Tab::Rules as usize], Some(Command::Input(Field::Extensions))));
+        assert_eq!(load(&state.borrow()).unwrap().rules, initial.rules);
+    }
+    assert_ne!(unsafe { SetWindowTextW(extensions, windows_sys::w!(".PDF、docx\ttxt\u{3000}zip，png；log")) }, 0);
+    editor.execute(&state, hwnd, Command::Save);
+    assert!(editor.error.is_none(), "{:?}", editor.error);
+    state.borrow_mut().store = WorkspaceStore::open(&database).unwrap();
+    let partially_repaired = load(&state.borrow()).unwrap();
+    assert_eq!(partially_repaired.rules[0].extensions, [".PDF", "docx", "txt", "zip", "png", "log"]);
+    assert_eq!(partially_repaired.rules[1].extensions, ["bad:name"]);
+
+    editor.execute(&state, hwnd, Command::Edit(1));
+    let extensions = unsafe { GetDlgItem(hwnd, Field::Extensions.id()) };
+    assert_ne!(unsafe { SetWindowTextW(extensions, windows_sys::w!("pdf")) }, 0);
+    editor.execute(&state, hwnd, Command::Save);
+    assert!(editor.error.is_none(), "{:?}", editor.error);
+    state.borrow_mut().store = WorkspaceStore::open(&database).unwrap();
+    assert_eq!(load(&state.borrow()).unwrap().rules[1].extensions, ["pdf"]);
+}
+
+#[test]
 fn settings_and_tray_share_one_modeless_organizer_and_select_the_requested_tab() {
     let _sta = crate::pane::test_support::apartment();
     let (_directory, state) = test_state();
@@ -304,6 +346,36 @@ fn preview_keeps_distinct_targets_with_the_same_name() {
     let row = |name| scene.text.iter().find(|(_, value, _)| value == name).unwrap().0;
     assert!(row("Three.pdf").bottom < second_group.top);
     assert!(row("Two.pdf").top >= second_group.bottom);
+}
+
+#[test]
+fn apply_enqueue_failure_keeps_confirmed_preview_and_expanded_skipped_items() {
+    let (_directory, state) = test_state();
+    let window = windows_window::Window::new("Organize enqueue failure").create().unwrap();
+    let hwnd = window.hwnd().cast();
+    let item = hybrid::PreviewEntry::Move(hybrid::OrganizeMove {
+        identity: ShellIdentity::FileSystem { path: "report.pdf".into(), volume_id: None, file_id: None },
+        item_name: "report.pdf".into(), target: PanelId::new(1), target_name: "Documents".into(), rule: 1,
+    });
+    let entries = vec![item.clone(), hybrid::PreviewEntry::Skip {
+        identity: ShellIdentity::Namespace { parsing_name: "test:virtual".into() },
+        item_name: "Virtual icon".into(), reason: hybrid::SkipReason::VirtualIcon,
+    }];
+    let mut editor = Editor {
+        preview: Some(hybrid::OrganizePreview::fixture(entries.clone(), Some(vec![hybrid::PreviewChange::Added(item.clone())]))),
+        show_skipped: Some(true),
+        ..Editor::default()
+    };
+    editor.reveal(Command::ToggleSkipped);
+    assert!(state.borrow().session.is_none());
+    editor.execute(&state, hwnd, Command::ApplyPreview);
+    assert_eq!(editor.organize_error.as_deref(), Some(t("classification-desktop-unavailable")));
+    let preview = editor.preview.as_ref().unwrap();
+    assert_eq!(preview.entries, entries);
+    assert!(matches!(preview.changes.as_deref(), Some([hybrid::PreviewChange::Added(entry)]) if *entry == item));
+    assert_eq!(editor.show_skipped, Some(true));
+    assert!(matches!(editor.reveal[Tab::Organize as usize], Some(Command::ToggleSkipped)));
+    assert!(editor.applying.is_none());
 }
 
 #[test]

@@ -1464,6 +1464,11 @@ classification-target = Target group
 classification-extensions-hint = 확장자는 pdf, docx처럼 쉼표로 구분합니다. 키워드는 아이콘의 표시 이름과 비교합니다. 유형을 하나 선택하거나 일치 조건을 하나 이상 입력하세요.
 classification-regex-hint = 키워드 정규식 예시는 ^(보고서|계약서)[0-9]+$입니다. 확장자는 쉼표로 구분합니다. 유형을 하나 선택하거나 일치 조건을 하나 이상 입력하세요.
 classification-regex-invalid = 잘못된 정규식입니다. 구문과 길이를 확인하세요.
+classification-condition-required = 아이콘 유형을 선택하거나 일치 조건을 하나 이상 입력하세요.
+classification-keyword-conflict = 규칙마다 일반 텍스트 또는 정규식 중 하나만 키워드 조건으로 사용할 수 있습니다.
+classification-keyword-blank = 키워드나 정규식을 입력하세요.
+classification-extension-invalid = pdf 또는 .pdf와 같은 확장자를 입력하세요. 공백, 와일드카드 또는 파일 이름에 사용할 수 없는 문자는 허용되지 않습니다.
+classification-rule-limit = 분류 규칙은 최대 256개까지 저장할 수 있습니다.
 classification-save = Save
 classification-cancel = Cancel
 

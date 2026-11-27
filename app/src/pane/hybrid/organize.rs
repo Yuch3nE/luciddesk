@@ -111,20 +111,20 @@ pub(in crate::pane) fn preview_organize(s: &PaneApp) -> Result<OrganizePreview, 
 
 pub(in crate::pane) fn apply_organize(
     s: &mut PaneApp,
-    preview: OrganizePreview,
+    preview: &mut Option<OrganizePreview>,
 ) -> Result<mpsc::Receiver<Result<OrganizeOutcome, String>>, String> {
-    enqueue(s, OrganizeOperation::Apply(preview))
+    enqueue(s, || preview.take().map(OrganizeOperation::Apply))
 }
 
 pub(in crate::pane) fn undo_organize(
     s: &mut PaneApp,
 ) -> Result<mpsc::Receiver<Result<OrganizeOutcome, String>>, String> {
-    enqueue(s, OrganizeOperation::Undo)
+    enqueue(s, || Some(OrganizeOperation::Undo))
 }
 
 fn enqueue(
     s: &mut PaneApp,
-    operation: OrganizeOperation,
+    operation: impl FnOnce() -> Option<OrganizeOperation>,
 ) -> Result<mpsc::Receiver<Result<OrganizeOutcome, String>>, String> {
     let session = s
         .session
@@ -134,6 +134,7 @@ fn enqueue(
     if session.organize.is_some() {
         return Err(crate::i18n::text("ui-desktop-groups-are-syncing-try-again-shortly").into());
     }
+    let operation = operation().ok_or_else(|| crate::i18n::text("classification-desktop-unavailable"))?;
     let (result, receiver) = mpsc::channel();
     session.organize = Some(OrganizeRequest { operation, result });
     // Discard captures started before the user confirmed the operation.
@@ -209,9 +210,8 @@ fn save_organize(
             .save_workspace(&next)
             .map_err(|error| error.to_string())?;
         let undo = OrganizeUndo::new(workspace, &next);
-        moves.retain(|entry| undo.entries.get(&entry.identity.persistent_key()).is_some_and(|saved| {
-            matches!(saved.grouped, DesktopPlacement::Pane { pane_id, .. } if pane_id == entry.target)
-        }));
+        moves.retain(|entry| undo.entries.get(&entry.identity.persistent_key())
+            .is_some_and(|saved| saved.pane == entry.target));
         *last_organize = Some(undo);
         *workspace = next;
     }
@@ -225,13 +225,20 @@ pub(in crate::pane) struct OrganizeUndo {
 
 struct UndoEntry {
     previous: DesktopPlacement,
-    grouped: DesktopPlacement,
+    pane: PanelId,
+    cell: Option<GridPosition>,
     pane_position: Option<luciddesk_core::PointDip>,
 }
 
 impl UndoEntry {
-    fn matches(&self, item: &DesktopItem) -> bool {
-        item.placement() == &self.grouped && item.pane_position() == self.pane_position
+    fn matches(&self, item: &DesktopItem, workspace: &Workspace) -> bool {
+        let DesktopPlacement::Pane { pane_id, position } = item.placement() else {
+            return false;
+        };
+        *pane_id == self.pane
+            && workspace.panel(self.pane).is_some_and(|panel| panel.fixed_grid() == self.cell.is_some())
+            && self.cell.is_none_or(|cell| cell == *position)
+            && item.pane_position() == self.pane_position
     }
 }
 
@@ -242,24 +249,34 @@ impl OrganizeUndo {
             .desktop_items()
             .iter()
             .zip(after.desktop_items())
-            .filter(|(before, after)| {
-                matches!(before.placement(), DesktopPlacement::FreeDesktop { .. })
-                    && matches!(after.placement(), DesktopPlacement::Pane { .. })
-            })
-            .map(|(before, after)| {
-                (
-                    after.identity().persistent_key(),
+            .filter_map(|(before, grouped)| {
+                let DesktopPlacement::Pane { pane_id, position } = *grouped.placement() else {
+                    return None;
+                };
+                if !matches!(before.placement(), DesktopPlacement::FreeDesktop { .. }) {
+                    return None;
+                }
+                Some((
+                    grouped.identity().persistent_key(),
                     UndoEntry {
                         previous: before.placement().clone(),
-                        grouped: after.placement().clone(),
-                        pane_position: after.pane_position(),
+                        pane: pane_id,
+                        cell: after.panel(pane_id).filter(|panel| panel.fixed_grid()).map(|_| position),
+                        pane_position: grouped.pane_position(),
                     },
-                )
+                ))
             })
             .collect();
         Self {
             count: entries.len(),
             entries,
+        }
+    }
+
+    // Compact positions are order indices. Invalidate only an explicit reorder of the item.
+    pub(in crate::pane) fn forget_moves(&mut self, keys: impl IntoIterator<Item = impl AsRef<str>>) {
+        for key in keys {
+            self.entries.remove(key.as_ref());
         }
     }
 
@@ -275,7 +292,7 @@ impl OrganizeUndo {
                 let key = item.identity().persistent_key();
                 self.entries
                     .get(&key)
-                    .filter(|entry| entry.matches(item))
+                    .filter(|entry| entry.matches(item, workspace))
                     .map(|_| key)
             })
             .collect();
@@ -300,7 +317,7 @@ fn save_undo(
         if let Some(entry) = undo
             .entries
             .get(&item.identity().persistent_key())
-            .filter(|entry| entry.matches(item))
+            .filter(|entry| entry.matches(item, workspace))
         {
             item.set_placement(entry.previous.clone());
             restored += 1;
@@ -451,6 +468,51 @@ mod tests {
             OrganizeOutcome::Reconfirm(preview) if preview.changes.as_ref().is_some_and(Vec::is_empty)
         ));
         assert!(undo.is_none());
+    }
+
+    #[test]
+    fn compact_order_shifts_preserve_undo_but_an_explicit_drag_does_not() {
+        let now = SystemTime::now();
+        let entries = [entry("leading.png", 1), entry("existing.png", 2),
+            entry("moved.pdf", 3), entry("untouched.pdf", 4)];
+        let target = PanelId::new(1);
+        let mut state = crate::pane::tests::test_state();
+        state.workspace = workspace();
+        state.workspace.panel_mut(target).unwrap().set_fixed_grid(false);
+        reconcile(&mut state.workspace, &entries);
+        for (entry, column) in entries[..2].iter().zip([0, 4]) {
+            state.workspace.desktop_item_mut(&entry.identity).unwrap().set_placement(
+                DesktopPlacement::Pane { pane_id: target, position: GridPosition::new(column, 0) },
+            );
+        }
+        let previous = DesktopPlacement::FreeDesktop {
+            monitor: Default::default(), position: luciddesk_core::PointDip::new(24.0, 36.0),
+        };
+        state.workspace.desktop_item_mut(&entries[3].identity).unwrap().set_placement(previous.clone());
+        let preview = plan(&state.workspace, &entries, now);
+        let confirmed = plan(&state.workspace, &entries, now);
+        save_organize(&mut state.store, &mut state.workspace, &mut state.last_organize, preview, confirmed).unwrap();
+
+        // First repair a gap left before the batch, then compact after an unrelated item leaves.
+        normalize_pane_orders(&mut state);
+        refresh_views(&mut state);
+        assert_eq!(state.last_organize.as_ref().unwrap().entries.len(), 2);
+        state.workspace.desktop_item_mut(&entries[0].identity).unwrap().set_placement(DesktopPlacement::default());
+        normalize_pane_orders(&mut state);
+        refresh_views(&mut state);
+        assert_eq!(state.last_organize.as_ref().unwrap().entries.len(), 2);
+
+        // The selected icon moves to the end; its neighbor only slides into the vacated index.
+        transfer_many(&mut state, target, &[1], target, 3).unwrap();
+        refresh_views(&mut state);
+        assert!(matches!(
+            save_undo(&mut state.store, &mut state.workspace, &mut state.last_organize).unwrap(),
+            OrganizeOutcome::Undone { restored: 1, skipped: 1 }
+        ));
+        assert!(matches!(state.workspace.desktop_item(&entries[2].identity).unwrap().placement(),
+            DesktopPlacement::Pane { pane_id, .. } if *pane_id == target));
+        assert_eq!(state.workspace.desktop_item(&entries[3].identity).unwrap().placement(), &previous);
+        assert_eq!(state.store.load_workspace().unwrap(), state.workspace);
     }
 
     #[test]

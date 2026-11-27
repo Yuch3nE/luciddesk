@@ -812,12 +812,20 @@ fn transfer_many(
     } else {
         items_for(state, target)
     };
-    destination.splice(
-        insertion.min(destination.len())..insertion.min(destination.len()),
-        moving,
-    );
+    let insertion = insertion.min(destination.len());
+    let reordered = (source == target && state.last_organize.is_some()).then(|| {
+        selected.iter().zip(&moving).enumerate()
+            .filter(|(offset, (previous, _))| **previous != insertion + offset)
+            .map(|(_, (_, item))| item.identity.persistent_key())
+            .collect::<Vec<_>>()
+    });
+    destination.splice(insertion..insertion, moving);
     set_order(&mut state.workspace, target, &destination);
-    sorting::finish_move(state, old, source, target)
+    sorting::finish_move(state, old, source, target)?;
+    if let (Some(undo), Some(reordered)) = (&mut state.last_organize, reordered) {
+        undo.forget_moves(&reordered);
+    }
+    Ok(())
 }
 
 #[cfg(test)]

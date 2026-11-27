@@ -1464,6 +1464,11 @@ classification-target = Target group
 classification-extensions-hint = 副檔名以逗號分隔，例如 pdf, docx。關鍵字比對圖示顯示名稱。至少指定一種類型或填寫一個比對條件。
 classification-regex-hint = 正規表示式範例 ^(報告|合約)[0-9]+$。副檔名以逗號分隔。至少指定一種類型或填寫一個比對條件。
 classification-regex-invalid = 正規表示式無效。請檢查語法與長度。
+classification-condition-required = 請選擇圖示類型，或輸入至少一個比對條件。
+classification-keyword-conflict = 每條規則只能使用一種關鍵字條件，可選一般文字或正規表示式。
+classification-keyword-blank = 請輸入關鍵字或正規表示式。
+classification-extension-invalid = 請輸入 pdf 或 .pdf 之類的副檔名。副檔名不得含有空白、萬用字元或檔名禁用字元。
+classification-rule-limit = 最多可儲存 256 條分類規則。
 classification-save = Save
 classification-cancel = Cancel
 

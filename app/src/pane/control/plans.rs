@@ -29,6 +29,7 @@ enum PreparedAction {
 struct WorkspaceChange {
     next: Workspace,
     membership: bool,
+    reordered: HashSet<String>,
     layout: Option<(String, Vec<(PanelId, RectDip)>)>,
     layout_observation: Option<super::geometry::LayoutObservation>,
     folders: Vec<(PanelId, luciddesk_storage::FolderPreferences)>,
@@ -231,6 +232,7 @@ fn prepare(
         });
     }
     let mut next = workspace.clone();
+    let mut reordered = HashSet::new();
     let mut refs = HashMap::new();
     let mut membership = false;
     let mut geometry = HashMap::new();
@@ -523,6 +525,7 @@ fn prepare(
             Operation::Sort { pane_id, descending, sort_column } => {
                 let target = id(pane_id)?;
                 editable(&next, target)?;
+                let previous = (!next.panel(target).unwrap().fixed_grid()).then(|| ordered(&next, target));
                 if *sort_column == luciddesk_api::FolderColumn::Name {
                     membership |= super::super::sorting::apply(&mut next, target, *descending).map_err(invalid)?;
                 } else {
@@ -535,6 +538,9 @@ fn prepare(
                     folder::sort_items(&mut items, (column, *descending));
                     let ranks = items.iter().enumerate().map(|(i, item)| (item.identity.persistent_key(), i)).collect();
                     membership |= super::super::sorting::apply_order(&mut next, target, false, Some(&ranks)).map_err(invalid)?;
+                }
+                if let Some(previous) = previous {
+                    reordered.extend(sorting::reordered_keys(previous, ordered(&next, target)));
                 }
             }
             Operation::Position { pane_id, item_id, column, row, x, y } => {
@@ -577,6 +583,9 @@ fn prepare(
                     ));
                 }
                 order(&mut next, target, &requested);
+                if !next.panel(target).unwrap().fixed_grid() {
+                    reordered.extend(sorting::reordered_keys(existing, requested));
+                }
             }
         }
     }
@@ -624,6 +633,7 @@ fn prepare(
         action: PreparedAction::Workspace(WorkspaceChange {
             next,
             membership,
+            reordered,
             layout_observation: layout.as_ref().map(|_| observed.clone()),
             layout,
             folders: folders.into_iter().collect(),
@@ -807,6 +817,9 @@ impl Plans {
                             return fail("PERSISTENCE_ERROR", &error.to_string());
                         }
                         let before = std::mem::replace(&mut state.workspace, std::mem::take(&mut change.next));
+                        if let Some(undo) = &mut state.last_organize {
+                            undo.forget_moves(&change.reordered);
+                        }
                         if membership {
                             hybrid::record_released_items(state, &before);
                         }

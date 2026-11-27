@@ -1464,6 +1464,11 @@ classification-target = Target group
 classification-extensions-hint = Dateiendungen durch Kommas trennen, etwa pdf, docx. Das Schlüsselwort wird mit dem Anzeigenamen verglichen. Einen Typ auswählen oder mindestens eine Bedingung angeben.
 classification-regex-hint = Beispiel für ein Schlüsselwort ^(Bericht|Rechnung)[0-9]+$. Dateiendungen durch Kommas trennen. Einen Typ auswählen oder mindestens eine Bedingung angeben.
 classification-regex-invalid = Ungültiger regulärer Ausdruck. Syntax und Länge prüfen.
+classification-condition-required = Wählen Sie einen Symboltyp oder geben Sie mindestens eine Bedingung ein.
+classification-keyword-conflict = Verwenden Sie pro Regel entweder einfachen Text oder einen regulären Ausdruck.
+classification-keyword-blank = Geben Sie ein Stichwort oder einen regulären Ausdruck ein.
+classification-extension-invalid = Geben Sie Erweiterungen wie pdf oder .pdf ein. Leerraum, Platzhalter und unzulässige Dateinamenzeichen sind nicht erlaubt.
+classification-rule-limit = Sie können bis zu 256 Klassifizierungsregeln speichern.
 classification-save = Save
 classification-cancel = Cancel
 

@@ -1464,6 +1464,11 @@ classification-target = Target group
 classification-extensions-hint = Separate extensions with commas, as in pdf, docx. The keyword matches the icon’s display name. Choose a type or enter at least one matching condition.
 classification-regex-hint = Try ^(report|invoice)[0-9]+$ as a keyword. Separate extensions with commas. Choose a type or enter at least one matching condition.
 classification-regex-invalid = Invalid regular expression. Check its syntax and length.
+classification-condition-required = Select an item type or enter at least one matching condition.
+classification-keyword-conflict = Use one keyword condition per rule, either plain text or a regular expression.
+classification-keyword-blank = Enter a keyword or a regular expression.
+classification-extension-invalid = Enter extensions such as pdf or .pdf. Extensions cannot contain whitespace, wildcards, or invalid filename characters.
+classification-rule-limit = You can save up to 256 classification rules.
 classification-save = Save
 classification-cancel = Cancel
 

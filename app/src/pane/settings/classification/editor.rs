@@ -59,8 +59,7 @@ impl Draft {
         };
         ClassificationRule {
             extensions: extensions
-                .split([',', ';', '，', '；', ' '])
-                .map(str::trim)
+                .split(|ch: char| ch.is_whitespace() || matches!(ch, ',' | ';' | '，' | '；' | '、'))
                 .filter(|value| !value.is_empty())
                 .map(str::to_owned)
                 .collect(),

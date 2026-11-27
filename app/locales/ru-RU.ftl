@@ -1464,6 +1464,11 @@ classification-target = Target group
 classification-extensions-hint = Разделяйте расширения запятыми, например pdf, docx. Ключевое слово проверяется по имени значка. Выберите тип или укажите хотя бы одно условие.
 classification-regex-hint = Пример выражения ^(Отчёт|Договор)[0-9]+$. Разделяйте расширения запятыми. Выберите тип или укажите хотя бы одно условие.
 classification-regex-invalid = Неверное регулярное выражение. Проверьте синтаксис и длину.
+classification-condition-required = Выберите тип значка или задайте хотя бы одно условие.
+classification-keyword-conflict = В одном правиле используйте либо обычный текст, либо регулярное выражение для имени.
+classification-keyword-blank = Введите ключевое слово или регулярное выражение.
+classification-extension-invalid = Вводите расширения, например pdf или .pdf. Пробельные символы, подстановочные знаки и недопустимые символы имени файла запрещены.
+classification-rule-limit = Можно сохранить не более 256 правил классификации.
 classification-save = Save
 classification-cancel = Cancel
 

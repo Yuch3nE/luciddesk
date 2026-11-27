@@ -30,7 +30,10 @@ pub(super) fn preview(store: &WorkspaceStore, updates: &BTreeMap<String, Setting
         let after = metadata::patch(&before, updates)?;
         Ok((before, after))
     } else {
-        Ok((store.settings().map_err(|e| e.to_string())?, store.preview_settings(updates).map_err(|e| e.to_string())?))
+        let before = store.settings().map_err(|e| e.to_string())?;
+        let after = store.preview_settings(updates).map_err(|e| e.to_string())?;
+        validate_classification_updates(&before, updates)?;
+        Ok((before, after))
     }
 }
 pub(super) fn save(store: &WorkspaceStore, updates: &BTreeMap<String, SettingValue>) -> Result<(), String> {
@@ -39,7 +42,33 @@ pub(super) fn save(store: &WorkspaceStore, updates: &BTreeMap<String, SettingVal
         let after = metadata::patch(&before, updates)?;
         let entries = metadata::encode_changes(&before, &after);
         store.save_metadata_preferences(&entries.iter().map(|(k,v)| (k.as_str(),v.as_str())).collect::<Vec<_>>()).map_err(|e|e.to_string())
-    } else { store.save_settings(updates).map_err(|e|e.to_string()) }
+    } else {
+        if updates.contains_key(hybrid::CLASSIFICATION_KEY) {
+            validate_classification_updates(&store.settings().map_err(|e| e.to_string())?, updates)?;
+        }
+        store.save_settings(updates).map_err(|e| e.to_string())
+    }
+}
+
+fn validate_classification_updates(
+    before: &BTreeMap<String, SettingValue>,
+    updates: &BTreeMap<String, SettingValue>,
+) -> Result<(), String> {
+    let key = hybrid::CLASSIFICATION_KEY;
+    let (Some(SettingValue::Text(previous)), Some(SettingValue::Text(updated))) =
+        (before.get(key), updates.get(key)) else { return Ok(()); };
+    let previous: luciddesk_core::Classification = serde_json::from_str(previous).map_err(|e| e.to_string())?;
+    let updated: luciddesk_core::Classification = serde_json::from_str(updated).map_err(|e| e.to_string())?;
+    let mut legacy = previous.rules;
+    for rule in &updated.rules {
+        if let Err(error) = rule.validate_extensions() {
+            // Existing invalid lists may remain while the user repairs other rules.
+            let index = legacy.iter().position(|old| old.extensions == rule.extensions)
+                .ok_or_else(|| error.to_string())?;
+            legacy.swap_remove(index);
+        }
+    }
+    Ok(())
 }
 pub(super) fn workspace_values(store: &WorkspaceStore) -> Result<serde_json::Map<String, serde_json::Value>, String> {
     metadata::read(store).map(values)
@@ -190,6 +219,24 @@ pub(super) fn present(state: &Rc<RefCell<PaneApp>>) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cli_can_repair_legacy_extensions_but_cannot_add_new_invalid_rules() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = WorkspaceStore::open(&dir.path().join("workspace.db")).unwrap();
+        let settings = |rules: &str| BTreeMap::from([(hybrid::CLASSIFICATION_KEY.into(), SettingValue::Text(rules.into()))]);
+        let legacy = settings(r#"{"rules":[{"target_panel":1,"extensions":["pdf\tdocx"]}]}"#);
+        store.save_settings(&legacy).unwrap();
+        let invalid = settings(r#"{"rules":[{"target_panel":1,"extensions":["pdf\tdocx"]},{"target_panel":1,"extensions":["bad:name"]}]}"#);
+        assert!(preview(&store, &invalid).is_err());
+        assert!(save(&store, &invalid).is_err());
+        assert_eq!(store.settings().unwrap()[hybrid::CLASSIFICATION_KEY], legacy[hybrid::CLASSIFICATION_KEY]);
+        let repaired = settings(r#"{"rules":[{"target_panel":1,"extensions":["pdf","docx"]}]}"#);
+        assert!(preview(&store, &repaired).is_ok());
+        save(&store, &repaired).unwrap();
+        assert_eq!(store.settings().unwrap()[hybrid::CLASSIFICATION_KEY], repaired[hybrid::CLASSIFICATION_KEY]);
+    }
+
     #[test]
     fn settings_refresh_keeps_windows_and_transient_collapse_without_extra_writes() {
         let _sta = crate::pane::test_support::apartment();
