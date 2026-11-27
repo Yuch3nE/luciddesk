@@ -4,187 +4,192 @@
 
 [简体中文](usage.md) · English
 
-Start with your first panel, then find the task you need below.
+Start with your first panel, then look up any task you need below.
 
 ## Start in five minutes
 
-For LucidDesk 0.26.1. Requires **Windows 10 1809 (build 17763), x64, or later**. Mica requires Windows 11.
+For LucidDesk 0.26.1. Requires **Windows 10 1809 (build 17763), x64, or later**. Mica and Mica Alt require Windows 11.
 
-1. Install and start LucidDesk. Find its tray icon near the Windows clock; expand hidden icons if needed.
-2. Right-click the tray icon and choose New panel.
+1. Install or fully extract LucidDesk and launch it. Find its tray icon near the Windows clock; expand hidden icons if needed.
+2. Right-click the tray icon and choose **New panel**.
 3. Drag desktop icons into the panel to group them by task or project.
-4. Drag the header to move the panel and its edges to resize it. Drag icons back to the desktop to remove them.
+4. Drag the header to move a panel and its edges to resize it. Drag icons back to the desktop to remove them.
 
-Closing Settings does not exit the app. Use Exit LucidDesk in the tray menu. Need to install it first? See [installation and updates](installer.md).
+Closing Settings does not exit the app. Use **Exit LucidDesk** in the tray menu to quit. Need to install it first? See [installation and updates](installer.md).
 
 ## Desktop panels
 
-Open the header's “…” menu or right-click empty panel space.
+Click **…** in the panel header or right-click empty panel space to open the panel menu:
 
 | Task | Action |
 | --- | --- |
-| Switch icons or list view | Choose a view in View |
-| Sort by name, type, date or size | Choose Sort by; select the same field again to reverse direction |
-| Keep icons together | Enable Auto arrange icons; disable it to leave gaps |
-| Position icons freely | Disable Align icons to grid |
-| Temporarily hide panel contents | Collapse the panel, then expand it when needed |
-| Fix the panel's position, size, and name | Enable Lock panel. You can still organize icons or switch tabs |
-| Keep a panel above other windows | Enable Always on top |
+| Switch icon or list view | Open **View** and choose **Icons and names**, **Icons only**, or **List** |
+| Sort by name, modified date, type, or size | Open **Sort by**; select the same field again to toggle ascending / descending |
+| Pack icons without gaps | Enable **Auto arrange icons** in **View**; disable it to leave gaps |
+| Position icons freely | Disable **Align to grid** in **View** (also disables auto arrange) |
+| Temporarily hide panel contents | Choose **Collapse panel** (or enable **Auto-collapse**) |
+| Fix the panel’s position, size, and name | Enable **Lock panel** (you can still organize icons, sort, or switch tabs) |
+| Keep a panel above other windows | Enable **Always on top** |
 
-Drag files from a desktop panel into Windows Terminal to insert their paths. If you drag over another window and return to a panel, release the icon where you want it placed.
+You can drag files from a desktop panel into Windows Terminal and other apps (for example, to insert file paths). If you drag an icon over another window and return to a panel, it is placed where you release it.
 
-**Collecting icons, removing them from a panel or closing a panel does not delete files.** File-menu commands such as delete, rename and cut affect real files, even when the panel is locked.
+**Collecting icons, removing them from a panel, or closing a panel does not delete files.** File-menu commands such as delete, rename, and cut affect real files, even when the panel is locked.
 
 ### Icons only
 
-Choose Icons only in View to hide filenames; hover to read the full name. Choose small, medium or large under Icon size. Each panel saves its own choice. Choose Icons with names to show filenames again.
+Choose **Icons only** under **View** to hide filenames; hover over an icon to read its full name. When **Icons only** is active, an **Icon size** menu appears where you can pick **Small**, **Medium**, or **Large**. Each panel saves its own view and icon size; switch back to **Icons and names** to show filenames again.
 
 ### Automatic classification
 
-Create the desktop panels you want to use as destinations. In Settings → Automatic classification, choose Open desktop organization. On the Manage rules tab, choose Add rule, select a group, and specify an icon type, extensions, a keyword, or a regular expression. The icon type can be File, Folder, Shortcut, or Any type. Rules run from top to bottom. The first matching rule with an available group applies.
+First create the desktop panels you want to use as destinations. Open **Settings → Automatic classification** and click **Open desktop organization**. On the **Manage rules** tab, click **Add rule** (or start from the built-in **Documents / Images / Archives / Shortcuts** rule templates), choose a target group, and set an icon type (**File**, **Folder**, **Shortcut**, or **Any type**) along with extensions, a keyword, or a regular expression. You can drag rules to reorder priority, toggle individual rules on or off, and undo deletions. Rules run from top to bottom; the first enabled match with an available group wins.
 
-Choose Organize now from the tray menu or open the corresponding tab in the Desktop organization window to preview where unassigned icons will go. Expand Skipped icons to see the reasons. Use the buttons at the bottom of the window to refresh the preview or apply it. Enable Automatically group new icons to apply the rules to new unassigned icons. Files stay in their original locations.
+Choose **Organize now** from the tray menu (or switch to the **Organize now** tab in the **Desktop organization** window) to preview where unassigned icons will go. Expand **Skipped icons** to see why items were skipped (such as active downloads, temporary files, virtual system icons, or no matching rule), then refresh the preview or click **Apply** at the bottom. If desktop icons change before applying, LucidDesk refreshes the preview and asks you to review before confirming. After applying, you can click **Undo last organization** to revert. Enable **Automatically group new icons** to classify newly appearing unassigned icons automatically; original files always remain in place on disk.
 
 ### Find or hide panels
 
-Click the tray icon to show panels. You can also enable the Show all panels shortcut in Settings → Panel layout; its preset is `Ctrl + Shift + D`.
+Click the tray icon (or right-click and choose **Show panels**) to raise all panels. You can also enable the global shortcut under **Settings → Panel layout → Show all panels**; the preset is `Ctrl + Shift + D`.
 
-To clear the desktop temporarily, enable Double-click to hide desktop in General. Double-click empty desktop space to hide icons and panels; double-click again to restore them.
+To clear the desktop temporarily, enable **Double-click to hide desktop** under **Settings → General → Desktop gestures**. Double-click empty desktop space to hide all icons and panels; double-click again or click the tray icon to restore them.
 
 ## Tabs
 
-Keep related panels in one window and switch between tabs.
+Combine related desktop panels into a single window and switch between tabs.
 
-Under Settings → Panel layout → Tab alignment, choose Fill or Left aligned. Fill is the default. Left aligned sizes tabs to their titles and leaves unused space on the right. Left aligned keeps the collapse and menu buttons visible and shrinks all tabs when space is limited. Long titles are truncated; hover to see the full title. Fill keeps the active tab visible when tabs overflow; use the context menu or keyboard shortcuts to switch to other tabs.
+Under **Settings → Panel layout → Tab alignment**, choose **Fill** (default) or **Left aligned**. **Left aligned** sizes tabs to their titles while keeping the collapse and menu buttons visible; when space gets tight, tabs shrink evenly and long titles show in full on hover. **Fill** keeps the active tab visible on overflow; use the context menu or keyboard shortcuts to switch tabs.
 
-- **Create:** use the panel menu or press `Ctrl + T`.
-- **Merge:** drag one panel onto another's header and release when the merge preview appears.
-- **Detach:** right-click a tab and choose Detach as separate panel.
-- **Switch or close:** `Ctrl + Tab` switches tabs; `Ctrl + W` closes the current tab.
+- **Create:** choose **New panel tab** from the panel menu or press `Ctrl + T`.
+- **Merge:** drag one desktop panel onto another’s header and release when the merge preview appears.
+- **Detach:** right-click a tab and choose **Detach as panel**.
+- **Switch or close:** `Ctrl + Tab` moves to the next tab, `Ctrl + Shift + Tab` moves to the previous tab, and `Ctrl + W` closes the current tab.
 
-Only ordinary desktop panels support tabs. Folder and search panels cannot merge. Closing a tab does not delete files; closing the window closes all its tabs.
+Only ordinary desktop panels support tabs; folder and search panels cannot merge. Closing a tab does not delete files, and closing the window closes all tabs inside it.
 
-Selected tabs use a borderless background. With a solid material, tab contrast follows the selected background color; other materials follow the light or dark theme. The default light solid color is `#E9EDF2`; upgrading preserves saved colors.
+Selected tabs use a borderless highlight: with a solid backdrop, contrast adapts to the chosen background color; other materials follow the light or dark theme. The default light solid color is `#E9EDF2` (`#202020` in dark mode, `85%` opacity by default); upgrading preserves saved custom colors.
 
 ## Folder panels
 
-1. Choose New folder panel from the tray and select a directory.
-2. Double-click a subfolder to enter it; press `Alt + Left` to return.
-3. Choose icons or list view from the panel menu. Icon view supports icons only and small, medium or large icons; list headers let you sort and choose columns.
+1. Choose **New folder panel…** from the tray menu and pick a directory.
+2. Double-click (or press `Enter`) to open a subfolder; press `Alt + Left` to go back.
+3. Under **View** in the panel menu, switch between **Icons and names**, **Icons only** (Small / Medium / Large), and **List** view. In list view, click column headers to sort or use **Columns** to choose visible columns.
 
-Changes refresh automatically; press `F5` to refresh manually. To open subfolders in File Explorer instead, change the opening behavior in Settings → Folder panels.
+Contents refresh automatically when files change; press `F5` to refresh manually. To open subfolders in File Explorer instead, change **Open subfolders in** under **Settings → Folder panels**.
 
-**Dropping files in copies them to the current directory. Delete, cut, rename and paste affect real files.** Closing the panel does not delete the directory.
+**Dropping files in copies them to the current directory. Delete, cut, rename, and paste modify real files.** Closing a folder panel does not delete the directory.
 
 ## Everything search
 
-1. Install and run Everything separately.
-2. Open Settings → Everything search and enable the search panel. Select `Everything.exe` manually if needed.
-3. Type a filename and double-click a result to open it. `Ctrl + Enter` locates it in File Explorer.
+1. Install and run Everything separately (version 1.4 or newer with IPC enabled).
+2. Open **Settings → Everything search** and turn on **Enable search panel**. Browse for `Everything.exe` manually if it is not detected automatically.
+3. Type a filename or query and double-click (or press `Enter`) to open a result. Press `Ctrl + Enter` to open the file location, or `Ctrl + Shift + C` to copy the full path.
 
-Use `ext:pdf` to find PDFs or `folder:` to find folders. If results are missing, check that Everything is running and press `F5` to retry.
+Everything query syntax is supported — for example, `ext:pdf` for PDFs or `folder:` for folders. If results are missing, verify that Everything is running with IPC enabled and press `F5` to retry.
 
 ## File preview
 
 1. Install PowerToys Peek or QuickLook separately.
-2. Select the program in Settings → File preview and enable preview.
-3. Select a file and press Space.
+2. Open **Settings → File preview**, choose your preview app, and turn on **Enable file preview** (the shortcut defaults to Space and can be customized).
+3. Select a file in a panel and press Space to preview it.
 
-Everything and preview tools are not bundled with LucidDesk. Search and preview are off by default. Third-party tools have their own OS requirements: check the installation requirements for [PowerToys](https://learn.microsoft.com/windows/powertoys/install) or your chosen tool. LucidDesk’s 1809 minimum does not mean every preview tool supports that version.
+Everything and preview tools are not bundled with LucidDesk, and both features are off by default. Third-party tools have their own OS requirements — check the requirements for [PowerToys](https://learn.microsoft.com/windows/powertoys/install) or your chosen tool, as LucidDesk’s Windows 10 1809 minimum does not mean every preview tool supports 1809.
 
 ## Theme, materials and appearance
 
-Choose a theme and solid, acrylic or mica background in Theme & material. Use Panel layout for text, corners and snapping. Mica requires Windows 11.
+Choose the rendering mode, app theme, and window material in **Settings → Theme & materials**. Adjust corners, borders, tabs, text appearance, and snapping in **Settings → Panel layout**. Mica and Mica Alt require Windows 11.
 
-- **Solid color:** edit the color and opacity, or reset them to defaults.
-- **Acrylic and Mica:** adjust effect strength; the center is Default. Mica Alt uses a fixed effect.
-- **System rendering:** uses system shadows with square, small-rounded or rounded corners. Choose custom rendering for an adjustable corner radius.
-- **Snap gap:** adjusts the space between panels after they snap together.
+- **Solid color:** choose a preset or adjust RGB / HEX values and panel opacity; click **Reset solid color** to restore defaults.
+- **Acrylic and Mica:** adjust **Effect strength** (center is Default). Mica Alt uses a fixed effect.
+- **Rendering mode:** switchable in **Theme & materials**. **Custom rendering** (default) supports an adjustable corner radius and border toggle in **Panel layout** without system shadows. **System rendering** uses system shadows and offers **Square corners**, **Small corners**, or **Standard corners** under **Corner style** in **Panel layout**.
+- **Edge snapping & snap gap:** when snapping is enabled, set the pixel spacing between snapped panels and screen edges under **Moving and snapping** (`0` leaves no gap).
 
 ### Defaults and existing panels
 
-Settings tagged for new panels only do not change existing panels. Use a panel's own menu to adjust its view, arrangement or icon size.
+Options marked **New panels only** (such as default view, list columns, default icons-only mode, and default icon arrangement) do not modify existing panels. Use an existing panel’s own menu to change its view, arrangement, or icon size.
 
-Overall scaling applies to icons with filenames and does not stack with icon-only sizes.
+**Overall scale** (`50%–200%`) applies to icons with filenames and does not stack with **Icons only** sizes.
 
 ### Fonts and language
 
-Search and choose a font in Fonts. Select an interface language in Settings → General → Language; it applies immediately.
+Search and choose an interface font in **Settings → Fonts** (only fonts supporting the active language are listed). Switch among 7 interface languages in **Settings → General → Language**; changes apply immediately.
 
 ### Common switches
 
-After sign-in, LucidDesk waits for the Windows desktop to be ready and retries connections automatically. Connection warnings are deferred for the first 30 seconds; this is not a deadline for connecting. You do not need to launch the app repeatedly.
+After sign-in, LucidDesk waits for the Windows desktop to become ready and retries automatically. Connection warnings are deferred for the first 30 seconds — this is a grace period, not a connection deadline, so there is no need to launch the app repeatedly.
 
-General offers sign-in startup. Panel layout offers the Windows 11-style context menu. If an option is missing, check your version in About.
+- **Start at sign-in:** toggle in **Settings → General → Startup**.
+- **Use Windows 11 context menus:** available on Windows 11 under **Settings → Panel layout** to toggle compact context menus for regular desktop panel items.
+
+If an option is missing, check your version and OS details in **Settings → About**.
 
 ## Backup and restore
 
 ### Save a backup
 
-Open Settings → Backup & restore and choose Back up now. Automatic backups save changed settings and layouts; you can adjust the interval and number kept.
+Open **Settings → Backup & restore** and click **Back up now** to create a manual snapshot anytime. **Automatic backups** are enabled by default and save whenever settings or layouts change (unchanged contents are not backed up repeatedly); the default minimum interval is 5 minutes and the default retention is the last 10 automatic backups, both configurable.
 
-Manage backups lets you restore, export or delete saved snapshots. Before moving computers, export a copy and transfer your original files separately.
+Click **Manage backups** to view, restore, export, or delete saved snapshots. Before moving to another computer, export a backup copy and transfer your original files separately.
 
 ### Restore a backup
 
-1. Choose Restore from file and select a backup.
-2. Confirm the restore. LucidDesk saves a pre-restore backup before applying your selection.
-3. Check panels, folder paths, search and preview tools.
-4. To go back, use Undo this restore or select the pre-restore backup from history.
+1. Click **Restore from file…** (or pick a record in **Manage backups**) and choose a backup file.
+2. Review the integrity check and confirm. LucidDesk automatically saves a **Before restore** backup before applying the selected snapshot.
+3. Verify your panels, folder paths, and search / preview tool paths.
+4. To go back, click **Undo this restore** or restore the **Before restore** snapshot from history.
 
-**Restoring replaces current settings and layout; it does not merge them. Backups do not contain original files, plugins' own settings or external tools.**
+**Restoring replaces current settings and layouts; it does not merge them. Backups do not include original files, individual plugin settings, or external tools.**
 
-Editing settings while a restore is being prepared cancels that restore. Stop editing and select the backup again. Choose a new export file to avoid overwriting active configuration or database files.
+Editing settings while a restore is being prepared cancels that restore; stop editing and select the backup again. When exporting, choose a new file name — you cannot overwrite the active database or use `workspace.db` or `config.toml` as the filename.
 
 <details>
 <summary>Where are backups saved? How do I export one?</summary>
 
-Use Open configuration folder from the tray to find the active location. Backups are in its `backups` folder. Installed versions normally use `%LOCALAPPDATA%\LucidDesk`; portable versions use `data` beside the app.
+Choose **Open configuration folder** from the tray menu to locate your active directory; backups live in its `backups` subfolder. Installed and standard ZIP builds default to `%LOCALAPPDATA%\LucidDesk`; portable builds default to `data` beside the app.
 
-Advanced options in Backup & restore lets you export configuration or open its folder. Automatic backups keep ten snapshots by default; this is configurable. Restoring through the UI keeps five pre-restore snapshots by default. Manage manual backups and exported copies yourself.
+Under **Settings → Backup & restore → Advanced options**, you can open the configuration folder, reload configuration from disk, or **Export configuration**. Automatic backups keep the last 10 snapshots by default (configurable to 10, 20, or 50). UI restores keep the last 5 pre-restore backups by default. Manage manual backups and exported copies yourself.
 
 </details>
 
 ### Update LucidDesk
 
-Before updating, you can export a backup in Backup & restore. EXE, standard ZIP, and portable ZIP builds can use **Download and update** in Settings → About when a signed update is available. Confirm the restart after verification to update in place.
+Save or export a backup in **Backup & restore** before updating. When a signed update is available, EXE, standard ZIP, and portable ZIP builds can click **Download and update** in **Settings → About**; LucidDesk verifies the package locally and updates in place once you confirm the restart. Automatic update checks are on by default (at startup and every 24 hours) and can be turned off anytime.
 
-For a manual update, exit from the tray and use the same installation format. Keep `data` and `portable` when replacing portable program files. See [installation and updates](installer.md) for the steps.
+For a manual update, choose **Exit LucidDesk** from the tray first and use the same package format. Keep the `data` folder and extensionless `portable` marker when replacing portable program files. See [installation and updates](installer.md) for details.
 
 ## Agents and the command line
 
-To connect an agent, copy the Skill installation prompt from Settings → General → Agent & CLI and give it to your chosen agent. Copying the prompt does not install anything or change your desktop. Have the agent read the current layout and preview the changes you want before applying them.
+To connect an external agent, open **Settings → General → Automation**, confirm that **Allow CLI and Agent control** is on (enabled by default), and click **Copy prompt** under **Set up Agent skills** to paste into your agent. Copying the prompt does not install anything or alter your desktop. Have the agent inspect your current layout and preview its plan before applying changes.
 
-Before connecting, make sure LucidDesk is running and command-line control is enabled in General. Preview summaries help locate changes quickly. If a summary is truncated or points to additional content, have the agent inspect the full diff before you approve the changes.
+Preview summaries help you review changes quickly. If a summary is truncated or mentions additional items, have the agent inspect the full diff before you approve it.
 
-If a preview reports that it is waiting for a save or another backup task, have the agent follow the returned guidance and preview again when ready. If a submission times out, check its result before retrying to avoid repeating an operation.
+If a preview reports that it is waiting for a save or another backup task, have the agent follow the returned guidance and preview again once ready. If a submission times out, check its receipt before retrying to avoid duplicating an operation.
 
-**Backup commands:** the CLI can list, create, export and restore backups. Exports do not overwrite existing files. Restoring replaces current configuration and first saves a pre-restore backup. See the [CLI guide](cli.md#english-quick-start). You can continue using the Backup & restore settings page without an agent or command line.
+**Backup commands:** the CLI can list, create, export, and restore backups. Exports never overwrite existing files; restoring replaces current configuration after saving a pre-restore backup. See the [CLI guide](cli.md#english-quick-start). Without an agent or CLI, use the **Backup & restore** page directly.
 
-Your external agent may receive queried file names, paths and layout information. Choose its service according to your privacy needs. Disabling command-line control blocks subsequent connections but does not undo submitted operations.
+External agents may receive queried filenames, paths, and layout details — choose a provider matching your privacy requirements. Turning off **Allow CLI and Agent control** blocks future connections but does not undo already-submitted changes.
 
 ## Keyboard and file operations
 
-Click the panel you want to use first.
+Click the panel you want to focus first. Common shortcuts:
 
 | Shortcut | Action |
 | --- | --- |
-| Enter | Open selected items |
-| Space | Preview, when enabled |
-| F2 | Rename one item |
-| F5 | Refresh |
-| Ctrl+A | Select all in the current panel |
-| Ctrl+C / Ctrl+X / Ctrl+V | Copy / cut / paste |
-| Delete | Delete real files |
+| `Enter` | Open selected items (enters subfolders in folder panels by default) |
+| `Space` | Preview selected file (when enabled; customizable) |
+| `F2` | Rename one item |
+| `F5` | Refresh the current panel |
+| `Ctrl + A` | Select all items in the current panel |
+| `Ctrl + C` / `Ctrl + X` / `Ctrl + V` | Copy / cut / paste |
+| `Delete` | Delete real files |
 
 <details>
-<summary>More selection and navigation shortcuts</summary>
+<summary>More selection, navigation, and search shortcuts</summary>
 
-- `Ctrl + click` toggles individual selection; `Shift + click` selects a range.
-- Arrow keys, `Home / End` and `PageUp / PageDown` move selection.
-- Hold `Shift` while navigating to extend selection; hold `Ctrl` to move focus only.
-- `Shift + F10` opens the context menu; `Esc` cancels dragging or clears selection.
-- When renaming, `Enter` confirms and `Esc` cancels.
+- `Ctrl + click`: toggle individual items; `Shift + click`: select a contiguous range.
+- Arrow keys, `Home / End`, and `PageUp / PageDown`: move selection.
+- Hold `Shift` while navigating to extend selection; hold `Ctrl` to move focus only (use `Ctrl + Space` to toggle selection on the focused item).
+- `Shift + F10` or Menu key: open the context menu; `Esc`: cancel dragging or clear selection.
+- While renaming: `Enter` confirms and `Esc` cancels.
+- Folder panels: `Alt + Left` returns to the parent folder.
+- Search panel: `Ctrl + Enter` opens the file location; `Ctrl + Shift + C` copies the full path.
 
 </details>
 
@@ -192,18 +197,18 @@ Click the panel you want to use first.
 
 | Problem | Try this |
 | --- | --- |
-| Missing panels | Expand hidden tray icons and click LucidDesk to show panels |
-| Cannot collect desktop icons | Check connection status in About and reconnect; avoid running multiple desktop organizers |
-| Icons update late after dragging into a panel or back to the desktop | Use 0.25.3 or later; check connection status in About and record the drag direction, panel type and delay |
-| Panels have not connected at startup | The app retries automatically and defers connection warnings for 30 seconds; copy diagnostics from About if it remains disconnected |
-| Desktop and panel Recycle Bin icons disagree | Use 0.25.3 or later; if it persists, report the preceding file operation. Emptying the Recycle Bin is not needed to fix its icon |
-| Search or a folder reports that its worker stopped | Reopen the panel as prompted; if it persists, copy diagnostics rather than repeatedly dropping files |
-| Search or preview unavailable | Check that the tool is installed, its path is correct and the feature is enabled |
-| Files do not open after moving computers | Check that original files were transferred and drive letters or folder paths still match |
-| Restore fails | Keep your current data and backup; read the error instead of deleting configuration files |
+| Missing panels | Expand hidden tray icons and click the LucidDesk tray icon to show all panels |
+| Cannot collect desktop icons | Check **Desktop connection** in **Settings → About** and click **Reconnect**; avoid running multiple desktop organizers |
+| Icons update late after dragging | Confirm you are on 0.25.3 or later; check connection status in **About** and record drag direction, panel type, and delay |
+| Panels have not connected at startup | The app retries automatically and defers warnings for 30 seconds; copy diagnostics from **About** if it remains disconnected |
+| Desktop and panel Recycle Bin icons disagree | Confirm you are on 0.25.3 or later; if it persists, report the preceding file action. Emptying the Recycle Bin is not needed |
+| Search or folder panel reports worker stopped | Reopen the panel as prompted; if it persists, copy diagnostics instead of repeatedly dropping files |
+| Search or preview unavailable | Confirm the tool is installed, its path is valid, and the feature toggle is enabled |
+| Files do not open after moving computers | Verify that original files were copied and that drive letters or folder paths still match |
+| Restore fails | Keep your current data and backup file, read the error details, and do not delete config files directly |
 
-Collecting or releasing icons in a regular desktop panel only changes their membership. Dropping files into a folder panel copies them to the current directory, so file size and disk speed also affect the wait. Version 0.25.3 includes the delayed drag-and-drop refresh fix, but copying large files still takes time.
+Collecting or releasing icons in a desktop panel only changes membership. Dropping files into a folder panel copies real files to that directory, so file size and disk speed still affect wait time. Version 0.25.3 includes the delayed drag-and-drop refresh fix, though copying large files naturally takes time.
 
-Still stuck? Copy diagnostics from About and [report an issue](https://github.com/Yuch3nE/luciddesk/issues). Hide private paths and filenames before sharing.
+Still stuck? Copy diagnostics from **Settings → About** and [report an issue](https://github.com/Yuch3nE/luciddesk/issues). Remove private paths and filenames before sharing.
 
-Want an agent to help organize your desktop? See the [Agent and CLI guide](cli.md).
+Want an agent to help organize your desktop? See the [CLI guide](cli.md#english-quick-start).

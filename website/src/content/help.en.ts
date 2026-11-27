@@ -49,7 +49,7 @@ export const helpPagesEn: HelpPage[] = [
       {
         "id": "connect",
         "title": "Connect your agent",
-        "html": "<ol><li>Install or update LucidDesk and start the main app. Use the CLI and skill included in the same release.</li><li>Open Settings → Agent and CLI and enable CLI control.</li><li>Copy the skill-installation prompt and paste it into your agent. It contains the location of the bundled skill on your computer.</li><li>Ask the agent to install the complete <code>luciddesk-control</code> skill directory and check the connection.</li></ol><p>The copy button only copies a prompt. It does not install the skill or change your workspace. The installer does not configure external agents for you.</p>"
+        "html": "<ol><li>Install or update LucidDesk and start the main app. Use the CLI and skill included in the same release.</li><li>Open Settings → General → Automation and confirm that <strong>Allow CLI and Agent control</strong> is on (enabled by default).</li><li>Under <strong>Set up Agent skills</strong>, click <strong>Copy prompt</strong> and paste it into your agent. It contains the location of the bundled skill on your computer.</li><li>Ask the agent to install the complete <code>luciddesk-control</code> skill directory and check the connection.</li></ol><p>The copy button only copies a prompt. It does not install the skill or change your workspace. The installer does not configure external agents for you.</p>"
       },
       {
         "id": "request",
@@ -64,7 +64,7 @@ export const helpPagesEn: HelpPage[] = [
       {
         "id": "backup-cli",
         "title": "Backup, export and restore",
-        "html": "<p>LucidDesk 0.23.0 lets your agent list, create, export and restore configuration backups. Use the CLI shipped with the app and check the running app’s capabilities first.</p><p>Exports do not overwrite files. Restore replaces current settings and layout and saves a pre-restore copy first. Backups do not include your original files. Review the selected backup, and check the original operation after a timeout instead of submitting it again.</p><p>You can also use Settings → Backup &amp; restore without an agent. See the <a href=\"https://github.com/Yuch3nE/luciddesk/blob/main/docs/cli.md#english-quick-start\">CLI quick start</a>.</p>"
+        "html": "<p>The bundled CLI lets your agent list, create, export, and restore configuration backups, along with concise preview change summaries and optional diagnostic logs. Use the CLI shipped with the app and check the running app’s capabilities first.</p><p>Exports do not overwrite files. Restore replaces current settings and layout and saves a pre-restore copy first. Backups do not include your original files. Review the selected backup, and check the original operation after a timeout instead of submitting it again.</p><p>You can also use Settings → Backup &amp; restore without an agent. See the <a href=\"https://github.com/Yuch3nE/luciddesk/blob/main/docs/cli.md#english-quick-start\">CLI quick start</a>.</p>"
       },
       {
         "id": "verify",
