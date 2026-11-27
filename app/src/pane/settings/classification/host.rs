@@ -833,8 +833,11 @@ impl Organizer {
             if command == Command::Run && self.editor.organize_error.is_none() && self.editor.previewing() {
                 self.preview_fit_pending = true;
             }
+            let failed_submission = matches!(command, Command::ApplyPreview | Command::UndoOrganize)
+                && self.editor.organize_error.is_some();
             if matches!(command, Command::Run | Command::CancelPreview)
                 || self.editor.applying.is_some()
+                || failed_submission
             {
                 self.scroll = 0.0;
                 self.clear_hover();
@@ -1608,19 +1611,8 @@ fn skipped_disclosure_only_shows_focus_after_keyboard_interaction() {
     assert_eq!(disclosure(&organizer), (index, heading, false, Some(index)));
 }
 
-#[test]
-fn long_preview_keeps_its_review_state_and_footer_when_switching_tabs() {
-    let _sta = crate::pane::test_support::apartment();
-    let state = Rc::new(RefCell::new(crate::pane::tests::test_state()));
-    let window = windows_window::Window::new("Organizer test")
-        .create()
-        .unwrap();
-    let hwnd = window.hwnd().cast();
-    let bounds = RECT {
-        right: 480,
-        bottom: 380,
-        ..Default::default()
-    };
+#[cfg(test)]
+fn long_preview() -> hybrid::OrganizePreview {
     let identity = |path: String| ShellIdentity::FileSystem {
         path: path.into(),
         volume_id: None,
@@ -1644,13 +1636,26 @@ fn long_preview_keeps_its_review_state_and_footer_when_switching_tabs() {
         item_name: "Draft.txt".into(),
         reason: hybrid::SkipReason::NoMatch,
     };
+    hybrid::OrganizePreview::fixture(moves.into_iter().chain([skipped]).collect(), Some(changes))
+}
+
+#[test]
+fn long_preview_keeps_its_review_state_and_footer_when_switching_tabs() {
+    let _sta = crate::pane::test_support::apartment();
+    let state = Rc::new(RefCell::new(crate::pane::tests::test_state()));
+    let window = windows_window::Window::new("Organizer test")
+        .create()
+        .unwrap();
+    let hwnd = window.hwnd().cast();
+    let bounds = RECT {
+        right: 480,
+        bottom: 380,
+        ..Default::default()
+    };
     let mut organizer = Organizer::new().unwrap();
     organizer.tab = Tab::Organize;
     organizer.opened_preview = true;
-    organizer.editor.preview = Some(hybrid::OrganizePreview::fixture(
-        moves.into_iter().chain([skipped]).collect(),
-        Some(changes),
-    ));
+    organizer.editor.preview = Some(long_preview());
     let apply_button_top = |organizer: &Organizer| {
         let scene = organizer.scene.as_ref().unwrap();
         let apply = scene
@@ -1692,4 +1697,55 @@ fn long_preview_keeps_its_review_state_and_footer_when_switching_tabs() {
     organizer.run_command(&state, hwnd, Command::Run);
     assert!(organizer.editor.organize_error.is_some());
     assert!(organizer.editor.preview.unwrap().changes.is_some());
+}
+
+#[test]
+fn long_preview_enqueue_failure_shows_the_error_and_keeps_the_preview() {
+    let _sta = crate::pane::test_support::apartment();
+    let state = Rc::new(RefCell::new(crate::pane::tests::test_state()));
+    let window = windows_window::Window::new("Organizer enqueue test").create().unwrap();
+    let hwnd = window.hwnd().cast();
+    let bounds = RECT { right: 480, bottom: 380, ..Default::default() };
+    let mut organizer = Organizer::new().unwrap();
+    organizer.tab = Tab::Organize;
+    organizer.auto_fit_preview = false;
+    organizer.editor.show_skipped = Some(true);
+    let preview = long_preview();
+    let entries = preview.entries.clone();
+    organizer.editor.preview = Some(preview);
+
+    organizer.layout(&state, hwnd, bounds, 1.0);
+    let bottom = organizer.scene.as_ref().unwrap().scroll_max;
+    assert!(bottom > bounds.bottom as f32);
+    organizer.scroll_by(hwnd, bottom);
+    organizer.layout(&state, hwnd, bounds, 1.0);
+    assert_eq!(organizer.scroll, bottom);
+
+    let scene = organizer.scene.as_ref().unwrap();
+    let apply = scene.controls.iter()
+        .find(|control| Command::ApplyPreview.is_control(&control.action)).unwrap();
+    let point = POINT {
+        x: ((apply.bounds.left + apply.bounds.right) / 2.0) as i32,
+        y: ((apply.bounds.top + apply.bounds.bottom) / 2.0) as i32,
+    };
+    let (sender, _receiver) = mpsc::channel();
+    organizer.pointer(hwnd, WM_LBUTTONDOWN, point, 1.0);
+    let clicked = organizer.pointer(hwnd, WM_LBUTTONUP, point, 1.0).unwrap();
+    organizer.invoke(&state, hwnd, &clicked, 1.0, &sender);
+    organizer.layout(&state, hwnd, bounds, 1.0);
+
+    let error = t("classification-desktop-unavailable");
+    assert_eq!(organizer.editor.organize_error.as_deref(), Some(error));
+    assert!(organizer.editor.applying.is_none());
+    assert_eq!(organizer.editor.show_skipped, Some(true));
+    let preview = organizer.editor.preview.as_ref().unwrap();
+    assert_eq!(preview.entries, entries);
+    assert!(matches!(preview.changes.as_deref(),
+        Some([hybrid::PreviewChange::Added(entry)]) if entry == &entries[0]));
+
+    let scene = organizer.scene.as_ref().unwrap();
+    let viewport = scene.viewport.unwrap();
+    let (error_bounds, _, _) = scene.text.iter().find(|(_, text, _)| text == error).unwrap();
+    assert_eq!(organizer.scroll, 0.0);
+    assert!(error_bounds.top >= viewport.top && error_bounds.bottom <= viewport.bottom);
 }

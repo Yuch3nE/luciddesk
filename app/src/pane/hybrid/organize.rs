@@ -515,6 +515,53 @@ mod tests {
         assert_eq!(state.store.load_workspace().unwrap(), state.workspace);
     }
 
+    fn organized_for_name_sort(names: [&str; 3]) -> (PaneApp, PanelId) {
+        let entries = names.into_iter().zip(1..).map(|(name, id)| entry(name, id)).collect::<Vec<_>>();
+        let target = PanelId::new(1);
+        let mut state = crate::pane::tests::test_state();
+        state.workspace = workspace();
+        state.workspace.panel_mut(target).unwrap().set_fixed_grid(false);
+        reconcile(&mut state.workspace, &entries);
+        let now = SystemTime::now();
+        let preview = plan(&state.workspace, &entries, now);
+        let confirmed = plan(&state.workspace, &entries, now);
+        save_organize(&mut state.store, &mut state.workspace, &mut state.last_organize, preview, confirmed).unwrap();
+        assert_eq!(pane_names(&state.workspace, target), names);
+        (state, target)
+    }
+
+    fn pane_names(workspace: &Workspace, target: PanelId) -> Vec<&str> {
+        ordered_desktop_items(workspace, target).into_iter().map(DesktopItem::display_name).collect()
+    }
+
+    #[test]
+    fn ui_name_sort_discards_undo_only_for_items_that_change_rank() {
+        let (mut state, target) = organized_for_name_sort(["Charlie.pdf", "Beta.pdf", "Alpha.pdf"]);
+        sorting::request(&mut state, target, 0).unwrap();
+        assert_eq!(pane_names(&state.workspace, target), ["Alpha.pdf", "Beta.pdf", "Charlie.pdf"]);
+        assert_eq!(state.store.load_workspace().unwrap(), state.workspace);
+
+        assert!(matches!(
+            save_undo(&mut state.store, &mut state.workspace, &mut state.last_organize).unwrap(),
+            OrganizeOutcome::Undone { restored: 1, skipped: 2 }
+        ));
+        assert_eq!(pane_names(&state.workspace, target), ["Alpha.pdf", "Charlie.pdf"]);
+    }
+
+    #[test]
+    fn ui_name_sort_with_unchanged_order_preserves_the_whole_undo() {
+        let (mut state, target) = organized_for_name_sort(["Alpha.pdf", "Beta.pdf", "Charlie.pdf"]);
+        let before = state.workspace.clone();
+        sorting::request(&mut state, target, 0).unwrap();
+        assert_eq!(state.workspace, before);
+
+        assert!(matches!(
+            save_undo(&mut state.store, &mut state.workspace, &mut state.last_organize).unwrap(),
+            OrganizeOutcome::Undone { restored: 3, skipped: 0 }
+        ));
+        assert!(pane_names(&state.workspace, target).is_empty());
+    }
+
     #[test]
     fn undo_uses_only_latest_batch_and_skips_moved_deleted_or_replaced_items() {
         let now = SystemTime::now();

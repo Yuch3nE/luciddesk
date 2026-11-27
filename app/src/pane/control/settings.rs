@@ -55,11 +55,17 @@ fn validate_classification_updates(
     updates: &BTreeMap<String, SettingValue>,
 ) -> Result<(), String> {
     let key = hybrid::CLASSIFICATION_KEY;
-    let (Some(SettingValue::Text(previous)), Some(SettingValue::Text(updated))) =
-        (before.get(key), updates.get(key)) else { return Ok(()); };
-    let previous: luciddesk_core::Classification = serde_json::from_str(previous).map_err(|e| e.to_string())?;
+    let Some(updated) = updates.get(key) else { return Ok(()); };
+    let SettingValue::Text(updated) = updated else {
+        return Err(format!("invalid setting type: {key}"));
+    };
+    let mut legacy = match before.get(key) {
+        Some(SettingValue::Text(previous)) => serde_json::from_str::<luciddesk_core::Classification>(previous)
+            .map_err(|error| error.to_string())?.rules,
+        Some(_) => return Err(format!("invalid setting type: {key}")),
+        None => Vec::new(),
+    };
     let updated: luciddesk_core::Classification = serde_json::from_str(updated).map_err(|e| e.to_string())?;
-    let mut legacy = previous.rules;
     for rule in &updated.rules {
         if let Err(error) = rule.validate_extensions() {
             // Existing invalid lists may remain while the user repairs other rules.
@@ -219,6 +225,24 @@ pub(super) fn present(state: &Rc<RefCell<PaneApp>>) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn classification_updates_validate_extensions_without_previous_settings() {
+        let before = BTreeMap::new();
+        let key = hybrid::CLASSIFICATION_KEY;
+        let invalid = BTreeMap::from([(
+            key.into(),
+            SettingValue::Text(r#"{"rules":[{"target_panel":1,"extensions":["*.pdf"]}]}"#.into()),
+        )]);
+        assert!(validate_classification_updates(&before, &invalid).is_err());
+
+        let valid = BTreeMap::from([(
+            key.into(),
+            SettingValue::Text(r#"{"rules":[{"target_panel":1,"extensions":["pdf"]}]}"#.into()),
+        )]);
+        assert!(validate_classification_updates(&before, &valid).is_ok());
+        assert!(validate_classification_updates(&before, &BTreeMap::new()).is_ok());
+    }
 
     #[test]
     fn cli_can_repair_legacy_extensions_but_cannot_add_new_invalid_rules() {

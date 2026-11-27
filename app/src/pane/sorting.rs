@@ -111,8 +111,10 @@ fn start(state: &mut PaneApp, id: PanelId, order: (u8, bool)) -> Result<(), Stri
     if order.0 == 0 {
         let before = state.workspace.clone();
         if apply(&mut state.workspace, id, order.1)? {
-            if let Err(error) = save(state) { state.workspace = before; return Err(error); }
-            refresh_views(state);
+            if let Err(error) = save_sort(state, id, &before) {
+                state.workspace = before;
+                return Err(error);
+            }
         }
         state.sorting.orders.borrow_mut().insert(id, order);
         observe(state, id);
@@ -218,6 +220,19 @@ pub(super) fn reordered_keys(
     before.into_iter().zip(after).filter_map(|(old, new)| (old != new).then_some(old))
 }
 
+fn save_sort(state: &mut PaneApp, id: PanelId, before: &Workspace) -> Result<(), String> {
+    save(state)?;
+    if before.panel(id).is_some_and(|panel| !panel.fixed_grid())
+        && let Some(undo) = &mut state.last_organize
+    {
+        let keys = |workspace| ordered_desktop_items(workspace, id).into_iter()
+            .map(|item| item.identity().persistent_key());
+        undo.forget_moves(reordered_keys(keys(before), keys(&state.workspace)));
+    }
+    refresh_views(state);
+    Ok(())
+}
+
 pub(super) fn file_details(identity: &ShellIdentity) -> ItemDetails {
     let ShellIdentity::FileSystem { path, .. } = identity else { return ItemDetails::default(); };
     let Ok(metadata) = std::fs::symlink_metadata(path) else { return ItemDetails::default(); };
@@ -259,13 +274,7 @@ pub(super) fn poll(state: &mut PaneApp) {
             else { apply_order(&mut state.workspace, id, false, Some(&ranks)) };
         let result = applied.and_then(|changed| {
             if changed {
-                save(state)?;
-                if !pending.panel.fixed_grid() && let Some(undo) = &mut state.last_organize {
-                    let keys = |workspace| ordered_desktop_items(workspace, id).into_iter()
-                        .map(|item| item.identity().persistent_key());
-                    undo.forget_moves(reordered_keys(keys(&previous), keys(&state.workspace)));
-                }
-                refresh_views(state);
+                save_sort(state, id, &previous)?;
             }
             Ok(())
         });
