@@ -528,7 +528,11 @@ fn shell_items(selected: &[ShellIdentity]) -> Result<IShellItemArray> {
     }
 }
 
-fn invoke_batch(owner: HWND, selected: &[ShellIdentity], command: FileCommand) -> Result<bool> {
+fn invoke_with_shell_items(
+    owner: HWND,
+    selected: &[ShellIdentity],
+    command: FileCommand,
+) -> Result<bool> {
     use windows::Win32::System::{
         Com::{
             CLSCTX_INPROC_SERVER, CoCreateInstance, DVASPECT_CONTENT, FORMATETC,
@@ -620,12 +624,14 @@ pub fn invoke_file_commands(
             };
             return paste_into_item(owner, &item);
         }
-        if selected.len() > 1 {
-            return invoke_batch(owner, selected, command);
-        }
         let Some(identity) = selected.first() else {
             return Ok(false);
         };
+        let file_clipboard = matches!(command, FileCommand::Copy | FileCommand::Cut)
+            && matches!(identity, ShellIdentity::FileSystem { .. });
+        if selected.len() > 1 || file_clipboard {
+            return invoke_with_shell_items(owner, selected, command);
+        }
         let context: IContextMenu = shell_item(identity)?.BindToHandler(None, &BHID_SFUIObject)?;
         let menu = Menu(CreatePopupMenu()?);
         let result = context.QueryContextMenu(menu.0, 0, 1, 0x7fff, CMF_NORMAL);
@@ -636,7 +642,6 @@ pub fn invoke_file_commands(
         })? else {
             return Ok(false);
         };
-        // Keyboard/application commands retain their ordinary Shell behavior.
         let info = menu_invocation(owner, offset, None);
         file_command_completed(command, context.InvokeCommand((&raw const info).cast()))
     }
@@ -869,9 +874,12 @@ mod tests {
     #[test]
     #[ignore = "Uses the interactive Shell clipboard; restores its previous contents"]
     fn shell_copy_and_cut_paste_preserve_file_contents() {
-        use windows::Win32::System::{
-            Com::IDataObject,
-            Ole::{OleFlushClipboard, OleGetClipboard, OleSetClipboard},
+        use windows::Win32::{
+            Foundation::CLIPBRD_E_CANT_OPEN,
+            System::{
+                Com::IDataObject,
+                Ole::{OleFlushClipboard, OleGetClipboard, OleSetClipboard},
+            },
         };
         let _apartment = crate::ShellApartment::initialize_sta().unwrap();
         struct Clipboard(Option<IDataObject>);
@@ -904,6 +912,28 @@ mod tests {
             volume_id: None,
             file_id: None,
         };
+        let paste = |path| {
+            let selected = [identity(path)];
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+            loop {
+                // Let clipboard listeners finish requesting delayed data from this STA.
+                unsafe {
+                    let mut message = MSG::default();
+                    while PeekMessageW(&mut message, None, 0, 0, PM_REMOVE).as_bool() {
+                        DispatchMessageW(&message);
+                    }
+                }
+                match invoke_file_commands(HWND::default(), &selected, FileCommand::Paste) {
+                    Err(error)
+                        if error.code() == CLIPBRD_E_CANT_OPEN
+                            && std::time::Instant::now() < deadline =>
+                    {
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                    }
+                    result => return result.unwrap(),
+                }
+            }
+        };
         for (command, from, to) in [
             (FileCommand::Copy, source.clone(), copied.clone()),
             (FileCommand::Cut, copied.join("fixture.txt"), moved.clone()),
@@ -912,14 +942,9 @@ mod tests {
                 invoke_file_commands(HWND::default(), &[identity(from.clone())], command)
                     .unwrap()
             );
-            assert!(
-                invoke_file_commands(
-                    HWND::default(),
-                    &[identity(to.clone())],
-                    FileCommand::Paste
-                )
-                .unwrap()
-            );
+            let tracked = FILE_CLIPBOARD.with(|clipboard| clipboard.borrow().clone());
+            assert!(tracked.as_ref().is_some_and(is_current_file_clipboard));
+            assert!(paste(to.clone()));
             let destination = to.join("fixture.txt");
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
             while !destination.exists() && std::time::Instant::now() < deadline {
@@ -950,14 +975,7 @@ mod tests {
         ] {
             let selected: Vec<_> = paths.iter().cloned().map(&identity).collect();
             assert!(invoke_file_commands(HWND::default(), &selected, command).unwrap());
-            assert!(
-                invoke_file_commands(
-                    HWND::default(),
-                    &[identity(target.clone())],
-                    FileCommand::Paste
-                )
-                .unwrap()
-            );
+            assert!(paste(target.clone()));
             for path in &paths {
                 let destination = target.join(path.file_name().unwrap());
                 let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
