@@ -122,6 +122,10 @@ impl Command {
 
     pub(super) fn is_control(self, action: &Action) -> bool {
         matches!(action, Action::Classification(value) if *value == self)
+            || (self == Self::Target(PanelId::new(0))
+                && matches!(action, Action::Dropdown(options) if options.iter().any(|(_, item, _)| {
+                    matches!(item, Action::Classification(Self::Target(_)))
+                })))
     }
 }
 
@@ -460,6 +464,8 @@ impl Editor {
         if let Some(field) = field {
             self.focus(field);
             self.reveal(Command::Input(field));
+        } else if matches!(error, ClassificationError::MissingTarget) {
+            self.reveal(Command::Target(PanelId::new(0)));
         }
         t(key).into()
     }
@@ -628,6 +634,7 @@ impl Editor {
                 if !targets(state.borrow().workspace.panels())
                     .any(|panel| panel.id().get() == draft.rule.target_panel)
                 {
+                    self.reveal(Command::Target(PanelId::new(0)));
                     return Err(t("classification-no-target").into());
                 }
                 let rule = draft.edited_rule();
@@ -752,7 +759,7 @@ fn window_scene(
     let form = SettingsForm::continuation_with_margin(&mut scene, width, BODY_TOP, SIDE_MARGIN);
     match tab {
         Tab::Rules => draw_rules(form, panels, value, editor),
-        Tab::Organize => draw_organize(form, editor, undo_available),
+        Tab::Organize => draw_organize(form, value, editor, undo_available),
     }
     let preview = editor.preview.as_ref();
     let deletion = if tab == Tab::Rules && !editor.editing() {
@@ -902,14 +909,19 @@ fn draw_rules(
     }
 }
 
-fn draw_organize(mut form: SettingsForm<'_>, editor: &Editor, undo_available: bool) {
+fn draw_organize(
+    mut form: SettingsForm<'_>,
+    value: Option<&SettingValue>,
+    editor: &Editor,
+    undo_available: bool,
+) {
     let undo = undo_available.then(|| (t("classification-undo-organize"), Command::UndoOrganize.action()));
     if let Some(preview) = &editor.preview {
         if let Some(error) = &editor.organize_error {
             form.status(error, Tokens::STATUS_ERROR, None);
         }
         let (scene, mut bounds) = form.into_content();
-        table::draw_preview_summary(scene, &mut bounds, preview, undo);
+        table::draw_preview_summary(scene, &mut bounds, preview, preview.is_stale(value), undo);
         let expanded = editor.skipped_expanded(preview);
         let reveal = editor.skipped_fraction(expanded, Instant::now());
         table::draw_preview(scene, bounds, preview, (expanded, reveal));

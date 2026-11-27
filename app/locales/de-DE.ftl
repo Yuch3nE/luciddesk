@@ -1404,6 +1404,7 @@ classification-undo-in-progress = Sortierung wird rückgängig gemacht
 organizer-to-group = Einzuordnen
 organizer-skipped = Übersprungen
 organizer-review-changes = Prüfen Sie die neue Vorschau, bevor Sie bestätigen.
+organizer-preview-stale = Regeln wurden geändert. Klicken Sie auf „Vorschau aktualisieren“, um die neuesten Ergebnisse anzuzeigen.
 classification-preview-changed = Vorschau aktualisiert
 classification-preview-confirm = Sortierung bestätigen
 classification-diff-added = Hinzugefügt

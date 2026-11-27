@@ -1,7 +1,9 @@
 //! Layout for classification rules, the editor, and organization summaries.
 use super::*;
-use components::{text_height, text_width};
+use components::{text_height, text_height_with_weight, text_width, text_width_with_weight};
 use std::borrow::Cow;
+
+const SEMIBOLD: windows_canvas::FontWeight = windows_canvas::FontWeight(600);
 
 const CONTROL: f32 = Tokens::CONTROL_HEIGHT;
 const GAP: f32 = Tokens::GAP;
@@ -170,8 +172,11 @@ pub(super) fn draw_preview_summary(
     scene: &mut Scene,
     bounds: &mut Rect,
     preview: &hybrid::OrganizePreview,
+    stale: bool,
     undo: Option<(&str, Action)>,
 ) {
+    use luciddesk_window::control_style::{INFO, WARNING};
+
     let moved = preview.move_count();
     let skipped = preview.entries.len() - moved;
     let changed = preview.changes.is_some();
@@ -180,16 +185,25 @@ pub(super) fn draw_preview_summary(
     } else {
         "classification-preview-title"
     });
+    let icon = if changed {
+        Some(WARNING)
+    } else if stale && !preview.entries.is_empty() {
+        Some(INFO)
+    } else {
+        None
+    };
     let note = if preview.entries.is_empty() {
         Some(t("classification-preview-empty"))
     } else if changed && moved > 0 {
         Some(t("organizer-review-changes"))
+    } else if stale {
+        Some(t("organizer-preview-stale"))
     } else {
         None
     };
     let counts = [(moved, t("organizer-to-group")), (skipped, t("organizer-skipped"))];
     let counts = if preview.entries.is_empty() { &[] } else { counts.as_slice() };
-    bounds.top = draw_summary(scene, *bounds, title, None, note, counts, undo) + GAP;
+    bounds.top = draw_summary(scene, *bounds, title, icon, note, counts, undo) + GAP;
 }
 
 pub(super) fn draw_result(
@@ -252,7 +266,7 @@ fn draw_summary(
     } else {
         width
     };
-    let heading = text_height(title, 16.0, summary_width).max(24.0);
+    let heading = text_height_with_weight(title, 16.0, summary_width, SEMIBOLD).max(24.0);
     if let Some(icon) = icon {
         scene.text(Rect::from_xywh(icon_left, top, Style::ICON_SLOT, 24.0), icon, 4);
     }
@@ -277,7 +291,7 @@ fn draw_summary(
         for (index, &(count, label)) in counts.iter().enumerate() {
             let x = left + index as f32 * column;
             let value = count.to_string();
-            let number_width = (text_width(&value, 20.0) + GAP).min(column / 2.0);
+            let number_width = (text_width_with_weight(&value, 20.0, SEMIBOLD).ceil() + GAP).min(column / 2.0);
             let label_width = (column - number_width - GAP).max(1.0);
             let height = text_height(label, 12.0, label_width).max(28.0);
             scene.text(Rect::from_xywh(x, top, number_width, height), value, 2);
@@ -393,7 +407,7 @@ fn draw_move_groups<'a>(
 }
 
 fn preview_heading(scene: &mut Scene, left: f32, top: f32, width: f32, title: &str) -> f32 {
-    let height = text_height(title, 16.0, width).max(CONTROL);
+    let height = text_height_with_weight(title, 16.0, width, SEMIBOLD).max(CONTROL);
     scene.text(Rect::from_xywh(left, top, width, height), title, Tokens::SECTION_TITLE);
     top + height
 }
@@ -438,7 +452,7 @@ fn draw_preview_changes(scene: &mut Scene, bounds: &mut Rect, changes: &[hybrid:
 fn draw_change_title(scene: &mut Scene, left: f32, top: f32, width: f32, name: String, status: &str) -> f32 {
     let status_width = (text_width(status, 12.0).ceil() + 1.0).min(width / 3.0);
     let name_width = width - status_width - INSET;
-    let height = text_height(&name, 16.0, name_width).max(24.0);
+    let height = text_height_with_weight(&name, 16.0, name_width, SEMIBOLD).max(24.0);
     scene.text(Rect::from_xywh(left, top, name_width, height), name, Tokens::SECTION_TITLE);
     scene.text(
         Rect::from_xywh(left + width - status_width, top, status_width, 24.0),
@@ -750,7 +764,7 @@ pub(super) fn draw_editor(
     let label_width = text_width(enabled, 12.0).ceil().min(form_width / 3.0);
     let label_left = switch_left - GAP - label_width;
     let title_width = (label_left - left - INSET).max(1.0);
-    let header_height = text_height(heading, 16.0, title_width)
+    let header_height = text_height_with_weight(heading, 16.0, title_width, SEMIBOLD)
         .max(text_height(enabled, 12.0, label_width))
         .max(CONTROL);
     scene.text(
@@ -835,7 +849,12 @@ pub(super) fn draw_editor(
         name_label,
         6,
     );
-    let keyword = Rect::from_xywh(left, name_top + name_height + GAP, form_width, CONTROL);
+    let keyword = Rect::from_xywh(
+        left,
+        name_top + name_height + if regex_inline { GAP / 2.0 } else { GAP },
+        form_width,
+        CONTROL,
+    );
     let regex_bounds = if regex_inline {
         Rect::from_xywh(right - regex_width, name_top, regex_width, CONTROL)
     } else {
@@ -907,17 +926,27 @@ pub(super) fn draw_editor(
     } else {
         t("classification-no-target")
     });
-    let help_height = text_height(help, if error.is_some() { 14.0 } else { 12.0 }, form_width);
     let help_top = regex_bounds.bottom.max(keyword.bottom) + GAP;
-    scene.text(
-        Rect::from_xywh(left, help_top, form_width, help_height),
-        help,
-        if error.is_some() {
-            Tokens::STATUS_ERROR
-        } else {
-            6
-        },
-    );
+    let help_height = if error.is_some() {
+        let icon_inset = Style::ICON_SLOT + GAP;
+        let text_width = (form_width - icon_inset).max(1.0);
+        let height = text_height_with_weight(help, 14.0, text_width, SEMIBOLD).max(20.0);
+        scene.text(
+            Rect::from_xywh(left, help_top, Style::ICON_SLOT, 20.0),
+            luciddesk_window::control_style::ERROR_BADGE,
+            4,
+        );
+        scene.text(
+            Rect::from_xywh(left + icon_inset, help_top, text_width, height),
+            help,
+            Tokens::STATUS_ERROR,
+        );
+        height
+    } else {
+        let height = text_height(help, 12.0, form_width);
+        scene.text(Rect::from_xywh(left, help_top, form_width, height), help, 6);
+        height
+    };
     scene.cards.push(Rect {
         bottom: help_top + help_height + INSET,
         ..bounds

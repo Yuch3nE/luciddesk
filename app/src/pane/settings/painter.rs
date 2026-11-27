@@ -458,7 +458,16 @@ impl Painter {
                 } else {
                     bg
                 });
-                let page_left = s.content_left - Tokens::MARGIN;
+                let right_margin = if s.navigation_viewport.is_some() {
+                    Tokens::MARGIN
+                } else {
+                    s.content_left
+                };
+                let page_left = if s.navigation_viewport.is_some() {
+                    s.content_left - Tokens::MARGIN
+                } else {
+                    0.0
+                };
                 let page_top = s.content_top.min(height);
                 if s.navigation_viewport.is_some() {
                     let sheet = RoundedRect {
@@ -474,18 +483,20 @@ impl Painter {
                     t.fill_rounded_rect(&sheet, page_background);
                     t.draw_rounded_rect(&sheet, page_border, 1.0);
                 } else {
-                    t.fill_rounded_rect(
-                        &RoundedRect {
-                            rect: Rect::from_xywh(page_left, page_top, width - page_left, height - page_top),
-                            radius_x: Tokens::CARD_RADIUS,
-                            radius_y: Tokens::CARD_RADIUS,
-                        },
+                    t.fill_rect(
+                        &Rect::from_xywh(0.0, page_top, width, (height - page_top).max(0.0)),
                         page_background,
                     );
+                    t.fill_rect(&Rect::from_xywh(0.0, page_top, width, 1.0), page_border);
                 }
                 if s.footer_height > 0.0 {
                     t.fill_rect(
-                        &Rect::from_xywh(s.content_left, height - s.footer_height, (width - s.content_left - Tokens::MARGIN).min(Tokens::MAX_WIDTH), 1.0),
+                        &Rect::from_xywh(
+                            s.content_left,
+                            height - s.footer_height,
+                            (width - s.content_left - right_margin).min(Tokens::MAX_WIDTH),
+                            1.0,
+                        ),
                         divider,
                     );
                 }
@@ -494,13 +505,6 @@ impl Painter {
                         &mut WidgetCanvas { ..widget_canvas },
                         components::widget_bounds(*bounds),
                         label,
-                    );
-                }
-                if s.controls.iter().any(|control| matches!(control.kind, ControlKind::Tab(_))) {
-                    t.fill_rect(
-                        &Rect::from_xywh(s.content_left, page_top - 1.0,
-                            (width - s.content_left - Tokens::MARGIN).min(Tokens::MAX_WIDTH), 1.0),
-                        divider,
                     );
                 }
                 let paint_app_icon = |bounds: &Rect, content: bool| -> windows::core::Result<()> {
@@ -987,7 +991,13 @@ impl Painter {
                         return;
                     }
                     if matches!(*size, 4 | 5) {
-                        t.clipped_icon(text, &self.formats[*size], r, ink);
+                        let icon_brush = match text.as_str() {
+                            style::CHECK_MARK => green,
+                            style::INFO => brush(Tone::Info),
+                            style::WARNING | style::ERROR_BADGE => red,
+                            _ => ink,
+                        };
+                        t.clipped_icon(text, &self.formats[*size], r, icon_brush);
                         return;
                     }
                     let slider_active = *size == Tokens::VALUE_TEXT
@@ -1029,12 +1039,12 @@ impl Painter {
                     );
                 };
 
-                // Paint titlebar chrome and sidebar navigation outside the content entrance layer.
+                // Paint titlebar chrome, sidebar navigation, and top tabs outside the content entrance layer.
                 if let Some(bounds) = &s.caption_icon {
                     paint_app_icon(bounds, false)?;
                 }
                 for (index, control) in s.controls.iter().enumerate() {
-                    if matches!(control.kind, ControlKind::Navigation(_) | ControlKind::Caption) {
+                    if matches!(control.kind, ControlKind::Navigation(_) | ControlKind::Tab(_) | ControlKind::Caption) {
                         paint_control(index, control, false)?;
                     }
                 }
@@ -1053,12 +1063,12 @@ impl Painter {
 
                 // Paint the content pane inside an optional subtle entrance transform & fade.
                 {
-                    let enter = s.navigation_viewport.is_some().then_some(motion.page_enter).flatten();
+                    let enter = motion.page_enter;
                     let sheet_bounds = Rect::from_xywh(
                         page_left,
                         page_top,
                         (width - page_left).max(1.0),
-                        (height - page_top).max(1.0),
+                        (height - s.footer_height - page_top).max(1.0),
                     );
                     let _enter_clip = enter.map(|_| ContentClip::rect(&t, &sheet_bounds));
                     let _enter_fade = enter.and_then(|(_, opacity)| t.opacity_layer(&sheet_bounds, opacity));
@@ -1277,7 +1287,7 @@ impl Painter {
                         }
                     }
                     for (index, control) in s.controls.iter().enumerate() {
-                        if !matches!(control.kind, ControlKind::Navigation(_) | ControlKind::Caption)
+                        if !Scene::fixed_control(control)
                             && floating.is_none_or(|row| !row.controls.contains(&index))
                         {
                             paint_control(index, control, false)?;
@@ -1322,6 +1332,13 @@ impl Painter {
                     }
                     if s.fixed_list() && let Some(r) = s.viewport {
                         t.draw_rounded_rect(&RoundedRect { rect: r, radius_x: Tokens::CARD_RADIUS, radius_y: Tokens::CARD_RADIUS }, card_border, 1.0);
+                    }
+                }
+                for (index, control) in s.controls.iter().enumerate() {
+                    if !matches!(control.kind, ControlKind::Navigation(_) | ControlKind::Tab(_) | ControlKind::Caption)
+                        && Scene::fixed_control(control)
+                    {
+                        paint_control(index, control, false)?;
                     }
                 }
                 let paint_scrollbar = |bar: widgets::Scrollbar, index: usize| {

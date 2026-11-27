@@ -1404,6 +1404,7 @@ classification-undo-in-progress = Undoing organization
 organizer-to-group = To organize
 organizer-skipped = Skipped
 organizer-review-changes = Review the updated preview before confirming.
+organizer-preview-stale = Rules have changed. Click Refresh preview to see the latest results.
 classification-preview-changed = Preview updated
 classification-preview-confirm = Confirm organization
 classification-diff-added = Added

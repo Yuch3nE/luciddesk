@@ -7,6 +7,7 @@ use windows_sys::Win32::UI::HiDpi::GetDpiForWindow;
 
 pub(super) const SELECT_TAB: u32 = WM_APP + 100;
 const RULE_DELETE_RESULT: u32 = WM_APP + 103;
+pub(super) const INPUT_FOCUS: u32 = WM_APP + 104;
 const RULE_DRAG_TIMER: usize = 0x4c4f44;
 const ORGANIZER_MOTION_TIMER: usize = 0x4c4f4d;
 #[cfg(test)]
@@ -87,6 +88,23 @@ pub(super) fn show(state: &Rc<RefCell<PaneApp>>, tab: Tab) -> Result<(), String>
                 ),
                 RULE_DELETE_RESULT => {
                     organizer.finish_delete(&state, hwnd, wp != 0);
+                    return Some(0);
+                }
+                INPUT_FOCUS => {
+                    if let Some(field) = organizer.editor.field_for(lp as _) {
+                        if organizer.scene.is_none() {
+                            organizer.layout(&state, hwnd, client_bounds(hwnd), scale);
+                        }
+                        if let Some(index) = organizer.scene.as_ref().and_then(|scene| {
+                            scene.controls.iter().position(|control| {
+                                Command::Input(field).is_control(&control.action)
+                            })
+                        }) {
+                            organizer.focus = Some(index);
+                            organizer.keyboard_focus = false;
+                            redraw(hwnd);
+                        }
+                    }
                     return Some(0);
                 }
                 #[cfg(test)]
@@ -210,6 +228,13 @@ pub(super) fn show(state: &Rc<RefCell<PaneApp>>, tab: Tab) -> Result<(), String>
                                 && organizer.rule_grip_at(pointer.x as f32 / scale, pointer.y as f32 / scale).is_some())
                         {
                             SetCursor(LoadCursorW(std::ptr::null_mut(), IDC_SIZEALL));
+                            return Some(1);
+                        }
+                        if GetCursorPos(&raw mut pointer) != 0
+                            && ScreenToClient(hwnd, &raw mut pointer) != 0
+                            && organizer.input_at(pointer.x as f32 / scale, pointer.y as f32 / scale)
+                        {
+                            SetCursor(LoadCursorW(std::ptr::null_mut(), IDC_IBEAM));
                             return Some(1);
                         }
                     }
@@ -559,11 +584,16 @@ impl Organizer {
                 if self.rule_motion.release.is_none() {
                     self.rule_motion = RuleReorderMotion::default();
                 }
+                let switch_toggled = pending_switch.is_some_and(|command| {
+                    RuleSwitch::saved_change(command, self.rules.as_ref(), rules.as_ref()).is_some()
+                });
                 if self.update_switch_motion(pending_switch, rules.as_ref(), Instant::now(), scrollbar::animations_enabled()) {
                     self.schedule_animations(hwnd);
                 }
                 self.rules = rules;
-                self.editor.collapse_details();
+                if !switch_toggled {
+                    self.editor.collapse_details();
+                }
                 self.pressed = None;
             }
             let mut scene = organizer_titlebar(
@@ -846,7 +876,10 @@ impl Organizer {
                 self.focus = Some(Tab::Organize as usize);
             }
         }
-        if matches!(command, Command::Save | Command::Cancel) && !self.editor.editing() {
+        if (matches!(command, Command::Save | Command::Cancel) && !self.editor.editing())
+            || (command == Command::Save
+                && matches!(self.editor.reveal[Tab::Rules as usize], Some(Command::Target(_))))
+        {
             unsafe {
                 SetFocus(hwnd);
             }
@@ -878,6 +911,16 @@ impl Organizer {
             self.clear_hover();
             redraw(hwnd);
         }
+    }
+
+    fn input_at(&self, x: f32, y: f32) -> bool {
+        self.scene.as_ref().is_some_and(|scene| {
+            scene.controls.iter().any(|control| {
+                control.enabled
+                    && matches!(control.action, Action::Classification(Command::Input(_)))
+                    && scene.accepts_pointer(control, x, y)
+            })
+        })
     }
 
     fn rule_grip_at(&self, x: f32, y: f32) -> Option<(usize, Rect)> {
@@ -1067,6 +1110,16 @@ impl Organizer {
                 self.pressed = hit;
                 self.focus = hit;
                 self.keyboard_focus = false;
+                let hits_input = hit
+                    .and_then(|index| scene.controls.get(index))
+                    .is_some_and(|control| {
+                        matches!(control.action, Action::Classification(Command::Input(_)))
+                    });
+                if !hits_input {
+                    unsafe {
+                        SetFocus(hwnd);
+                    }
+                }
                 if hit.is_some() {
                     unsafe {
                         SetCapture(hwnd);
@@ -1075,14 +1128,16 @@ impl Organizer {
                 redraw(hwnd);
             }
             WM_LBUTTONUP => {
-                let picked = self
-                    .pressed
-                    .take()
+                let was_pressed = self.pressed.take();
+                let picked = was_pressed
                     .filter(|index| Some(*index) == hit)
                     .and_then(|index| scene.controls.get(index))
                     .cloned();
                 unsafe {
                     ReleaseCapture();
+                }
+                if was_pressed.is_some() {
+                    redraw(hwnd);
                 }
                 return picked;
             }
@@ -1127,8 +1182,8 @@ impl Organizer {
                 }
                 self.hovered_destination = destination_hit;
                 if self.hover != hit || self.grip_hover != grip_hover {
-                self.hover = hit;
-                self.grip_hover = grip_hover;
+                    self.hover = hit;
+                    self.grip_hover = grip_hover;
                     redraw(hwnd);
                 }
             }
@@ -1204,6 +1259,11 @@ impl Organizer {
         let combo = current.is_some_and(|control| matches!(control.kind, ControlKind::Combo))
             && (key == VK_F4 || (msg == WM_SYSKEYDOWN && key == VK_DOWN));
         if msg == WM_SYSKEYDOWN && !combo {
+            if matches!(key, VK_UP | VK_DOWN)
+                && self.keyboard_reorder(state, hwnd, key == VK_UP)
+            {
+                return true;
+            }
             return false;
         }
         match key {
@@ -1267,6 +1327,60 @@ impl Organizer {
             }
             _ => return false,
         }
+        true
+    }
+
+    fn keyboard_reorder(&mut self, state: &Rc<RefCell<PaneApp>>, hwnd: HWND, up: bool) -> bool {
+        if self.tab != Tab::Rules || self.editor.editing() {
+            return false;
+        }
+        let (Some(scene), Some(expected), Some(focus_index)) =
+            (&self.scene, &self.rules, self.focus)
+        else {
+            return false;
+        };
+        let Some(from) = scene
+            .rule_rows
+            .iter()
+            .position(|row| row.controls.contains(&focus_index))
+        else {
+            return false;
+        };
+        let to = if up {
+            from.checked_sub(1)
+        } else {
+            (from + 1 < scene.rule_rows.len()).then_some(from + 1)
+        };
+        let Some(to) = to else {
+            return true;
+        };
+        let follow = match scene.controls[focus_index].action {
+            Action::Classification(Command::ToggleDetails(_)) => Command::ToggleDetails(to),
+            Action::Classification(Command::Toggle(_)) => Command::Toggle(to),
+            Action::Classification(Command::Edit(_)) => Command::Edit(to),
+            Action::Classification(Command::Delete(_)) => Command::Delete(to),
+            _ => Command::ToggleDetails(to),
+        };
+        let saved = state
+            .try_borrow()
+            .is_ok_and(|owner| self.editor.drop_rule(&owner, from, to, expected));
+        if saved {
+            if scrollbar::animations_enabled() {
+                let mut tops: Vec<_> = scene
+                    .rule_rows
+                    .iter()
+                    .map(|row| row.visual_bounds().top + scene.scroll_offset)
+                    .collect();
+                let top = tops.remove(from);
+                tops.insert(to, top);
+                self.rule_motion.release = Some(tops);
+                self.rule_motion.floating = Some(to);
+            }
+            self.editor.collapse_details();
+            self.editor.reveal(follow);
+            self.keyboard_focus = true;
+        }
+        redraw(hwnd);
         true
     }
 }
@@ -1748,4 +1862,99 @@ fn long_preview_enqueue_failure_shows_the_error_and_keeps_the_preview() {
     let (error_bounds, _, _) = scene.text.iter().find(|(_, text, _)| text == error).unwrap();
     assert_eq!(organizer.scroll, 0.0);
     assert!(error_bounds.top >= viewport.top && error_bounds.bottom <= viewport.bottom);
+}
+
+#[test]
+fn keyboard_reorder_moves_rule_tracks_focus_and_switch_toggle_preserves_details() {
+    let _sta = crate::pane::test_support::apartment();
+    let directory = tempfile::tempdir().unwrap();
+    let state = Rc::new(RefCell::new(crate::pane::tests::test_state()));
+    state.borrow_mut().store = WorkspaceStore::open(&directory.path().join("workspace.db")).unwrap();
+    let config = Classification {
+        enabled: false,
+        rules: ["pdf", "png", "zip"].into_iter().map(|ext| ClassificationRule {
+            target_panel: 1,
+            enabled: true,
+            item_type: None,
+            extensions: vec![ext.into()],
+            name_contains: None,
+            name_regex: None,
+        }).collect(),
+    };
+    save(&state.borrow(), &config).unwrap();
+
+    let window = windows_window::Window::new("Organizer keyboard test").create().unwrap();
+    let hwnd = window.hwnd().cast();
+    let bounds = RECT { right: 780, bottom: 560, ..Default::default() };
+    let mut organizer = Organizer::new().unwrap();
+    organizer.layout(&state, hwnd, bounds, 1.0);
+
+    // Expanding a rule and toggling its switch or the global switch keeps details open.
+    organizer.run_command(&state, hwnd, Command::ToggleDetails(1));
+    organizer.layout(&state, hwnd, bounds, 1.0);
+    assert_eq!(organizer.editor.expanded, Some(1));
+    organizer.run_command(&state, hwnd, Command::Toggle(1));
+    organizer.layout(&state, hwnd, bounds, 1.0);
+    assert_eq!(organizer.editor.expanded, Some(1));
+    organizer.run_command(&state, hwnd, Command::Enable(true));
+    organizer.layout(&state, hwnd, bounds, 1.0);
+    assert_eq!(organizer.editor.expanded, Some(1));
+
+    // Alt+Up / Alt+Down reorders the focused rule and moves keyboard focus with it.
+    let (sender, _receiver) = mpsc::channel();
+    let focus_on = |organizer: &Organizer, command: Command| {
+        organizer.scene.as_ref().unwrap().controls.iter()
+            .position(|control| command.is_control(&control.action)).unwrap()
+    };
+    organizer.focus = Some(focus_on(&organizer, Command::ToggleDetails(1)));
+    assert!(organizer.key(&state, hwnd, (WM_SYSKEYDOWN, VK_UP, 0), 1.0, &sender));
+    organizer.layout(&state, hwnd, bounds, 1.0);
+    let order = || load(&state.borrow()).unwrap().rules.into_iter()
+        .map(|rule| rule.extensions[0].clone()).collect::<Vec<_>>();
+    assert_eq!(order(), ["png", "pdf", "zip"]);
+    assert_eq!(organizer.focus, Some(focus_on(&organizer, Command::ToggleDetails(0))));
+    assert!(organizer.keyboard_focus);
+
+    assert!(organizer.key(&state, hwnd, (WM_SYSKEYDOWN, VK_DOWN, 0), 1.0, &sender));
+    organizer.layout(&state, hwnd, bounds, 1.0);
+    assert_eq!(order(), ["pdf", "png", "zip"]);
+    assert_eq!(organizer.focus, Some(focus_on(&organizer, Command::ToggleDetails(1))));
+}
+
+#[test]
+fn stale_preview_shows_refresh_notice_when_saved_rules_changed() {
+    let _sta = crate::pane::test_support::apartment();
+    let directory = tempfile::tempdir().unwrap();
+    let state = Rc::new(RefCell::new(crate::pane::tests::test_state()));
+    state.borrow_mut().store = WorkspaceStore::open(&directory.path().join("workspace.db")).unwrap();
+    let initial = Classification { enabled: false, rules: Vec::new() };
+    save(&state.borrow(), &initial).unwrap();
+    let snapshot = encode(&initial).unwrap();
+    let mut updated = initial;
+    updated.rules.push(ClassificationRule {
+        target_panel: 1,
+        enabled: true,
+        item_type: None,
+        extensions: vec!["pdf".into()],
+        name_contains: None,
+        name_regex: None,
+    });
+    save(&state.borrow(), &updated).unwrap();
+
+    let item = hybrid::PreviewEntry::Skip {
+        identity: ShellIdentity::FileSystem { path: "Report.pdf".into(), volume_id: None, file_id: None },
+        item_name: "Report.pdf".into(),
+        reason: hybrid::SkipReason::NoMatch,
+    };
+    let editor = Editor {
+        preview: Some(hybrid::OrganizePreview::fixture(vec![item], None).with_rules(snapshot)),
+        ..Editor::default()
+    };
+    let owner = state.borrow();
+    let settings = owner.store.settings().unwrap();
+    let scene = window_scene(
+        (780.0, 560.0), Backdrop::Mica, Tab::Organize, owner.workspace.panels(),
+        settings.get(KEY), &editor, false,
+    );
+    assert!(scene.text.iter().any(|(_, text, _)| text == t("organizer-preview-stale")));
 }

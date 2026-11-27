@@ -1474,3 +1474,53 @@ fn partially_visible_native_input_uses_a_region_and_restores_full_text_area() {
         SendMessageW(hwnd, WM_CLOSE, 0, 0);
     }
 }
+
+#[test]
+fn editor_missing_target_reveals_target_dropdown_and_input_supports_focus_sync_and_select_all() {
+    let _sta = crate::pane::test_support::apartment();
+    let (_directory, state) = test_state();
+    host::show(&state, Tab::Rules).unwrap();
+    let hwnd: HWND = state.borrow().organizer.as_ref().unwrap().hwnd().cast();
+
+    let mut editor = Editor::default();
+    editor.execute(&state, hwnd, Command::AddTemplate(Template::Documents));
+    editor.execute(&state, hwnd, Command::Save);
+    assert_eq!(editor.error.as_deref(), Some(t("classification-no-target")));
+    assert!(matches!(editor.reveal[Tab::Rules as usize], Some(Command::Target(id)) if id.get() == 0));
+
+    let body = {
+        let owner = state.borrow();
+        let settings = owner.store.settings().unwrap();
+        window_scene(
+            (780.0, 560.0), Backdrop::Mica, Tab::Rules, owner.workspace.panels(),
+            settings.get(KEY), &editor, false,
+        )
+    };
+    assert!(body.controls.iter().any(|control| Command::Target(PanelId::new(0)).is_control(&control.action)));
+    assert!(body.text.iter().any(|(_, text, style)| text == luciddesk_window::control_style::ERROR_BADGE && *style == 4));
+
+    unsafe {
+        let extensions = GetDlgItem(hwnd, Field::Extensions.id());
+        let keyword = GetDlgItem(hwnd, Field::Keyword.id());
+        assert!(!extensions.is_null() && !keyword.is_null());
+        SetWindowTextW(keyword, windows_sys::w!("report-2026"));
+        // Ctrl+A selects the entire text inside the native EDIT control.
+        let mut selection_start = 0u32;
+        let mut selection_end = 0u32;
+        SendMessageW(keyword, windows_sys::Win32::UI::Controls::EM_SETSEL, 0, 0);
+        SendMessageW(keyword, windows_sys::Win32::UI::Controls::EM_GETSEL,
+            (&raw mut selection_start) as usize, (&raw mut selection_end) as isize);
+        assert_eq!((selection_start, selection_end), (0, 0));
+
+        // Focusing the keyword input posts INPUT_FOCUS to keep Organizer's painted focus ring aligned.
+        SendMessageW(keyword, WM_SETFOCUS, 0, 0);
+        let mut msg = MSG::default();
+        assert_ne!(
+            PeekMessageW(&raw mut msg, hwnd, host::INPUT_FOCUS, host::INPUT_FOCUS, PM_REMOVE),
+            0
+        );
+        assert_eq!(msg.lParam, keyword as isize);
+        drop(editor);
+        SendMessageW(hwnd, WM_CLOSE, 0, 0);
+    }
+}

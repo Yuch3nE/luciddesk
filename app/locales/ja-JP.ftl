@@ -1404,6 +1404,7 @@ classification-undo-in-progress = 整理を元に戻しています
 organizer-to-group = 整理対象
 organizer-skipped = スキップ
 organizer-review-changes = 更新されたプレビューを確認してから整理を確定してください。
+organizer-preview-stale = ルールが変更されました。「プレビューを更新」をクリックして最新の結果を確認してください。
 classification-preview-changed = プレビューを更新しました
 classification-preview-confirm = 整理を確定
 classification-diff-added = 追加

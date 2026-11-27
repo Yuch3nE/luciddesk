@@ -1,7 +1,7 @@
 //! Native text inputs hosted by the settings window, positioned by its scene.
 use super::*;
 use windows_sys::Win32::UI::{
-    Controls::EM_SETCUEBANNER,
+    Controls::{EM_SETCUEBANNER, EM_SETSEL},
     Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass},
 };
 
@@ -347,7 +347,11 @@ unsafe extern "system" fn input_proc(
             WM_IME_ENDCOMPOSITION => {
                 SetWindowLongPtrW(hwnd, GWLP_USERDATA, state & !COMPOSING);
             }
-            WM_SETFOCUS | WM_KILLFOCUS => {
+            WM_SETFOCUS => {
+                PostMessageW(owner, host::INPUT_FOCUS, 0, hwnd as isize);
+                InvalidateRect(owner, std::ptr::null(), 0);
+            }
+            WM_KILLFOCUS => {
                 InvalidateRect(owner, std::ptr::null(), 0);
             }
             WM_MOUSEWHEEL => {
@@ -356,14 +360,25 @@ unsafe extern "system" fn input_proc(
             }
             WM_KEYDOWN
                 if state & COMPOSING == 0
+                    && wp == usize::from(b'A')
+                    && GetKeyState(VK_CONTROL as i32) < 0
+                    && GetKeyState(VK_MENU as i32) >= 0 =>
+            {
+                SendMessageW(hwnd, EM_SETSEL, 0, -1);
+                return 0;
+            }
+            WM_KEYDOWN
+                if state & COMPOSING == 0
                     && matches!(wp as u16, VK_TAB | VK_RETURN | VK_ESCAPE) =>
             {
-                let shift_tab = wp == VK_TAB as usize && GetKeyState(VK_SHIFT as i32) < 0;
+                let shift_tab = wp == VK_TAB as usize
+                    && GetKeyState(VK_SHIFT as i32) < 0
+                    && GetKeyState(VK_CONTROL as i32) >= 0;
                 let key = if shift_tab { VK_UP as usize } else { wp };
                 PostMessageW(owner, CLASSIFICATION_KEY, key, hwnd as isize);
                 return 0;
             }
-            WM_CHAR if matches!(wp as u16, VK_TAB | VK_RETURN | VK_ESCAPE) => return 0,
+            WM_CHAR if wp == 1 || matches!(wp as u16, VK_TAB | VK_RETURN | VK_ESCAPE) => return 0,
             _ => {}
         }
         DefSubclassProc(hwnd, msg, wp, lp)

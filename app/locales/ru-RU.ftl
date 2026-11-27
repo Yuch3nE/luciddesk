@@ -1404,6 +1404,7 @@ classification-undo-in-progress = Отменяется сортировка
 organizer-to-group = К распределению
 organizer-skipped = Пропущено
 organizer-review-changes = Проверьте обновлённый список перед подтверждением.
+organizer-preview-stale = Правила изменились. Нажмите «Обновить предпросмотр», чтобы увидеть актуальный результат.
 classification-preview-changed = Предпросмотр обновлён
 classification-preview-confirm = Подтвердить сортировку
 classification-diff-added = Добавлено

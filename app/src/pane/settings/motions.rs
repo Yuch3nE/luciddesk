@@ -356,8 +356,8 @@ impl InterfaceMotion {
             self.nav_indicator = SlideTrack::default();
         }
 
-        // Subtle upward entrance when switching between settings pages.
-        if scene.navigation_viewport.is_some() {
+        // Subtle upward entrance when switching between settings pages or organizer tabs.
+        let page_signature = if scene.navigation_viewport.is_some() {
             let active_nav = scene
                 .controls
                 .iter()
@@ -368,15 +368,31 @@ impl InterfaceMotion {
                 .find(|(_, _, style)| *style == 3)
                 .map(|(_, text, _)| text.clone())
                 .unwrap_or_default();
-            let signature = (active_nav, title);
+            Some(((active_nav, title), false))
+        } else {
+            scene
+                .controls
+                .iter()
+                .position(|c| matches!(c.kind, ControlKind::Tab(_)) && c.selected)
+                .map(|active_tab| {
+                    let has_native_inputs = scene.controls.iter().any(|c| {
+                        matches!(c.action, Action::Classification(classification::Command::Input(_)))
+                    });
+                    ((Some(active_tab), String::new()), has_native_inputs)
+                })
+        };
+        if let Some((signature, has_native_inputs)) = page_signature {
             if let Some(previous) = &self.page_signature {
                 if *previous != signature {
                     self.page_signature = Some(signature);
                     self.segment_tracks.clear();
-                    self.page_enter = input.enabled.then_some(input.now);
+                    self.page_enter = (input.enabled && !has_native_inputs).then_some(input.now);
                 }
             } else {
                 self.page_signature = Some(signature);
+            }
+            if has_native_inputs {
+                self.page_enter = None;
             }
             if let Some(started) = self.page_enter {
                 if !input.enabled {
@@ -630,6 +646,7 @@ mod tests {
 
     #[test]
     fn toggle_press_nav_indicator_segment_pill_and_page_enter_animate_and_settle() {
+        let _sta = crate::pane::test_support::apartment();
         let mut scene = Scene::empty(Backdrop::Mica, 220.0, 40.0);
         scene.navigation_viewport = Some(Rect::from_xywh(0.0, 40.0, 200.0, 500.0));
         scene.text(Rect::from_xywh(220.0, 60.0, 200.0, 32.0), "Theme", 3);
@@ -725,5 +742,63 @@ mod tests {
         let (instant, playing) = motion.frame(&scene, input(t_reduced, None, None, false));
         assert!(!playing);
         assert!(instant.page_enter.is_none());
+    }
+
+    #[test]
+    fn organizer_tab_switch_animates_page_enter_except_with_native_inputs() {
+        let _sta = crate::pane::test_support::apartment();
+        let mut scene = Scene::empty(Backdrop::Mica, 24.0, 108.0);
+        scene.control(
+            ControlKind::Tab(""),
+            Rect::from_xywh(24.0, 60.0, 100.0, 32.0),
+            "Organize",
+            Action::Page(0),
+            true,
+        );
+        scene.control(
+            ControlKind::Tab(""),
+            Rect::from_xywh(132.0, 60.0, 100.0, 32.0),
+            "Rules",
+            Action::Page(1),
+            false,
+        );
+        let mut motion = InterfaceMotion::default();
+        let start = Instant::now();
+        let input = |now| MotionInput {
+            hover: None,
+            pressed: None,
+            scrollbar: None,
+            now,
+            enabled: true,
+        };
+        let (initial, playing) = motion.frame(&scene, input(start));
+        assert!(!playing);
+        assert!(initial.page_enter.is_none());
+
+        // Switching from Organize to Rules triggers page_enter and settles cleanly.
+        let t_switch = start + Duration::from_secs(1);
+        scene.controls[0].selected = false;
+        scene.controls[1].selected = true;
+        let (at_switch, playing) = motion.frame(&scene, input(t_switch));
+        assert!(playing);
+        assert!(at_switch.page_enter.is_some_and(|(dy, op)| dy > 7.5 && op < 0.6));
+        let (done, _) = motion.frame(&scene, input(t_switch + PAGE_ENTER_DURATION));
+        assert!(done.page_enter.is_none());
+        let (_, playing) = motion.frame(&scene, input(t_switch + SLIDE_DURATION));
+        assert!(!playing);
+
+        // Switching when native EDIT inputs exist suppresses page_enter so Win32 child windows do not lag.
+        let t_edit = t_switch + Duration::from_secs(1);
+        scene.controls[0].selected = true;
+        scene.controls[1].selected = false;
+        scene.control(
+            ControlKind::Button,
+            Rect::from_xywh(24.0, 140.0, 240.0, 32.0),
+            "",
+            Action::Classification(classification::Command::Input(classification::Field::Keyword)),
+            false,
+        );
+        let (with_input, _) = motion.frame(&scene, input(t_edit));
+        assert!(with_input.page_enter.is_none());
     }
 }

@@ -1404,6 +1404,7 @@ classification-undo-in-progress = 정리를 실행 취소하는 중
 organizer-to-group = 정리 대상
 organizer-skipped = 건너뜀
 organizer-review-changes = 업데이트된 미리 보기를 확인한 후 정리를 확정하세요.
+organizer-preview-stale = 규칙이 변경되었습니다. 최신 결과를 보려면 ‘미리 보기 새로 고침’을 클릭하세요.
 classification-preview-changed = 미리 보기가 갱신되었습니다
 classification-preview-confirm = 정리 확인
 classification-diff-added = 추가

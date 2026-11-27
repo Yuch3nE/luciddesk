@@ -53,8 +53,19 @@ impl OrganizePreview {
         }
     }
 
+    #[cfg(test)]
+    pub(in crate::pane) fn with_rules(mut self, rules: impl Into<String>) -> Self {
+        self.rules = rules.into();
+        self
+    }
+
     pub(in crate::pane) fn move_count(&self) -> usize {
         self.moves().count()
+    }
+
+    pub(in crate::pane) fn is_stale(&self, current: Option<&luciddesk_storage::SettingValue>) -> bool {
+        !self.rules.is_empty()
+            && matches!(current, Some(luciddesk_storage::SettingValue::Text(raw)) if *raw != self.rules)
     }
 
     pub(in crate::pane) fn moves(&self) -> impl Iterator<Item = &Move> {

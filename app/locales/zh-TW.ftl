@@ -1404,6 +1404,7 @@ classification-undo-in-progress = 正在復原整理
 organizer-to-group = 待歸組
 organizer-skipped = 已略過
 organizer-review-changes = 請核對最新預覽，再確認整理。
+organizer-preview-stale = 規則已變更，請點擊「重新整理預覽」查看最新結果。
 classification-preview-changed = 預覽已更新
 classification-preview-confirm = 確認整理
 classification-diff-added = 新增
