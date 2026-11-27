@@ -27,6 +27,7 @@ struct Callback {
     vtable: *const Vtable,
     refs: AtomicU32,
     inner: IUnknown,
+    host: HWND,
     desktop: HWND,
     first: Rc<Cell<Option<u32>>>,
     cancelled: Rc<dyn Fn() -> bool>,
@@ -49,6 +50,7 @@ static VTABLE: Vtable = Vtable {
 };
 pub fn create(
     view: &windows::Win32::UI::Shell::IShellView,
+    host: HWND,
     desktop: HWND,
     first: Rc<Cell<Option<u32>>>,
     cancelled: Rc<dyn Fn() -> bool>,
@@ -61,6 +63,7 @@ pub fn create(
             vtable: &VTABLE,
             refs: AtomicU32::new(1),
             inner: IUnknown::from_raw(raw),
+            host,
             desktop,
             first,
             cancelled,
@@ -144,8 +147,26 @@ unsafe extern "system" fn dismiss(this: *mut c_void) {
     unsafe {
         let value = &*(this as *const Callback);
         (value.inner_vtable().dismiss)(value.inner.as_raw());
+        if !(value.cancelled)() {
+            super::mark_popup_closed(value.host.0);
+        }
     }
 }
+
+struct Expansion(HWND);
+impl Drop for Expansion {
+    fn drop(&mut self) {
+        unsafe {
+            // Explorer can post the follow-up popup after this call returns.
+            windows_sys::Win32::UI::WindowsAndMessaging::SetPropW(
+                self.0.0,
+                super::MENU_EXPANDING,
+                2usize as _,
+            );
+        }
+    }
+}
+
 unsafe extern "system" fn expanded(
     this: *mut c_void,
     point: POINT,
@@ -156,6 +177,11 @@ unsafe extern "system" fn expanded(
 ) {
     unsafe {
         let value = &*(this as *const Callback);
+        use windows_sys::Win32::UI::WindowsAndMessaging::{GetPropW, SetPropW};
+        // Building the classic menu can outlast the gap between its popups.
+        let _expansion = (GetPropW(value.host.0, super::MENU_EXPANDING).is_null()
+            && SetPropW(value.host.0, super::MENU_EXPANDING, 1usize as _) != 0)
+            .then(|| Expansion(value.host));
         (value.inner_vtable().expanded)(
             value.inner.as_raw(),
             point,

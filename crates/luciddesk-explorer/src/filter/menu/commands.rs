@@ -157,6 +157,8 @@ impl IContextMenu3_Impl for Menu_Impl {
         unsafe {
             if let Ok(menu) = self.inner.cast::<IContextMenu3>() {
                 menu.HandleMenuMsg2(msg, wp, lp, Some(result))
+            } else if msg == windows::Win32::UI::WindowsAndMessaging::WM_MENUCHAR {
+                Err(windows::Win32::Foundation::E_NOTIMPL.into())
             } else {
                 if let Some(result) = result.as_mut() {
                     *result = LRESULT(0);

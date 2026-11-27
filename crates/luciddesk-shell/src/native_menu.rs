@@ -24,9 +24,9 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 };
 
 thread_local! { static ACTIVE: Cell<bool> = const { Cell::new(false) }; }
-struct ActiveMenu;
+pub(crate) struct ActiveMenu;
 impl ActiveMenu {
-    fn acquire() -> Result<Self> {
+    pub(crate) fn acquire() -> Result<Self> {
         if ACTIVE.with(|active| active.replace(true)) {
             return Err(windows::core::Error::from_hresult(
                 windows::core::HRESULT::from_win32(ERROR_BUSY.0),
@@ -39,6 +39,15 @@ impl Drop for ActiveMenu {
     fn drop(&mut self) {
         ACTIVE.with(|active| active.set(false));
     }
+}
+
+#[cfg(test)]
+#[test]
+fn menu_guard_rejects_reentry_until_dropped() {
+    let active = ActiveMenu::acquire().unwrap();
+    assert!(ActiveMenu::acquire().is_err());
+    drop(active);
+    assert!(ActiveMenu::acquire().is_ok());
 }
 
 struct ReturnFocus {
@@ -104,6 +113,11 @@ fn focus_trace(stage: &str, owner: HWND, desktop: HWND, accepted: Option<i32>) {
 pub fn show_isolated_item_menu(owner: HWND, host: HWND, invocation: MenuInvocation) -> Result<()> {
     let _active = ActiveMenu::acquire()?;
     unsafe {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{PostMessageW, RegisterWindowMessageW};
+        let open_message = RegisterWindowMessageW(windows_sys::w!("LucidDesk.IsolatedMenu.Open.v1"));
+        if open_message == 0 {
+            return Err(windows::core::Error::from_thread());
+        }
         let mut pid = 0;
         let thread = GetWindowThreadProcessId(host.0, &raw mut pid);
         if pid == 0 || thread == 0 {
@@ -117,18 +131,16 @@ pub fn show_isolated_item_menu(owner: HWND, host: HWND, invocation: MenuInvocati
         // Preparation may already have handed foreground permission to Explorer.
         // A second grant can fail after that handoff; the host checks activation.
         AllowSetForegroundWindow(pid);
-        if windows_sys::Win32::UI::WindowsAndMessaging::PostMessageW(
+        if PostMessageW(
             host.0,
-            windows_sys::Win32::UI::WindowsAndMessaging::RegisterWindowMessageW(windows_sys::w!(
-                "LucidDesk.IsolatedMenu.Open.v1"
-            )),
+            open_message,
             usize::from(invocation == MenuInvocation::Keyboard),
             0,
         ) == 0
         {
             return Err(windows::core::Error::from_thread());
         }
-        let result = observer.wait_for_close();
+        let result = observer.wait_for_close(Some(host.0));
         {
             use windows_sys::Win32::UI::WindowsAndMessaging::GetPropW;
             luciddesk_diagnostics::emit!(

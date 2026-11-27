@@ -55,6 +55,7 @@ pub(super) fn show(
         .0;
         drop(frame);
         drop(theme);
+        super::mark_popup_closed(hwnd);
         invocation.check()?;
         if command != 0 {
             menu.InvokeCommand(&CMINVOKECOMMANDINFO {
@@ -69,10 +70,12 @@ pub(super) fn show(
     }
 }
 pub(super) fn message(menu: &IContextMenu, msg: u32, wp: usize, lp: isize) -> Option<isize> {
+    let owner_draw = matches!(msg, WM_DRAWITEM | WM_MEASUREITEM);
     if !matches!(
         msg,
         WM_INITMENUPOPUP | WM_MENUCHAR | WM_DRAWITEM | WM_MEASUREITEM
-    ) {
+    ) || (owner_draw && (wp != 0 || lp == 0))
+    {
         return None;
     }
     unsafe {
@@ -80,13 +83,15 @@ pub(super) fn message(menu: &IContextMenu, msg: u32, wp: usize, lp: isize) -> Op
             let mut result = LRESULT::default();
             menu.HandleMenuMsg2(msg, WPARAM(wp), LPARAM(lp), Some(&raw mut result))
                 .ok()?;
-            Some(result.0)
-        } else {
+            Some(if owner_draw { 1 } else { result.0 })
+        } else if msg != WM_MENUCHAR {
             menu.cast::<IContextMenu2>()
                 .ok()?
                 .HandleMenuMsg(msg, WPARAM(wp), LPARAM(lp))
                 .ok()?;
-            Some(0)
+            Some(isize::from(owner_draw))
+        } else {
+            None
         }
     }
 }

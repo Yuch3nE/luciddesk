@@ -44,6 +44,7 @@ pub struct MenuHost {
 }
 struct MenuCallbacks {
     first: Rc<Cell<Option<u32>>>,
+    open_message: u32,
     busy: Cell<bool>,
     view: IShellView,
     desktop: windows_sys::Win32::Foundation::HWND,
@@ -80,6 +81,10 @@ impl MenuHost {
         unsafe {
             if names.is_empty() || IsWindow(context.owner as _) == 0 {
                 return Err(E_INVALIDARG.into());
+            }
+            let open_message = RegisterWindowMessageW(windows_sys::w!("LucidDesk.IsolatedMenu.Open.v1"));
+            if open_message == 0 {
+                return Err(windows::core::Error::from_thread());
             }
             let browser: IExplorerBrowser =
                 CoCreateInstance(&ExplorerBrowser, None, CLSCTX_INPROC_SERVER)?;
@@ -215,6 +220,7 @@ impl MenuHost {
                 if presenter.is_some() { 1usize } else { 2usize } as _);
             let callbacks = Rc::new(MenuCallbacks {
                 first,
+                open_message,
                 busy: Cell::new(false),
                 view: view.clone(),
                 desktop,
@@ -224,14 +230,17 @@ impl MenuHost {
                 retired: Cell::new(false),
                 classic: RefCell::new(None),
             });
+            let registered = Rc::into_raw(Rc::clone(&callbacks));
             if SetWindowSubclass(
                 view_hwnd,
                 Some(menu_messages),
                 SUBCLASS,
-                (&raw const *callbacks) as usize,
+                registered as usize,
             ) == 0
             {
-                return Err(windows::core::Error::from_thread());
+                let error = windows::core::Error::from_thread();
+                drop(Rc::from_raw(registered));
+                return Err(error);
             }
             host.callbacks = Some(callbacks);
             host.view = Some(view);
@@ -289,6 +298,9 @@ impl MenuHost {
             callbacks.retired.set(false);
             callbacks.context.set(context);
             callbacks.invocation.reset(cancelled);
+            let view_hwnd = self.view_hwnd()? as _;
+            RemovePropW(view_hwnd, MENU_CLOSED);
+            RemovePropW(view_hwnd, MENU_EXPANDING);
             SetWindowPos(
                 self.hwnd,
                 null_mut(),
@@ -347,6 +359,13 @@ impl MenuHost {
         unsafe { Ok(self.view.as_ref().ok_or(E_FAIL)?.GetWindow()?.0 as isize) }
     }
 }
+
+const MENU_CLOSED: *const u16 = windows_sys::w!("LucidDesk.Menu.Closed.v1");
+const MENU_EXPANDING: *const u16 = windows_sys::w!("LucidDesk.Menu.Expanding.v1");
+
+fn mark_popup_closed(hwnd: windows_sys::Win32::Foundation::HWND) {
+    unsafe { SetPropW(hwnd, MENU_CLOSED, 1usize as _) };
+}
 impl Drop for MenuHost {
     fn drop(&mut self) {
         unsafe {
@@ -354,9 +373,16 @@ impl Drop for MenuHost {
             if let Some(presenter) = &self.presenter {
                 let _ = presenter.close();
             }
-            if let Some(view) = &self.view {
-                if let Ok(hwnd) = view.GetWindow() {
-                    RemoveWindowSubclass(hwnd.0, Some(menu_messages), SUBCLASS);
+            if let (Some(view), Some(callbacks)) = (&self.view, &self.callbacks)
+                && let Ok(hwnd) = view.GetWindow()
+            {
+                let pointer = Rc::as_ptr(callbacks);
+                let mut registered = 0;
+                if windows_sys::Win32::UI::Shell::GetWindowSubclass(
+                    hwnd.0, Some(menu_messages), SUBCLASS, &raw mut registered,
+                ) != 0 && registered == pointer as usize
+                {
+                    detach_menu_messages(hwnd.0, registered as *const MenuCallbacks);
                 }
             }
             if let Ok(site) = self.browser.cast::<IObjectWithSite>() {
@@ -380,6 +406,16 @@ fn unregister_host_class() {
         UnregisterClassW(windows_sys::w!("LucidDesk.IsolatedShellHost.v1"), instance);
     }
 }
+unsafe fn detach_menu_messages(
+    hwnd: windows_sys::Win32::Foundation::HWND,
+    pointer: *const MenuCallbacks,
+) {
+    unsafe {
+        if RemoveWindowSubclass(hwnd, Some(menu_messages), SUBCLASS) != 0 {
+            drop(Rc::from_raw(pointer));
+        }
+    }
+}
 unsafe extern "system" fn menu_messages(
     hwnd: windows_sys::Win32::Foundation::HWND,
     msg: u32,
@@ -392,6 +428,9 @@ unsafe extern "system" fn menu_messages(
         let pointer = data as *const MenuCallbacks;
         Rc::increment_strong_count(pointer);
         let callbacks = Rc::from_raw(pointer);
+        if msg == WM_NCDESTROY {
+            detach_menu_messages(hwnd, pointer);
+        }
         if callbacks
             .presenter
             .as_ref()
@@ -424,7 +463,7 @@ unsafe extern "system" fn menu_messages(
         }
         // UI activation must happen on the Shell STA, after the app has installed
         // its popup observer and handed foreground permission to Explorer.
-        if msg == RegisterWindowMessageW(windows_sys::w!("LucidDesk.IsolatedMenu.Open.v1")) {
+        if msg == callbacks.open_message {
             if callbacks.invocation.cancelled() || callbacks.retired.get() {
                 return 0;
             }

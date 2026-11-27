@@ -105,7 +105,7 @@ pub fn show_desktop_items_menu(
                 site.DoContextMenuPopup(&menu, CMF_ITEMMENU | CMF_CANRENAME, point)
             }
         }
-        .and_then(|()| observer.wait_for_close());
+        .and_then(|()| observer.wait_for_close(None));
         if let Some(visible) = observer.first_visible() {
             timings.at("popup-first-observed", visible);
         }

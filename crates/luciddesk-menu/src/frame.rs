@@ -2,6 +2,7 @@
 use std::{
     cell::{Cell, RefCell},
     ptr::null_mut,
+    rc::Rc,
 };
 use windows_sys::Win32::{
     Foundation::{HWND, POINT, RECT},
@@ -28,12 +29,12 @@ struct FrameState {
     padding: i32,
     work: RECT,
     // Keep subclass data stable for the lifetime of the native popup loop.
-    popup: RefCell<Option<Box<Popup>>>,
+    popup: RefCell<Option<Rc<Popup>>>,
 }
 
 pub struct MenuFrame {
     hook: HHOOK,
-    state: Box<FrameState>,
+    state: *const FrameState,
 }
 
 impl MenuFrame {
@@ -52,19 +53,19 @@ impl MenuFrame {
                     return None;
                 }
             }
-            let state = Box::new(FrameState {
+            let state = Rc::new(FrameState {
                 work: monitor.rcWork,
                 padding: unsafe { ((3 * GetDpiForWindow(owner).max(96) + 48) / 96) as i32 },
                 popup: RefCell::new(None),
             });
-            ACTIVE.set(&*state);
             let hook = unsafe {
                 SetWindowsHookExW(WH_CBT, Some(created), null_mut(), GetCurrentThreadId())
             };
             if !hook.is_null() {
+                let state = Rc::into_raw(state);
+                ACTIVE.set(state);
                 return Some(Self { hook, state });
             }
-            ACTIVE.set(std::ptr::null());
         }
         None
     }
@@ -72,30 +73,30 @@ impl MenuFrame {
 
 unsafe extern "system" fn created(code: i32, wp: usize, lp: isize) -> isize {
     unsafe {
-        if code == HCBT_CREATEWND as i32 && !ACTIVE.get().is_null() {
+        let pointer = ACTIVE.get();
+        if code == HCBT_CREATEWND as i32 && !pointer.is_null() {
             let hwnd = wp as HWND;
             // The system popup class atom, scoped to this thread and popup loop.
             if GetClassLongPtrW(hwnd, GCW_ATOM) == 32768 {
-                let state = &*ACTIVE.get();
+                Rc::increment_strong_count(pointer);
+                let state = Rc::from_raw(pointer);
                 // Only the root menu needs this adjustment. Shell extensions
                 // retain control over any submenus they create or reposition.
                 if state.popup.borrow().is_some() {
                     return CallNextHookEx(null_mut(), code, wp, lp);
                 }
-                let popup = Box::new(Popup {
+                let popup = Rc::new(Popup {
                     hwnd,
                     work: state.work,
                     padding: Cell::new(state.padding),
                     adjusted_height: Cell::new(0),
                 });
-                if SetWindowSubclass(
-                    hwnd,
-                    Some(frame),
-                    SUBCLASS,
-                    (&raw const *popup) as usize,
-                ) != 0
-                {
-                    *state.popup.borrow_mut() = Some(popup);
+                // Keep a separate reference owned by the subclass registration.
+                let registered = Rc::into_raw(Rc::clone(&popup));
+                *state.popup.borrow_mut() = Some(popup);
+                if SetWindowSubclass(hwnd, Some(frame), SUBCLASS, registered as usize) == 0 {
+                    drop(Rc::from_raw(registered));
+                    state.popup.borrow_mut().take();
                 }
             }
         }
@@ -112,7 +113,12 @@ unsafe extern "system" fn frame(
     data: usize,
 ) -> isize {
     unsafe {
-        let popup = &*(data as *const Popup);
+        let registered = data as *const Popup;
+        Rc::increment_strong_count(registered);
+        let popup = Rc::from_raw(registered);
+        if msg == WM_NCDESTROY {
+            detach_popup(hwnd, registered);
+        }
         if msg == WM_WINDOWPOSCHANGING && lp != 0 {
             let pos = &mut *(lp as *mut WINDOWPOS);
             let pad = popup.padding.get();
@@ -151,24 +157,32 @@ unsafe extern "system" fn frame(
                 rect.bottom -= pad;
             }
         }
-        if msg == WM_NCDESTROY {
-            RemoveWindowSubclass(hwnd, Some(frame), SUBCLASS);
-        }
         result
+    }
+}
+
+unsafe fn detach_popup(hwnd: HWND, registered: *const Popup) {
+    unsafe {
+        if RemoveWindowSubclass(hwnd, Some(frame), SUBCLASS) != 0 {
+            drop(Rc::from_raw(registered));
+        }
     }
 }
 
 impl Drop for MenuFrame {
     fn drop(&mut self) {
         unsafe {
-            UnhookWindowsHookEx(self.hook);
             ACTIVE.set(std::ptr::null());
-            for popup in self.state.popup.get_mut().iter() {
+            UnhookWindowsHookEx(self.hook);
+            let state = Rc::from_raw(self.state);
+            let popup = state.popup.borrow_mut().take();
+            if let Some(popup) = popup {
+                let registered = Rc::as_ptr(&popup);
                 let mut data = 0;
                 if GetWindowSubclass(popup.hwnd, Some(frame), SUBCLASS, &raw mut data) != 0
-                    && data == (&raw const **popup) as usize
+                    && data == registered as usize
                 {
-                    RemoveWindowSubclass(popup.hwnd, Some(frame), SUBCLASS);
+                    detach_popup(popup.hwnd, data as *const Popup);
                 }
             }
         }

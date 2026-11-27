@@ -89,7 +89,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     );
                     view.UIActivate(SVUIA_ACTIVATE_FOCUS.0 as u32)?;
                     let shown = input::open_mouse(hwnd, POINT { x: 650, y: 450 })
-                        .and_then(|()| observer.wait_for_close());
+                        .and_then(|()| observer.wait_for_close(None));
                     println!("folder_popup={shown:?}");
                     println!("selection_restored={:?}", restore.finish());
                 }

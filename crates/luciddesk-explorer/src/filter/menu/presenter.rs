@@ -104,7 +104,7 @@ impl NativePresenter {
                 None,
                 CLSCTX_INPROC_SERVER,
             )?;
-            let callback = super::callback::create(view, desktop, first, cancelled.clone())?;
+            let callback = super::callback::create(view, hwnd, desktop, first, cancelled.clone())?;
             let keyboard = std::rc::Rc::new(Cell::new(false));
             let input =
                 input::wrap_cancellable(presenter.cast()?, keyboard.clone(), cancelled.clone())?;

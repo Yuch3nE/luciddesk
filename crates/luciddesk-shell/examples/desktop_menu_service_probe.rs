@@ -227,7 +227,7 @@ fn show_at(
         let mut result = site.DoContextMenuPopup(&menu, flags, point);
         println!("Explorer_menu_site_returned={result:?}");
         if result.is_ok() && std::env::args().any(|arg| arg == "--hold") {
-            result = observer.wait_for_close();
+            result = observer.wait_for_close(None);
         }
         let restored = restore.finish();
         println!("desktop_selection_restored={restored:?}");
