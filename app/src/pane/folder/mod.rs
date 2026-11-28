@@ -35,6 +35,7 @@ pub(super) struct Source {
     loaded_resolutions: HashMap<ShellIdentity, i32>,
     pub items: Vec<Item>,
     pub content_revision: u64,
+    scan_generation: u64,
     types_requested: Cell<bool>,
     types_queried: Cell<bool>,
     pub status: Option<String>,
@@ -53,16 +54,26 @@ struct ImageRequest {
 
 enum Patch {
     Images(u64, Vec<Item>),
-    Types(Vec<Item>),
+    Types(u64, Vec<Item>),
 }
 
 impl Source {
     fn request_types(&self) {
-        if self.loading || self.worker_stopped || self.types_requested.replace(true) {
+        use std::sync::atomic::Ordering;
+        if self.loading || self.worker_stopped || !self.request.active.load(Ordering::Acquire) {
             return;
         }
         let mut jobs = self.request.type_jobs.lock().unwrap();
-        jobs.extend(self.items.iter().filter(|item| !item.details.folder && item.details.kind.is_empty())
+        // A scan may already have replaced the worker's snapshot while the UI
+        // still holds the preceding one. Leave any explicit query pending.
+        if jobs.scan_generation != self.scan_generation {
+            return;
+        }
+        self.types_queried.set(false);
+        if self.types_requested.replace(true) {
+            return;
+        }
+        jobs.items.extend(self.items.iter().filter(|item| !item.details.folder && item.details.kind.is_empty())
             .map(|item| Item {
                 identity: item.identity.clone(),
                 label: String::new(),
@@ -73,17 +84,14 @@ impl Source {
                     ..Default::default()
                 },
             }));
-        if !jobs.is_empty() {
+        if !jobs.items.is_empty() {
             self.request.signal();
         }
     }
 
     pub(super) fn query_types(&self) {
-        if self.loading {
-            self.types_queried.set(true);
-        } else {
-            self.request_types();
-        }
+        self.types_queried.set(true);
+        self.request_types();
     }
 
     fn cancel_images(&mut self) {
@@ -127,7 +135,13 @@ impl Source {
         let mut latest = None;
         loop {
             match self.updates.try_recv() {
-                Ok(result) => latest = Some(result),
+                Ok(result) => {
+                    if result.is_ok() {
+                        self.scan_generation = self.scan_generation.wrapping_add(1);
+                        self.types_requested.set(false);
+                    }
+                    latest = Some(result);
+                }
                 Err(mpsc::TryRecvError::Empty) => break,
                 Err(mpsc::TryRecvError::Disconnected) => {
                     self.worker_stopped = true;
@@ -163,8 +177,6 @@ impl Source {
         match result {
             Ok(items) => {
                 self.cancel_images();
-                self.request.type_jobs.lock().unwrap().clear();
-                self.types_requested.set(false);
                 self.items = items;
                 sort_items(&mut self.items, self.sort);
                 self.status = None;
@@ -172,6 +184,12 @@ impl Source {
             Err(error) => self.status = Some(error),
         }
     }
+}
+
+#[derive(Default)]
+struct TypeJobs {
+    scan_generation: u64,
+    items: VecDeque<Item>,
 }
 
 struct Commands {
@@ -182,7 +200,7 @@ struct Commands {
     images_pending: std::sync::atomic::AtomicBool,
     image_generation: std::sync::atomic::AtomicU64,
     image_request: Mutex<Option<ImageRequest>>,
-    type_jobs: Mutex<VecDeque<Item>>,
+    type_jobs: Mutex<TypeJobs>,
 }
 impl Commands {
     fn new() -> Result<Self, String> {
@@ -314,8 +332,13 @@ impl Drop for Watch {
 impl Source {
     pub(super) fn set_active(&self, active: bool) {
         use std::sync::atomic::Ordering;
-        if self.request.active.swap(active, Ordering::AcqRel) != active && active {
+        if active && !self.request.active.load(Ordering::Acquire) {
             self.request.rescan.store(true, Ordering::Release);
+        }
+        self.request.active.store(active, Ordering::Release);
+        if !active {
+            self.request.type_jobs.lock().unwrap().items.clear();
+            self.types_requested.set(false);
         }
         self.request.signal();
     }
@@ -354,7 +377,7 @@ impl Source {
                 let mut watch = Watch::new(&root);
                 let cache = worker_cache;
                 let mut scan_failed = false;
-                loop {
+                'worker: loop {
                     if commands.stop.load(Ordering::Acquire) { break; }
                     if commands.active.load(Ordering::Acquire) {
                         if commands.rescan.swap(false, Ordering::AcqRel) {
@@ -381,6 +404,11 @@ impl Source {
                                     crate::i18n::format("ui-cannot-read-folder-check-the-path-and-permissions-n", &[("error", error.to_string())])
                                 });
                             scan_failed = result.is_err();
+                            if !scan_failed {
+                                let mut jobs = commands.type_jobs.lock().unwrap();
+                                jobs.scan_generation = jobs.scan_generation.wrapping_add(1);
+                                jobs.items.clear();
+                            }
                             if sender.send(result).is_err() { break; }
                             wake.notify();
                         }
@@ -392,17 +420,20 @@ impl Source {
                             wake.notify();
                             continue;
                         }
-                        let mut batch: Vec<_> = {
+                        let (scan_generation, mut batch): (_, Vec<_>) = {
                             let mut jobs = commands.type_jobs.lock().unwrap();
-                            let count = jobs.len().min(32);
-                            jobs.drain(..count).collect()
+                            let count = if commands.active.load(Ordering::Acquire) {
+                                jobs.items.len().min(32)
+                            } else { 0 };
+                            (jobs.scan_generation, jobs.items.drain(..count).collect())
                         };
                         if !batch.is_empty() {
                             // Yield between batches so new viewports can load thumbnails first.
                             for item in &mut batch {
+                                if !commands.active.load(Ordering::Acquire) { continue 'worker; }
                                 item.details.kind = file_type(&item.identity);
                             }
-                            if image_sender.send(Patch::Types(batch)).is_err() { break; }
+                            if image_sender.send(Patch::Types(scan_generation, batch)).is_err() { break; }
                             wake.notify();
                             continue;
                         }
@@ -459,6 +490,7 @@ impl Source {
             loaded_resolutions: HashMap::new(),
             items: Vec::new(),
             content_revision: next_content_revision(),
+            scan_generation: 0,
             types_requested: Cell::new(false),
             types_queried: Cell::new(false),
             status: None,
@@ -516,9 +548,8 @@ pub(super) fn poll(state: &mut PaneApp) -> Vec<(PanelId, ShellIdentity)> {
         // Each update is a complete snapshot. Sort and publish only the newest
         // one when the UI was busy while several scans completed.
         let scanned = source.poll_scan();
-        let queried = !source.loading && source.types_queried.replace(false);
         if !source.types_requested.get()
-            && (source.sort.0 == 1 || queried
+            && (source.sort.0 == 1 || source.types_queried.get()
                 || state.workspace.panel(id).is_some_and(Panel::list_view))
         {
             source.request_types();
@@ -531,10 +562,10 @@ pub(super) fn poll(state: &mut PaneApp) -> Vec<(PanelId, ShellIdentity)> {
                 Patch::Images(request, batch) if request == generation => {
                     image_updates.extend(batch.into_iter().map(|item| (item.identity.clone(), item)));
                 }
-                Patch::Images(..) => {}
-                Patch::Types(batch) => {
+                Patch::Types(scan, batch) if scan == source.scan_generation => {
                     type_updates.extend(batch.into_iter().map(|item| (item.identity.clone(), item)));
                 }
+                Patch::Images(..) | Patch::Types(..) => {}
             }
         }
         let mut reordered = false;

@@ -163,6 +163,58 @@ fn stationary_paints_skip_viewport_posts_and_same_count_reorders_post() {
 }
 
 #[test]
+fn coalesced_viewport_post_syncs_again_when_scroll_returns_to_queued_key() {
+    use windows_sys::Win32::UI::WindowsAndMessaging::*;
+    let _sta = crate::pane::test_support::apartment();
+    let mut initial = super::super::tests::test_model("Coalesced folder viewport");
+    initial.folder = Some(PathBuf::from(r"C:\test"));
+    initial.list_view = true;
+    initial.replace_items((0..20).map(|row| Item {
+        identity: identity(PathBuf::from(format!(r"C:\test\{row}.png"))),
+        label: format!("Row {row}"),
+        image: None,
+        details: ItemDetails::default(),
+    }).collect());
+    let model = Rc::new(RefCell::new(initial));
+    let dispatches = Rc::new(RefCell::new(Vec::new()));
+    let seen = Rc::clone(&dispatches);
+    let live_model = Rc::clone(&model);
+    let window = window::create(RectDip::from_bounds(40.0, 40.0, 400.0, 350.0), Rc::clone(&model), move |event| {
+        if matches!(event, Event::FolderViewport) {
+            seen.borrow_mut().push(live_model.borrow().scroll);
+        }
+        false
+    }).unwrap();
+    let hwnd = window.hwnd().cast();
+    unsafe { ShowWindow(hwnd, SW_SHOWNOACTIVATE); }
+    let dispatch = || unsafe {
+        let mut message = MSG::default();
+        while PeekMessageW(&raw mut message, hwnd, window::RUN_POSTED_ACTION, window::RUN_POSTED_ACTION, PM_REMOVE) != 0 {
+            DispatchMessageW(&raw const message);
+        }
+    };
+    let paint = |scroll| {
+        model.borrow_mut().scroll = scroll;
+        unsafe { SendMessageW(hwnd, WM_PAINT, 0, 0); }
+    };
+    paint(0);
+    dispatch();
+    paint(0);
+    dispatch();
+    dispatches.borrow_mut().clear();
+
+    paint(1);
+    paint(2);
+    assert!(dispatches.borrow().is_empty());
+    dispatch();
+    assert_eq!(*dispatches.borrow(), [2], "the coalesced callback must see K2");
+
+    paint(1);
+    dispatch();
+    assert_eq!(*dispatches.borrow(), [2, 1], "returning to K1 must post a new sync");
+}
+
+#[test]
 fn header_only_client_does_not_prefetch_first_row() {
     use windows_sys::Win32::UI::WindowsAndMessaging::*;
     let root = tempfile::tempdir().unwrap();
@@ -264,10 +316,10 @@ fn reordered_types_do_not_replace_another_panes_items_or_hover() {
     let items_revision = model.borrow().items_revision;
 
     first.details.kind = "Z".into();
-    senders[0].send(Patch::Types(vec![first.clone()])).unwrap();
+    senders[0].send(Patch::Types(state.folders[&ids[0]].scan_generation, vec![first.clone()])).unwrap();
     second.details.kind = "Updated".into();
     second.image = Some(Arc::new(assets::Pixels { width: 1, height: 1, data: vec![255; 4] }));
-    senders[1].send(Patch::Types(vec![second.clone()])).unwrap();
+    senders[1].send(Patch::Types(state.folders[&ids[1]].scan_generation, vec![second.clone()])).unwrap();
     senders[1].send(Patch::Images(generation, vec![second])).unwrap();
     poll(&mut state);
 
@@ -371,6 +423,65 @@ fn stale_thumbnail_request_cannot_replace_pixels_for_a_new_viewport() {
     sender.send(Patch::Images(current, vec![update])).unwrap();
     poll(&mut app);
     assert_eq!(app.folders[&id].items[0].image.as_ref().unwrap().data, [255; 4]);
+}
+
+#[test]
+fn rescan_discards_type_jobs_before_the_ui_applies_the_snapshot() {
+    use std::sync::atomic::Ordering;
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("example.txt"), b"fixture").unwrap();
+    let mut source = Source::start(root.path().into(), Default::default()).unwrap();
+    let wait = |done: &mut dyn FnMut() -> bool| {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !done() {
+            assert!(Instant::now() < deadline, "folder scan did not progress");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    };
+    wait(&mut || source.poll_scan());
+    let previous = source.scan_generation;
+    let cache = Arc::clone(&source.cache);
+    let held_cache = cache.lock().unwrap();
+    source.refresh();
+    // Hold the worker inside the scan while we queue a job for the old snapshot.
+    wait(&mut || !source.request.rescan.load(Ordering::Acquire));
+    source.request_types();
+    assert_eq!(source.request.type_jobs.lock().unwrap().items.len(), 1);
+    drop(held_cache);
+
+    wait(&mut || source.request.type_jobs.lock().unwrap().scan_generation != previous);
+    assert!(source.request.type_jobs.lock().unwrap().items.is_empty());
+    source.query_types();
+    assert!(source.types_queried.get());
+    assert!(source.request.type_jobs.lock().unwrap().items.is_empty());
+    assert!(matches!(source.images.recv_timeout(Duration::from_millis(100)), Err(mpsc::RecvTimeoutError::Timeout)));
+
+    wait(&mut || source.poll_scan());
+    source.request_types();
+    assert!(!source.types_queried.get());
+    let patch = source.images.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert!(matches!(patch, Patch::Types(scan, items) if scan == source.scan_generation && items.len() == 1));
+}
+
+#[test]
+fn deactivation_discards_type_jobs_and_defers_new_requests() {
+    let root = tempfile::tempdir().unwrap();
+    let cache: images::SharedCache = Arc::default();
+    let _hold_first_scan = cache.lock().unwrap();
+    let mut source = Source::start_with(root.path().into(), Default::default(), Arc::clone(&cache), (0, false)).unwrap();
+    source.loading = false;
+    let mut item = patch_item();
+    item.details.kind.clear();
+    source.items.push(item);
+    source.request_types();
+    assert_eq!(source.request.type_jobs.lock().unwrap().items.len(), 1);
+
+    source.set_active(false);
+    assert!(source.request.type_jobs.lock().unwrap().items.is_empty());
+    source.query_types();
+    assert!(source.request.type_jobs.lock().unwrap().items.is_empty());
+    assert!(!source.types_requested.get());
+    assert!(source.types_queried.get());
 }
 
 #[test]

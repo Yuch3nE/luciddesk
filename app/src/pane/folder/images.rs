@@ -111,9 +111,11 @@ impl Cache {
     }
 
     pub(super) fn insert(&mut self, item: &Item, resolution: i32) {
-        let key = item.identity.persistent_key();
-        // Failed loads are retried, so an empty image has no reusable cache value.
+        if item.details.modified_time.is_none() {
+            return;
+        }
         let Some(image) = &item.image else { return; };
+        let key = item.identity.persistent_key();
         if self.entries.get(&key).is_some_and(|entry| !entry.matches(item)) {
             self.remove_path(&key);
         } else {
@@ -460,6 +462,26 @@ mod tests {
         cache.retain_folder(Path::new(r"C:\test"), &HashMap::new());
         assert_eq!(cache.bytes, 0);
         assert!(cache.entries.is_empty());
+    }
+
+    #[test]
+    fn thumbnails_without_timestamps_are_published_without_using_the_cache_budget() {
+        let commands = Commands::new().unwrap();
+        let cache = Arc::new(Mutex::new(Cache { limit: 8, ..Default::default() }));
+        let mut cached = item("cached");
+        load(&mut cached);
+        cache.lock().unwrap().insert(&cached, 128);
+
+        let mut unknown = item("unknown");
+        unknown.details.modified_time = None;
+        let mut output = [unknown.clone()];
+        run(vec![unknown], &commands, &cache, load, |_| {}, &mut output);
+        assert!(output[0].image.is_some());
+
+        let mut cache = cache.lock().unwrap();
+        assert!(!cache.entries.contains_key(&output[0].identity.persistent_key()));
+        assert!(cache.restore(&mut item("cached"), 128));
+        assert_eq!(cache.bytes, 8);
     }
 
     #[test]

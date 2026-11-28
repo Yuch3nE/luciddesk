@@ -344,7 +344,7 @@ where
     let menu_active = Rc::new(std::cell::Cell::new(false));
     let mut paint_recovery = super::composition::PaintRecovery::default();
     let folder_viewport_pending = Rc::new(std::cell::Cell::new(false));
-    let mut folder_viewport = None;
+    let folder_viewport = Rc::new(std::cell::Cell::new(None));
     let mut gpu_idle_at = None::<std::time::Instant>;
     let mut gpu = PaneGpu::Active;
     let model_init = Rc::clone(&model);
@@ -402,26 +402,30 @@ where
             if message == WM_DESTROY || (message == WM_SHOWWINDOW && wparam == 0) {
                 control_redraw.sync(hwnd, false);
             }
-            if message == TAB_CHANGED { folder_viewport = None; }
+            if message == TAB_CHANGED { folder_viewport.set(None); }
             if matches!(message, WM_PAINT | WM_WINDOWPOSCHANGED | WM_SHOWWINDOW | WM_SIZE | WM_DPICHANGED | TAB_CHANGED)
                 && !folder_viewport_pending.get()
             {
-                let key = {
+                let read_key = move |model: &RefCell<GroupModel>| {
                     let model = model.borrow();
                     model.folder.is_some().then(|| super::folder::ViewportKey::read(hwnd, &model))
                 };
-                if key.is_some() && key != folder_viewport {
+                let key = read_key(&model);
+                if key.is_some() && key != folder_viewport.get() {
                     let pending = Rc::clone(&folder_viewport_pending);
+                    let viewport = Rc::clone(&folder_viewport);
+                    let model = Rc::clone(&model);
                     let events = Rc::clone(&events);
                     if post_action(hwnd, move || {
+                        // The callback consumes the live viewport, including changes while queued.
+                        viewport.set(read_key(&model));
                         pending.set(false);
                         (events.borrow_mut())(Event::FolderViewport);
                     }) {
                         folder_viewport_pending.set(true);
-                        folder_viewport = key;
                     }
                 } else if key.is_none() {
-                    folder_viewport = None;
+                    folder_viewport.set(None);
                 }
             }
             if matches!(message, WM_MOUSELEAVE | WM_NCMOUSEMOVE | WM_LBUTTONDOWN
