@@ -4,6 +4,7 @@ use crate::{
 };
 use serde::Deserialize;
 use std::{
+    collections::HashSet,
     fs::{self, File, OpenOptions},
     io::{self, Read, Seek},
     os::windows::{
@@ -32,6 +33,7 @@ pub struct Build {
 #[derive(Deserialize, PartialEq, Eq)]
 pub struct OwnedFile {
     pub file: String,
+    sha256: Option<String>,
 }
 pub fn build(root: &Path) -> Result<Build> {
     let bytes = fs::read(root.join("build.json"))?;
@@ -261,19 +263,19 @@ fn move_protected(file: &File, target: &Path) -> io::Result<()> {
 }
 
 struct Applied<'a> {
-    file: &'a StagedFile,
+    relative: &'a str,
     previous: Option<File>,
-    installed: bool,
+    installed: Option<&'a StagedFile>,
 }
 
 impl Applied<'_> {
     fn restore(&self, root: &Path, stage: &Path) -> io::Result<()> {
-        if self.installed {
-            move_protected(&self.file.handle, &stage.join(&self.file.relative))?;
-            self.file.handle.sync_all()?;
+        if let Some(file) = self.installed {
+            move_protected(&file.handle, &stage.join(self.relative))?;
+            file.handle.sync_all()?;
         }
         if let Some(previous) = &self.previous {
-            move_protected(previous, &root.join(&self.file.relative))?;
+            move_protected(previous, &root.join(self.relative))?;
             previous.sync_all()?;
         }
         Ok(())
@@ -298,6 +300,18 @@ fn retry_application_file<T>(relative: &str, mut operation: impl FnMut() -> io::
     }
 }
 
+fn matches_digest(mut file: &File, expected: &str) -> io::Result<bool> {
+    let mut digest = ring::digest::Context::new(&ring::digest::SHA256);
+    let mut buffer = [0; 65536];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 { break; }
+        digest.update(&buffer[..read]);
+    }
+    let actual: String = digest.finish().as_ref().iter().map(|byte| format!("{byte:02x}")).collect();
+    Ok(actual.eq_ignore_ascii_case(expected))
+}
+
 pub fn replace(root: &Path, work: &Path, files: &[StagedFile], build: &Build) -> ApplyResult {
     let backup = work.join(UPDATE_BACKUP);
     let stage = work.join("new");
@@ -308,6 +322,25 @@ pub fn replace(root: &Path, work: &Path, files: &[StagedFile], build: &Build) ->
         .map_err(|error| ApplyFailure::Restartable(error.into()))?;
     let mut applied = Vec::new();
     let mut install = || -> Result<()> {
+        let incoming: HashSet<_> = files.iter().map(|file| file.relative.to_ascii_lowercase()).collect();
+        for owned in &build.files {
+            let rel = owned.file.as_str();
+            let Some(digest) = owned.sha256.as_deref() else { continue; };
+            if !allowed(rel) || incoming.contains(&rel.to_ascii_lowercase()) { continue; }
+            let target = root.join(rel);
+            if no_links(&target).is_err() || !target.is_file() { continue; }
+            let previous = match protected_file(&target, false) {
+                Ok(file) => file,
+                Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(error.into()),
+            };
+            if !matches_digest(&previous, digest)? { continue; }
+            let saved = backup.join(rel);
+            fs::create_dir_all(saved.parent().unwrap())?;
+            move_protected(&previous, &saved)?;
+            applied.push(Applied { relative: rel, previous: Some(previous), installed: None });
+            applied.last().unwrap().previous.as_ref().unwrap().sync_all()?;
+        }
         for file in files {
             let rel = &file.relative;
             let target = root.join(rel);
@@ -330,9 +363,9 @@ pub fn replace(root: &Path, work: &Path, files: &[StagedFile], build: &Build) ->
                 None
             };
             applied.push(Applied {
-                file,
+                relative: rel,
                 previous,
-                installed: false,
+                installed: None,
             });
             let entry = applied.last_mut().unwrap();
             if let Some(previous) = &entry.previous {
@@ -340,7 +373,7 @@ pub fn replace(root: &Path, work: &Path, files: &[StagedFile], build: &Build) ->
             }
             retry_application_file(rel, || move_protected(&file.handle, &target))
                 .map_err(|error| format!("Could not update {}: {error}", target.display()))?;
-            entry.installed = true;
+            entry.installed = Some(file);
             file.handle.sync_all()?;
         }
         Ok(())
@@ -478,6 +511,46 @@ mod failure_tests {
     }
 
     #[test]
+    fn retired_managed_files_follow_the_replacement_transaction() {
+        const DIGEST: &str = "cba06b5736faf67e54b07b561eae94395e774c517a7d910a54369e1263ccfbd4";
+        for fail in [true, false] {
+            let root = tempfile::tempdir().unwrap();
+            let work = tempfile::tempdir_in(root.path()).unwrap();
+            fs::create_dir(root.path().join("plugins")).unwrap();
+            fs::create_dir(work.path().join("new")).unwrap();
+            let obsolete = root.path().join("plugins/obsolete.dll");
+            let modified = root.path().join("plugins/modified.dll");
+            let user = root.path().join("plugins/user.dll");
+            fs::write(&obsolete, b"old").unwrap();
+            fs::write(&modified, b"local replacement").unwrap();
+            fs::write(&user, b"user plugin").unwrap();
+
+            let target = root.path().join("updater.exe");
+            fs::write(&target, b"old installer").unwrap();
+            fs::write(work.path().join("new/updater.exe"), b"new installer").unwrap();
+            let _lock = fail.then(|| fs::OpenOptions::new().read(true).share_mode(1).open(&target).unwrap());
+            let mut build = old_build();
+            for file in ["plugins/obsolete.dll", "plugins/modified.dll"] {
+                build.files.push(OwnedFile { file: file.into(), sha256: Some(DIGEST.into()) });
+            }
+            let files = staged(work.path(), &["updater.exe"]);
+            let outcome = replace(root.path(), work.path(), &files, &build);
+            drop(files);
+            if fail {
+                assert!(matches!(outcome, Err(ApplyFailure::Restartable(_))));
+                assert_eq!(fs::read(&obsolete).unwrap(), b"old");
+                assert_eq!(fs::read(&target).unwrap(), b"old installer");
+            } else {
+                outcome.unwrap();
+                assert!(!obsolete.exists());
+                assert_eq!(fs::read(&target).unwrap(), b"new installer");
+            }
+            assert_eq!(fs::read(&modified).unwrap(), b"local replacement");
+            assert_eq!(fs::read(&user).unwrap(), b"user plugin");
+        }
+    }
+
+    #[test]
     fn application_file_can_be_reopened_after_a_transient_sharing_conflict() {
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("luciddesk.exe");
@@ -536,6 +609,7 @@ mod failure_tests {
         assert!(check_targets(root.path(), paths, &build).is_err());
         build.files.push(OwnedFile {
             file: paths[0].into(),
+            sha256: None,
         });
         assert!(check_targets(root.path(), paths, &build).is_ok());
     }
@@ -615,12 +689,12 @@ mod failure_tests {
         fs::write(&external, b"user").unwrap();
         assert!(fs::rename(&external, &target).is_err());
         let mut entry = Applied {
-            file: &files[0],
+            relative: &files[0].relative,
             previous: Some(previous),
-            installed: true,
+            installed: Some(&files[0]),
         };
         move_protected(&files[0].handle, &stage.join("updater.exe")).unwrap();
-        entry.installed = false;
+        entry.installed = None;
         fs::rename(&external, &target).unwrap();
         assert!(entry.restore(root.path(), &stage).is_err());
         assert_eq!(fs::read(&target).unwrap(), b"user");
