@@ -45,14 +45,20 @@ fn explicit_proxy() -> Option<Vec<u16>> {
     std::env::var("HTTPS_PROXY")
         .or_else(|_| std::env::var("https_proxy"))
         .ok()
-        .and_then(|s| s.strip_prefix("http://").map(str::to_owned))
-        .map(|s| s.trim_end_matches('/').to_owned())
-        .filter(|s| {
-            !s.is_empty()
-                && s.bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b".:-_[]".contains(&b))
-        })
-        .map(|s| wide(&s))
+        .and_then(|s| proxy_address(&s).map(|s| wide(&s)))
+}
+
+fn proxy_address(value: &str) -> Option<String> {
+    let value = value.trim();
+    let (prefix, address) = match value.split_once("://") {
+        Some((scheme, address)) if scheme.eq_ignore_ascii_case("https") => ("https://", address),
+        Some((scheme, address)) if scheme.eq_ignore_ascii_case("http") => ("", address),
+        Some(_) => return None,
+        None => ("", value),
+    };
+    let address = address.trim_end_matches('/');
+    (!address.is_empty() && address.bytes().all(|b| b.is_ascii_alphanumeric() || b".:-_[]".contains(&b)))
+        .then(|| format!("{prefix}{address}"))
 }
 
 pub(super) fn get(host: &str, path: &str, cancel: &AtomicBool) -> Result<Option<Vec<u8>>, String> {
@@ -119,6 +125,7 @@ pub(super) fn download(
         )
     })?;
     let headers = wide("Accept: */*\r\n");
+    let started = std::time::Instant::now();
     check(unsafe { WinHttpSendRequest(request.0, headers.as_ptr(), u32::MAX, null(), 0, 0, 0) })?;
     check(unsafe { WinHttpReceiveResponse(request.0, std::ptr::null_mut()) })?;
     let mut status = 0u32;
@@ -140,7 +147,7 @@ pub(super) fn download(
         return Err(format!("GitHub HTTP {status}"));
     }
     let mut total = 0u64;
-    let started = std::time::Instant::now();
+    let timeout = std::time::Duration::from_secs(600);
     let mut buffer = vec![0u8; 64 * 1024];
     loop {
         if cancel.load(Ordering::Relaxed) {
@@ -150,11 +157,14 @@ pub(super) fn download(
         check(unsafe {
             WinHttpReadData(request.0, buffer.as_mut_ptr().cast(), 65_536, &raw mut read)
         })?;
+        if started.elapsed() >= timeout {
+            return Err("Update download timed out".into());
+        }
         if read == 0 {
             break;
         }
         total += u64::from(read);
-        if total > limit || started.elapsed().as_secs() > 600 {
+        if total > limit {
             return Err("Update response exceeds size limit".into());
         }
         output
@@ -162,4 +172,24 @@ pub(super) fn download(
             .map_err(|e| e.to_string())?;
     }
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::proxy_address;
+
+    #[test]
+    fn explicit_proxy_normalizes_http_and_preserves_tls() {
+        for (input, expected) in [
+            (" 127.0.0.1:7890 ", Some("127.0.0.1:7890")),
+            ("HTTP://[::1]:7890/", Some("[::1]:7890")),
+            ("HTTPS://proxy.example:443", Some("https://proxy.example:443")),
+            ("http://", None),
+            ("socks5://localhost:7890", None),
+            ("http://user@localhost:7890", None),
+            ("http://proxy.example/path", None),
+        ] {
+            assert_eq!(proxy_address(input).as_deref(), expected);
+        }
+    }
 }
