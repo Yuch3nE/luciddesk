@@ -505,12 +505,12 @@ impl DrawPass<'_> {
     }
     pub fn clipped_layout(&self, layout: &c::TextLayout, x: f32, y: f32, brush: &c::Brush) {
         let metrics = layout.metrics();
-        self.push_clip(&c::Rect::from_xywh(
-            x,
-            y,
-            metrics.layout_width,
-            metrics.layout_height,
-        ));
+        self.clipped_layout_with_size(layout, x, y, (metrics.layout_width, metrics.layout_height), brush);
+    }
+    pub(super) fn clipped_layout_with_size(
+        &self, layout: &c::TextLayout, x: f32, y: f32, size: (f32, f32), brush: &c::Brush,
+    ) {
+        self.push_clip(&c::Rect::from_xywh(x, y, size.0, size.1));
         self.session
             .draw_text_layout(c::Vector2::new(x, y), layout, brush);
         self.pop_clip();

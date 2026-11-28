@@ -113,6 +113,7 @@ pub struct Renderer {
     visible_items: Vec<(usize, f32, f32)>,
     live_images: HashSet<usize>,
     buffered_images: Vec<usize>,
+    size_labels: HashMap<u64, String>,
     #[cfg(test)]
     image_uploads: usize,
     buttons: Highlights<usize>,
@@ -265,7 +266,7 @@ impl Renderer {
                         );
                         continue;
                     }
-                    target.clipped_text(
+                    target.clipped_cached_text(
                         label,
                         &self.title,
                         &Rect::from_xywh(left, top, available, super::menu::ROW_HEIGHT),
@@ -287,7 +288,7 @@ impl Renderer {
                         &text,
                     );
                 } else if trailing_width > 0.0 {
-                    target.clipped_text(
+                    target.clipped_cached_text(
                         row.trailing,
                         &self.menu_shortcut,
                         &Rect::from_xywh(width - 76.0, top, 64.0, super::menu::ROW_HEIGHT),
@@ -379,6 +380,7 @@ impl Renderer {
             visible_items: Vec::new(),
             live_images: HashSet::new(),
             buffered_images: Vec::new(),
+            size_labels: HashMap::new(),
             #[cfg(test)]
             image_uploads: 0,
         })
@@ -1002,7 +1004,7 @@ impl Renderer {
                             let sorted =
                                 model.folder_sort.0 as usize == column && available >= 30.0;
                             let text_width = if sorted { available - 18.0 } else { available };
-                            target.clipped_text(
+                            target.clipped_cached_text(
                                 name,
                                 &self.details,
                                 &Rect::from_xywh(left, top, text_width, super::layout::LIST_HEADER),
@@ -1163,13 +1165,25 @@ impl Renderer {
                         }
 
                         if list {
-                            let size =
-                                super::folder::size_text(item.details.size, item.details.folder);
+                            let size = if model.folder.is_none() || model.folder_visible_columns & (1 << 3) == 0
+                                || item.details.folder
+                            {
+                                ""
+                            } else if let Some(bytes) = item.details.size {
+                                if self.size_labels.len() >= 512 && !self.size_labels.contains_key(&bytes) {
+                                    self.size_labels.clear();
+                                }
+                                self.size_labels.entry(bytes)
+                                    .or_insert_with(|| super::folder::size_text(Some(bytes), false))
+                                    .as_str()
+                            } else {
+                                "—"
+                            };
                             for (column, text) in [
                                 item.label.as_str(),
                                 item.details.kind_text(),
                                 item.details.modified.as_str(),
-                                size.as_str(),
+                                size,
                             ]
                             .iter()
                             .enumerate()
@@ -1206,19 +1220,20 @@ impl Renderer {
                         if model.renaming.as_ref() == Some(&item.identity) || model.icon_display.icon_only {
                             continue;
                         }
-                        let (layout, _) = super::label::layout_scaled(
+                        let label = super::label::prepared_layout(
                             &item.label,
                             (grid.cell_width * scale).round() as u32,
                             (96.0 * scale).round() as u32,
                             2,
                             grid.text_scale,
                         )?;
-                        target.clipped_layout(
-                            &layout,
+                        target.clipped_layout_with_size(
+                            &label.layout,
                             (x * scale).round() / scale + 2.0,
                             ((y + grid.icon_size + crate::pane::layout::LABEL_OFFSET) * scale)
                                 .round()
                                 / scale,
+                            label.clip_size,
                             white,
                         );
                         continue;

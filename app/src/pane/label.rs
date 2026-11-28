@@ -52,13 +52,24 @@ pub struct Label {
 
 #[derive(Clone)]
 struct CachedLayout {
-    family: String, text: String, metrics: (u32,u32,u32,u32), layout: TextLayout, height: f32,
+    family: String, text: String, metrics: (u32,u32,u32,u32), prepared: PreparedLabel,
+}
+
+#[derive(Clone)]
+pub(super) struct PreparedLabel {
+    pub(super) layout: TextLayout,
+    pub(super) clip_size: (f32, f32),
+    height: f32,
 }
 
 pub fn layout_scaled(text: &str, width: u32, dpi: u32, lines: u32, font_scale: f32) -> Result<(TextLayout, f32)> {
+    let prepared = prepared_layout(text, width, dpi, lines, font_scale)?;
+    Ok((prepared.layout, prepared.height))
+}
+pub(super) fn prepared_layout(text: &str, width: u32, dpi: u32, lines: u32, font_scale: f32) -> Result<PreparedLabel> {
     super::assets::with_font(|family, size| layout_with_font(text, width, dpi, lines, font_scale, family, size))
 }
-fn layout_with_font(text: &str, width: u32, dpi: u32, lines: u32, font_scale: f32, family: &str, size: f32) -> Result<(TextLayout, f32)> {
+fn layout_with_font(text: &str, width: u32, dpi: u32, lines: u32, font_scale: f32, family: &str, size: f32) -> Result<PreparedLabel> {
     use std::cell::RefCell;
     thread_local! {
         static CACHE: RefCell<LayoutCache<u64, CachedLayout>> = RefCell::new(LayoutCache::new());
@@ -73,7 +84,7 @@ fn layout_with_font(text: &str, width: u32, dpi: u32, lines: u32, font_scale: f3
     CACHE.with(|cache| {
         if let Some(value) = cache.borrow_mut().get_ref(&key)
             && value.family == family && value.text == text && value.metrics == metrics {
-            return Ok((value.layout.clone(), value.height));
+            return Ok(value.prepared.clone());
         }
         let scale = dpi.max(48) as f32 / 96.0;
         let (format, line_height) = FORMAT.with(|slot| -> Result<_> {
@@ -99,10 +110,15 @@ fn layout_with_font(text: &str, width: u32, dpi: u32, lines: u32, font_scale: f3
             (width as f32 / scale - 4.0).max(1.0),
             max_height,
         ))?;
-        let height = (layout.metrics().height.min(max_height) * scale).ceil();
+        let bounds = layout.metrics();
+        let prepared = PreparedLabel {
+            layout,
+            clip_size: (bounds.layout_width, bounds.layout_height),
+            height: (bounds.height.min(max_height) * scale).ceil(),
+        };
         let mut cache = cache.borrow_mut();
-        cache.insert(key, CachedLayout { family: family.to_owned(), text: text.to_owned(), metrics, layout: layout.clone(), height });
-        Ok((layout, height))
+        cache.insert(key, CachedLayout { family: family.to_owned(), text: text.to_owned(), metrics, prepared: prepared.clone() });
+        Ok(prepared)
     })
 }
 
@@ -262,7 +278,7 @@ mod cache_tests {
     fn layout_cache_reuses_identical_inputs_and_separates_every_metric() {
         let _sta = crate::pane::test_support::apartment();
         let layout = |text, width, dpi, lines, scale, family, size|
-            super::layout_with_font(text, width, dpi, lines, scale, family, size).unwrap().0;
+            super::layout_with_font(text, width, dpi, lines, scale, family, size).unwrap().layout;
         let first = layout("Cache 测试", 88, 96, 2, 1.0, "Segoe UI", 12.0);
         let again = layout("Cache 测试", 88, 96, 2, 1.0, "Segoe UI", 12.0);
         assert_eq!(first.raw(), again.raw());
