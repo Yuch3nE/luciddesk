@@ -73,6 +73,8 @@ const REORDER_WITHOUT_ACTIVATION: u32 =
 
 #[cfg(test)]
 pub(super) const TEST_HOST_BACKDROP: u32 = WM_APP + 0x1af0;
+#[cfg(test)]
+pub(super) const TEST_SURFACE_OPACITY: u32 = WM_APP + 199;
 
 pub(super) fn is_desktop_layer(hwnd: HWND) -> bool {
     unsafe { !GetPropW(hwnd, DESKTOP_LAYER).is_null() }
@@ -438,7 +440,7 @@ where
                 item_tooltip.refresh(hwnd, &model.borrow());
             }
             #[cfg(test)]
-            if message == WM_APP + 199 {
+            if message == TEST_SURFACE_OPACITY {
                 return Some(surface.as_ref().map_or(-1, |s| (s.current_opacity() * 1000.0) as isize));
             }
             #[cfg(test)]

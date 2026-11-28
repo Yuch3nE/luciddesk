@@ -220,7 +220,7 @@ fn changing_language_keeps_all_panel_windows_and_saved_panels() {
             assert_eq!(saved_ids(), original);
             for &hwnd in &windows {
                 assert_ne!(unsafe { IsWindowVisible(hwnd) }, 0);
-                assert_eq!(unsafe { SendMessageW(hwnd, WM_APP + 199, 0, 0) }, 1000);
+                assert_eq!(unsafe { SendMessageW(hwnd, window::TEST_SURFACE_OPACITY, 0, 0) }, 1000);
             }
         }
     });
@@ -280,7 +280,7 @@ fn all_pane_types_fade_and_close_after_the_transition() {
         }
     };
     if scrollbar::animations_enabled() {
-        for &hwnd in &windows { assert_eq!(unsafe { SendMessageW(hwnd, WM_APP + 199, 0, 0) }, 0); }
+        for &hwnd in &windows { assert_eq!(unsafe { SendMessageW(hwnd, window::TEST_SURFACE_OPACITY, 0, 0) }, 0); }
     }
     pump(300);
     // A desktop toggle fades all pane types without deleting their saved panels.
@@ -290,7 +290,7 @@ fn all_pane_types_fade_and_close_after_the_transition() {
     if scrollbar::animations_enabled() {
         for &hwnd in &windows {
             assert_ne!(unsafe { IsWindowVisible(hwnd) }, 0);
-            assert!((1..1000).contains(&unsafe { SendMessageW(hwnd, WM_APP + 199, 0, 0) }));
+            assert!((1..1000).contains(&unsafe { SendMessageW(hwnd, window::TEST_SURFACE_OPACITY, 0, 0) }));
         }
     }
     // Reverse before fade-out finishes: the old timer must never hide us later.
@@ -298,7 +298,7 @@ fn all_pane_types_fade_and_close_after_the_transition() {
     pump(300);
     for &hwnd in &windows {
         assert_ne!(unsafe { IsWindowVisible(hwnd) }, 0);
-        assert_eq!(unsafe { SendMessageW(hwnd, WM_APP + 199, 0, 0) }, 1000);
+        assert_eq!(unsafe { SendMessageW(hwnd, window::TEST_SURFACE_OPACITY, 0, 0) }, 1000);
     }
     desktop_toggle::child_visibility(true, &windows);
     pump(300);
@@ -307,18 +307,18 @@ fn all_pane_types_fade_and_close_after_the_transition() {
     pump(60);
     if scrollbar::animations_enabled() {
         for &hwnd in &windows {
-            assert!((1..1000).contains(&unsafe { SendMessageW(hwnd, WM_APP + 199, 0, 0) }));
+            assert!((1..1000).contains(&unsafe { SendMessageW(hwnd, window::TEST_SURFACE_OPACITY, 0, 0) }));
         }
     }
     pump(300);
     assert_eq!(state.borrow().store.load_workspace().unwrap().panels().len(), saved);
     for hwnd in windows {
-        assert_eq!(unsafe { SendMessageW(hwnd, WM_APP + 199, 0, 0) }, 1000);
+        assert_eq!(unsafe { SendMessageW(hwnd, window::TEST_SURFACE_OPACITY, 0, 0) }, 1000);
         unsafe { PostMessageW(hwnd, WM_CLOSE, 0, 0); }
         pump(80);
         if scrollbar::animations_enabled() {
             assert_ne!(unsafe { IsWindow(hwnd) }, 0);
-            let opacity = unsafe { SendMessageW(hwnd, WM_APP + 199, 0, 0) };
+            let opacity = unsafe { SendMessageW(hwnd, window::TEST_SURFACE_OPACITY, 0, 0) };
             assert!((1..1000).contains(&opacity), "closing opacity: {opacity}");
             let editor = unsafe { GetPropW(hwnd, windows_sys::w!("LucidDesk.SearchInput")) };
             if !editor.is_null() {
@@ -1072,9 +1072,9 @@ fn unrelated_keys_do_not_select_first_icon_or_emit_pane_focus() {
     let hwnd = pane.hwnd().cast();
     focus_hwnd.set(hwnd as isize);
     if scrollbar::animations_enabled() {
-        use windows_sys::Win32::UI::WindowsAndMessaging::{WM_APP, WM_TIMER};
+        use windows_sys::Win32::UI::WindowsAndMessaging::WM_TIMER;
         // Delayed startup must not consume the fade before the UI loop runs.
-        let opacity = || unsafe { SendMessageW(hwnd, WM_APP + 199, 0, 0) };
+        let opacity = || unsafe { SendMessageW(hwnd, window::TEST_SURFACE_OPACITY, 0, 0) };
         assert_eq!(opacity(), 0);
         std::thread::sleep(std::time::Duration::from_millis(200));
         unsafe { SendMessageW(hwnd, WM_TIMER, 0x4c5056, 0); }

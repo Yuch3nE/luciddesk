@@ -979,7 +979,7 @@ pub(super) fn create(
                 return Some(0);
             }
             #[cfg(test)]
-            if msg == WM_APP + 199 {
+            if msg == super::window::TEST_SURFACE_OPACITY {
                 return Some(drawing.as_ref().map_or(-1, |d| (d.surface.current_opacity() * 1000.0) as isize));
             }
             #[cfg(test)]

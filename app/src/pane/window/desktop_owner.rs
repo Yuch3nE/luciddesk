@@ -1170,7 +1170,7 @@ mod tests {
                                 eprintln!("missing search reveal={reveal} minimized={minimized} elapsed={:?} pixel={pixel:#x} pane={} hit={} opacity={} app={} foreground={}",
                                     before.elapsed(), super::super::desktop_diagnostics::facts(search_hwnd),
                                     super::super::desktop_diagnostics::facts(WindowFromPoint(search_point)),
-                                    SendMessageW(search_hwnd, WM_APP + 199, 0, 0),
+                                    SendMessageW(search_hwnd, super::TEST_SURFACE_OPACITY, 0, 0),
                                     super::super::desktop_diagnostics::facts(app.hwnd().cast()),
                                     super::super::desktop_diagnostics::facts(GetForegroundWindow()));
                             }

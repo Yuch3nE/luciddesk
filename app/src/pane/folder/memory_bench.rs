@@ -130,11 +130,11 @@ fn large_folder_panel_memory() {
     resize(false);
     pump(&state, |_| false, Duration::from_millis(900));
     for &hwnd in &windows { unsafe { ShowWindow(hwnd, SW_HIDE); } }
-    assert!(windows.iter().all(|&hwnd| unsafe { SendMessageW(hwnd, WM_APP + 199, 0, 0) >= 0 }),
+    assert!(windows.iter().all(|&hwnd| unsafe { SendMessageW(hwnd, window::TEST_SURFACE_OPACITY, 0, 0) >= 0 }),
         "a brief hide should preserve the surface");
     pump(&state, |_| false, Duration::from_secs(7));
     sample("hidden", &state.borrow(), adapter.as_ref());
-    assert!(windows.iter().all(|&hwnd| unsafe { SendMessageW(hwnd, WM_APP + 199, 0, 0) == -1 }),
+    assert!(windows.iter().all(|&hwnd| unsafe { SendMessageW(hwnd, window::TEST_SURFACE_OPACITY, 0, 0) == -1 }),
         "persistent hide should retire all folder surfaces");
 
     for &hwnd in &windows { unsafe { ShowWindow(hwnd, SW_SHOWNOACTIVATE); } }
@@ -142,6 +142,6 @@ fn large_folder_panel_memory() {
         Duration::from_secs(10)), "restored windows did not regain icons");
     pump(&state, |_| false, Duration::from_millis(700));
     sample("restored", &state.borrow(), adapter.as_ref());
-    assert!(windows.iter().all(|&hwnd| unsafe { SendMessageW(hwnd, WM_APP + 199, 0, 0) == 1000 }),
+    assert!(windows.iter().all(|&hwnd| unsafe { SendMessageW(hwnd, window::TEST_SURFACE_OPACITY, 0, 0) == 1000 }),
         "restored panes should have fully visible surfaces");
 }
