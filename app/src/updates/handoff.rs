@@ -4,6 +4,7 @@ use std::{fs::OpenOptions, io, path::Path};
 
 pub(super) const STATUS: &str = "status.json";
 pub(super) const NEXT_STATUS: &str = "status.next";
+pub(super) const STATUS_WARNING: &str = "status.warning";
 // Settings and the updater compete for this file at the end of preparation.
 // Once the updater claims it, the confirmation dialog owns cancellation.
 pub(super) const DECISION: &str = "decision";

@@ -76,7 +76,10 @@ fn cleanup_run(directory: &Path) {
         Err(error) if error.kind() == io::ErrorKind::NotFound => {}
         Err(_) => return,
     }
-    for name in [handoff::STATUS, handoff::NEXT_STATUS, handoff::DECISION] {
+    if let Ok(warning) = fs::read_to_string(directory.join(handoff::STATUS_WARNING)) {
+        luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Warn, "updates.progress", warning.trim_end());
+    }
+    for name in [handoff::STATUS, handoff::NEXT_STATUS, handoff::DECISION, handoff::STATUS_WARNING] {
         let _ = fs::remove_file(directory.join(name));
     }
     drop(lease);

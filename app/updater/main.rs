@@ -18,10 +18,12 @@ use semver::Version;
 use handoff::{Appearance, Stage};
 use std::{
     env,
-    fs::{self, File},
+    fs::{self, File, OpenOptions},
+    io::{self, Write},
     path::{Path, PathBuf},
     process::Command,
 };
+use windows_sys::Win32::Foundation::{ERROR_ACCESS_DENIED, ERROR_LOCK_VIOLATION, ERROR_SHARING_VIOLATION};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     IDOK, MB_ICONERROR, MB_ICONINFORMATION, MB_OKCANCEL,
 };
@@ -113,10 +115,14 @@ impl Progress {
     }
 
     fn show(&self, stage: Stage) {
-        if let Some(directory) = &self.0 && let Ok(bytes) = serde_json::to_vec(&stage) {
-            let next = directory.join(handoff::NEXT_STATUS);
-            if fs::write(&next, bytes).is_ok() {
-                let _ = fs::rename(next, directory.join(handoff::STATUS));
+        let Some(directory) = &self.0 else { return; };
+        if let Err(error) = publish_stage(directory, stage) && !matches!(stage, Stage::Downloading(_)) {
+            let warning = format!("Could not publish {stage:?}: {error}");
+            let recorded = OpenOptions::new().create(true).append(true)
+                .open(directory.join(handoff::STATUS_WARNING))
+                .and_then(|mut file| writeln!(file, "{warning}"));
+            if recorded.is_err() {
+                luciddesk_diagnostics::log(luciddesk_diagnostics::Level::Warn, "updates.progress", &warning);
             }
         }
     }
@@ -132,6 +138,28 @@ impl Progress {
         self.show(Stage::Confirming);
         Ok(prompt())
     }
+}
+
+fn publish_stage(directory: &Path, stage: Stage) -> io::Result<()> {
+    let bytes = serde_json::to_vec(&stage)?;
+    let next = directory.join(handoff::NEXT_STATUS);
+    let target = directory.join(handoff::STATUS);
+    let publish = || fs::write(&next, &bytes).and_then(|()| fs::rename(&next, &target));
+    let mut result = publish();
+    if !matches!(stage, Stage::Downloading(_)) {
+        for _ in 0..3 {
+            if !result.as_ref().is_err_and(|error| {
+                error.raw_os_error().is_some_and(|code| {
+                    matches!(code as u32, ERROR_ACCESS_DENIED | ERROR_SHARING_VIOLATION | ERROR_LOCK_VIOLATION)
+                })
+            }) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            result = publish();
+        }
+    }
+    result
 }
 
 enum PreparedPayload {
@@ -311,6 +339,28 @@ mod lifecycle_tests {
         assert!(handoff::claim_decision(work.path()).unwrap());
         assert!(progress.canceled());
         assert!(!progress.confirm(|| panic!("a cancel that won must prevent the dialog")).unwrap());
+    }
+
+    #[test]
+    fn a_blocked_milestone_rename_leaves_the_old_status_and_records_a_warning() {
+        use std::os::windows::fs::OpenOptionsExt;
+        use windows_sys::Win32::Storage::FileSystem::{FILE_SHARE_READ, FILE_SHARE_WRITE};
+
+        let work = tempfile::tempdir().unwrap();
+        let progress = Progress(Some(work.path().to_path_buf()));
+        let status = work.path().join(handoff::STATUS);
+        let read_stage = || serde_json::from_slice::<Stage>(&fs::read(&status).unwrap()).unwrap();
+        progress.show(Stage::Extracting);
+        let blocker = OpenOptions::new().read(true).share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+            .open(&status).unwrap();
+        progress.show(Stage::Confirming);
+        assert_eq!(read_stage(), Stage::Extracting);
+        let warning = fs::read_to_string(work.path().join(handoff::STATUS_WARNING)).unwrap();
+        assert!(warning.contains("Confirming"));
+        drop(blocker);
+
+        progress.show(Stage::Applying);
+        assert_eq!(read_stage(), Stage::Applying);
     }
 
     #[test]
