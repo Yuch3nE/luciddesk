@@ -41,7 +41,13 @@ pub fn build(root: &Path) -> Result<Build> {
 }
 
 fn parse_build(bytes: &[u8]) -> Result<Build> {
-    Ok(serde_json::from_slice(bytes.trim_prefix(&[0xef, 0xbb, 0xbf]))?)
+    let mut build: Build = serde_json::from_slice(bytes.trim_prefix(&[0xef, 0xbb, 0xbf]))?;
+    for owned in &mut build.files {
+        if owned.file.contains('\\') {
+            owned.file = owned.file.replace('\\', "/");
+        }
+    }
+    Ok(build)
 }
 
 pub struct StagedFile {
@@ -540,10 +546,13 @@ mod failure_tests {
             fs::write(&target, b"old installer").unwrap();
             fs::write(work.path().join("new/updater.exe"), b"new installer").unwrap();
             let _lock = fail.then(|| fs::OpenOptions::new().read(true).share_mode(1).open(&target).unwrap());
-            let mut build = old_build();
-            for file in ["plugins/obsolete.dll", "plugins/modified.dll"] {
-                build.files.push(OwnedFile { file: file.into(), sha256: Some(DIGEST.into()) });
-            }
+            let build = parse_build(&serde_json::to_vec(&serde_json::json!({
+                "version": "1.0.0", "architecture": "windows-x64", "portable": false,
+                "files": [
+                    {"file": r"plugins\obsolete.dll", "sha256": DIGEST},
+                    {"file": r"plugins\modified.dll", "sha256": DIGEST},
+                ],
+            })).unwrap()).unwrap();
             let files = staged(work.path(), &["updater.exe"]);
             let outcome = replace(root.path(), work.path(), &files, &build);
             drop(files);
@@ -615,13 +624,9 @@ mod failure_tests {
         let root = tempfile::tempdir().unwrap();
         fs::create_dir(root.path().join("plugins")).unwrap();
         fs::write(root.path().join("plugins/custom.dll"), b"user").unwrap();
-        let mut build = old_build();
         let paths = ["plugins/custom.dll"];
-        assert!(check_targets(root.path(), paths, &build).is_err());
-        build.files.push(OwnedFile {
-            file: paths[0].into(),
-            sha256: None,
-        });
+        assert!(check_targets(root.path(), paths, &old_build()).is_err());
+        let build = parse_build(br#"{"version":"1.0.0","architecture":"windows-x64","portable":false,"files":[{"file":"plugins\\custom.dll"}]}"#).unwrap();
         assert!(check_targets(root.path(), paths, &build).is_ok());
     }
 
