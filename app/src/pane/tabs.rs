@@ -108,6 +108,7 @@ fn select_impl(state: &Rc<RefCell<PaneApp>>, from: PanelId, to: PanelId, persist
         next.merge_preview.clear();
         next.merge_occluded = false;
         next.hovered_item = None;
+        next.hovered_column = None;
         next.hovered_button = None;
         next.hovered_tab = None;
         next.pressed_button = None;
@@ -695,6 +696,38 @@ pub(super) fn strip(model: &GroupModel, width: f32) -> Vec<(PanelId, RectDip)> {
     strip_with_alignment(model, width, interface_flags::TAB_LEFT_ALIGNED.get())
 }
 
+pub(super) fn overflow(model: &GroupModel, width: f32) -> (bool, bool) {
+    let left_aligned = interface_flags::TAB_LEFT_ALIGNED.get();
+    if model.tabs.len() < 2 || left_aligned {
+        return (false, false);
+    }
+    let (start, count) = strip_window(model, width, left_aligned);
+    (start > 0, start + count < model.tabs.len())
+}
+
+fn strip_window(model: &GroupModel, width: f32, left_aligned: bool) -> (usize, usize) {
+    let right_buttons = layout::HEADER_BUTTONS_WIDTH
+        * (usize::from(model.folder.is_some()) + usize::from(left_aligned)) as f32;
+    let inset = layout::HEADER_INSET;
+    let available = (width - right_buttons - inset * 2.0).max(if left_aligned { 1.0 } else { 72.0 });
+    let count = if left_aligned {
+        model.tabs.len()
+    } else {
+        ((available / 72.0).floor() as usize)
+            .max(1)
+            .min(model.tabs.len())
+    };
+    let active = model
+        .tabs
+        .iter()
+        .position(|(id, _)| *id == model.active_tab)
+        .unwrap_or(0);
+    let start = active
+        .saturating_sub(count / 2)
+        .min(model.tabs.len() - count);
+    (start, count)
+}
+
 fn strip_with_alignment(model: &GroupModel, width: f32, left_aligned: bool) -> Vec<(PanelId, RectDip)> {
     if model.tabs.len() < 2 {
         return Vec::new();
@@ -704,17 +737,7 @@ fn strip_with_alignment(model: &GroupModel, width: f32, left_aligned: bool) -> V
     // Use one inset for the top, left and right edges.
     let inset = layout::HEADER_INSET;
     let available = (width - right_buttons - inset * 2.0).max(if left_aligned { 1.0 } else { 72.0 });
-    let count = if left_aligned { model.tabs.len() } else { ((available / 72.0).floor() as usize)
-        .max(1)
-        .min(model.tabs.len()) };
-    let active = model
-        .tabs
-        .iter()
-        .position(|(id, _)| *id == model.active_tab)
-        .unwrap_or(0);
-    let start = active
-        .saturating_sub(count / 2)
-        .min(model.tabs.len() - count);
+    let (start, count) = strip_window(model, width, left_aligned);
     let visible = &model.tabs[start..start + count];
     let bounds = tab_rects(visible.iter().map(|(_, title)| title.as_str()), available, left_aligned);
     visible.iter().zip(bounds).map(|((id, _), bounds)| (*id, bounds)).collect()

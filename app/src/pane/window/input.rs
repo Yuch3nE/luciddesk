@@ -35,32 +35,55 @@ pub(super) fn track_client_leave(hwnd: HWND) {
 
 pub(super) fn update_pointer(hwnd: HWND, model: &RefCell<GroupModel>, pointer: Option<POINT>) {
     let mut m = model.borrow_mut();
-    let (button, item, hovered, tab) = if let Some(p) = pointer {
+    let (button, item, column, hovered, tab) = if let Some(p) = pointer {
         let viewport = Viewport::read(hwnd);
         let (x, y) = viewport.point(p);
         let grid = viewport.grid(&m);
         let hovered = crate::pane::scrollbar::Bar::for_grid(&m, grid, viewport.width, viewport.height)
             .is_some_and(|bar| bar.contains(x, y))
             || crate::pane::scrollbar::Bar::horizontal(&m, viewport.width, viewport.height).is_some_and(|bar| bar.contains(x, y));
+        let column = if m.is_list() && m.folder.is_some() && !m.collapsed
+            && (grid.content_top - crate::pane::layout::LIST_HEADER..grid.content_top).contains(&y)
+        {
+            let col_x = x - crate::pane::layout::PADDING;
+            let columns = m.list_columns(grid.cell_width);
+            let on_divider = (1..4).any(|divider| {
+                m.folder_visible_columns & (1 << divider) != 0 && (col_x - columns[divider]).abs() <= 4.0
+            });
+            if on_divider {
+                None
+            } else {
+                (0..4).find(|&col| {
+                    (col == 0 || m.folder_visible_columns & (1 << col) != 0)
+                        && col_x >= columns[col]
+                        && col_x < columns[col + 1]
+                })
+            }
+        } else {
+            None
+        };
         (
             m.header_button(viewport.width, x, y),
             if hovered { None } else { m.hit(grid, x, y, viewport.scale) },
+            column,
             hovered,
             crate::pane::tabs::hit(&m, viewport.width, x, y),
         )
     } else {
-        (None, None, false, None)
+        (None, None, None, false, None)
     };
     if (
         m.hovered_button,
         m.hovered_item,
+        m.hovered_column,
         m.scrollbar.hovered,
         m.hovered_tab,
-    ) != (button, item, hovered, tab)
+    ) != (button, item, column, hovered, tab)
     {
         m.hovered_tab = tab;
         m.hovered_button = button;
         m.hovered_item = item;
+        m.hovered_column = column;
         m.scrollbar.hovered = hovered;
         drop(m);
         invalidate(hwnd);

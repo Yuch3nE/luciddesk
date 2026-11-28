@@ -460,6 +460,7 @@ pub(super) fn test_model(title: &str) -> GroupModel {
         theme: luciddesk_core::PanelTheme::Dark,
         dark: true,
         hovered_item: None,
+        hovered_column: None,
         scrollbar: Default::default(),
         hovered_tab: None,
         hovered_button: None,

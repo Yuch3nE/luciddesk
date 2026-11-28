@@ -97,17 +97,20 @@ pub struct Renderer {
     offscreen_device: Option<windows_canvas::GpuDevice>,
     labels: windows_canvas::TextFormat,
     title: windows_canvas::TextFormat,
+    menu_label: windows_canvas::TextFormat,
     title_layout: Option<TitleLayout>,
     pub(super) marquee: Option<luciddesk_core::RectDip>,
     details: windows_canvas::TextFormat,
     tab_title: windows_canvas::TextFormat,
+    tab_title_active: windows_canvas::TextFormat,
     column_label_widths: [f32; 4],
     sort_icons: windows_canvas::TextFormat,
     menu_shortcut: windows_canvas::TextFormat,
     icons: windows_canvas::TextFormat,
     navigation_icons: windows_canvas::TextFormat,
+    empty_icon: windows_canvas::TextFormat,
     target: Option<(u32, u32, Option<canvas::Offscreen>, ID2D1DeviceContext)>,
-    brushes: std::cell::RefCell<canvas::Brushes<13>>,
+    brushes: std::cell::RefCell<canvas::Brushes<15>>,
     images: HashMap<usize, ImageBitmap>,
     viewport: Option<(ViewportKey, super::layout::Grid)>,
     visible_items: Vec<(usize, f32, f32)>,
@@ -117,6 +120,7 @@ pub struct Renderer {
     #[cfg(test)]
     image_uploads: usize,
     buttons: Highlights<usize>,
+    columns: Highlights<usize>,
     tabs: Highlights<luciddesk_core::PanelId>,
     items: Highlights<luciddesk_core::ShellIdentity>,
 }
@@ -137,7 +141,7 @@ impl Renderer {
             .fold(216.0_f32, |width, row| {
                 let trailing = row.trailing_width();
                 let measured =
-                    windows_canvas::TextLayout::new(&row.label, &self.title, 4096.0, 64.0)
+                    windows_canvas::TextLayout::new(&row.label, &self.menu_label, 4096.0, 64.0)
                         .map(|layout| layout.metrics().width_including_trailing_whitespace)
                         .unwrap_or(166.0);
                 width.max((measured + 54.0 + trailing).ceil())
@@ -268,7 +272,7 @@ impl Renderer {
                     }
                     target.clipped_cached_text(
                         label,
-                        &self.title,
+                        &self.menu_label,
                         &Rect::from_xywh(left, top, available, super::menu::ROW_HEIGHT),
                         &text,
                     );
@@ -300,17 +304,21 @@ impl Renderer {
         })
     }
     pub fn new() -> Result<Self> {
-        use windows_canvas::{ParagraphAlignment, TextAlignment, TextFormat, WordWrapping};
+        use windows_canvas::{FontWeight, ParagraphAlignment, TextAlignment, TextFormat, WordWrapping};
         let (family, size) = assets::font();
         let labels = canvas_result(TextFormat::new(&family, size))?
             .with_alignment(TextAlignment::Center)
             .with_paragraph_alignment(ParagraphAlignment::Center)
             .with_word_wrapping(WordWrapping::Wrap);
         canvas::ellipsis(&labels)?;
-        let title = canvas_result(TextFormat::new(&family, size + 1.0))?
+        let title = canvas_result(TextFormat::with_weight(&family, size + 1.0, FontWeight(600)))?
             .with_paragraph_alignment(ParagraphAlignment::Center)
             .with_word_wrapping(WordWrapping::NoWrap);
         canvas::ellipsis(&title)?;
+        let menu_label = canvas_result(TextFormat::new(&family, size + 1.0))?
+            .with_paragraph_alignment(ParagraphAlignment::Center)
+            .with_word_wrapping(WordWrapping::NoWrap);
+        canvas::ellipsis(&menu_label)?;
         let details = canvas_result(TextFormat::new(&family, 12.0))?
             .with_paragraph_alignment(ParagraphAlignment::Center)
             .with_word_wrapping(WordWrapping::NoWrap);
@@ -320,6 +328,11 @@ impl Renderer {
             .with_paragraph_alignment(ParagraphAlignment::Center)
             .with_word_wrapping(WordWrapping::NoWrap);
         canvas::ellipsis(&tab_title)?;
+        let tab_title_active = canvas_result(TextFormat::with_weight(&family, 12.0, FontWeight(600)))?
+            .with_alignment(TextAlignment::Center)
+            .with_paragraph_alignment(ParagraphAlignment::Center)
+            .with_word_wrapping(WordWrapping::NoWrap);
+        canvas::ellipsis(&tab_title_active)?;
         let mut column_label_widths = [0.0; 4];
         for (index, name) in [
             crate::i18n::text("ui-name"),
@@ -341,6 +354,7 @@ impl Renderer {
         }
         Ok(Self {
             buttons: Highlights::default(),
+            columns: Highlights::default(),
             tabs: Highlights::default(),
             items: Highlights::default(),
             monitor: None,
@@ -351,10 +365,12 @@ impl Renderer {
             offscreen_device: None,
             labels,
             title,
+            menu_label,
             title_layout: None,
             marquee: None,
             details,
             tab_title,
+            tab_title_active,
             column_label_widths,
             sort_icons: canvas_result(TextFormat::new(super::fonts::icon_family(), 10.0))?
                 .with_alignment(TextAlignment::Center)
@@ -369,6 +385,10 @@ impl Renderer {
                 .with_paragraph_alignment(ParagraphAlignment::Center)
                 .with_word_wrapping(WordWrapping::NoWrap),
             navigation_icons: canvas_result(TextFormat::new(super::fonts::icon_family(), 12.0))?
+                .with_alignment(TextAlignment::Center)
+                .with_paragraph_alignment(ParagraphAlignment::Center)
+                .with_word_wrapping(WordWrapping::NoWrap),
+            empty_icon: canvas_result(TextFormat::new(super::fonts::icon_family(), 28.0))?
                 .with_alignment(TextAlignment::Center)
                 .with_paragraph_alignment(ParagraphAlignment::Center)
                 .with_word_wrapping(WordWrapping::NoWrap),
@@ -610,9 +630,12 @@ impl Renderer {
             self.language = fresh.language;
             self.labels = fresh.labels;
             self.title = fresh.title;
+            self.menu_label = fresh.menu_label;
             self.tab_title = fresh.tab_title;
+            self.tab_title_active = fresh.tab_title_active;
             self.details = fresh.details;
             self.menu_shortcut = fresh.menu_shortcut;
+            self.empty_icon = fresh.empty_icon;
             self.column_label_widths = fresh.column_label_widths;
             self.title_layout = None;
             self.frame_cache.borrow_mut().clear_text();
@@ -682,6 +705,8 @@ impl Renderer {
                     item_selected,
                     item_inactive,
                     item_hot_selected,
+                    item_border,
+                    focus_ring,
                 ] = canvas_result(
                     brushes.get(
                         context,
@@ -717,11 +742,39 @@ impl Renderer {
                             ColorF::new(0.55, 0.75, 1.0, 0.25),
                             ColorF::new(0.7, 0.85, 1.0, 0.12),
                             ColorF::new(0.75, 0.8, 0.85, 0.16),
-                            // Keep the original premultiplied bitmap's interior alpha.
-                            ColorF::new(1.0, 1.0, 1.0, 26.0 / 255.0),
-                            ColorF::new(1.0, 1.0, 1.0, 54.0 / 255.0),
-                            ColorF::new(1.0, 1.0, 1.0, 43.0 / 255.0),
-                            ColorF::new(1.0, 1.0, 1.0, 61.0 / 255.0),
+                            // Adapt item highlight tint to light/dark contrast while keeping
+                            // the established neutral dark-mode alpha steps intact.
+                            ColorF::new(
+                                ink,
+                                ink,
+                                ink,
+                                if contrast.light_text { 26.0 } else { 16.0 } / 255.0,
+                            ),
+                            ColorF::new(
+                                ink,
+                                ink,
+                                ink,
+                                if contrast.light_text { 54.0 } else { 32.0 } / 255.0,
+                            ),
+                            ColorF::new(
+                                ink,
+                                ink,
+                                ink,
+                                if contrast.light_text { 43.0 } else { 22.0 } / 255.0,
+                            ),
+                            ColorF::new(
+                                ink,
+                                ink,
+                                ink,
+                                if contrast.light_text { 61.0 } else { 40.0 } / 255.0,
+                            ),
+                            ColorF::new(ink, ink, ink, 0.14),
+                            ColorF::new(
+                                ink,
+                                ink,
+                                ink,
+                                if contrast.light_text { 0.72 } else { 0.65 },
+                            ),
                         ],
                     ),
                 )?;
@@ -775,7 +828,7 @@ impl Renderer {
                         let x = model.header_button_x(w, button);
                         let enabled = model.header_button_enabled(button);
                         let feedback = self.buttons.sample(&button, enabled && model.hovered_button == Some(button),
-                            enabled && model.pressed_button == Some(button), false, now, animate && enabled);
+                            false, enabled && model.pressed_button == Some(button), now, animate && enabled);
                         playing |= feedback.playing;
                         let glyph = canvas_result(target.cached_solid_brush(ColorF::new(
                             ink,
@@ -784,12 +837,13 @@ impl Renderer {
                             if !enabled {
                                 0.3
                             } else {
-                                0.85 + 0.15 * feedback.hover
+                                (0.85 + 0.15 * feedback.hover - 0.22 * feedback.selected).clamp(0.45, 1.0)
                             },
                         )))?;
-                        if feedback.hover > 0.0 {
+                        let pill_alpha = 0.07 * feedback.hover + 0.06 * feedback.selected;
+                        if pill_alpha > 0.0 {
                             let fill = canvas_result(
-                                target.cached_solid_brush(ColorF::new(ink, ink, ink, 0.07 * feedback.hover)),
+                                target.cached_solid_brush(ColorF::new(ink, ink, ink, pill_alpha)),
                             )?;
                             target.fill_rounded_rect(
                                 &RoundedRect {
@@ -847,10 +901,12 @@ impl Renderer {
                     }
                 }
                 let chrome = super::theme::material_chrome(model.backdrop, model.dark);
-                for (id, bounds) in super::tabs::strip(model, w)
-                    .into_iter()
-                    .filter(|_| model.merge_preview.is_empty())
-                {
+                let visible_tabs = if model.merge_preview.is_empty() {
+                    super::tabs::strip(model, w)
+                } else {
+                    Vec::new()
+                };
+                for &(id, bounds) in &visible_tabs {
                     let rect = Rect::from_xywh(bounds.x, bounds.y, bounds.width, bounds.height);
                     let active = id == model.active_tab;
                     let feedback = self.tabs.sample(&id, model.hovered_tab == Some(id), false, active, now, animate);
@@ -872,23 +928,83 @@ impl Renderer {
                         )))?;
                         target.fill_rounded_rect(&shape, &*fill);
                     }
+                    if feedback.selected > 0.0 {
+                        let indicator_w = (bounds.width * 0.36)
+                            .clamp(12.0, 24.0)
+                            .min((bounds.width - 8.0).max(0.0));
+                        if indicator_w >= 6.0 {
+                            let indicator = canvas_result(target.cached_solid_brush(ColorF::new(
+                                ink,
+                                ink,
+                                ink,
+                                0.65 * feedback.selected,
+                            )))?;
+                            let ix = ((bounds.x + (bounds.width - indicator_w) * 0.5) * scale).round() / scale;
+                            let iy = ((rect.bottom - 3.0) * scale).round() / scale;
+                            target.fill_rounded_rect(
+                                &RoundedRect {
+                                    rect: Rect::from_xywh(ix, iy, indicator_w, 2.0),
+                                    radius_x: 1.0,
+                                    radius_y: 1.0,
+                                },
+                                &*indicator,
+                            );
+                        }
+                    }
                     let text = model
                         .tabs
                         .iter()
                         .find(|(tab, _)| *tab == id)
                         .map_or("", |(_, title)| title.as_str());
                     let padding = 8.0_f32.min(bounds.width * 0.15);
+                    let tab_brush = if active {
+                        None
+                    } else {
+                        Some(canvas_result(target.cached_solid_brush(ColorF::new(
+                            ink,
+                            ink,
+                            ink,
+                            0.62 + 0.23 * feedback.hover,
+                        )))?)
+                    };
                     target.clipped_color_text(
                         text,
-                        &self.tab_title,
+                        if active { &self.tab_title_active } else { &self.tab_title },
                         &Rect::from_xywh(
                             rect.left + padding,
                             rect.top,
                             bounds.width - padding * 2.0,
                             bounds.height,
                         ),
-                        if active { white } else { dim },
+                        tab_brush.as_deref().unwrap_or(white),
                     )?;
+                }
+                if !visible_tabs.is_empty() {
+                    let (overflow_left, overflow_right) = super::tabs::overflow(model, w);
+                    if overflow_left || overflow_right {
+                        let chevron = canvas_result(target.cached_solid_brush(ColorF::new(
+                            ink, ink, ink, 0.48,
+                        )))?;
+                        let top = super::layout::HEADER_INSET;
+                        let height = HEADER - top * 2.0;
+                        if overflow_left {
+                            target.clipped_icon(
+                                "\u{e76b}",
+                                &self.sort_icons,
+                                &Rect::from_xywh(0.0, top, 10.0, height),
+                                &*chevron,
+                            );
+                        }
+                        if overflow_right {
+                            let right_edge = visible_tabs.last().unwrap().1.x + visible_tabs.last().unwrap().1.width;
+                            target.clipped_icon(
+                                "\u{e76c}",
+                                &self.sort_icons,
+                                &Rect::from_xywh((right_edge - 2.0).min(w - 10.0), top, 10.0, height),
+                                &*chevron,
+                            );
+                        }
+                    }
                 }
                 for (text, incoming, active, bounds) in super::tabs::merge_strip(model, w) {
                     // Keep the preview aligned with real tabs; inset the one-pixel
@@ -967,8 +1083,13 @@ impl Renderer {
                         )
                     });
                     let list = model.is_list();
+                    let list_scrollbar = list && super::scrollbar::Bar::for_grid(model, grid, w, h).is_some();
+                    let size_right_inset = if list_scrollbar { 16.0 } else { 8.0 };
                     let columns = model.list_columns(grid.cell_width);
                     if list && model.folder.is_some() {
+                        let list_divider = canvas_result(target.cached_solid_brush(
+                            super::theme::panel_divider(model.dark, model.backdrop),
+                        ))?;
                         for column in 1..4 {
                             if model.folder_visible_columns & (1 << column) == 0 {
                                 continue;
@@ -978,10 +1099,10 @@ impl Renderer {
                                 &Rect::from_xywh(
                                     super::layout::PADDING + boundary,
                                     grid.content_top - super::layout::LIST_HEADER + 6.0,
-                                    1.0,
+                                    1.0 / scale,
                                     super::layout::LIST_HEADER - 12.0,
                                 ),
-                                hover,
+                                &*list_divider,
                             );
                         }
                         for (column, name) in [
@@ -996,47 +1117,116 @@ impl Renderer {
                             if column > 0 && model.folder_visible_columns & (1 << column) == 0 {
                                 continue;
                             }
-                            let inset = if column == 0 { 0.0 } else { 8.0 };
-                            let left = super::layout::PADDING + columns[column] + inset;
+                            let col_feedback = self.columns.sample(
+                                &column,
+                                model.hovered_column == Some(column),
+                                false,
+                                false,
+                                now,
+                                animate,
+                            );
+                            playing |= col_feedback.playing;
                             let top = grid.content_top - super::layout::LIST_HEADER;
+                            if col_feedback.hover > 0.0 {
+                                let col_fill = canvas_result(target.cached_solid_brush(
+                                    ColorF::new(ink, ink, ink, 0.06 * col_feedback.hover),
+                                ))?;
+                                target.fill_rounded_rect(
+                                    &RoundedRect {
+                                        rect: Rect::from_xywh(
+                                            super::layout::PADDING + columns[column] + 1.0,
+                                            top + 2.0,
+                                            (columns[column + 1] - columns[column] - 2.0).max(0.0),
+                                            super::layout::LIST_HEADER - 5.0,
+                                        ),
+                                        radius_x: 4.0,
+                                        radius_y: 4.0,
+                                    },
+                                    &*col_fill,
+                                );
+                            }
+                            let inset = if column == 0 { 0.0 } else { 8.0 };
+                            let right_inset = if column == 3 { size_right_inset } else { 8.0 };
+                            let left = super::layout::PADDING + columns[column] + inset;
                             let available =
-                                (columns[column + 1] - columns[column] - inset - 8.0).max(1.0);
+                                (columns[column + 1] - columns[column] - inset - right_inset).max(1.0);
                             let sorted =
                                 model.folder_sort.0 as usize == column && available >= 30.0;
                             let text_width = if sorted { available - 18.0 } else { available };
-                            target.clipped_cached_text(
-                                name,
-                                &self.details,
-                                &Rect::from_xywh(left, top, text_width, super::layout::LIST_HEADER),
-                                dim,
-                            );
-                            if sorted {
-                                target.clipped_icon(
-                                    if model.folder_sort.1 {
-                                        "\u{e70d}"
-                                    } else {
-                                        "\u{e70e}"
-                                    },
-                                    &self.sort_icons,
+                            if column == 3 {
+                                let text_left = if sorted { left + 18.0 } else { left };
+                                target.clipped_cached_text(
+                                    name,
+                                    &self.menu_shortcut,
                                     &Rect::from_xywh(
-                                        left + self.column_label_widths[column].min(text_width)
-                                            + 4.0,
+                                        text_left,
                                         top,
-                                        14.0,
+                                        text_width,
                                         super::layout::LIST_HEADER,
                                     ),
                                     dim,
                                 );
+                                if sorted {
+                                    let icon_left = (text_left + text_width
+                                        - self.column_label_widths[column].min(text_width)
+                                        - 18.0)
+                                        .max(left);
+                                    target.clipped_icon(
+                                        if model.folder_sort.1 {
+                                            "\u{e70d}"
+                                        } else {
+                                            "\u{e70e}"
+                                        },
+                                        &self.sort_icons,
+                                        &Rect::from_xywh(
+                                            icon_left,
+                                            top,
+                                            14.0,
+                                            super::layout::LIST_HEADER,
+                                        ),
+                                        dim,
+                                    );
+                                }
+                            } else {
+                                target.clipped_cached_text(
+                                    name,
+                                    &self.details,
+                                    &Rect::from_xywh(
+                                        left,
+                                        top,
+                                        text_width,
+                                        super::layout::LIST_HEADER,
+                                    ),
+                                    dim,
+                                );
+                                if sorted {
+                                    target.clipped_icon(
+                                        if model.folder_sort.1 {
+                                            "\u{e70d}"
+                                        } else {
+                                            "\u{e70e}"
+                                        },
+                                        &self.sort_icons,
+                                        &Rect::from_xywh(
+                                            left + self.column_label_widths[column].min(text_width)
+                                                + 4.0,
+                                            top,
+                                            14.0,
+                                            super::layout::LIST_HEADER,
+                                        ),
+                                        dim,
+                                    );
+                                }
                             }
                         }
                         target.fill_rect(
                             &Rect::from_xywh(
                                 super::layout::PADDING,
-                                grid.content_top - 1.0,
+                                grid.content_top - 1.0 / scale,
                                 grid.cell_width,
-                                1.0,
+                                1.0 / scale,
                             ),
-                            hover,
+                            &*list_divider,
                         );
                     }
                     for &(index, x, y) in &self.visible_items {
@@ -1096,14 +1286,25 @@ impl Renderer {
                         let feedback = self.items.sample(&item.identity, model.hovered_item == Some(index), false,
                             model.selection.contains(&index), now, animate && self.marquee.is_none());
                         playing |= feedback.playing;
-                        if feedback.hover > 0.0 || feedback.selected > 0.0 {
+                        let keyboard_focus = model.focused && model.selected == Some(index);
+                        if feedback.hover > 0.0 || feedback.selected > 0.0 || keyboard_focus {
                             let bounds = model.selection_bounds(grid, index, scale);
-                            let rect = Rect::from_xywh(bounds.x, bounds.y, bounds.width, bounds.height);
+                            let inset_y = if list { 1.0 } else { 0.0 };
+                            let rect = Rect::from_xywh(
+                                bounds.x,
+                                bounds.y + inset_y,
+                                bounds.width,
+                                (bounds.height - inset_y * 2.0).max(1.0),
+                            );
                             let width = (bounds.width * scale).round();
                             let height = (bounds.height * scale).round();
                             // Preserve the old square fallback for very large selections.
                             let fallback = !(1.0..=4096.0).contains(&width) || !(1.0..=4096.0).contains(&height);
-                            let radius = if fallback { 0.0 } else { 1.0_f32.max((96.0 * scale).round() / 96.0) / scale };
+                            let radius = if fallback {
+                                0.0
+                            } else {
+                                (if list { 4.0_f32 } else { 5.0_f32 }).min(rect.height() * 0.5)
+                            };
                             let shape = RoundedRect { rect, radius_x: radius, radius_y: radius };
                             let hot = if model.focused { feedback.hover } else { 0.0 };
                             let (normal, hot_brush) = if fallback {
@@ -1117,6 +1318,27 @@ impl Renderer {
                                 feedback.hover * (1.0 - feedback.selected));
                             target.fill_highlight(&shape, normal, feedback.selected * (1.0 - hot));
                             target.fill_highlight(&shape, hot_brush, feedback.selected * hot);
+                            if !fallback && (feedback.selected > 0.0 || keyboard_focus) {
+                                let stroke = 1.0 / scale;
+                                let inset = stroke * 0.5;
+                                let stroke_shape = RoundedRect {
+                                    rect: Rect::from_xywh(
+                                        rect.left + inset,
+                                        rect.top + inset,
+                                        (rect.width() - stroke).max(0.0),
+                                        (rect.height() - stroke).max(0.0),
+                                    ),
+                                    radius_x: (radius - inset).max(0.0),
+                                    radius_y: (radius - inset).max(0.0),
+                                };
+                                if keyboard_focus {
+                                    target.draw_rounded_rect(&stroke_shape, focus_ring, stroke);
+                                } else {
+                                    canvas::with_brush_opacity(item_border, feedback.selected, || {
+                                        target.draw_rounded_rect(&stroke_shape, item_border, stroke);
+                                    });
+                                }
+                            }
                         }
                         if let Some((bitmap, size)) = bitmap {
                             let (iw, ih) = (size.0 as f32 / scale, size.1 as f32 / scale);
@@ -1198,6 +1420,7 @@ impl Renderer {
                                     continue;
                                 }
                                 let inset = if column == 0 { 0.0 } else { 8.0 };
+                                let right_inset = if column == 3 { size_right_inset } else { 8.0 };
                                 target.clipped_cached_text(
                                     text,
                                     if column == 3 {
@@ -1208,7 +1431,7 @@ impl Renderer {
                                     &Rect::from_xywh(
                                         x + columns[column] + inset,
                                         y,
-                                        (columns[column + 1] - columns[column] - inset - 8.0)
+                                        (columns[column + 1] - columns[column] - inset - right_inset)
                                             .max(1.0),
                                         grid.cell_height,
                                     ),
@@ -1227,15 +1450,21 @@ impl Renderer {
                             2,
                             grid.text_scale,
                         )?;
-                        target.clipped_layout_with_size(
-                            &label.layout,
-                            (x * scale).round() / scale + 2.0,
-                            ((y + grid.icon_size + crate::pane::layout::LABEL_OFFSET) * scale)
-                                .round()
-                                / scale,
-                            label.clip_size,
-                            white,
-                        );
+                        let label_x = (x * scale).round() / scale + 2.0;
+                        let label_y = ((y + grid.icon_size + crate::pane::layout::LABEL_OFFSET) * scale)
+                            .round()
+                            / scale;
+                        if model.native_material && !model.options.text_protection && opacity == 0.0 {
+                            let shadow = canvas_result(target.cached_solid_brush(
+                                if contrast.light_text {
+                                    ColorF::new(0.0, 0.0, 0.0, 0.52)
+                                } else {
+                                    ColorF::new(1.0, 1.0, 1.0, 0.45)
+                                },
+                            ))?;
+                            target.clipped_layout_with_size(&label.layout, label_x, label_y + 1.0 / scale, label.clip_size, &*shadow);
+                        }
+                        target.clipped_layout_with_size(&label.layout, label_x, label_y, label.clip_size, white);
                         continue;
                     }
                     if model.items.is_empty() {
@@ -1252,12 +1481,36 @@ impl Renderer {
                         } else {
                             crate::i18n::text("ui-drag-icons-into-this-group")
                         };
-                        target.clipped_text(
-                            text,
-                            &self.labels,
-                            &Rect::from_xywh(20.0, 0.0, (w - 40.0).max(1.0), h),
-                            dim,
-                        );
+                        let empty_top = model.content_header();
+                        let empty_height = (h - empty_top - 6.0).max(1.0);
+                        let muted = canvas_result(target.cached_solid_brush(ColorF::new(
+                            ink, ink, ink, 0.56,
+                        )))?;
+                        if empty_height >= 84.0 {
+                            let glyph = canvas_result(target.cached_solid_brush(ColorF::new(
+                                ink, ink, ink, 0.26,
+                            )))?;
+                            let center_y = empty_top + empty_height * 0.5;
+                            target.clipped_icon(
+                                if model.folder.is_some() { "\u{e8b7}" } else { "\u{e8f1}" },
+                                &self.empty_icon,
+                                &Rect::from_xywh(20.0, center_y - 34.0, (w - 40.0).max(1.0), 32.0),
+                                &*glyph,
+                            );
+                            target.clipped_text(
+                                text,
+                                &self.labels,
+                                &Rect::from_xywh(20.0, center_y + 2.0, (w - 40.0).max(1.0), 36.0),
+                                &*muted,
+                            );
+                        } else {
+                            target.clipped_text(
+                                text,
+                                &self.labels,
+                                &Rect::from_xywh(20.0, empty_top, (w - 40.0).max(1.0), empty_height),
+                                &*muted,
+                            );
+                        }
                     }
                     target.pop_clip();
                     for bar in [
@@ -1275,7 +1528,7 @@ impl Renderer {
                                 ink,
                                 ink,
                                 ink,
-                                0.06 * expansion,
+                                0.07 * expansion,
                             )))?;
                             target.fill_rounded_rect(
                                 &RoundedRect {
@@ -1299,7 +1552,7 @@ impl Renderer {
                             ink,
                             ink,
                             ink,
-                            0.85 + 0.15 * expansion,
+                            0.42 + 0.40 * expansion,
                         )))?;
                         target.fill_rounded_rect(
                             &RoundedRect {
@@ -1340,6 +1593,7 @@ impl Renderer {
             })?;
         }
         self.buttons.finish_frame();
+        self.columns.finish_frame();
         self.tabs.finish_frame();
         self.items.finish_frame();
         Ok(playing)

@@ -1060,3 +1060,101 @@ fn system_shadow_content_has_no_custom_corner_holes_or_duplicate_border() {
     background_alpha_does_not_dim_icons_at_multiple_scales();
     grid_scale_changes_icon_and_text_size_together();
 }
+
+#[test]
+fn light_theme_selection_and_keyboard_focus_ring_are_visible() {
+    let _sta = crate::pane::test_support::apartment();
+    let mut model = sample_model();
+    model.dark = false;
+    model.native_material = false;
+    model.list_view = true;
+    model.clear_selection();
+    model.hovered_item = None;
+    model.focused = true;
+    let mut renderer = Renderer::new().unwrap();
+    let baseline = renderer.pixels(360, 220, 1.0, &model).unwrap();
+
+    // Hover on light theme must darken the row, not paint invisible white-on-white.
+    let mut hovered = model.clone();
+    hovered.hovered_item = Some(0);
+    let hover_pixels = renderer.pixels(360, 220, 1.0, &hovered).unwrap();
+    let grid = model.grid(360.0, 220.0);
+    let bounds = model.selection_bounds(grid, 0, 1.0);
+    let interior = (((bounds.y + bounds.height * 0.5) as usize) * 360
+        + (bounds.x + bounds.width * 0.75) as usize)
+        * 4;
+    assert!(
+        hover_pixels[interior] < baseline[interior],
+        "light theme hover should darken row interior: {} vs {}",
+        hover_pixels[interior],
+        baseline[interior]
+    );
+
+    // Selected state darkens further than hover on light theme.
+    let mut selected = model.clone();
+    selected.selection.insert(0);
+    let selected_pixels = renderer.pixels(360, 220, 1.0, &selected).unwrap();
+    assert!(
+        selected_pixels[interior] < hover_pixels[interior],
+        "light theme selection should have stronger contrast than hover"
+    );
+
+    // Unselected keyboard focus (Ctrl+Arrow) renders a visible focus ring.
+    let mut focused_only = model.clone();
+    focused_only.selected = Some(0);
+    let focus_pixels = renderer.pixels(360, 220, 1.0, &focused_only).unwrap();
+    assert_ne!(
+        focus_pixels, baseline,
+        "keyboard focus without selection must draw a visible focus ring"
+    );
+}
+
+#[test]
+fn header_press_list_column_hover_and_tab_overflow_render_cleanly() {
+    let _sta = crate::pane::test_support::apartment();
+    let mut renderer = Renderer::new().unwrap();
+
+    // Header button pressed feedback differs from hover-only state.
+    let mut model = sample_model();
+    model.hovered_button = Some(0);
+    let hover_btn = renderer.pixels(320, 200, 1.0, &model).unwrap();
+    model.pressed_button = Some(0);
+    let press_btn = renderer.pixels(320, 200, 1.0, &model).unwrap();
+    assert_ne!(hover_btn, press_btn, "pressed header button must differ from hover state");
+
+    // List header column hover highlights the column header band.
+    let mut list_model = sample_model();
+    list_model.folder = Some(std::path::PathBuf::from(r"C:\Documents"));
+    list_model.list_view = true;
+    list_model.folder_sort = (3, true);
+    let plain_header = renderer.pixels(420, 240, 1.0, &list_model).unwrap();
+    list_model.hovered_column = Some(3);
+    let hovered_header = renderer.pixels(420, 240, 1.0, &list_model).unwrap();
+    assert_ne!(plain_header, hovered_header, "hovered list column header must highlight");
+
+    // Overflowing tab strip reports overflow and renders indicators inside the header.
+    let mut tab_model = sample_model();
+    tab_model.tabs = (1..=8)
+        .map(|i| (luciddesk_core::PanelId::new(i), format!("标签 {i}")))
+        .collect();
+    tab_model.active_tab = luciddesk_core::PanelId::new(4);
+    assert_eq!(super::super::tabs::overflow(&tab_model, 260.0), (true, true));
+    let pixels = renderer.pixels(260, 200, 1.0, &tab_model).unwrap();
+    assert_eq!(pixels.len(), 260 * 200 * 4);
+}
+
+#[test]
+fn unprotected_transparent_labels_add_subtle_shadow_without_touching_background() {
+    let _sta = crate::pane::test_support::apartment();
+    let mut model = sample_model();
+    model.native_material = true;
+    model.options.text_protection = false;
+    model.backdrop = luciddesk_core::Backdrop::Acrylic;
+    let mut renderer = Renderer::new().unwrap();
+    let unprotected = renderer.pixels(400, 240, 1.0, &model).unwrap();
+    // Background far from label remains transparent.
+    assert_eq!(unprotected[(200 * 400 + 380) * 4 + 3], 0);
+    model.options.text_protection = true;
+    let protected = renderer.pixels(400, 240, 1.0, &model).unwrap();
+    assert_ne!(unprotected, protected, "unprotected transparent labels should render shadow contrast");
+}

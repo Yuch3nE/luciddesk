@@ -412,6 +412,7 @@ fn create_model(state: &PaneApp, id: PanelId) -> Result<GroupModel, String> {
         dark: theme::is_dark(panel.theme()),
 
         hovered_item: None,
+        hovered_column: None,
         scrollbar: Default::default(),
         focused: false,
         auto_hide: panel.auto_hide(),

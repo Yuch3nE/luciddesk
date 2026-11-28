@@ -53,6 +53,7 @@ pub struct GroupModel {
     pub dark: bool,
 
     pub hovered_item: Option<usize>,
+    pub hovered_column: Option<usize>,
     pub scrollbar: super::scrollbar::State,
     pub focused: bool,
     pub auto_hide: bool,

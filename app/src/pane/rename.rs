@@ -772,6 +772,7 @@ mod tests {
             dark: true,
 
             hovered_item: None,
+            hovered_column: None,
             scrollbar: Default::default(),
             focused: true,
             auto_hide: false,
