@@ -1,5 +1,7 @@
 //! Live folder sources are separate from Explorer desktop membership.
 use super::*;
+#[cfg(test)]
+use std::cell::Cell;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -575,19 +577,71 @@ pub(super) fn deactivate(state: &mut PaneApp, id: PanelId) {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) struct ViewportKey {
+    tab: PanelId,
+    visible: Option<VisibleViewport>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct VisibleViewport {
+    width: i32,
+    height: i32,
+    dpi: u32,
+    items_revision: u64,
+    scroll: usize,
+    scroll_x: u32,
+    list: bool,
+    fixed_grid: bool,
+    free_layout: bool,
+    icon_display: luciddesk_core::IconDisplay,
+    icon_size: u32,
+    grid_scale: u32,
+    font_revision: u64,
+    asset_font_revision: u64,
+}
+
+impl ViewportKey {
+    pub(super) fn read(hwnd: windows_sys::Win32::Foundation::HWND, model: &GroupModel) -> Self {
+        use windows_sys::Win32::UI::WindowsAndMessaging::*;
+        let mut bounds = RECT::default();
+        let visible = !model.collapsed && !model.merge_occluded && unsafe {
+            IsWindowVisible(hwnd) != 0 && IsIconic(hwnd) == 0
+                && GetClientRect(hwnd, &raw mut bounds) != 0
+        };
+        Self {
+            tab: model.active_tab,
+            visible: visible.then(|| VisibleViewport {
+                width: bounds.right,
+                height: bounds.bottom,
+                dpi: unsafe { GetDpiForWindow(hwnd) }.max(96),
+                items_revision: model.items_revision,
+                scroll: model.scroll,
+                scroll_x: model.scroll_x.to_bits(),
+                list: model.is_list(),
+                fixed_grid: model.fixed_grid,
+                free_layout: model.free_layout,
+                icon_display: model.icon_display,
+                icon_size: model.icon_size.to_bits(),
+                grid_scale: model.options.grid_scale.to_bits(),
+                font_revision: fonts::revision(),
+                asset_font_revision: assets::font_revision(),
+            }),
+        }
+    }
+}
+
 fn sync_viewport(source: &mut Source, view: &super::View) {
-    use windows_sys::Win32::UI::{HiDpi::GetDpiForWindow, WindowsAndMessaging::*};
     let hwnd = view.window.hwnd().cast();
-    let mut bounds = RECT::default();
-    let visible = unsafe {
-        IsWindowVisible(hwnd) != 0 && IsIconic(hwnd) == 0 && GetClientRect(hwnd, &raw mut bounds) != 0
-    };
     let mut model = view.model.borrow_mut();
-    let demand = if visible && !model.collapsed && !model.merge_occluded {
-        let scale = unsafe { GetDpiForWindow(hwnd) }.max(96) as f32 / 96.0;
-        let width = bounds.right as f32 / scale;
-        let height = bounds.bottom as f32 / scale;
+    let demand = ViewportKey::read(hwnd, &model).visible.and_then(|viewport| {
+        let scale = viewport.dpi as f32 / 96.0;
+        let width = viewport.width as f32 / scale;
+        let height = viewport.height as f32 / scale;
         let grid = model.grid(width, height);
+        if height - model.horizontal_inset(width) <= grid.content_top + 1.0 {
+            return None;
+        }
         let wanted = model.visible_indices(grid, grid.content_top - grid.cell_height, height + grid.cell_height)
             .filter(|&index| {
                 let (x, y) = model.cell(grid, index);
@@ -597,9 +651,7 @@ fn sync_viewport(source: &mut Source, view: &super::View) {
             .map(|index| model.items[index].identity.clone())
             .collect::<HashSet<_>>();
         (!wanted.is_empty()).then_some((assets::icon_resolution(grid.icon_size * scale), wanted))
-    } else {
-        None
-    };
+    });
     if source.set_viewport(demand) {
         let images: HashMap<_, _> = source.items.iter().filter_map(|item| {
             item.image.as_ref().map(|image| (&item.identity, image))

@@ -113,6 +113,76 @@ fn viewport_keeps_only_requested_pixels_and_reuses_them_from_the_shared_budget()
 }
 
 #[test]
+fn stationary_paints_skip_viewport_posts_and_same_count_reorders_post() {
+    use windows_sys::Win32::UI::WindowsAndMessaging::*;
+    let _sta = crate::pane::test_support::apartment();
+    let mut initial = super::super::tests::test_model("Folder viewport posts");
+    initial.folder = Some(PathBuf::from(r"C:\test"));
+    initial.list_view = true;
+    let mut second = patch_item();
+    second.identity = identity(PathBuf::from(r"C:\test\second.png"));
+    initial.replace_items(vec![patch_item(), second]);
+    let model = Rc::new(RefCell::new(initial));
+    let posts = Rc::new(Cell::new(0));
+    let count = Rc::clone(&posts);
+    let window = window::create(RectDip::from_bounds(40.0, 40.0, 400.0, 350.0), Rc::clone(&model), move |event| {
+        if matches!(event, Event::FolderViewport) { count.set(count.get() + 1); }
+        false
+    }).unwrap();
+    let hwnd = window.hwnd().cast();
+    unsafe { ShowWindow(hwnd, SW_SHOWNOACTIVATE); }
+    let paint = || unsafe {
+        SendMessageW(hwnd, WM_PAINT, 0, 0);
+        let mut msg = MSG::default();
+        while PeekMessageW(&raw mut msg, hwnd, window::RUN_POSTED_ACTION, window::RUN_POSTED_ACTION, PM_REMOVE) != 0 {
+            DispatchMessageW(&raw const msg);
+        }
+    };
+    paint();
+    paint();
+    let initial_posts = posts.get();
+    assert!(initial_posts > 0);
+    model.borrow_mut().hovered_item = Some(0);
+    for _ in 0..8 { paint(); }
+    assert_eq!(posts.get(), initial_posts);
+
+    let mut items = model.borrow().items.clone();
+    items.reverse();
+    model.borrow_mut().replace_items(items);
+    paint();
+    assert_eq!(posts.get(), initial_posts + 1);
+    model.borrow_mut().scroll = 1;
+    paint();
+    assert_eq!(posts.get(), initial_posts + 2);
+    model.borrow_mut().collapsed = true;
+    paint();
+    assert_eq!(posts.get(), initial_posts + 3);
+}
+
+#[test]
+fn header_only_client_does_not_prefetch_first_row() {
+    use windows_sys::Win32::UI::WindowsAndMessaging::*;
+    let root = tempfile::tempdir().unwrap();
+    let mut source = Source::start(root.path().into(), Default::default()).unwrap();
+    source.updates.recv_timeout(Duration::from_secs(5)).unwrap().unwrap();
+    let item = patch_item();
+    source.apply_scan(Ok(vec![item.clone()]));
+    let mut model = super::super::tests::test_model("Header-only viewport");
+    model.folder = Some(root.path().into());
+    model.list_view = true;
+    model.replace_items(vec![item]);
+    let id = model.active_tab;
+    let window = windows_window::Window::new("Header-only viewport")
+        .size(400, super::super::layout::HEADER as i32)
+        .style(WS_POPUP).ex_style(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE).create().unwrap();
+    unsafe { ShowWindow(window.hwnd().cast(), SW_SHOWNOACTIVATE); }
+    let view = View { id, target: Rc::new(Cell::new(id)), window, model: Rc::new(RefCell::new(model)) };
+    sync_viewport(&mut source, &view);
+    assert!(source.viewport.is_none());
+    assert!(!source.request.images_pending.load(std::sync::atomic::Ordering::Acquire));
+}
+
+#[test]
 fn offscreen_file_types_complete_type_sort_without_loading_pixels() {
     let root = tempfile::tempdir().unwrap();
     for name in ["z.txt", "b.bmp", "a.txt"] {

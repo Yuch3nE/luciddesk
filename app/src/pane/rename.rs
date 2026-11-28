@@ -789,6 +789,7 @@ mod tests {
                 label: "网易云音乐".into(),
                 image: None,
             }],
+            items_revision: 0,
             icon_size: 48.0,
             selected: Some(0),
             selection: [0].into_iter().collect(),

@@ -65,6 +65,7 @@ pub struct GroupModel {
     pub native_material: bool,
     pub title: String,
     pub items: Vec<Item>,
+    pub(super) items_revision: u64,
     pub icon_size: f32,
     // Keyboard focus may point to an unselected item after Ctrl+navigation.
     pub selected: Option<usize>,
@@ -208,6 +209,7 @@ impl GroupModel {
             if let Some(key) = &mut cache.key { key.items_address = items.as_ptr() as usize; }
         } else { cache.key = None; }
         self.items = items;
+        self.items_revision = self.items_revision.wrapping_add(1);
         self.selected =
             focus.and_then(|identity| self.items.iter().position(|i| i.identity == identity));
         self.selection_anchor =

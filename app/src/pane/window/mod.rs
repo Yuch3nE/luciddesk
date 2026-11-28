@@ -335,6 +335,7 @@ where
     let menu_active = Rc::new(std::cell::Cell::new(false));
     let mut paint_recovery = super::composition::PaintRecovery::default();
     let folder_viewport_pending = Rc::new(std::cell::Cell::new(false));
+    let mut folder_viewport = None;
     let mut gpu_idle_at = None::<std::time::Instant>;
     let mut gpu_retired = false;
     let model_init = Rc::clone(&model);
@@ -402,16 +403,26 @@ where
             if message == WM_DESTROY || (message == WM_SHOWWINDOW && wparam == 0) {
                 control_redraw.sync(hwnd, false);
             }
-            if matches!(message, WM_PAINT | WM_WINDOWPOSCHANGED | WM_SHOWWINDOW | WM_SIZE | TAB_CHANGED)
-                && model.borrow().folder.is_some() && !folder_viewport_pending.replace(true)
+            if message == TAB_CHANGED { folder_viewport = None; }
+            if matches!(message, WM_PAINT | WM_WINDOWPOSCHANGED | WM_SHOWWINDOW | WM_SIZE | WM_DPICHANGED | TAB_CHANGED)
+                && !folder_viewport_pending.get()
             {
-                let pending = Rc::clone(&folder_viewport_pending);
-                let events = Rc::clone(&events);
-                if !post_action(hwnd, move || {
-                    pending.set(false);
-                    (events.borrow_mut())(Event::FolderViewport);
-                }) {
-                    folder_viewport_pending.set(false);
+                let key = {
+                    let model = model.borrow();
+                    model.folder.is_some().then(|| super::folder::ViewportKey::read(hwnd, &model))
+                };
+                if key.is_some() && key != folder_viewport {
+                    let pending = Rc::clone(&folder_viewport_pending);
+                    let events = Rc::clone(&events);
+                    if post_action(hwnd, move || {
+                        pending.set(false);
+                        (events.borrow_mut())(Event::FolderViewport);
+                    }) {
+                        folder_viewport_pending.set(true);
+                        folder_viewport = key;
+                    }
+                } else if key.is_none() {
+                    folder_viewport = None;
                 }
             }
             if matches!(message, WM_MOUSELEAVE | WM_NCMOUSEMOVE | WM_LBUTTONDOWN

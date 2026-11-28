@@ -427,6 +427,7 @@ pub(super) fn test_model(title: &str) -> GroupModel {
         native_material: false,
         title: title.into(),
         items: vec![],
+        items_revision: 0,
         icon_size: 48.0,
 
         selected: None,
