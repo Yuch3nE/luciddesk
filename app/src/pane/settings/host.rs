@@ -76,7 +76,12 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
     // Navigation belongs to this window, not the saved workspace or connection state.
     let mut page = initial_page;
     let mut selected_plugin: Option<String> = None;
-    let mut plugin_document: Option<Result<serde_json::Value, String>> = None;
+    let mut plugin_document: Option<(String, Result<serde_json::Value, String>)> = None;
+    let mut plugin_dirty = true;
+    let mut preference_revision = None;
+    let mut resolved_theme = None;
+    #[cfg(test)]
+    let mut snapshot_reads = 0_isize;
     let mut navigation_offset = 0.0_f32;
     let mut reveal_navigation = true;
     let (dropdown_sender, dropdown_receiver) = std::sync::mpsc::channel::<Control>();
@@ -125,12 +130,27 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
             if msg == WM_NCCALCSIZE || msg == WM_NCPAINT {
                 return Some(0);
             }
-            if msg == WM_NCACTIVATE {
+            if matches!(msg, WM_NCACTIVATE | WM_ERASEBKGND) {
                 return Some(1);
+            }
+            #[cfg(test)]
+            if msg == INSPECT_SNAPSHOT_READS {
+                return Some(snapshot_reads);
+            }
+            if msg == WM_TIMER && wp == CONTROL_MOTION_TIMER {
+                unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
+                return Some(0);
             }
             let Some(state) = weak.upgrade() else {
                 return Some(0);
             };
+            if msg == REFRESH_SNAPSHOT {
+                preference_revision = None;
+                plugin_dirty = true;
+                scene_key = None;
+                unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
+                return Some(0);
+            }
             if matches!(
                 msg,
                 WM_LBUTTONDOWN | WM_MOUSELEAVE | WM_NCMOUSEMOVE | WM_MOUSEWHEEL
@@ -203,6 +223,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
             }
             if msg == crate::i18n::CHANGED {
                 scene_key = None;
+                plugin_dirty = true;
                 font_load = None; fonts_loaded = false; font_load_failed = false;
                 all_fonts.clear(); font_choices.clear();
                 // Keep the query and page position. The new language's background
@@ -299,6 +320,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
             }
             if msg == SELECT_PLUGIN {
                 selected_plugin = PLUGIN_SELECTION.with(|pending| pending.borrow_mut().take());
+                plugin_dirty = true;
                 page = 15; scene_key = None; scroll_offset = 0.0; focus = None; reveal_navigation = true;
                 recording_peek = false; recording_show_panels = false; style_input = None;
                 unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
@@ -380,6 +402,10 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 return Some(0);
             }
             if matches!(msg, WM_SETTINGCHANGE | WM_THEMECHANGED | WM_POWERBROADCAST) {
+                if matches!(msg, WM_SETTINGCHANGE | WM_THEMECHANGED) {
+                    resolved_theme = None;
+                    scene_key = None;
+                }
                 unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
             }
             if msg == WM_DPICHANGED {
@@ -419,7 +445,6 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 msg,
                 WM_PAINT
                     | SELECT_SETTING
-                    | WM_ERASEBKGND
                     | WM_SIZE
                     | WM_ACTIVATE
                     | WM_ACTIVATEAPP
@@ -433,14 +458,13 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     | WM_LBUTTONUP
                     | WM_CAPTURECHANGED
                     | WM_CANCELMODE
-                    | WM_TIMER
                     | WM_KEYDOWN
                     | WM_SYSKEYDOWN
             ) {
                 return None;
             }
             let mut snapshot_changed = false;
-            if painter_family != fonts::family() || painter_language != crate::i18n::language() {
+            if fonts::with_family(|family| painter_family != family) || painter_language != crate::i18n::language() {
                 if let Ok(fresh) = Painter::new() {
                     painter = fresh;
                     painter_family = fonts::family();
@@ -448,51 +472,47 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     snapshot_changed = true;
                 }
             }
-            let plugin_pages = plugin_content::pages();
-            if selected_plugin.as_ref().is_some_and(|id| !plugin_pages.iter().any(|p| &p.id == id)) {
-                selected_plugin = None; page = 15; plugin_document = None;
-                scroll_offset = 0.0; scene_key = None;
+            if msg == WM_ACTIVATE && wp & 0xffff != WA_INACTIVE as usize {
+                preference_revision = None;
+                plugin_dirty = true;
             }
             let available = if let Ok(state) = state.try_borrow() {
-                if let Some(id) = &selected_plugin {
-                    let fresh = Some(plugin_content::load(id));
-                    snapshot_changed |= plugin_document != fresh;
-                    plugin_document = fresh;
-                }
                 if panels != state.workspace.panels() {
                     panels = state.workspace.panels().to_vec();
                     snapshot_changed = true;
                 }
-                let fresh_cli = control::enabled(&state.store);
-                snapshot_changed |= cli_enabled != fresh_cli;
-                cli_enabled = fresh_cli;
-                let fresh_auto_check = crate::updates::automatic_enabled(&state.store);
-                snapshot_changed |= auto_check_updates != fresh_auto_check;
-                auto_check_updates = fresh_auto_check;
-                let fresh_desktop_double_click = desktop_toggle::enabled(&state.store);
-                snapshot_changed |= desktop_double_click != fresh_desktop_double_click;
-                desktop_double_click = fresh_desktop_double_click;
                 search_visible = state.views.iter().any(|v| state.workspace.panel(v.id).is_some_and(Panel::is_search));
-                let connected = state.session.is_some();
-                snapshot_changed |= desktop_connected != connected;
-                desktop_connected = connected;
-                let fresh = recovery::view(&state);
-                let policy = recovery::Policy::load(&state.store).unwrap_or(backup_policy);
-                snapshot_changed |= fresh != backup_view || policy != backup_policy;
-                backup_view = fresh; backup_policy = policy;
-                if backup_offset >= backup_view.records.len() {backup_offset = 0;}
-                let defaults=folder::Defaults::load(&state.store).unwrap_or_default();
-                snapshot_changed |= defaults != folder_defaults;
-                folder_defaults=defaults;
-                let defaults = layout_defaults::Mode::load(&state.store).unwrap_or_default();
-                snapshot_changed |= defaults != layout_defaults;
-                layout_defaults = defaults;
-                let mode = folder::EntryMode::load(&state.store).unwrap_or_default();
-                snapshot_changed |= mode != folder_entry_mode;
-                folder_entry_mode = mode;
-                show_panels_enabled = show_hotkey::enabled(&state.store);
-                show_panels_shortcut = show_hotkey::settings(&state.store);
-                chosen_language = state.store.preference("language").ok().flatten().unwrap_or_else(|| "system".into());
+                desktop_connected = state.session.is_some();
+                if matches!(page, 6 | 9 | 10) {
+                    let fresh = recovery::view(&state);
+                    snapshot_changed |= fresh != backup_view;
+                    backup_view = fresh;
+                    if backup_offset >= backup_view.records.len() { backup_offset = 0; }
+                }
+                let revision = state.store.change_count();
+                if preference_revision != Some(revision) {
+                    #[cfg(test)]
+                    { snapshot_reads += 1; }
+                    preference_revision = Some(revision);
+                    let previous = (cli_enabled, auto_check_updates, desktop_double_click, backup_policy,
+                        folder_defaults, layout_defaults, folder_entry_mode, show_panels_enabled,
+                        show_panels_shortcut);
+                    cli_enabled = control::enabled(&state.store);
+                    auto_check_updates = crate::updates::automatic_enabled(&state.store);
+                    desktop_double_click = desktop_toggle::enabled(&state.store);
+                    backup_policy = recovery::Policy::load(&state.store).unwrap_or(backup_policy);
+                    folder_defaults = folder::Defaults::load(&state.store).unwrap_or_default();
+                    layout_defaults = layout_defaults::Mode::load(&state.store).unwrap_or_default();
+                    folder_entry_mode = folder::EntryMode::load(&state.store).unwrap_or_default();
+                    show_panels_enabled = show_hotkey::enabled(&state.store);
+                    show_panels_shortcut = show_hotkey::settings(&state.store);
+                    let language = state.store.preference("language").ok().flatten().unwrap_or_else(|| "system".into());
+                    snapshot_changed |= chosen_language != language;
+                    chosen_language = language;
+                    snapshot_changed |= previous != (cli_enabled, auto_check_updates, desktop_double_click, backup_policy,
+                        folder_defaults, layout_defaults, folder_entry_mode, show_panels_enabled,
+                        show_panels_shortcut);
+                }
                 options = state.workspace.pane_options();
                 appearance = state
                     .workspace
@@ -503,12 +523,34 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
             } else {
                 false
             };
+            if available && std::mem::take(&mut plugin_dirty) {
+                if let Some(id) = &selected_plugin {
+                    if plugin_content::pages().iter().any(|plugin| &plugin.id == id) {
+                        plugin_document = Some((id.clone(), plugin_content::load(id)));
+                    } else {
+                        selected_plugin = None;
+                        page = 15;
+                        plugin_document = None;
+                        scroll_offset = 0.0;
+                    }
+                } else {
+                    plugin_document = None;
+                }
+                snapshot_changed = true;
+            }
             let at = panels.iter().position(|p| p.id() == selected).unwrap_or(0);
             let panel = panels.get(at);
             if let Some(p) = panel {
                 selected = p.id();
             }
-            let dark = theme::is_dark(appearance.0);
+            let dark = match resolved_theme {
+                Some((mode, dark)) if mode == appearance.0 => dark,
+                _ => {
+                    let dark = theme::is_dark(appearance.0);
+                    resolved_theme = Some((appearance.0, dark));
+                    dark
+                }
+            };
             luciddesk_window::set_message_theme(match appearance.0 {
                 PanelTheme::System => None, PanelTheme::Dark => Some(true), PanelTheme::Light => Some(false),
             });
@@ -531,8 +573,8 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                     show_panels_shortcut, show_hotkey::status()),
                 unsafe { IsZoomed(hwnd) } != 0,
                 search_visible,
-                (desktop_connected, (interface_flags::display_preferences(), snap::gap(), luciddesk_diagnostics::level()), updates.borrow().status(), startup.status(), startup.busy(),
-                    (selected_plugin.clone(), navigation_offset.to_bits(), plugin_pages.iter().map(|p| (p.id.clone(), p.name.clone())).collect::<Vec<_>>())),
+                (desktop_connected, (interface_flags::display_preferences(), snap::gap(), luciddesk_diagnostics::level()),
+                    (page == 5).then(|| updates.borrow().status()), startup.status(), startup.busy(), navigation_offset.to_bits()),
             );
             if scroll_page != page {
                 scroll_offset = 0.0;
@@ -555,8 +597,13 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                         appearance,
                         options,
                     ) };
-                if let Some(id) = &selected_plugin { plugin_content::draw(&mut body, w, id, plugin_document.clone().unwrap_or_else(|| plugin_content::load(id))); }
-                else if page == 15 { plugin_page::draw(&mut body, w); }
+                if let Some(id) = &selected_plugin {
+                    if let Some((loaded, document)) = &plugin_document && loaded == id {
+                        plugin_content::draw(&mut body, w, id, document.clone());
+                    }
+                } else if page == 15 {
+                    plugin_page::draw(&mut body, w);
+                }
                 if page == 13 {
                     layout::general(&mut body, w, startup.status(), startup.busy(), cli_enabled, skill_prompt_copied, &chosen_language);
                     layout::desktop_gesture(&mut body, w, desktop_double_click);
@@ -702,8 +749,6 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                         });
                     }
                 }
-                WM_TIMER if wp == CONTROL_MOTION_TIMER => {}
-                WM_ERASEBKGND => return Some(1),
                 WM_SIZE => {
                     hover = None;
                 }
@@ -1068,6 +1113,7 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 .filter(|_| available)
                 .filter(|c| c.enabled)
             {
+                plugin_dirty |= matches!(c.action, Action::Page(_) | Action::PluginPage(_) | Action::PluginAction(..) | Action::PluginEnabled(..));
                 if actions::execute(actions::Context {
                     dropdown_sender: &dropdown_sender,
                     state: &state, hwnd, selected, appearance, dark, scale, backup_view: &backup_view, font_search: font_editor.hwnd, all_fonts: &all_fonts,

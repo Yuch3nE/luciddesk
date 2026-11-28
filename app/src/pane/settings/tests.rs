@@ -1,6 +1,39 @@
 use super::*;
 
 #[test]
+fn settings_snapshot_skips_pointer_animation_and_erase_until_preferences_change() {
+    let _sta = crate::pane::test_support::apartment();
+    let _graphics = crate::pane::native_graphics::GraphicsLifetime;
+    let state = Rc::new(RefCell::new(super::super::tests::test_state()));
+    host::show_at(&state, PanelId::new(1), 13).unwrap();
+    let hwnd = state.borrow().settings.as_ref().unwrap().hwnd().cast();
+    let reads = || unsafe { SendMessageW(hwnd, INSPECT_SNAPSHOT_READS, 0, 0) };
+    unsafe {
+        SendMessageW(hwnd, WM_PAINT, 0, 0);
+        let initial = reads();
+        assert!(initial > 0);
+        for _ in 0..12 {
+            SendMessageW(hwnd, WM_MOUSEMOVE, 0, (130 << 16) | 400);
+            SendMessageW(hwnd, WM_TIMER, CONTROL_MOTION_TIMER, 0);
+            assert_eq!(SendMessageW(hwnd, WM_ERASEBKGND, 0, 0), 1);
+            SendMessageW(hwnd, WM_PAINT, 0, 0);
+        }
+        assert_eq!(reads(), initial);
+
+        let owner = state.borrow_mut();
+        owner.store.save_preference("language", "ja").unwrap();
+        SendMessageW(hwnd, WM_PAINT, 0, 0);
+        assert_eq!(reads(), initial, "reentrant paint keeps the last complete snapshot");
+        drop(owner);
+        SendMessageW(hwnd, WM_PAINT, 0, 0);
+        assert_eq!(reads(), initial + 1);
+        SendMessageW(hwnd, WM_PAINT, 0, 0);
+        assert_eq!(reads(), initial + 1);
+        SendMessageW(hwnd, WM_CLOSE, 0, 0);
+    }
+}
+
+#[test]
 #[ignore = "Manual offscreen benchmark; timings are not CI assertions"]
 fn rendering_hot_paths_latency() {
     let _sta = crate::pane::test_support::apartment();

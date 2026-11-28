@@ -25,10 +25,17 @@ const SELECT_PANEL: u32 = WM_APP + 95;
 const SELECT_PLUGIN: u32 = WM_APP + 97;
 const SELECT_SETTING: u32 = WM_APP + 98;
 const CLASSIFICATION_KEY: u32 = WM_APP + 99;
+const REFRESH_SNAPSHOT: u32 = WM_APP + 100;
 #[cfg(test)]
 const INSPECT_STARTUP: u32 = WM_APP + 198;
 #[cfg(test)]
 const SELECT_TEST_PAGE: u32 = WM_APP + 199;
+#[cfg(test)]
+const INSPECT_SNAPSHOT_READS: u32 = WM_APP + 200;
+
+pub(super) fn refresh_snapshot(hwnd: windows_sys::Win32::Foundation::HWND) {
+    unsafe { PostMessageW(hwnd, REFRESH_SNAPSHOT, 0, 0); }
+}
 thread_local! { static PLUGIN_SELECTION: RefCell<Option<String>> = const { RefCell::new(None) }; }
 const PREPARE_REVEAL: u32 = WM_APP + 96;
 const REVEAL_TIMER: usize = 0x4c5055;

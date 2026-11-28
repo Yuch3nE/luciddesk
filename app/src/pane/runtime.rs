@@ -399,9 +399,7 @@ pub(super) fn reload(state: &Rc<RefCell<PaneApp>>) -> Result<(), String> {
         create_view(state, id)?;
     }
     if let Some(settings) = &state.borrow().settings {
-        unsafe {
-            InvalidateRect(settings.hwnd().cast(), std::ptr::null(), 0);
-        }
+        super::settings::refresh_snapshot(settings.hwnd().cast());
     }
     Ok(())
 }
