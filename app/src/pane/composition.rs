@@ -88,6 +88,7 @@ impl Surface {
         self.opacity.set(opacity);
         Ok(())
     }
+    #[cfg(test)]
     pub fn new(hwnd: HWND) -> Result<Self> {
         Self::new_with_opacity(hwnd, 1.0)
     }
@@ -123,10 +124,14 @@ impl Surface {
     }
 
     pub fn new_pane(hwnd: HWND) -> Result<Self> {
+        Self::new_pane_with_opacity(hwnd, 1.0)
+    }
+
+    pub fn new_pane_with_opacity(hwnd: HWND, initial_opacity: f32) -> Result<Self> {
         let mut surface = if crate::pane::render_debug::shared_pane_tree() {
-            Self::create(hwnd, 1.0, gpu_device()?, true, true)?
+            Self::create(hwnd, initial_opacity, gpu_device()?, true, true)?
         } else {
-            Self::new(hwnd)?
+            Self::new_with_opacity(hwnd, initial_opacity)?
         };
         Self::disable_window_shadow(hwnd)?;
         // On Windows 11, forced DWM rounding casts an activation shadow even with
@@ -335,7 +340,7 @@ impl Surface {
     }
 
     #[cfg(test)]
-    pub fn present(&mut self, width: u32, height: u32, pixels: &[u8]) -> Result<()> {
+    pub fn present(&mut self, width: u32, height: u32, pixels: &[u8]) -> Result<bool> {
         let expected = (width as usize)
             .checked_mul(height as usize)
             .and_then(|count| count.checked_mul(4));
@@ -351,11 +356,11 @@ impl Surface {
             self.context
                 .UpdateSubresource(&buffer, 0, None, pixels.as_ptr().cast(), width * 4, 0);
         }
-        self.end_frame()?;
+        let presented = self.end_frame()?;
         if let Some(layer) = &self.layer {
             layer.commit()?;
         }
-        Ok(())
+        Ok(presented)
     }
 
     /// Canvas owns buffer binding and resizing; the renderer owns the draw bracket.
@@ -384,7 +389,8 @@ impl Surface {
         self.begin_frame(width, height).map(Some)
     }
 
-    pub fn end_frame(&self) -> Result<()> {
+    /// Returns whether DXGI accepted the frame. A busy queue schedules a retry.
+    pub fn end_frame(&self) -> Result<bool> {
         // DWM owns display synchronization. Never make the common UI thread wait
         // for every pane's vertical blank; a full queue retries the latest state.
         let result = unsafe { self.present.Present(0, DXGI_PRESENT_DO_NOT_WAIT) };
@@ -396,13 +402,13 @@ impl Surface {
             self.retry_at.set(Some(
                 std::time::Instant::now() + std::time::Duration::from_millis(16),
             ));
-            return Ok(());
+            return Ok(false);
         }
         self.retry_at.set(None);
         unsafe {
             windows_sys::Win32::UI::WindowsAndMessaging::KillTimer(self.hwnd.0, PRESENT_RETRY);
         }
-        result.ok()
+        result.ok().map(|()| true)
     }
 
     fn schedule_retry(&self, millis: u32) -> Result<()> {

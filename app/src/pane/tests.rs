@@ -254,6 +254,45 @@ fn language_switch_preserves_panel_items_selection_and_scroll() {
 }
 
 #[test]
+fn retired_minimized_pane_waits_for_a_drawable_restore() {
+    use windows_sys::Win32::UI::WindowsAndMessaging::*;
+    let _sta = crate::pane::test_support::apartment();
+    let state = Rc::new(RefCell::new(test_state()));
+    create_view(&state, PanelId::new(1)).unwrap();
+    let hwnd = state.borrow().views[0].window.hwnd().cast();
+    let opacity = || unsafe { SendMessageW(hwnd, window::TEST_SURFACE_OPACITY, 0, 0) };
+    let wait = |done: &dyn Fn() -> bool, duration: std::time::Duration| {
+        let deadline = std::time::Instant::now() + duration;
+        while !done() {
+            assert!(std::time::Instant::now() < deadline, "pane GPU state did not settle");
+            unsafe {
+                let mut message = MSG::default();
+                while PeekMessageW(&raw mut message, hwnd, 0, 0, PM_REMOVE) != 0 {
+                    DispatchMessageW(&raw const message);
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    };
+    wait(&|| opacity() == 1000, std::time::Duration::from_secs(5));
+    unsafe { ShowWindow(hwnd, SW_SHOWMINNOACTIVE); }
+    assert_ne!(unsafe { IsIconic(hwnd) }, 0);
+    desktop_toggle::child_visibility(true, &[hwnd]);
+    let retired = || opacity() == -1;
+    wait(&retired, std::time::Duration::from_secs(8));
+    desktop_toggle::child_visibility(false, &[hwnd]);
+    assert_ne!(unsafe { IsWindowVisible(hwnd) }, 0);
+    assert_ne!(unsafe { IsIconic(hwnd) }, 0);
+    unsafe { SendMessageW(hwnd, WM_PAINT, 0, 0); }
+    assert!(retired(), "restoring to minimized must keep the surface retired");
+
+    unsafe { ShowWindow(hwnd, SW_SHOWNOACTIVATE); }
+    assert_eq!(unsafe { IsIconic(hwnd) }, 0);
+    assert!(retired(), "a cold surface must wait for a paint");
+    wait(&|| opacity() == 1000, std::time::Duration::from_secs(5));
+}
+
+#[test]
 fn all_pane_types_fade_and_close_after_the_transition() {
     use windows_sys::Win32::UI::WindowsAndMessaging::*;
     let _sta = crate::pane::test_support::apartment();
@@ -263,7 +302,13 @@ fn all_pane_types_fade_and_close_after_the_transition() {
     create_view(&state, PanelId::new(1)).unwrap();
     let folder = tempfile::tempdir().unwrap();
     handle(&state, PanelId::new(0), Event::MapFolder(folder.path().into())).unwrap();
-    handle(&state, PanelId::new(0), Event::EnableSearch).unwrap();
+    let search = PanelId::new(2);
+    {
+        let mut state = state.borrow_mut();
+        state.workspace.panel_mut(search).unwrap().set_search(true);
+        save(&mut state).unwrap();
+    }
+    create_view(&state, search).unwrap();
     let windows: Vec<_> = state.borrow().views.iter().map(|v| v.window.hwnd().cast()).collect();
     assert_eq!(windows.len(), 3);
     let pump = |millis| {

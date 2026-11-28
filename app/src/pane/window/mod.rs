@@ -301,6 +301,13 @@ pub(super) unsafe extern "system" fn borderless_proc(
 const HIDDEN_GPU_TIMER: usize = 0x4c50_4748;
 const HIDDEN_GPU_DELAY_MS: u32 = 5_000;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PaneGpu {
+    Active,
+    Retired,
+    Restoring,
+}
+
 fn drawable(hwnd: HWND) -> bool {
     unsafe { IsWindowVisible(hwnd) != 0 && IsIconic(hwnd) == 0 }
 }
@@ -339,7 +346,7 @@ where
     let folder_viewport_pending = Rc::new(std::cell::Cell::new(false));
     let mut folder_viewport = None;
     let mut gpu_idle_at = None::<std::time::Instant>;
-    let mut gpu_retired = false;
+    let mut gpu = PaneGpu::Active;
     let model_init = Rc::clone(&model);
     let mut monitor = model.borrow().monitor.as_ref().map(|_| super::monitor::Client::new()).transpose()?;
     let inspect = std::env::var_os("LUCIDDESK_INSPECT").is_some();
@@ -356,16 +363,6 @@ where
             }
             unsafe { super::desktop_toggle::gate(raw.cast(), message, lparam); }
             let hwnd: HWND = raw.cast();
-            if gpu_retired && message == WM_WINDOWPOSCHANGING && !drawable(hwnd)
-                && unsafe { (*(lparam as *const WINDOWPOS)).flags & SWP_SHOWWINDOW != 0 }
-            {
-                // Give the normal hidden-to-visible transition a surface to fade in.
-                surface = Surface::new_pane(windows::Win32::Foundation::HWND(hwnd)).ok();
-                if surface.is_some() {
-                    gpu_retired = false;
-                    invalidate(hwnd);
-                }
-            }
             if message == WM_DESTROY {
                 unsafe { KillTimer(hwnd, HIDDEN_GPU_TIMER); }
             } else if matches!(message, WM_SHOWWINDOW | WM_WINDOWPOSCHANGED | WM_SIZE) {
@@ -376,8 +373,8 @@ where
                 };
                 if visible {
                     if gpu_idle_at.take().is_some() { unsafe { KillTimer(hwnd, HIDDEN_GPU_TIMER); } }
-                    if gpu_retired { invalidate(hwnd); }
-                } else if show_prepared.get() && !gpu_retired && gpu_idle_at.is_none()
+                    if gpu != PaneGpu::Active { invalidate(hwnd); }
+                } else if show_prepared.get() && gpu != PaneGpu::Retired && gpu_idle_at.is_none()
                     && unsafe { SetTimer(hwnd, HIDDEN_GPU_TIMER, HIDDEN_GPU_DELAY_MS, None) } != 0
                 {
                     gpu_idle_at = Some(std::time::Instant::now() + std::time::Duration::from_millis(u64::from(HIDDEN_GPU_DELAY_MS)));
@@ -392,7 +389,7 @@ where
                             paint_recovery.cancel(hwnd);
                             renderer.release_device_resources();
                             if let Some(surface) = surface.take() { surface.retire(); }
-                            gpu_retired = true;
+                            gpu = PaneGpu::Retired;
                         }
                     } else {
                         let remaining = (at.saturating_duration_since(std::time::Instant::now()).as_millis() as u32 + 1)
@@ -447,7 +444,9 @@ where
             if message == TEST_HOST_BACKDROP {
                 return Some(surface.as_ref().is_some_and(Surface::has_host_backdrop) as isize);
             }
-            let visibility_handled = visibility.message(hwnd, message, wparam, lparam, surface.as_ref(), |_| {});
+            // A cold restore owns its entrance fade once a frame has been submitted.
+            let visible_surface = surface.as_ref().filter(|_| gpu == PaneGpu::Active);
+            let visibility_handled = visibility.message(hwnd, message, wparam, lparam, visible_surface, |_| {});
             if message != WM_DESTROY && message != WM_NCDESTROY {
                 desktop_diagnostics::content(hwnd, message,
                     surface.as_ref().map(|s| s.current_opacity()), visibility.opacity());
@@ -896,17 +895,18 @@ where
                     }
                     let r = client(hwnd);
                     let mut controls_playing = false;
-                    if r.right > 0 && r.bottom > 0 && (!gpu_retired || drawable(hwnd)) {
+                    if r.right > 0 && r.bottom > 0 && (gpu == PaneGpu::Active || drawable(hwnd)) {
                         let s = scale(hwnd);
                         let radius = super::interface_flags::pane_corner_radius(model.borrow().options.corner_radius);
                         drag_clipped.update(hwnd, r.right, r.bottom, radius, s);
                         paint_recovery.paint(hwnd, &mut surface, "pane.window", |surface| {
                             if surface.is_none() {
-                                *surface = Some(Surface::new_pane(
+                                *surface = Some(Surface::new_pane_with_opacity(
                                     windows::Win32::Foundation::HWND(hwnd),
+                                    if gpu == PaneGpu::Active { 1.0 } else { 0.0 },
                                 )?);
+                                if gpu == PaneGpu::Retired { gpu = PaneGpu::Restoring; }
                             }
-                            gpu_retired = false;
                             let surface = surface.as_mut().unwrap();
                             surface.pane_corner_radius = model.borrow().options.corner_radius;
                             surface.pane_border = model.borrow().options.border;
@@ -932,8 +932,12 @@ where
                                 &model.borrow(),
                                 scrollbar_animated,
                             )?;
-                            surface.end_frame()?;
-                            Ok(true)
+                            let presented = surface.end_frame()?;
+                            if presented && gpu == PaneGpu::Restoring {
+                                visibility.reveal_after_present(hwnd, surface, scrollbar_animated)?;
+                                gpu = PaneGpu::Active;
+                            }
+                            Ok(presented)
                         });
                     }
                     control_redraw.sync(hwnd, controls_playing);

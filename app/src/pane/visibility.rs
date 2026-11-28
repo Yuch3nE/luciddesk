@@ -49,6 +49,17 @@ pub(super) struct Transition {
 impl Transition {
     pub fn opacity(&self) -> f32 { self.opacity.unwrap_or(1.0) }
 
+    /// Begin the usual entrance transition after a transparent surface has a frame.
+    pub fn reveal_after_present(&mut self, hwnd: HWND, surface: &Surface, animated: bool) -> windows::core::Result<()> {
+        self.from = 0.0;
+        self.track = None;
+        self.pending = animated && unsafe { SetTimer(hwnd, TIMER, USER_TIMER_MINIMUM, None) } != 0;
+        let opacity = if self.pending { 0.0 } else { 1.0 };
+        surface.opacity(opacity)?;
+        self.opacity = Some(opacity);
+        Ok(())
+    }
+
     pub fn message(&mut self, hwnd: HWND, msg: u32, wp: usize, lp: isize,
         surface: Option<&Surface>, mut companion: impl FnMut(f32)) -> bool {
         let flags = if msg == WM_WINDOWPOSCHANGING {
@@ -129,6 +140,27 @@ impl Transition {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn restored_surface_applies_material_transparently_then_reveals_after_present() {
+        let _sta = crate::pane::test_support::apartment();
+        for animated in [false, true] {
+            let window = windows_window::Window::new("Cold surface restore")
+                .size(96, 64).style(WS_POPUP)
+                .ex_style(WS_EX_TOOLWINDOW | WS_EX_NOREDIRECTIONBITMAP)
+                .create().unwrap();
+            let hwnd = windows::Win32::Foundation::HWND(window.hwnd().cast());
+            let mut surface = Surface::new_pane_with_opacity(hwnd, 0.0).unwrap();
+            surface.theme(hwnd, false);
+            surface.material(hwnd, luciddesk_core::Backdrop::Solid { color: 0xffeeee, opacity: 1.0 }).unwrap();
+            assert_eq!(surface.current_opacity(), 0.0);
+            assert!(surface.present(96, 64, &[0; 96 * 64 * 4]).unwrap());
+            let mut transition = Transition::default();
+            transition.reveal_after_present(hwnd.0, &surface, animated).unwrap();
+            assert_eq!(surface.current_opacity(), if animated { 0.0 } else { 1.0 });
+            assert_eq!(transition.pending, animated);
+        }
+    }
 
     #[test]
     fn language_notification_and_unsolicited_close_preserve_visibility() {
