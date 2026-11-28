@@ -20,6 +20,26 @@ fn effects_policy_is_queried_once_until_invalidated() {
 }
 
 #[test]
+#[ignore = "Manual system effects benchmark; uses the current system policy"]
+fn system_effects_hot_path_latency() {
+    let _sta = crate::pane::test_support::apartment();
+    let window = windows_window::Window::new("Effects benchmark")
+        .style(windows_sys::Win32::UI::WindowsAndMessaging::WS_POPUP)
+        .ex_style(windows_sys::Win32::UI::WindowsAndMessaging::WS_EX_NOREDIRECTIONBITMAP)
+        .create().unwrap();
+    let acrylic = Acrylic::new_with_opacity(HWND(window.hwnd().cast()), 1.0).unwrap();
+    acrylic.effects_override.set(None);
+    let mut times = Vec::with_capacity(240);
+    for _ in 0..240 {
+        let start = std::time::Instant::now();
+        for _ in 0..128 { std::hint::black_box(acrylic.effects_enabled()); }
+        times.push(start.elapsed().as_nanos() / 128);
+    }
+    times.sort_unstable();
+    println!("system_effects n=30720 p50_ns={} p95_ns={}", times[120], times[228]);
+}
+
+#[test]
 fn diagnostic_bypass_never_enables_host_or_wallpaper_backdrops() {
     let _sta = crate::pane::test_support::apartment();
     let window = windows_window::Window::new("Backdrop isolation")

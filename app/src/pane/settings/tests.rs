@@ -2806,3 +2806,35 @@ fn tab_alignment_dropdown_exposes_both_modes_and_current_selection() {
         assert_eq!(*selected, *left == interface_flags::TAB_LEFT_ALIGNED.get());
     }
 }
+#[test]
+#[ignore = "Manual settings message benchmark; run alone on an interactive desktop"]
+fn settings_pointer_hot_path_latency() {
+    let _sta = crate::pane::test_support::apartment();
+    let _graphics = crate::pane::native_graphics::GraphicsLifetime;
+    let root = tempfile::tempdir().unwrap();
+    for file_backed in [true, false] {
+        let state = Rc::new(RefCell::new(super::super::tests::test_state()));
+        if file_backed {
+            state.borrow_mut().store = WorkspaceStore::open(&root.path().join("workspace.db")).unwrap();
+        }
+        host::show_at(&state, PanelId::new(1), 13).unwrap();
+        let hwnd = state.borrow().settings.as_ref().unwrap().hwnd().cast();
+        unsafe {
+            SendMessageW(hwnd, WM_PAINT, 0, 0);
+            for (name, message, param) in [
+                ("settings_mousemove", WM_MOUSEMOVE, (130 << 16) | 400),
+                ("settings_erase", WM_ERASEBKGND, 0),
+            ] {
+                let mut times = Vec::with_capacity(1500);
+                for i in 0..1600 {
+                    let start = std::time::Instant::now();
+                    SendMessageW(hwnd, message, 0, param);
+                    if i >= 100 { times.push(start.elapsed()); }
+                }
+                times.sort_unstable();
+                println!("{name} file_backed={file_backed} n={} p50_ns={} p95_ns={}", times.len(), times[750].as_nanos(), times[1425].as_nanos());
+            }
+            SendMessageW(hwnd, WM_CLOSE, 0, 0);
+        }
+    }
+}
