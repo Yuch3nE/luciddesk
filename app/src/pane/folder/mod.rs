@@ -616,13 +616,20 @@ pub(super) fn poll(state: &mut PaneApp) -> Vec<(PanelId, ShellIdentity)> {
             continue;
         }
         let Some(mut patches) = repaint.remove(&view.id) else { continue; };
-        for item in &mut view.model.borrow_mut().items {
+        let mut model = view.model.borrow_mut();
+        let mut images_changed = false;
+        for item in &mut model.items {
             if let Some(patch) = patches.remove(&item.identity) {
                 if let Some(kind) = patch.kind { item.details.kind = kind; }
-                if let Some(image) = patch.image { item.image = Some(image); }
+                if let Some(image) = patch.image {
+                    item.image = Some(image);
+                    images_changed = true;
+                }
             }
             if patches.is_empty() { break; }
         }
+        if images_changed { model.image_revision = model.image_revision.wrapping_add(1); }
+        drop(model);
         unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
     }
     let mut renames = Vec::new();
@@ -666,6 +673,7 @@ pub(super) fn deactivate(state: &mut PaneApp, id: PanelId) {
         source.set_viewport(None);
         if let Some(model) = state.tab_models.get_mut(&id) {
             for item in &mut model.items { item.image = None; }
+            model.image_revision = model.image_revision.wrapping_add(1);
         }
     }
 }

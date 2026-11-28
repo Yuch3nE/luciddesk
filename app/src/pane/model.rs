@@ -66,6 +66,7 @@ pub struct GroupModel {
     pub title: String,
     pub items: Vec<Item>,
     pub(super) items_revision: u64,
+    pub(super) image_revision: u64,
     pub icon_size: f32,
     // Keyboard focus may point to an unselected item after Ctrl+navigation.
     pub selected: Option<usize>,

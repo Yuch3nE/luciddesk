@@ -709,6 +709,44 @@ fn identical_visible_icons_share_one_gpu_upload_and_changed_pixels_replace_it() 
 }
 
 #[test]
+fn budgeted_icon_uploads_finish_when_scrolling_stops_and_refresh_replaced_pixels() {
+    let _sta = crate::pane::test_support::apartment();
+    let device = windows_canvas::GpuDevice::new_warp().unwrap();
+    let bitmap = canvas::Offscreen::new(&device, 720, 520).unwrap();
+    let mut renderer = Renderer::new().unwrap();
+    let mut model = sample_model();
+    let template = model.items[0].clone();
+    model.items = (0..200).map(|i| Item {
+        identity: ShellIdentity::Namespace { parsing_name: format!("upload:{i}") },
+        image: template.image.as_ref().map(|image| Arc::new((**image).clone())),
+        ..template.clone()
+    }).collect();
+
+    let pending = renderer.paint_animated(&bitmap.target, 720, 520, 1.0, &model, false).unwrap();
+    assert!(pending);
+    assert_eq!(renderer.image_uploads, super::IMAGE_UPLOADS_PER_FRAME);
+    model.scroll = 6;
+    let (index, initial_uploads) = loop {
+        let before = renderer.image_uploads;
+        let pending = renderer.paint_animated(&bitmap.target, 720, 520, 1.0, &model, false).unwrap();
+        assert!(renderer.image_uploads - before <= super::IMAGE_UPLOADS_PER_FRAME);
+        if !pending {
+            assert!(renderer.visible_items.iter().all(|(index, _, _)| {
+                let image = model.items[*index].image.as_ref().unwrap();
+                renderer.images.contains_key(&(Arc::as_ptr(image) as usize))
+            }));
+            break (renderer.visible_items[0].0, renderer.image_uploads);
+        }
+        assert!(renderer.image_uploads > before && renderer.image_uploads <= model.items.len());
+    };
+    let old = model.items[index].image.replace(Arc::new((**template.image.as_ref().unwrap()).clone())).unwrap();
+    model.image_revision = model.image_revision.wrapping_add(1);
+    assert!(!renderer.paint_animated(&bitmap.target, 720, 520, 1.0, &model, false).unwrap());
+    assert!(!renderer.images.contains_key(&(Arc::as_ptr(&old) as usize)));
+    assert_eq!(renderer.image_uploads, initial_uploads + 1);
+}
+
+#[test]
 fn scrolling_releases_offscreen_icon_textures() {
     let _sta = crate::pane::test_support::apartment();
     let mut model = sample_model();
@@ -935,12 +973,14 @@ fn gpu_frames_preserve_colors_alpha_and_cached_images_across_resize() {
         // the Recycle Bin. Verify replacement reaches the real GPU texture.
         let mut updated = sample_model();
         for color in [[25, 180, 70, 255], [80, 100, 200, 255]] {
-            let old = updated.items[0].image.as_ref().unwrap();
-            updated.items[0].image = Some(Arc::new(assets::Pixels {
+            let mut items = updated.items.clone();
+            let old = items[0].image.as_ref().unwrap();
+            items[0].image = Some(Arc::new(assets::Pixels {
                 width: old.width,
                 height: old.height,
                 data: color.repeat((old.width * old.height) as usize),
             }));
+            updated.replace_items(items);
             let target = surface.begin_frame(400, 240).unwrap();
             gpu.paint(&target, 400, 240, 1.0, &updated).unwrap();
             let pixels = surface.readback().unwrap();

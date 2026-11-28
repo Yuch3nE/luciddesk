@@ -790,6 +790,7 @@ mod tests {
                 image: None,
             }],
             items_revision: 0,
+            image_revision: 0,
             icon_size: 48.0,
             selected: Some(0),
             selection: [0].into_iter().collect(),

@@ -425,6 +425,7 @@ fn create_model(state: &PaneApp, id: PanelId) -> Result<GroupModel, String> {
         title: panel.title().to_string(),
         items,
         items_revision: 0,
+        image_revision: 0,
         icon_size: layout::DESKTOP_ICON_SIZE,
         selected: None,
         selection: Default::default(),

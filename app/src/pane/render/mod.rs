@@ -16,6 +16,27 @@ use windows_canvas::ID2D1DeviceContext;
 
 use windows::core::Result;
 type ImageBitmap = (Weak<assets::Pixels>, windows_canvas::Bitmap, (u32, u32));
+const IMAGE_UPLOADS_PER_FRAME: usize = 8;
+
+#[derive(PartialEq)]
+struct ViewportKey {
+    width: u32,
+    height: u32,
+    scale: f32,
+    scroll: usize,
+    scroll_x: f32,
+    list: bool,
+    folder: bool,
+    fixed_grid: bool,
+    free_layout: bool,
+    icon_size: f32,
+    grid_scale: f32,
+    icon_display: luciddesk_core::IconDisplay,
+    items: (usize, usize, u64),
+    image_revision: u64,
+    tab: luciddesk_core::PanelId,
+    font: (u64, u64, &'static str),
+}
 
 // A quiet, font-independent silhouette fills the same slot as the real icon.
 // It also remains useful when Shell extraction fails; no perpetual loading animation.
@@ -88,6 +109,10 @@ pub struct Renderer {
     target: Option<(u32, u32, Option<canvas::Offscreen>, ID2D1DeviceContext)>,
     brushes: std::cell::RefCell<canvas::Brushes<13>>,
     images: HashMap<usize, ImageBitmap>,
+    viewport: Option<(ViewportKey, super::layout::Grid)>,
+    visible_items: Vec<(usize, f32, f32)>,
+    live_images: HashSet<usize>,
+    buffered_images: Vec<usize>,
     #[cfg(test)]
     image_uploads: usize,
     buttons: Highlights<usize>,
@@ -98,6 +123,7 @@ pub struct Renderer {
 impl Renderer {
     pub(super) fn release_device_resources(&mut self) {
         self.images.clear();
+        self.viewport = None;
         self.target = None;
         *self.brushes.get_mut() = Default::default();
         *self.frame_cache.get_mut() = Default::default();
@@ -349,6 +375,10 @@ impl Renderer {
             frame_cache: Default::default(),
             brushes: Default::default(),
             images: HashMap::new(),
+            viewport: None,
+            visible_items: Vec::new(),
+            live_images: HashSet::new(),
+            buffered_images: Vec::new(),
             #[cfg(test)]
             image_uploads: 0,
         })
@@ -369,6 +399,7 @@ impl Renderer {
             let target = bitmap.target.clone();
             self.target = Some((width, height, Some(bitmap), target));
             self.images.clear();
+            self.viewport = None;
         }
         Ok(())
     }
@@ -383,14 +414,8 @@ impl Renderer {
         model: &GroupModel,
     ) -> Result<Vec<u8>> {
         self.prepare(width, height, scale)?;
-        self.draw(
-            width,
-            height,
-            scale,
-            model,
-            model.grid(width as f32 / scale, height as f32 / scale),
-            false,
-        )?;
+        let grid = self.sync_viewport(width, height, scale, model);
+        self.draw(width, height, scale, model, grid, false, usize::MAX)?;
         self.target.as_ref().unwrap().2.as_ref().unwrap().pixels()
     }
 
@@ -398,7 +423,7 @@ impl Renderer {
     pub fn paint(
         &mut self, target: &ID2D1DeviceContext, width: u32, height: u32, scale: f32, model: &GroupModel,
     ) -> Result<()> {
-        self.paint_animated(target, width, height, scale, model, false).map(|_| ())
+        self.paint_to(target, width, height, scale, model, false, usize::MAX).map(|_| ())
     }
 
     pub(super) fn paint_animated(
@@ -410,27 +435,81 @@ impl Renderer {
         model: &GroupModel,
         animate: bool,
     ) -> Result<bool> {
+        self.paint_to(target, width, height, scale, model, animate, IMAGE_UPLOADS_PER_FRAME)
+    }
+
+    fn paint_to(
+        &mut self,
+        target: &ID2D1DeviceContext,
+        width: u32,
+        height: u32,
+        scale: f32,
+        model: &GroupModel,
+        animate: bool,
+        upload_budget: usize,
+    ) -> Result<bool> {
         if self
             .target
             .as_ref()
             .is_none_or(|(_, _, bitmap, old)| bitmap.is_some() || old != target)
         {
             self.images.clear();
+            self.viewport = None;
         }
         self.target = Some((width, height, None, target.clone()));
+        let grid = self.sync_viewport(width, height, scale, model);
+        self.draw(width, height, scale, model, grid, animate, upload_budget)
+    }
+
+    fn sync_viewport(&mut self, width: u32, height: u32, scale: f32, model: &GroupModel) -> super::layout::Grid {
+        let list = model.is_list();
+        let key = ViewportKey {
+            width,
+            height,
+            scale,
+            scroll: model.scroll,
+            scroll_x: model.scroll_x,
+            list,
+            folder: model.folder.is_some(),
+            fixed_grid: model.fixed_grid,
+            free_layout: model.free_layout,
+            icon_size: model.icon_size,
+            grid_scale: model.options.grid_scale,
+            icon_display: model.icon_display,
+            items: (model.items.as_ptr() as usize, model.items.len(), model.items_revision),
+            image_revision: model.image_revision,
+            tab: model.active_tab,
+            font: (super::fonts::revision(), assets::font_revision(), crate::i18n::default_font()),
+        };
+        if let Some((previous, grid)) = &self.viewport && *previous == key {
+            return *grid;
+        }
+        let width_dip = width as f32 / scale;
         let height_dip = height as f32 / scale;
-        let grid = model.grid(width as f32 / scale, height_dip);
+        let grid = model.grid(width_dip, height_dip);
+        self.viewport = Some((key, grid));
+        self.visible_items.clear();
+        self.live_images.clear();
+        self.buffered_images.clear();
+        if height_dip <= HEADER + 1.0 {
+            self.images.clear();
+            return grid;
+        }
         // Retain already-uploaded textures one cell beyond the viewport. Do not
         // pre-upload hidden icons; cap the spare cache even for overlapping items
         // in free layouts, while never evicting a currently visible texture.
         const MAX_BUFFERED_IMAGES: usize = 64;
-        let width_dip = width as f32 / scale;
-        let mut live = HashSet::new();
-        let mut buffered = Vec::new();
+        for index in model.visible_indices(grid, HEADER, height_dip) {
+            let (x, y) = model.cell(grid, index);
+            if (!list || y >= grid.content_top) && y + grid.cell_height > HEADER && y < height_dip
+                && x + grid.cell_width > 6.0 && x < width_dip - 6.0
+            {
+                self.visible_items.push((index, x, y));
+            }
+        }
         for index in model.visible_indices(grid, HEADER - grid.cell_height, height_dip + grid.cell_height) {
             let (x, y) = model.cell(grid, index);
-            if height_dip <= HEADER + 1.0
-                || y + grid.cell_height * 2.0 <= HEADER
+            if y + grid.cell_height * 2.0 <= HEADER
                 || y >= height_dip + grid.cell_height
                 || x + grid.cell_width <= 6.0 - grid.cell_width
                 || x >= width_dip - 6.0 + grid.cell_width
@@ -442,18 +521,18 @@ impl Renderer {
             if x + grid.cell_width > 6.0 && x < width_dip - 6.0
                 && y + grid.cell_height > HEADER && y < height_dip
             {
-                live.insert(key);
+                self.live_images.insert(key);
             } else if self.images.contains_key(&key) {
-                buffered.push(key);
+                self.buffered_images.push(key);
             }
         }
         let mut retained = 0;
-        for key in buffered {
+        for &key in &self.buffered_images {
             if retained == MAX_BUFFERED_IMAGES { break; }
-            if live.insert(key) { retained += 1; }
+            if self.live_images.insert(key) { retained += 1; }
         }
-        self.images.retain(|key, _| live.contains(key));
-        self.draw(width, height, scale, model, grid, animate)
+        self.images.retain(|key, _| self.live_images.contains(key));
+        grid
     }
 
     fn layout_title(
@@ -514,6 +593,7 @@ impl Renderer {
         model: &GroupModel,
         grid: super::layout::Grid,
         animate: bool,
+        mut upload_budget: usize,
     ) -> Result<bool> {
         if model.monitor.is_some() && self.monitor.is_none() {
             self.monitor = Some(super::monitor::Drawing::new()?);
@@ -957,19 +1037,9 @@ impl Renderer {
                             hover,
                         );
                     }
-                    for index in model.visible_indices(grid, HEADER, h) {
+                    for &(index, x, y) in &self.visible_items {
                         let item = &model.items[index];
-                        let (x, y) = model.cell(grid, index);
-                        if list && y < grid.content_top {
-                            continue;
-                        }
-                        if y + grid.cell_height <= { HEADER } || y >= h {
-                            continue;
-                        }
-                        if x + grid.cell_width <= 6.0 || x >= w - 6.0 {
-                            continue;
-                        }
-                        if let Some(image) = &item.image {
+                        let bitmap = if let Some(image) = &item.image {
                             let key = Arc::as_ptr(image) as usize;
                             let ratio =
                                 grid.icon_size * scale / image.width.max(image.height) as f32;
@@ -980,37 +1050,47 @@ impl Renderer {
                             if self.images.get(&key).is_none_or(|(source, _, old_size)| {
                                 source.as_ptr() != Arc::as_ptr(image) || *old_size != size
                             }) {
-                                let pixels = super::scaled_icons::resample(image, size.0, size.1)?;
-                                let bitmap = canvas_result(target.create_bitmap(
-                                    &pixels.data,
-                                    pixels.width,
-                                    pixels.height,
-                                ))?;
-                                self.images.insert(key, (Arc::downgrade(image), bitmap, size));
-                                #[cfg(test)]
-                                {
-                                    self.image_uploads += 1;
-                                }
-                                if luciddesk_diagnostics::enabled(
-                                    luciddesk_diagnostics::Level::Trace,
-                                ) && item
-                                    .identity
-                                    .persistent_key()
-                                    .to_ascii_lowercase()
-                                    .contains("645ff040-5081-101b-9f08-00aa002f954e")
-                                {
-                                    luciddesk_diagnostics::emit!(
+                                if upload_budget == 0 {
+                                    // Schedule another frame even when animations are disabled.
+                                    playing = true;
+                                } else {
+                                    upload_budget -= 1;
+                                    let pixels = super::scaled_icons::resample(image, size.0, size.1)?;
+                                    let bitmap = canvas_result(target.create_bitmap(
+                                        &pixels.data,
+                                        pixels.width,
+                                        pixels.height,
+                                    ))?;
+                                    self.images.insert(key, (Arc::downgrade(image), bitmap, size));
+                                    #[cfg(test)]
+                                    {
+                                        self.image_uploads += 1;
+                                    }
+                                    if luciddesk_diagnostics::enabled(
                                         luciddesk_diagnostics::Level::Trace,
-                                        "pane.render",
-                                        "recycle-render-upload hash={:x} size={:?}",
-                                        image.data.iter().fold(0u64, |h, b| h
-                                            .wrapping_mul(31)
-                                            .wrapping_add(u64::from(*b))),
-                                        size
-                                    );
+                                    ) && item
+                                        .identity
+                                        .persistent_key()
+                                        .to_ascii_lowercase()
+                                        .contains("645ff040-5081-101b-9f08-00aa002f954e")
+                                    {
+                                        luciddesk_diagnostics::emit!(
+                                            luciddesk_diagnostics::Level::Trace,
+                                            "pane.render",
+                                            "recycle-render-upload hash={:x} size={:?}",
+                                            image.data.iter().fold(0u64, |h, b| h
+                                                .wrapping_mul(31)
+                                                .wrapping_add(u64::from(*b))),
+                                            size
+                                        );
+                                    }
                                 }
                             }
-                        }
+                            // An earlier size may be reused until its replacement is ready.
+                            self.images.get(&key).map(|(_, bitmap, _)| (bitmap, size))
+                        } else {
+                            None
+                        };
                         let feedback = self.items.sample(&item.identity, model.hovered_item == Some(index), false,
                             model.selection.contains(&index), now, animate && self.marquee.is_none());
                         playing |= feedback.playing;
@@ -1036,9 +1116,7 @@ impl Renderer {
                             target.fill_highlight(&shape, normal, feedback.selected * (1.0 - hot));
                             target.fill_highlight(&shape, hot_brush, feedback.selected * hot);
                         }
-                        if let Some(image) = &item.image {
-                            let key = Arc::as_ptr(image) as usize;
-                            let size = self.images[&key].2;
+                        if let Some((bitmap, size)) = bitmap {
                             let (iw, ih) = (size.0 as f32 / scale, size.1 as f32 / scale);
                             let left = ((if list {
                                 x + 4.0
@@ -1055,7 +1133,7 @@ impl Renderer {
                                 .round()
                                 / scale;
                             target.draw_bitmap(
-                                &self.images[&key].1,
+                                bitmap,
                                 &Rect::from_xywh(left, top, iw, ih),
                                 1.0,
                             );
