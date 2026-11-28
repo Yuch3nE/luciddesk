@@ -44,7 +44,7 @@ impl Running {
     }
 
     fn refresh_stage(&mut self) {
-        if let Ok(bytes) = fs::read(self.directory.join(handoff::STATUS))
+        if let Ok(bytes) = read_status(&self.directory.join(handoff::STATUS))
             && let Ok(stage) = serde_json::from_slice::<Stage>(&bytes)
             && (self.stage.allows_cancel() || !stage.allows_cancel())
         {
@@ -55,6 +55,23 @@ impl Running {
             self.stage = Stage::Confirming;
         }
     }
+}
+
+fn open_status(path: &Path) -> io::Result<fs::File> {
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
+    };
+    fs::OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+        .open(path)
+}
+
+fn read_status(path: &Path) -> io::Result<Vec<u8>> {
+    use io::Read as _;
+    let mut bytes = Vec::new();
+    open_status(path)?.read_to_end(&mut bytes)?;
+    Ok(bytes)
 }
 
 fn cache() -> PathBuf {
@@ -186,5 +203,27 @@ mod tests {
         assert!(!run.join("updater.exe").exists());
         assert!(!run.join(handoff::STATUS).exists());
         assert_eq!(fs::read(run.join("note.txt")).unwrap(), b"user data");
+    }
+
+    #[test]
+    fn status_reader_allows_concurrent_atomic_replacement() {
+        use io::Read as _;
+
+        let run = tempfile::tempdir().unwrap();
+        let status = run.path().join(handoff::STATUS);
+        let next = run.path().join(handoff::NEXT_STATUS);
+        fs::write(&status, serde_json::to_vec(&Stage::Extracting).unwrap()).unwrap();
+
+        let mut reader = open_status(&status).unwrap();
+        fs::write(&next, serde_json::to_vec(&Stage::Confirming).unwrap()).unwrap();
+        fs::rename(&next, &status).unwrap();
+
+        let mut previous = Vec::new();
+        reader.read_to_end(&mut previous).unwrap();
+        assert_eq!(serde_json::from_slice::<Stage>(&previous).unwrap(), Stage::Extracting);
+        assert_eq!(
+            serde_json::from_slice::<Stage>(&read_status(&status).unwrap()).unwrap(),
+            Stage::Confirming
+        );
     }
 }
