@@ -757,8 +757,16 @@ fn sync_viewport(source: &mut Source, view: &super::View) {
         let images: HashMap<_, _> = source.items.iter().filter_map(|item| {
             item.image.as_ref().map(|image| (&item.identity, image))
         }).collect();
+        let mut images_changed = false;
         for item in &mut model.items {
-            item.image = images.get(&item.identity).map(|image| Arc::clone(image));
+            let image = images.get(&item.identity).copied();
+            if item.image.as_ref().map(Arc::as_ptr) != image.map(Arc::as_ptr) {
+                item.image = image.cloned();
+                images_changed = true;
+            }
+        }
+        if images_changed {
+            model.image_revision = model.image_revision.wrapping_add(1);
         }
         drop(model);
         unsafe { windows_sys::Win32::Graphics::Gdi::InvalidateRect(hwnd, std::ptr::null(), 0); }

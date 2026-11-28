@@ -215,6 +215,48 @@ fn coalesced_viewport_post_syncs_again_when_scroll_returns_to_queued_key() {
 }
 
 #[test]
+fn viewport_pixel_changes_invalidate_the_render_cache_once() {
+    use windows_sys::Win32::UI::WindowsAndMessaging::WS_POPUP;
+    let _sta = crate::pane::test_support::apartment();
+    let root = tempfile::tempdir().unwrap();
+    let mut source = Source::start(root.path().into(), Default::default()).unwrap();
+    source.updates.recv_timeout(Duration::from_secs(5)).unwrap().unwrap();
+    let first = patch_item();
+    let mut second = patch_item();
+    second.identity = identity(root.path().join("second.png"));
+    let items = vec![first, second];
+    let demand = Some((128, items.iter().map(|item| item.identity.clone()).collect()));
+    source.apply_scan(Ok(items.clone()));
+    source.viewport = demand.clone();
+
+    let mut model = super::super::tests::test_model("Viewport image revision");
+    model.folder = Some(root.path().into());
+    model.replace_items(items.clone());
+    let items_revision = model.items_revision;
+    let image_revision = model.image_revision;
+    let id = model.active_tab;
+    let window = windows_window::Window::new("Viewport image revision")
+        .size(400, 350).style(WS_POPUP).create().unwrap();
+    let view = View { id, target: Rc::new(Cell::new(id)), window, model: Rc::new(RefCell::new(model)) };
+
+    view.model.borrow_mut().merge_occluded = true;
+    sync_viewport(&mut source, &view);
+    {
+        let model = view.model.borrow();
+        assert!(model.items.iter().all(|item| item.image.is_none()));
+        assert_eq!(model.items_revision, items_revision);
+        assert_eq!(model.image_revision, image_revision + 1);
+    }
+
+    // The source can still have pixels to release after the view has cleared its own.
+    source.items = items;
+    source.viewport = demand;
+    sync_viewport(&mut source, &view);
+    assert!(source.items.iter().all(|item| item.image.is_none()));
+    assert_eq!(view.model.borrow().image_revision, image_revision + 1);
+}
+
+#[test]
 fn header_only_client_does_not_prefetch_first_row() {
     use windows_sys::Win32::UI::WindowsAndMessaging::*;
     let root = tempfile::tempdir().unwrap();
