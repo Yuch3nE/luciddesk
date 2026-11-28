@@ -85,9 +85,12 @@ fn viewport_keeps_only_requested_pixels_and_reuses_them_from_the_shared_budget()
         ensure(&mut app, id).unwrap();
     }
     assert!(Arc::ptr_eq(&app.folders[&ids[0]].cache, &app.folders[&ids[1]].cache));
+    // Finish both initial scans before adding synthetic entries for this directory.
+    for id in ids {
+        app.folders[&id].updates.recv_timeout(Duration::from_secs(5)).unwrap().unwrap();
+    }
 
     let source = app.folders.get_mut(&ids[0]).unwrap();
-    source.updates.recv_timeout(Duration::from_secs(5)).unwrap().unwrap();
     let mut first = patch_item();
     let mut second = patch_item();
     first.identity = identity(root.path().join("first.png"));

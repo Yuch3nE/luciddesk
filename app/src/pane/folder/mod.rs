@@ -112,7 +112,9 @@ impl Source {
                 self.loaded_resolutions.remove(&item.identity);
             }
         }
-        if !used.is_empty() { self.cache.lock().unwrap().touch(&used); }
+        if let Some((size, _)) = &viewport && !used.is_empty() {
+            self.cache.lock().unwrap().touch(&used, *size);
+        }
         self.request.replace_images(viewport.as_ref().map_or(0, |(size, _)| *size), jobs);
         self.viewport = viewport;
         changed
@@ -370,7 +372,7 @@ impl Source {
                                         label: entry.display_name,
                                         image: None,
                                     }).collect();
-                                    let live = items.iter().map(|item| item.identity.persistent_key()).collect();
+                                    let live = items.iter().map(|item| (item.identity.persistent_key(), item)).collect();
                                     cache.lock().unwrap().retain_folder(&root, &live);
                                     sort_items(&mut items, sort);
                                     items

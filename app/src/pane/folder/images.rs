@@ -1,7 +1,7 @@
 //! Application-wide CPU thumbnail budget and bounded viewport loading.
 use super::*;
 use std::{
-    collections::{BTreeMap, HashSet, VecDeque},
+    collections::{BTreeMap, VecDeque},
     sync::Mutex,
     time::{Duration, Instant},
 };
@@ -13,18 +13,33 @@ const WORKERS: usize = 3;
 
 struct Entry {
     identity: ShellIdentity,
-    image: Arc<assets::Pixels>,
-    resolution: i32,
     modified_time: Option<std::time::SystemTime>,
     folder: bool,
     size: Option<u64>,
+    variants: Vec<Variant>,
+}
+
+struct Variant {
+    image: Arc<assets::Pixels>,
+    resolution: i32,
     used: u64,
     bytes: usize,
 }
 
+impl Entry {
+    fn matches(&self, item: &Item) -> bool {
+        // Unknown timestamps cannot prove that a file still has the same content.
+        item.details.modified_time.is_some()
+            && item.details.modified_time == self.modified_time
+            && item.details.folder == self.folder
+            && item.details.size == self.size
+            && item.identity == self.identity
+    }
+}
+
 pub(in crate::pane) struct Cache {
     entries: HashMap<String, Entry>,
-    order: BTreeMap<u64, String>,
+    order: BTreeMap<u64, (String, i32)>,
     clock: u64,
     bytes: usize,
     limit: usize,
@@ -43,44 +58,55 @@ impl Default for Cache {
 }
 
 impl Cache {
-    pub(super) fn touch(&mut self, keys: &[String]) {
+    pub(super) fn touch(&mut self, keys: &[String], resolution: i32) {
         for key in keys {
-            if let Some(entry) = self.entries.get_mut(key) {
+            if let Some(entry) = self.entries.get_mut(key)
+                .and_then(|entry| entry.variants.iter_mut().find(|variant| variant.resolution == resolution))
+            {
                 self.order.remove(&entry.used);
                 self.clock += 1;
                 entry.used = self.clock;
-                self.order.insert(entry.used, key.clone());
+                self.order.insert(entry.used, (key.clone(), resolution));
             }
         }
     }
-    fn remove(&mut self, key: &str) {
+
+    fn remove(&mut self, key: &str, resolution: i32) {
+        let Some(entry) = self.entries.get_mut(key) else { return; };
+        if let Some(index) = entry.variants.iter().position(|variant| variant.resolution == resolution) {
+            let variant = entry.variants.swap_remove(index);
+            self.bytes -= variant.bytes;
+            self.order.remove(&variant.used);
+            if entry.variants.is_empty() {
+                self.entries.remove(key);
+            }
+        }
+    }
+
+    fn remove_path(&mut self, key: &str) {
         if let Some(entry) = self.entries.remove(key) {
-            self.bytes -= entry.bytes;
-            self.order.remove(&entry.used);
+            for variant in entry.variants {
+                self.bytes -= variant.bytes;
+                self.order.remove(&variant.used);
+            }
         }
     }
 
     pub(super) fn restore(&mut self, item: &mut Item, resolution: i32) -> bool {
         let key = item.identity.persistent_key();
-        let Some(entry) = self.entries.get_mut(&key) else {
-            return false;
-        };
-        // Unknown timestamps cannot prove that a file still has the same content.
-        if item.details.modified_time.is_none()
-            || item.details.modified_time != entry.modified_time
-            || item.details.folder != entry.folder
-            || item.details.size != entry.size
-            || item.identity != entry.identity
-        {
-            self.remove(&key);
+        let Some(entry) = self.entries.get_mut(&key) else { return false; };
+        if !entry.matches(item) {
+            self.remove_path(&key);
             return false;
         }
-        if entry.resolution != resolution { return false; }
-        self.order.remove(&entry.used);
+        let Some(variant) = entry.variants.iter_mut().find(|variant| variant.resolution == resolution) else {
+            return false;
+        };
+        self.order.remove(&variant.used);
         self.clock += 1;
-        entry.used = self.clock;
-        self.order.insert(entry.used, key);
-        item.image = Some(Arc::clone(&entry.image));
+        variant.used = self.clock;
+        self.order.insert(variant.used, (key, resolution));
+        item.image = Some(Arc::clone(&variant.image));
         true
     }
 
@@ -88,36 +114,40 @@ impl Cache {
         let key = item.identity.persistent_key();
         // Failed loads are retried, so an empty image has no reusable cache value.
         let Some(image) = &item.image else { return; };
-        self.remove(&key);
+        if self.entries.get(&key).is_some_and(|entry| !entry.matches(item)) {
+            self.remove_path(&key);
+        } else {
+            self.remove(&key, resolution);
+        }
         let bytes = image.data.capacity();
         if bytes > self.limit {
             return;
         }
-        while self.bytes + bytes > self.limit || self.entries.len() >= MAX_ENTRIES {
-            let Some((_, key)) = self.order.first_key_value() else {
+        while self.bytes + bytes > self.limit || self.order.len() >= MAX_ENTRIES {
+            let Some((_, (key, size))) = self.order.first_key_value() else {
                 break;
             };
-            self.remove(&key.clone());
+            self.remove(&key.clone(), *size);
         }
         self.clock += 1;
         self.bytes += bytes;
-        self.order.insert(self.clock, key.clone());
-        self.entries.insert(
-            key,
-            Entry {
-                identity: item.identity.clone(),
-                image: Arc::clone(image),
-                resolution,
-                modified_time: item.details.modified_time,
-                folder: item.details.folder,
-                size: item.details.size,
-                used: self.clock,
-                bytes,
-            },
-        );
+        self.order.insert(self.clock, (key.clone(), resolution));
+        let entry = self.entries.entry(key).or_insert_with(|| Entry {
+            identity: item.identity.clone(),
+            modified_time: item.details.modified_time,
+            folder: item.details.folder,
+            size: item.details.size,
+            variants: Vec::with_capacity(1),
+        });
+        entry.variants.push(Variant {
+            image: Arc::clone(image),
+            resolution,
+            used: self.clock,
+            bytes,
+        });
     }
 
-    pub(super) fn retain_folder(&mut self, root: &Path, live: &HashSet<String>) {
+    pub(super) fn retain_folder(&mut self, root: &Path, live: &HashMap<String, &Item>) {
         let removed: Vec<_> = self
             .entries
             .iter()
@@ -127,12 +157,12 @@ impl Cache {
                     .file_system_path()
                     .and_then(Path::parent)
                     == Some(root)
-                    && !live.contains(*key)
+                    && !live.get(*key).is_some_and(|item| entry.matches(item))
             })
             .map(|(key, _)| key.clone())
             .collect();
         for key in removed {
-            self.remove(&key);
+            self.remove_path(&key);
         }
     }
 }
@@ -414,7 +444,7 @@ mod tests {
             load(&mut value);
             cache.insert(&value, 128);
         }
-        cache.touch(&[item("a").identity.persistent_key()]);
+        cache.touch(&[item("a").identity.persistent_key()], 128);
         let mut value = item("c");
         load(&mut value);
         cache.insert(&value, 128);
@@ -427,9 +457,47 @@ mod tests {
         // A refresh must retry extraction immediately after a transient failure.
         assert!(!cache.entries.contains_key(&item("failure").identity.persistent_key()));
         assert!(!cache.restore(&mut item("failure"), 128));
-        cache.retain_folder(Path::new(r"C:\test"), &HashSet::new());
+        cache.retain_folder(Path::new(r"C:\test"), &HashMap::new());
         assert_eq!(cache.bytes, 0);
         assert!(cache.entries.is_empty());
+    }
+
+    #[test]
+    fn resolutions_share_the_budget_and_invalidate_together() {
+        let mut cache = Cache { limit: 16, ..Default::default() };
+        let mut small = item("same");
+        let mut large = small.clone();
+        load(&mut small);
+        load(&mut large);
+        Arc::make_mut(large.image.as_mut().unwrap()).data[0] = 1;
+        let mut restored = item("same");
+        cache.insert(&small, 64);
+        cache.insert(&large, 128);
+        for (resolution, value) in [(64, 0), (128, 1), (64, 0)] {
+            assert!(cache.restore(&mut restored, resolution));
+            assert_eq!(restored.image.as_ref().unwrap().data[0], value);
+        }
+        let mut other = item("other");
+        load(&mut other);
+        cache.insert(&other, 64);
+        assert_eq!(cache.bytes, 16);
+        assert!(!cache.restore(&mut restored, 128));
+        assert!(cache.restore(&mut restored, 64));
+        cache.insert(&large, 128);
+
+        restored.details.size = Some(1);
+        // A new resolution can detect a revision change even before its first insert.
+        assert!(!cache.restore(&mut restored, 192));
+        assert!(cache.entries.is_empty());
+        assert!(cache.order.is_empty());
+        assert_eq!(cache.bytes, 0);
+
+        cache.insert(&small, 64);
+        cache.insert(&large, 128);
+        cache.retain_folder(Path::new(r"C:\test"), &HashMap::from([
+            (restored.identity.persistent_key(), &restored),
+        ]));
+        assert_eq!(cache.bytes, 0);
     }
 
     #[test]
