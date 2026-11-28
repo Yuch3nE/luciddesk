@@ -584,77 +584,80 @@ fn refresh_changed_views(state: &mut PaneApp, force: bool) {
     }
     sorting::maintain(state);
     for view in &state.views {
-        if state.workspace.panel(view.id).is_some_and(Panel::is_search) {
-            continue;
-        }
-        let mut model = view.model.borrow_mut();
-        tabs::decorate(&state.workspace, view.id, &mut model);
-        if model.folder.is_some() {
-            model.folder_sort = state
-                .folders
-                .get(&view.id)
-                .map_or((0, false), |source| source.sort);
-            let navigation = state
-                .folders
-                .get(&view.id)
-                .map_or([false; 2], folder::Source::navigation);
-            let status = state
-                .folders
-                .get(&view.id)
-                .and_then(|source| source.status.clone());
-            let loading = state
-                .folders
-                .get(&view.id)
-                .is_none_or(|source| source.loading);
-            if model.folder_status != status
-                || model.loading != loading
-                || model.folder_navigation != navigation
-            {
-                model.folder_navigation = navigation;
-                model.folder_status = status;
-                model.loading = loading;
-                unsafe {
-                    InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0);
-                }
+        refresh_view(state, view, force);
+    }
+}
+
+fn refresh_view(state: &PaneApp, view: &View, force: bool) {
+    if state.workspace.panel(view.id).is_some_and(Panel::is_search) {
+        return;
+    }
+    let mut model = view.model.borrow_mut();
+    tabs::decorate(&state.workspace, view.id, &mut model);
+    if model.folder.is_some() {
+        model.folder_sort = state
+            .folders
+            .get(&view.id)
+            .map_or((0, false), |source| source.sort);
+        let navigation = state
+            .folders
+            .get(&view.id)
+            .map_or([false; 2], folder::Source::navigation);
+        let status = state
+            .folders
+            .get(&view.id)
+            .and_then(|source| source.status.clone());
+        let loading = state
+            .folders
+            .get(&view.id)
+            .is_none_or(|source| source.loading);
+        if model.folder_status != status
+            || model.loading != loading
+            || model.folder_navigation != navigation
+        {
+            model.folder_navigation = navigation;
+            model.folder_status = status;
+            model.loading = loading;
+            unsafe {
+                InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0);
             }
         }
-        let items = if let Some(source) = state.folders.get(&view.id) {
-            // Compare the borrowed snapshot before cloning all names, metadata
-            // and pixel Arcs when another pane triggered this refresh.
-            if !force && same_items(&model.items, &source.items) && !model.loading {
-                continue;
-            }
-            source.items.clone()
-        } else {
-            let current = (!force && !model.loading).then_some(model.items.as_slice());
-            let Some(items) = desktop_items_for(state, view.id, current) else {
-                continue;
-            };
-            items
+    }
+    let items = if let Some(source) = state.folders.get(&view.id) {
+        // Compare the borrowed snapshot before cloning names, metadata and pixel Arcs.
+        if !force && same_items(&model.items, &source.items) && !model.loading {
+            return;
+        }
+        source.items.clone()
+    } else {
+        let current = (!force && !model.loading).then_some(model.items.as_slice());
+        let Some(items) = desktop_items_for(state, view.id, current) else {
+            return;
         };
-        model.replace_items(items);
-        model.hovered_item = None;
-        let hwnd = view.window.hwnd().cast();
-        let mut bounds = RECT::default();
-        unsafe {
-            GetWindowRect(hwnd, &raw mut bounds);
-        }
-        let scale = unsafe { GetDpiForWindow(hwnd) }.max(96) as f32 / 96.0;
-        model.scroll_x = model.horizontal_offset((bounds.right - bounds.left) as f32 / scale);
-        model.scroll = model.scroll.min(
-            model
-                .grid(
-                    (bounds.right - bounds.left) as f32 / scale,
-                    (bounds.bottom - bounds.top) as f32 / scale,
-                )
-                .max_scroll(model.items.len()),
-        );
-        if model.selected.is_some_and(|i| i >= model.items.len()) {
-            model.selected = None;
-        }
-        unsafe {
-            InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0);
-        }
+        items
+    };
+    model.replace_items(items);
+    model.hovered_item = None;
+    let hwnd = view.window.hwnd().cast();
+    let mut bounds = RECT::default();
+    unsafe {
+        GetWindowRect(hwnd, &raw mut bounds);
+    }
+    let scale = unsafe { GetDpiForWindow(hwnd) }.max(96) as f32 / 96.0;
+    model.scroll_x = model.horizontal_offset((bounds.right - bounds.left) as f32 / scale);
+    model.scroll = model.scroll.min(
+        model
+            .grid(
+                (bounds.right - bounds.left) as f32 / scale,
+                (bounds.bottom - bounds.top) as f32 / scale,
+            )
+            .max_scroll(model.items.len()),
+    );
+    if model.selected.is_some_and(|i| i >= model.items.len()) {
+        model.selected = None;
+    }
+    unsafe {
+        InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0);
     }
 }
 

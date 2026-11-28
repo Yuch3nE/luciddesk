@@ -1,8 +1,7 @@
 //! Live folder sources are separate from Explorer desktop membership.
 use super::*;
-#[cfg(test)]
 use std::cell::Cell;
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::Mutex;
 pub(super) mod entry_mode;
@@ -36,6 +35,8 @@ pub(super) struct Source {
     loaded_resolutions: HashMap<ShellIdentity, i32>,
     pub items: Vec<Item>,
     pub content_revision: u64,
+    types_requested: Cell<bool>,
+    types_queried: Cell<bool>,
     pub status: Option<String>,
     pub loading: bool,
     worker_stopped: bool,
@@ -56,6 +57,35 @@ enum Patch {
 }
 
 impl Source {
+    fn request_types(&self) {
+        if self.loading || self.worker_stopped || self.types_requested.replace(true) {
+            return;
+        }
+        let mut jobs = self.request.type_jobs.lock().unwrap();
+        jobs.extend(self.items.iter().filter(|item| !item.details.folder && item.details.kind.is_empty())
+            .map(|item| Item {
+                identity: item.identity.clone(),
+                label: String::new(),
+                image: None,
+                details: ItemDetails {
+                    modified_time: item.details.modified_time,
+                    size: item.details.size,
+                    ..Default::default()
+                },
+            }));
+        if !jobs.is_empty() {
+            self.request.signal();
+        }
+    }
+
+    pub(super) fn query_types(&self) {
+        if self.loading {
+            self.types_queried.set(true);
+        } else {
+            self.request_types();
+        }
+    }
+
     fn cancel_images(&mut self) {
         self.viewport = None;
         self.loaded_resolutions.clear();
@@ -131,6 +161,8 @@ impl Source {
         match result {
             Ok(items) => {
                 self.cancel_images();
+                self.request.type_jobs.lock().unwrap().clear();
+                self.types_requested.set(false);
                 self.items = items;
                 sort_items(&mut self.items, self.sort);
                 self.status = None;
@@ -148,6 +180,7 @@ struct Commands {
     images_pending: std::sync::atomic::AtomicBool,
     image_generation: std::sync::atomic::AtomicU64,
     image_request: Mutex<Option<ImageRequest>>,
+    type_jobs: Mutex<VecDeque<Item>>,
 }
 impl Commands {
     fn new() -> Result<Self, String> {
@@ -170,6 +203,7 @@ impl Commands {
             images_pending: false.into(),
             image_generation: 0.into(),
             image_request: Mutex::new(None),
+            type_jobs: Mutex::default(),
         })
     }
     fn signal(&self) {
@@ -314,11 +348,10 @@ impl Source {
                         return;
                     }
                 };
-                use std::{collections::VecDeque, sync::atomic::Ordering};
+                use std::sync::atomic::Ordering;
                 let mut watch = Watch::new(&root);
                 let cache = worker_cache;
                 let mut scan_failed = false;
-                let mut pending_types = VecDeque::new();
                 loop {
                     if commands.stop.load(Ordering::Acquire) { break; }
                     if commands.active.load(Ordering::Acquire) {
@@ -346,10 +379,6 @@ impl Source {
                                     crate::i18n::format("ui-cannot-read-folder-check-the-path-and-permissions-n", &[("error", error.to_string())])
                                 });
                             scan_failed = result.is_err();
-                            pending_types.clear();
-                            if let Ok(items) = &result {
-                                pending_types.extend(items.iter().filter(|item| !item.details.folder).cloned());
-                            }
                             if sender.send(result).is_err() { break; }
                             wake.notify();
                         }
@@ -361,13 +390,16 @@ impl Source {
                             wake.notify();
                             continue;
                         }
-                        if !pending_types.is_empty() {
-                            // Resolve types independently of thumbnails. Yield between
-                            // batches so a new viewport is served before background names.
-                            let batch = pending_types.drain(..32.min(pending_types.len())).map(|mut item| {
+                        let mut batch: Vec<_> = {
+                            let mut jobs = commands.type_jobs.lock().unwrap();
+                            let count = jobs.len().min(32);
+                            jobs.drain(..count).collect()
+                        };
+                        if !batch.is_empty() {
+                            // Yield between batches so new viewports can load thumbnails first.
+                            for item in &mut batch {
                                 item.details.kind = file_type(&item.identity);
-                                item
-                            }).collect();
+                            }
                             if image_sender.send(Patch::Types(batch)).is_err() { break; }
                             wake.notify();
                             continue;
@@ -425,6 +457,8 @@ impl Source {
             loaded_resolutions: HashMap::new(),
             items: Vec::new(),
             content_revision: next_content_revision(),
+            types_requested: Cell::new(false),
+            types_queried: Cell::new(false),
             status: None,
             loading: true,
             worker_stopped: false,
@@ -467,13 +501,26 @@ pub(super) fn ensure(state: &mut PaneApp, id: PanelId) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Default)]
+struct ItemPatch {
+    kind: Option<String>,
+    image: Option<Arc<assets::Pixels>>,
+}
+
 pub(super) fn poll(state: &mut PaneApp) -> Vec<(PanelId, ShellIdentity)> {
-    let mut changed = false;
-    let mut repaint = HashMap::<PanelId, HashMap<ShellIdentity, Arc<assets::Pixels>>>::new();
+    let mut refresh = HashMap::new();
+    let mut repaint = HashMap::<PanelId, HashMap<ShellIdentity, ItemPatch>>::new();
     for (&id, source) in &mut state.folders {
         // Each update is a complete snapshot. Sort and publish only the newest
         // one when the UI was busy while several scans completed.
-        changed |= source.poll_scan();
+        let scanned = source.poll_scan();
+        let queried = !source.loading && source.types_queried.replace(false);
+        if !source.types_requested.get()
+            && (source.sort.0 == 1 || queried
+                || state.workspace.panel(id).is_some_and(Panel::list_view))
+        {
+            source.request_types();
+        }
         let generation = source.request.image_generation.load(std::sync::atomic::Ordering::Acquire);
         let mut image_updates = HashMap::new();
         let mut type_updates = HashMap::new();
@@ -488,6 +535,7 @@ pub(super) fn poll(state: &mut PaneApp) -> Vec<(PanelId, ShellIdentity)> {
                 }
             }
         }
+        let mut reordered = false;
         if !image_updates.is_empty() || !type_updates.is_empty() {
             let mut kind_changed = false;
             for item in &mut source.items {
@@ -495,6 +543,10 @@ pub(super) fn poll(state: &mut PaneApp) -> Vec<(PanelId, ShellIdentity)> {
                     && same_revision(item, &update) && item.details.kind != update.details.kind
                 {
                     item.details.kind = update.details.kind;
+                    if !scanned {
+                        repaint.entry(id).or_default().entry(item.identity.clone()).or_default()
+                            .kind = Some(item.details.kind.clone());
+                    }
                     kind_changed = true;
                 }
                 if let Some(update) = image_updates.remove(&item.identity)
@@ -503,34 +555,42 @@ pub(super) fn poll(state: &mut PaneApp) -> Vec<(PanelId, ShellIdentity)> {
                     && let Some(image) = update.image
                 {
                     source.loaded_resolutions.insert(item.identity.clone(), *size);
-                    if replace_image(item, image) {
-                        repaint.entry(id).or_default().insert(
-                            item.identity.clone(), Arc::clone(item.image.as_ref().unwrap()),
-                        );
+                    if replace_image(item, image) && !scanned {
+                        repaint.entry(id).or_default().entry(item.identity.clone()).or_default()
+                            .image = item.image.clone();
                     }
                 }
                 if image_updates.is_empty() && type_updates.is_empty() { break; }
             }
             if kind_changed {
                 source.content_revision = next_content_revision();
-                if source.sort.0 == 1 { sort_items(&mut source.items, source.sort); }
-                changed = true;
+                if source.sort.0 == 1 {
+                    reordered = sort_items(&mut source.items, source.sort);
+                }
             }
+        }
+        if scanned || reordered {
+            refresh.insert(id, reordered && !scanned);
         }
     }
-    if changed {
-        refresh_views(state);
-    } else {
-        // A thumbnail result changes paint only. Keep the view's scroll,
-        // hover, selection, and metadata snapshot in place.
-        for view in &state.views {
-            let Some(mut images) = repaint.remove(&view.id) else { continue; };
-            for item in &mut view.model.borrow_mut().items {
-                if let Some(image) = images.remove(&item.identity) { item.image = Some(image); }
-                if images.is_empty() { break; }
+    for view in &state.views {
+        let hwnd = view.window.hwnd().cast();
+        if let Some(&reordered) = refresh.get(&view.id) {
+            refresh_view(state, view, false);
+            if reordered {
+                unsafe { PostMessageW(hwnd, window::SYNC_POINTER, 0, 0); }
             }
-            unsafe { InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0); }
+            continue;
         }
+        let Some(mut patches) = repaint.remove(&view.id) else { continue; };
+        for item in &mut view.model.borrow_mut().items {
+            if let Some(patch) = patches.remove(&item.identity) {
+                if let Some(kind) = patch.kind { item.details.kind = kind; }
+                if let Some(image) = patch.image { item.image = Some(image); }
+            }
+            if patches.is_empty() { break; }
+        }
+        unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
     }
     let mut renames = Vec::new();
     for view in &state.views {
@@ -549,11 +609,11 @@ pub(super) fn poll(state: &mut PaneApp) -> Vec<(PanelId, ShellIdentity)> {
             renames.push((view.id, identity));
         }
     }
-    if changed || !renames.is_empty() {
-        for view in &state.views {
-            if let Some(source) = state.folders.get_mut(&view.id) {
-                sync_viewport(source, view);
-            }
+    for view in &state.views {
+        if (refresh.contains_key(&view.id) || renames.iter().any(|(id, _)| *id == view.id))
+            && let Some(source) = state.folders.get_mut(&view.id)
+        {
+            sync_viewport(source, view);
         }
     }
     renames
@@ -690,10 +750,11 @@ fn replace_image(item: &mut Item, image: Arc<assets::Pixels>) -> bool {
     true
 }
 
-pub(super) fn sort_items(items: &mut Vec<Item>, sort: (u8, bool)) {
+pub(super) fn sort_items(items: &mut Vec<Item>, sort: (u8, bool)) -> bool {
     let mut sorted: Vec<_> = std::mem::take(items)
         .into_iter()
-        .map(|item| {
+        .enumerate()
+        .map(|(index, item)| {
             // Reuse the worker's directory snapshot; sorting must not touch disk
             // on the UI thread (especially for network folders).
             let folder = item.details.folder;
@@ -702,7 +763,7 @@ pub(super) fn sort_items(items: &mut Vec<Item>, sort: (u8, bool)) {
             let kind = if sort.0 == 1 {
                 item.details.kind.encode_utf16().chain(Some(0)).collect::<Vec<_>>()
             } else { Vec::new() };
-            (folder, name, kind, modified, item)
+            (folder, name, kind, modified, item, index)
         })
         .collect();
     let text_order = |a: &[u16], b: &[u16]| unsafe {
@@ -710,7 +771,7 @@ pub(super) fn sort_items(items: &mut Vec<Item>, sort: (u8, bool)) {
     };
     let direction = |order: std::cmp::Ordering| if sort.1 { order.reverse() } else { order };
     // The identity tie-breaker gives deterministic order without stable-sort scratch storage.
-    sorted.sort_unstable_by(|(af, an, ak, at, a), (bf, bn, bk, bt, b)| {
+    sorted.sort_unstable_by(|(af, an, ak, at, a, _), (bf, bn, bk, bt, b, _)| {
         let name = || text_order(an, bn).then_with(|| an.cmp(bn)).then_with(|| a.identity.persistent_key().cmp(&b.identity.persistent_key()));
         match sort.0 {
             // Explorer reverses the complete name order, including folder grouping.
@@ -742,7 +803,9 @@ pub(super) fn sort_items(items: &mut Vec<Item>, sort: (u8, bool)) {
             _ => name(),
         }
     });
-    *items = sorted.into_iter().map(|(_, _, _, _, item)| item).collect();
+    let reordered = sorted.iter().enumerate().any(|(index, item)| index != item.5);
+    *items = sorted.into_iter().map(|(_, _, _, _, item, _)| item).collect();
+    reordered
 }
 
 /// Refresh persisted view preferences without saving or restarting an unchanged folder source.
@@ -787,6 +850,7 @@ pub(super) fn set_sort(state: &mut PaneApp, id: PanelId, order: (u8, bool)) -> R
     source.sort = order;
     state.sorting.orders.borrow_mut().insert(id, order);
     sort_items(&mut source.items, order);
+    if order.0 == 1 { source.request_types(); }
     if let Some(view) = state.views.iter().find(|view| view.id == id) {
         view.model.borrow_mut().scroll = 0;
     }

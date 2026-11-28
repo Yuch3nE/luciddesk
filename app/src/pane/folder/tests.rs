@@ -183,6 +183,103 @@ fn header_only_client_does_not_prefetch_first_row() {
 }
 
 #[test]
+fn grid_loads_file_types_only_when_requested() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("example.txt"), b"fixture").unwrap();
+    let mut app = super::super::tests::test_state();
+    let id = PanelId::new(1);
+    let panel = app.workspace.panel_mut(id).unwrap();
+    panel.set_folder(Some(root.path().into()));
+    panel.set_list_view(false);
+    ensure(&mut app, id).unwrap();
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while app.folders[&id].loading {
+        poll(&mut app);
+        assert!(Instant::now() < deadline, "folder snapshot did not arrive");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let source = &app.folders[&id];
+    assert!(source.items[0].details.kind.is_empty());
+    assert!(!source.types_requested.get());
+    assert!(matches!(source.images.recv_timeout(Duration::from_millis(100)), Err(mpsc::RecvTimeoutError::Timeout)));
+
+    app.workspace.panel_mut(id).unwrap().set_list_view(true);
+    let revision = app.folders[&id].content_revision;
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        poll(&mut app);
+        let source = &app.folders[&id];
+        if !source.items[0].details.kind.is_empty() {
+            assert_ne!(source.content_revision, revision);
+            assert!(source.items[0].image.is_none());
+            break;
+        }
+        assert!(Instant::now() < deadline, "list view did not request types");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[test]
+fn reordered_types_do_not_replace_another_panes_items_or_hover() {
+    let _sta = crate::pane::test_support::apartment();
+    let root = tempfile::tempdir().unwrap();
+    let state = Rc::new(RefCell::new(super::super::tests::test_state()));
+    let ids = [PanelId::new(1), PanelId::new(2)];
+    let mut senders = Vec::new();
+    for id in ids {
+        state.borrow_mut().workspace.panel_mut(id).unwrap().set_folder(Some(root.path().into()));
+        create_view(&state, id).unwrap();
+        let mut state = state.borrow_mut();
+        let source = state.folders.get_mut(&id).unwrap();
+        source.updates.recv_timeout(Duration::from_secs(5)).unwrap().unwrap();
+        let (sender, receiver) = mpsc::channel();
+        source.images = receiver;
+        senders.push(sender);
+    }
+    let mut state = state.borrow_mut();
+    let mut first = patch_item();
+    first.details.kind = "A".into();
+    let mut second = patch_item();
+    second.identity = identity(root.path().join("second.png"));
+    second.details.kind = "B".into();
+    let a = state.folders.get_mut(&ids[0]).unwrap();
+    a.sort = (1, false);
+    a.apply_scan(Ok(vec![first.clone(), second.clone()]));
+    let b = state.folders.get_mut(&ids[1]).unwrap();
+    b.apply_scan(Ok(vec![second.clone()]));
+    b.viewport = Some((128, HashSet::from([second.identity.clone()])));
+    let generation = b.request.image_generation.load(std::sync::atomic::Ordering::Acquire);
+    let revision = b.content_revision;
+    for view in &state.views {
+        refresh_view(&state, view, false);
+        let mut model = view.model.borrow_mut();
+        model.hovered_item = Some(0);
+        model.select_item(0, false, false);
+    }
+    let model = state.views[1].model.clone();
+    let items_revision = model.borrow().items_revision;
+
+    first.details.kind = "Z".into();
+    senders[0].send(Patch::Types(vec![first.clone()])).unwrap();
+    second.details.kind = "Updated".into();
+    second.image = Some(Arc::new(assets::Pixels { width: 1, height: 1, data: vec![255; 4] }));
+    senders[1].send(Patch::Types(vec![second.clone()])).unwrap();
+    senders[1].send(Patch::Images(generation, vec![second])).unwrap();
+    poll(&mut state);
+
+    assert_eq!(state.views[0].model.borrow().items[1].identity, first.identity);
+    assert_eq!(state.views[0].model.borrow().selected, Some(1));
+    let model = model.borrow();
+    assert_eq!(model.items_revision, items_revision);
+    assert_eq!(model.hovered_item, Some(0));
+    assert_eq!(model.selected, Some(0));
+    assert_eq!(model.items[0].details.kind, "Updated");
+    assert_eq!(model.items[0].image.as_ref().unwrap().data, [255; 4]);
+    assert_ne!(state.folders[&ids[1]].content_revision, revision);
+}
+
+#[test]
 fn offscreen_file_types_complete_type_sort_without_loading_pixels() {
     let root = tempfile::tempdir().unwrap();
     for name in ["z.txt", "b.bmp", "a.txt"] {
