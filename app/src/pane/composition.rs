@@ -23,7 +23,7 @@ pub struct Surface {
     dark: bool,
     opacity: std::cell::Cell<f32>,
     acrylic: Option<super::acrylic::Acrylic>,
-    _device: GpuDevice,
+    device: GpuDevice,
     #[cfg(test)]
     context: ID3D11DeviceContext,
     drawing: ID2D1DeviceContext,
@@ -47,6 +47,22 @@ impl Surface {
 
     pub fn current_opacity(&self) -> f32 {
         self.opacity.get()
+    }
+
+    pub(super) fn retire(self) {
+        if let Some(layer) = &self.layer { let _ = layer.detach(); }
+        if let Some(acrylic) = &self.acrylic { let _ = acrylic.detach(); }
+        let immediate = native_interface::<ID3D11Device>(self.device.d3d_device())
+            .and_then(|device| unsafe { device.GetImmediateContext() });
+        drop(self);
+        if let Ok(immediate) = immediate {
+            // A hidden pane may reopen on the same HWND. Drain D3D11's deferred
+            // swap-chain destruction once the compositor and D2D references are gone.
+            unsafe {
+                immediate.ClearState();
+                immediate.Flush();
+            }
+        }
     }
     /// Suppress the DWM non-client frame; forced system rounding can still cast a shadow.
     /// Keep this separate from shared surface initialization so flyout shadows remain.
@@ -239,7 +255,7 @@ impl Surface {
                 opacity: std::cell::Cell::new(initial_opacity),
                 effects_enabled: None,
                 acrylic,
-                _device: device,
+                device,
                 #[cfg(test)]
                 context,
                 drawing,
@@ -456,9 +472,13 @@ unsafe extern "system" fn retry_present(
 }
 impl Drop for Surface {
     fn drop(&mut self) {
+        use windows::Win32::Graphics::Direct2D::{ID2D1DeviceContext, ID2D1Image};
         crate::pane::render_debug::render_trace(format_args!("hwnd={:?} surface dropped", self.hwnd));
         unsafe {
             windows_sys::Win32::UI::WindowsAndMessaging::KillTimer(self.hwnd.0, PRESENT_RETRY);
+            if let Ok(context) = native_interface::<ID2D1DeviceContext>(&self.drawing) {
+                context.SetTarget(None::<&ID2D1Image>);
+            }
         }
     }
 }

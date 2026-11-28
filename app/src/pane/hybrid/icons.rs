@@ -260,7 +260,7 @@ fn refresh_changed_icons(s: &mut PaneApp) -> bool {
         let pending = std::mem::take(&mut *h.icons_dirty.borrow_mut());
         let identities: Vec<_> = pane_identities(&s.workspace).cloned().collect();
         if !identities.is_empty() {
-            let size = h.snapshot.icon_size.max(128);
+            let size = h.icon_source_size.max(128);
             let (sender, receiver) = mpsc::channel();
             let wake = h.wake.clone();
             let recovery = pending.clone();
@@ -314,7 +314,16 @@ fn refresh_changed_icons(s: &mut PaneApp) -> bool {
 const ICON_BATCH_SIZE: usize = 32;
 
 pub(super) fn queue_pane_icons(s: &mut PaneApp, force: bool) {
+    let scale = s.runtime.as_ref().map_or(1.0, |runtime| runtime.layouts.max_scale());
+    let icon_dip = (super::super::layout::DESKTOP_ICON_SIZE * s.workspace.pane_options().grid_scale / 100.0)
+        .max(luciddesk_core::IconSize::Large.pixels());
     let h = s.session.as_mut().unwrap();
+    let source_size = super::super::assets::icon_resolution(icon_dip * scale.max(h.snapshot.dpi as f32 / 96.0))
+        .max(128);
+    if h.icon_source_size != 0 && source_size > h.icon_source_size {
+        h.icons_dirty.borrow_mut().add([super::icon_changes::Change::All]);
+    }
+    h.icon_source_size = source_size;
     // A batch already uses up to four Shell STAs. Serialise batches and refresh
     // work so repeated collection events cannot multiply threads and buffers.
     if h.initial_batches != 0 || h.icon_reload.is_some() {
@@ -331,7 +340,7 @@ pub(super) fn queue_pane_icons(s: &mut PaneApp, force: bool) {
     }
     let sender = h.sender.clone();
     let wake = h.wake.clone();
-    let size = h.snapshot.icon_size.max(128);
+    let size = h.icon_source_size.max(128);
     h.initial_batches += 1;
     std::thread::spawn(move || {
         let count = requests.len();

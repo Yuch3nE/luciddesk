@@ -149,6 +149,7 @@ struct PaneApp {
     sorting: sorting::State,
     wake: wake::Wake,
     folders: HashMap<PanelId, folder::Source>,
+    folder_images: folder::ImageCache,
     tab_models: HashMap<PanelId, GroupModel>,
     settings: Option<windows_window::Window>,
     organizer: Option<windows_window::Window>,
@@ -180,6 +181,7 @@ impl PaneApp {
 
 #[derive(Clone)]
 enum Event {
+    FolderViewport,
     NewTab(bool),
     SelectTab(PanelId),
     CloseTab,
@@ -501,7 +503,7 @@ fn create_view(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result<(), String> 
             }
         }
         let closing = matches!(event, Event::ClosePane);
-        let wake_needed = !matches!(&event, Event::Moving(_) | Event::Sizing(..));
+        let wake_needed = !matches!(&event, Event::Moving(_) | Event::Sizing(..) | Event::FolderViewport);
         let child = state.borrow().monitor_child
             && state.borrow().workspace.panel(event_target.get()).is_some_and(Panel::is_monitor);
         if child && matches!(event, Event::Settings) {

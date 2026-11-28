@@ -12,6 +12,11 @@ pub(crate) struct PaintRecovery {
 }
 
 impl PaintRecovery {
+    pub(crate) fn cancel(&mut self, hwnd: HWND) {
+        *self = Self::default();
+        unsafe { KillTimer(hwnd, RECOVERY_RETRY); }
+    }
+
     /// `false` means rasterization was deferred; it must not reset recovery.
     pub fn paint<T, E: std::fmt::Display>(
         &mut self,

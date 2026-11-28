@@ -296,6 +296,13 @@ pub(super) unsafe extern "system" fn borderless_proc(
     }
 }
 
+const HIDDEN_GPU_TIMER: usize = 0x4c50_4748;
+const HIDDEN_GPU_DELAY_MS: u32 = 5_000;
+
+fn drawable(hwnd: HWND) -> bool {
+    unsafe { IsWindowVisible(hwnd) != 0 && IsIconic(hwnd) == 0 }
+}
+
 #[allow(clippy::too_many_lines)]
 pub fn create<F>(
     bounds: RectDip,
@@ -327,6 +334,9 @@ where
     let mut tab_press: Option<(luciddesk_core::PanelId, POINT)> = None;
     let menu_active = Rc::new(std::cell::Cell::new(false));
     let mut paint_recovery = super::composition::PaintRecovery::default();
+    let folder_viewport_pending = Rc::new(std::cell::Cell::new(false));
+    let mut gpu_idle_at = None::<std::time::Instant>;
+    let mut gpu_retired = false;
     let model_init = Rc::clone(&model);
     let mut monitor = model.borrow().monitor.as_ref().map(|_| super::monitor::Client::new()).transpose()?;
     let inspect = std::env::var_os("LUCIDDESK_INSPECT").is_some();
@@ -343,8 +353,66 @@ where
             }
             unsafe { super::desktop_toggle::gate(raw.cast(), message, lparam); }
             let hwnd: HWND = raw.cast();
+            if gpu_retired && message == WM_WINDOWPOSCHANGING && !drawable(hwnd)
+                && unsafe { (*(lparam as *const WINDOWPOS)).flags & SWP_SHOWWINDOW != 0 }
+            {
+                // Give the normal hidden-to-visible transition a surface to fade in.
+                surface = Surface::new_pane(windows::Win32::Foundation::HWND(hwnd)).ok();
+                if surface.is_some() {
+                    gpu_retired = false;
+                    invalidate(hwnd);
+                }
+            }
+            if message == WM_DESTROY {
+                unsafe { KillTimer(hwnd, HIDDEN_GPU_TIMER); }
+            } else if matches!(message, WM_SHOWWINDOW | WM_WINDOWPOSCHANGED | WM_SIZE) {
+                let visible = match message {
+                    WM_SHOWWINDOW => wparam != 0 && unsafe { IsIconic(hwnd) == 0 },
+                    WM_SIZE if wparam == SIZE_MINIMIZED as usize => false,
+                    _ => drawable(hwnd),
+                };
+                if visible {
+                    if gpu_idle_at.take().is_some() { unsafe { KillTimer(hwnd, HIDDEN_GPU_TIMER); } }
+                    if gpu_retired { invalidate(hwnd); }
+                } else if show_prepared.get() && !gpu_retired && gpu_idle_at.is_none()
+                    && unsafe { SetTimer(hwnd, HIDDEN_GPU_TIMER, HIDDEN_GPU_DELAY_MS, None) } != 0
+                {
+                    gpu_idle_at = Some(std::time::Instant::now() + std::time::Duration::from_millis(u64::from(HIDDEN_GPU_DELAY_MS)));
+                }
+            } else if message == WM_TIMER && wparam == HIDDEN_GPU_TIMER {
+                if let Some(at) = gpu_idle_at {
+                    if drawable(hwnd) || std::time::Instant::now() >= at {
+                        unsafe { KillTimer(hwnd, HIDDEN_GPU_TIMER); }
+                        gpu_idle_at = None;
+                        if !drawable(hwnd) {
+                            control_redraw.sync(hwnd, false);
+                            paint_recovery.cancel(hwnd);
+                            renderer.release_device_resources();
+                            if let Some(surface) = surface.take() { surface.retire(); }
+                            gpu_retired = true;
+                        }
+                    } else {
+                        let remaining = (at.saturating_duration_since(std::time::Instant::now()).as_millis() as u32 + 1)
+                            .max(USER_TIMER_MINIMUM);
+                        unsafe { SetTimer(hwnd, HIDDEN_GPU_TIMER, remaining, None); }
+                    }
+                }
+                return Some(0);
+            }
             if message == WM_DESTROY || (message == WM_SHOWWINDOW && wparam == 0) {
                 control_redraw.sync(hwnd, false);
+            }
+            if matches!(message, WM_PAINT | WM_WINDOWPOSCHANGED | WM_SHOWWINDOW | WM_SIZE | TAB_CHANGED)
+                && model.borrow().folder.is_some() && !folder_viewport_pending.replace(true)
+            {
+                let pending = Rc::clone(&folder_viewport_pending);
+                let events = Rc::clone(&events);
+                if !post_action(hwnd, move || {
+                    pending.set(false);
+                    (events.borrow_mut())(Event::FolderViewport);
+                }) {
+                    folder_viewport_pending.set(false);
+                }
             }
             if matches!(message, WM_MOUSELEAVE | WM_NCMOUSEMOVE | WM_LBUTTONDOWN
                 | WM_RBUTTONDOWN | WM_MOUSEWHEEL | WM_MOUSEHWHEEL | WM_KEYDOWN
@@ -815,7 +883,7 @@ where
                     }
                     let r = client(hwnd);
                     let mut controls_playing = false;
-                    if r.right > 0 && r.bottom > 0 {
+                    if r.right > 0 && r.bottom > 0 && (!gpu_retired || drawable(hwnd)) {
                         let s = scale(hwnd);
                         let radius = super::interface_flags::pane_corner_radius(model.borrow().options.corner_radius);
                         drag_clipped.update(hwnd, r.right, r.bottom, radius, s);
@@ -825,6 +893,7 @@ where
                                     windows::Win32::Foundation::HWND(hwnd),
                                 )?);
                             }
+                            gpu_retired = false;
                             let surface = surface.as_mut().unwrap();
                             surface.pane_corner_radius = model.borrow().options.corner_radius;
                             surface.pane_border = model.borrow().options.border;

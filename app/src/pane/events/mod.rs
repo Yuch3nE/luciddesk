@@ -16,6 +16,10 @@ pub(super) fn handle(
     id: PanelId,
     event: Event,
 ) -> Result<bool, String> {
+    if matches!(event, Event::FolderViewport) {
+        folder::update_viewport(&mut state.borrow_mut(), id);
+        return Ok(false);
+    }
     if let Event::MonitorOptions(options) = &event {
         if !state.borrow().monitor_child {
             options.save()?;

@@ -10,12 +10,12 @@ use super::native_graphics::canvas_result;
 use super::{GroupModel, assets, canvas, layout::HEADER};
 use luciddesk_window::controls::motion::Highlights;
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 use windows_canvas::ID2D1DeviceContext;
 
 use windows::core::Result;
-type ImageBitmap = (Arc<assets::Pixels>, windows_canvas::Bitmap, (u32, u32));
+type ImageBitmap = (Weak<assets::Pixels>, windows_canvas::Bitmap, (u32, u32));
 
 // A quiet, font-independent silhouette fills the same slot as the real icon.
 // It also remains useful when Shell extraction fails; no perpetual loading animation.
@@ -96,6 +96,14 @@ pub struct Renderer {
 }
 
 impl Renderer {
+    pub(super) fn release_device_resources(&mut self) {
+        self.images.clear();
+        self.target = None;
+        *self.brushes.get_mut() = Default::default();
+        *self.frame_cache.get_mut() = Default::default();
+        self.monitor = None;
+    }
+
     pub(super) fn menu_width(&self, rows: &[super::menu::Entry]) -> f32 {
         rows.iter()
             .filter(|row| row.id != 0)
@@ -970,7 +978,7 @@ impl Renderer {
                                 (image.height as f32 * ratio).round().max(1.0) as u32,
                             );
                             if self.images.get(&key).is_none_or(|(source, _, old_size)| {
-                                !Arc::ptr_eq(source, image) || *old_size != size
+                                source.as_ptr() != Arc::as_ptr(image) || *old_size != size
                             }) {
                                 let pixels = super::scaled_icons::resample(image, size.0, size.1)?;
                                 let bitmap = canvas_result(target.create_bitmap(
@@ -978,7 +986,7 @@ impl Renderer {
                                     pixels.width,
                                     pixels.height,
                                 ))?;
-                                self.images.insert(key, (Arc::clone(image), bitmap, size));
+                                self.images.insert(key, (Arc::downgrade(image), bitmap, size));
                                 #[cfg(test)]
                                 {
                                     self.image_uploads += 1;

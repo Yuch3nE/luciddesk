@@ -4,8 +4,8 @@ use windows::core::{IUnknown, Interface, Result};
 
 pub struct Layer {
     device: dcomp::IDCompositionDevice,
-    _target: dcomp::IDCompositionTarget,
-    _visual: dcomp::IDCompositionVisual,
+    target: dcomp::IDCompositionTarget,
+    visual: dcomp::IDCompositionVisual,
     opacity: dcomp::IDCompositionEffectGroup,
 }
 thread_local! {
@@ -71,8 +71,8 @@ impl Layer {
             device.Commit().ok()?;
             Ok(Self {
                 device,
-                _target: target,
-                _visual: visual,
+                target,
+                visual,
                 opacity,
             })
         }
@@ -82,5 +82,13 @@ impl Layer {
     }
     pub fn commit(&self) -> Result<()> {
         unsafe { self.device.Commit().ok() }
+    }
+
+    pub(in crate::pane) fn detach(&self) -> Result<()> {
+        unsafe {
+            self.visual.SetContent(None::<&IUnknown>).ok()?;
+            self.target.SetRoot(None::<&dcomp::IDCompositionVisual>).ok()?;
+        }
+        self.commit()
     }
 }

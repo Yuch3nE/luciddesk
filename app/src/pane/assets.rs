@@ -22,6 +22,23 @@ pub struct Pixels {
 pub(super) const RECYCLE_BIN_PARSING_NAME: &str = "::{645FF040-5081-101B-9F08-00AA002F954E}";
 
 pub fn load(identity: &ShellIdentity, size: i32) -> windows::core::Result<Pixels> {
+    fit_pixels(load_shell(identity, size)?, size.max(1) as u32)
+}
+
+/// Limit the long edge after Shell's jumbo/padding checks, without upscaling.
+fn fit_pixels(pixels: Pixels, limit: u32) -> windows::core::Result<Pixels> {
+    let edge = pixels.width.max(pixels.height);
+    if edge <= limit { return Ok(pixels); }
+    let scaled = |length| ((u64::from(length) * u64::from(limit) + u64::from(edge) / 2)
+        / u64::from(edge)).max(1) as u32;
+    Ok(resample(&pixels, scaled(pixels.width), scaled(pixels.height))?.into_owned())
+}
+
+pub(super) fn icon_resolution(physical_size: f32) -> i32 {
+    [64, 96, 128, 192, 256].into_iter().find(|size| *size as f32 >= physical_size).unwrap_or(256)
+}
+
+fn load_shell(identity: &ShellIdentity, size: i32) -> windows::core::Result<Pixels> {
     let name = match identity {
         ShellIdentity::FileSystem { path, .. } => path.to_string_lossy().into_owned(),
         ShellIdentity::Namespace { parsing_name } => parsing_name.clone(),
@@ -228,6 +245,21 @@ fn is_padded_jumbo(pixels: &Pixels) -> bool {
 #[cfg(test)]
 mod padding_tests {
     use super::*;
+
+    #[test]
+    fn decoded_pixels_keep_aspect_ratio_and_respect_the_physical_resolution() {
+        let _sta = crate::pane::test_support::apartment();
+        let source = Pixels { width: 256, height: 192, data: [28, 45, 55, 80].repeat(256 * 192) };
+        for (physical, expected) in [(48.0, 64), (72.0, 96), (128.0, 128), (144.0, 192), (256.0, 256)] {
+            let resolution = icon_resolution(physical);
+            assert_eq!(resolution, expected);
+            let pixels = fit_pixels(source.clone(), resolution as u32).unwrap();
+            assert_eq!((pixels.width, pixels.height), (expected as u32, expected as u32 * 3 / 4));
+            assert!(pixels.data.chunks_exact(4).all(|pixel| pixel[..3].iter().all(|&c| c <= pixel[3])));
+        }
+        let address = source.data.as_ptr();
+        assert_eq!(fit_pixels(source, 256).unwrap().data.as_ptr(), address);
+    }
 
     #[test]
     #[ignore = "Read-only diagnostic for the reported Downloads executable"]

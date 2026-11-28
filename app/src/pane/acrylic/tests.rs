@@ -163,7 +163,7 @@ impl Acrylic {
 
     #[cfg(test)]
     pub fn assert_content_visible(&self, above_children: bool) {
-        assert_eq!(self._target.IsTopmost().unwrap(), above_children);
+        assert_eq!(self.target.IsTopmost().unwrap(), above_children);
         assert!(self.root.IsVisible().unwrap());
         assert!(self.content.as_ref().unwrap().IsVisible().unwrap());
     }

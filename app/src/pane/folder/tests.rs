@@ -76,23 +76,86 @@ fn patch_item() -> Item {
 }
 
 #[test]
-fn image_patch_preserves_allocation_and_skips_unchanged_pixels() {
-    let mut item = patch_item();
-    let original = item.image.clone().unwrap();
-    assert!(!apply_image_patch(&mut item, patch_item()));
-    assert!(Arc::ptr_eq(&original, item.image.as_ref().unwrap()));
-    let mut changed = patch_item();
-    changed.image = Some(Arc::new(assets::Pixels { width: 1, height: 1, data: vec![255; 4] }));
-    assert!(apply_image_patch(&mut item, changed));
-    assert_eq!(item.image.as_ref().unwrap().data, vec![255; 4]);
-    let mut kind = item.clone();
-    kind.details.kind = "new type".into();
-    assert!(apply_image_patch(&mut item, kind));
-    assert_eq!(item.details.kind, "new type");
+fn viewport_keeps_only_requested_pixels_and_reuses_them_from_the_shared_budget() {
+    let root = tempfile::tempdir().unwrap();
+    let mut app = super::super::tests::test_state();
+    let ids = [PanelId::new(1), PanelId::new(2)];
+    for id in ids {
+        app.workspace.panel_mut(id).unwrap().set_folder(Some(root.path().into()));
+        ensure(&mut app, id).unwrap();
+    }
+    assert!(Arc::ptr_eq(&app.folders[&ids[0]].cache, &app.folders[&ids[1]].cache));
+
+    let source = app.folders.get_mut(&ids[0]).unwrap();
+    source.updates.recv_timeout(Duration::from_secs(5)).unwrap().unwrap();
+    let mut first = patch_item();
+    let mut second = patch_item();
+    first.identity = identity(root.path().join("first.png"));
+    second.identity = identity(root.path().join("second.png"));
+    let first_pixels = Arc::downgrade(first.image.as_ref().unwrap());
+    source.cache.lock().unwrap().insert(&first, 128);
+    source.cache.lock().unwrap().insert(&second, 128);
+    first.image = None;
+    second.image = None;
+    source.apply_scan(Ok(vec![first, second]));
+
+    let view = |item: &Item| Some((128, HashSet::from([item.identity.clone()])));
+    assert!(source.set_viewport(view(&source.items[0])));
+    assert!(source.items[0].image.is_some() && source.items[1].image.is_none());
+    assert!(source.set_viewport(view(&source.items[1])));
+    assert!(source.items[0].image.is_none() && source.items[1].image.is_some());
+    assert!(source.set_viewport(view(&source.items[0])));
+    assert!(Arc::ptr_eq(source.items[0].image.as_ref().unwrap(), &first_pixels.upgrade().unwrap()));
+    assert!(source.set_viewport(None));
+    assert!(source.items.iter().all(|item| item.image.is_none()));
+    *app.folder_images.lock().unwrap() = Default::default();
+    assert!(first_pixels.upgrade().is_none());
 }
 
 #[test]
-fn image_patch_rejects_renamed_modified_replaced_and_unknown_items() {
+fn offscreen_file_types_complete_type_sort_without_loading_pixels() {
+    let root = tempfile::tempdir().unwrap();
+    for name in ["z.txt", "b.bmp", "a.txt"] {
+        std::fs::write(root.path().join(name), b"fixture").unwrap();
+    }
+    let mut app = super::super::tests::test_state();
+    let id = PanelId::new(1);
+    app.workspace.panel_mut(id).unwrap().set_folder(Some(root.path().into()));
+    app.store.save_workspace(&app.workspace).unwrap();
+    ensure(&mut app, id).unwrap();
+    set_sort(&mut app, id, (1, false)).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        poll(&mut app);
+        let items = &app.folders[&id].items;
+        if items.len() == 3 && items.iter().all(|item| !item.details.kind.is_empty()) {
+            assert!(items.iter().all(|item| item.image.is_none()));
+            assert_eq!(app.folders[&id].sort, (1, false));
+            let mut expected = items.clone();
+            sort_items(&mut expected, (1, false));
+            assert!(items.iter().zip(expected).all(|(actual, expected)| actual.identity == expected.identity));
+            break;
+        }
+        assert!(Instant::now() < deadline, "offscreen types did not arrive");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[test]
+fn image_patch_preserves_allocation_and_skips_unchanged_pixels() {
+    let mut item = patch_item();
+    let original = item.image.clone().unwrap();
+    assert!(!replace_image(&mut item, patch_item().image.unwrap()));
+    assert!(Arc::ptr_eq(&original, item.image.as_ref().unwrap()));
+    let mut changed = patch_item();
+    changed.image = Some(Arc::new(assets::Pixels { width: 1, height: 1, data: vec![255; 4] }));
+    assert!(replace_image(&mut item, changed.image.unwrap()));
+    assert_eq!(item.image.as_ref().unwrap().data, vec![255; 4]);
+    assert_eq!(item.details.kind, "image");
+}
+
+#[test]
+fn image_patch_rejects_renamed_modified_replaced_and_changed_metadata() {
     for case in 0..5 {
         let mut item = patch_item();
         let original = item.image.clone().unwrap();
@@ -103,12 +166,41 @@ fn image_patch_rejects_renamed_modified_replaced_and_unknown_items() {
             1 => item.details.modified_time = Some(std::time::UNIX_EPOCH + Duration::from_secs(1)),
             2 => item.details.size = Some(8),
             3 => item.details.folder = true,
-            _ => { item.details.modified_time = None; delayed.details.modified_time = None; }
+            _ => delayed.details.modified_time = None,
         }
-        assert!(!apply_image_patch(&mut item, delayed), "case {case}");
+        assert!(!same_revision(&item, &delayed), "case {case}");
         assert!(Arc::ptr_eq(&original, item.image.as_ref().unwrap()));
         assert_eq!(item.details.kind, "image");
     }
+}
+
+#[test]
+fn stale_thumbnail_request_cannot_replace_pixels_for_a_new_viewport() {
+    use std::sync::atomic::Ordering;
+
+    let mut app = super::super::tests::test_state();
+    let id = PanelId::new(1);
+    let root = tempfile::tempdir().unwrap();
+    app.workspace.panel_mut(id).unwrap().set_folder(Some(root.path().into()));
+    ensure(&mut app, id).unwrap();
+    let source = app.folders.get_mut(&id).unwrap();
+    source.updates.recv_timeout(Duration::from_secs(5)).unwrap().unwrap();
+    source.apply_scan(Ok(vec![patch_item()]));
+    let old = source.request.image_generation.load(Ordering::Acquire);
+    source.viewport = Some((128, HashSet::from([source.items[0].identity.clone()])));
+    source.request.replace_images(128, Vec::new());
+    let current = source.request.image_generation.load(Ordering::Acquire);
+
+    let (sender, receiver) = mpsc::channel();
+    source.images = receiver;
+    let mut update = patch_item();
+    update.image = Some(Arc::new(assets::Pixels { width: 1, height: 1, data: vec![255; 4] }));
+    sender.send(Patch::Images(old, vec![update.clone()])).unwrap();
+    poll(&mut app);
+    assert_eq!(app.folders[&id].items[0].image.as_ref().unwrap().data, [0; 4]);
+    sender.send(Patch::Images(current, vec![update])).unwrap();
+    poll(&mut app);
+    assert_eq!(app.folders[&id].items[0].image.as_ref().unwrap().data, [255; 4]);
 }
 
 #[test]
@@ -200,14 +292,18 @@ fn real_folder_images_survive_parent_child_navigation() {
     let root = PathBuf::from(std::env::var_os("LUCIDDESK_TEST_FOLDER").expect("test folder"));
     let cache: images::SharedCache = Arc::default();
     let started = Instant::now();
-    let source = Source::start_with(root.clone(), Default::default(), Arc::clone(&cache), (2, true)).unwrap();
+    let mut source = Source::start_with(root.clone(), Default::default(), Arc::clone(&cache), (2, true)).unwrap();
     let first = source.updates.recv_timeout(Duration::from_secs(30)).unwrap().unwrap();
     eprintln!("directory membership: {} entries in {:?}", first.len(), started.elapsed());
     let target = first.len().min(32);
+    let viewport = (128, first.iter().take(target).map(|item| item.identity.clone()).collect());
+    let child = first.iter().find(|item| item.details.folder).and_then(|item| item.identity.file_system_path()).map(Path::to_path_buf);
+    source.apply_scan(Ok(first));
+    source.set_viewport(Some(viewport.clone()));
     let mut loaded = HashMap::new();
     let deadline = Instant::now() + Duration::from_secs(45);
     while loaded.len() < target {
-        let batch = source.images.recv_timeout(deadline.saturating_duration_since(Instant::now())).expect("thumbnail batch");
+        let Patch::Images(_, batch) = source.images.recv_timeout(deadline.saturating_duration_since(Instant::now())).expect("thumbnail batch") else { continue; };
         for item in batch {
             if let Some(image) = item.image { loaded.insert(item.identity.persistent_key(), image); }
         }
@@ -217,7 +313,6 @@ fn real_folder_images_survive_parent_child_navigation() {
     let unique: HashMap<_, _> = loaded.values().map(|image| (Arc::as_ptr(image), image.data.len())).collect();
     eprintln!("real image pixel storage: {logical_bytes} unshared bytes -> {} shared bytes ({} unique images)",
         unique.values().sum::<usize>(), unique.len());
-    let child = first.iter().find(|item| item.details.folder).and_then(|item| item.identity.file_system_path()).map(Path::to_path_buf);
     drop(source);
     if let Some(child) = child {
         let child = Source::start_with(child, Default::default(), Arc::clone(&cache), (2, true)).unwrap();
@@ -225,9 +320,11 @@ fn real_folder_images_survive_parent_child_navigation() {
         drop(child);
     }
     let started = Instant::now();
-    let returned = Source::start_with(root, Default::default(), cache, (2, true)).unwrap();
+    let mut returned = Source::start_with(root, Default::default(), cache, (2, true)).unwrap();
     let first = returned.updates.recv_timeout(Duration::from_secs(30)).unwrap().unwrap();
-    let reused = first.iter().filter(|item| {
+    returned.apply_scan(Ok(first));
+    returned.set_viewport(Some(viewport));
+    let reused = returned.items.iter().filter(|item| {
         item.image.as_ref().zip(loaded.get(&item.identity.persistent_key())).is_some_and(|(image, old)| Arc::ptr_eq(image, old))
     }).count();
     eprintln!("back navigation: {reused}/{} prior image allocations reused in first snapshot ({:?})", loaded.len(), started.elapsed());
@@ -559,8 +656,7 @@ fn folder_watch_tracks_children_and_recovers_after_missing_directory() {
     let wait = |source: &mut Source, predicate: &dyn Fn(&Result<Vec<Item>, String>) -> bool| {
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
-            // The UI consumes both bounded channels. Leaving thumbnails
-            // unread eventually blocks the worker before its final snapshot.
+            // A folder may publish offscreen type names between watch events.
             while source.images.try_recv().is_ok() {}
             assert!(Instant::now() < deadline, "folder update timed out");
             let result = match source.updates.recv_timeout(Duration::from_millis(25)) {
@@ -583,9 +679,7 @@ fn folder_watch_tracks_children_and_recovers_after_missing_directory() {
     std::fs::create_dir(root.join("child")).unwrap();
     std::fs::write(root.join("child/nested.txt"), b"nested").unwrap();
     let items = wait(&mut source, &|result| {
-        result.as_ref().is_ok_and(|items| {
-            items.len() == 2 && items.iter().all(|item| item.image.is_some())
-        })
+        result.as_ref().is_ok_and(|items| items.len() == 2)
     })
     .unwrap();
     assert!(
@@ -598,9 +692,7 @@ fn folder_watch_tracks_children_and_recovers_after_missing_directory() {
         .iter()
         .find(|item| item.identity.file_system_path() == Some(root.join("first.txt").as_path()))
         .unwrap();
-    assert!(first.image.is_some());
-    assert!(!first.details.kind.is_empty());
-    assert_ne!(first.details.kind, "—");
+    assert!(first.image.is_none(), "watch snapshots carry metadata even without a viewport");
     assert_eq!(first.details.modified.len(), 16);
     std::fs::rename(root.join("first.txt"), root.join("renamed.txt")).unwrap();
     wait(&mut source, &|result| {

@@ -122,9 +122,7 @@ fn select_impl(state: &Rc<RefCell<PaneApp>>, from: PanelId, to: PanelId, persist
         view.id = to;
         view.target.set(to);
         s.tab_models.insert(from, old);
-        if let Some(source) = s.folders.get(&from) {
-            source.set_active(false);
-        }
+        folder::deactivate(&mut s, from);
         if let Some(source) = s.folders.get(&to) {
             source.set_active(true);
         }
@@ -334,9 +332,7 @@ pub(super) fn detach(state: &Rc<RefCell<PaneApp>>, id: PanelId) -> Result<(), St
             if let (Some(runtime), Some(position)) = (&mut s.runtime, previous_position) {
                 runtime.layouts.positions.insert(id, position);
             }
-            if let Some(source) = s.folders.get(&id) {
-                source.set_active(false);
-            }
+            folder::deactivate(&mut s, id);
             take_view(&mut s, id)
         };
         drop(view);
@@ -439,9 +435,7 @@ fn merge(state: &Rc<RefCell<PaneApp>>, from: PanelId, to: PanelId) -> Result<(),
         let view = take_view(&mut s, from).unwrap();
         s.tab_models.insert(from, view.model.borrow().clone());
         for id in source {
-            if let Some(source) = s.folders.get(&id) {
-                source.set_active(false);
-            }
+            folder::deactivate(&mut s, id);
         }
         refresh_changed_views(&mut s, true);
         s.wake.notify();

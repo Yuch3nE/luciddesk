@@ -51,7 +51,7 @@ pub struct Acrylic {
     #[cfg(test)]
     unavailable_backdrops: std::cell::Cell<(bool, bool)>,
     runtime: Rc<Runtime>,
-    _target: DesktopWindowTarget,
+    target: DesktopWindowTarget,
     root: ContainerVisual,
     backdrop: windows::UI::Composition::SpriteVisual,
     tint: windows::UI::Composition::SpriteVisual,
@@ -132,7 +132,7 @@ impl Acrylic {
             #[cfg(test)]
             fail_material_once: std::cell::Cell::new(false),
             runtime,
-            _target: target,
+            target,
             root,
             backdrop,
             tint,
@@ -236,6 +236,16 @@ impl Acrylic {
         Ok(Box::new(move || {
             commit.Status().map_or(true, |status| status.0 != 0)
         }))
+    }
+
+    pub(super) fn detach(&self) -> Result<()> {
+        use windows::UI::Composition::{CompositionBrush, Visual};
+        if let Some(content) = &self.content {
+            content.SetBrush(None::<&CompositionBrush>)?;
+        }
+        self.target.SetRoot(None::<&Visual>)?;
+        self.runtime.compositor.RequestCommitAsync()?;
+        Ok(())
     }
 
     pub fn opacity(&self, opacity: f32) -> Result<()> {

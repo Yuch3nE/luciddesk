@@ -478,6 +478,7 @@ pub(super) fn test_state() -> PaneApp {
         sorting: Default::default(),
         wake: Default::default(),
         folders: HashMap::new(),
+        folder_images: Default::default(),
         tab_models: HashMap::new(),
         settings: None,
         organizer: None,

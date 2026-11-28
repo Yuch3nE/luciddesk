@@ -1,5 +1,6 @@
 //! Live folder sources are separate from Explorer desktop membership.
 use super::*;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Mutex;
 pub(super) mod entry_mode;
@@ -28,7 +29,9 @@ pub(super) struct Source {
     request: Arc<Commands>,
     cache: images::SharedCache,
     updates: mpsc::Receiver<Result<Vec<Item>, String>>,
-    images: mpsc::Receiver<Vec<Item>>,
+    images: mpsc::Receiver<Patch>,
+    viewport: Option<(i32, HashSet<ShellIdentity>)>,
+    loaded_resolutions: HashMap<ShellIdentity, i32>,
     pub items: Vec<Item>,
     pub content_revision: u64,
     pub status: Option<String>,
@@ -37,7 +40,52 @@ pub(super) struct Source {
     pending_rename: Option<PathBuf>,
 }
 
+pub(super) type ImageCache = images::SharedCache;
+
+struct ImageRequest {
+    generation: u64,
+    size: i32,
+    items: Vec<Item>,
+}
+
+enum Patch {
+    Images(u64, Vec<Item>),
+    Types(Vec<Item>),
+}
+
 impl Source {
+    fn cancel_images(&mut self) {
+        self.viewport = None;
+        self.loaded_resolutions.clear();
+        self.request.replace_images(0, Vec::new());
+    }
+
+    fn set_viewport(&mut self, viewport: Option<(i32, HashSet<ShellIdentity>)>) -> bool {
+        if self.viewport == viewport { return false; }
+        let mut jobs = Vec::new();
+        let mut changed = false;
+        let mut used = Vec::new();
+        for item in &mut self.items {
+            if let Some((size, _)) = viewport.as_ref().filter(|(_, wanted)| wanted.contains(&item.identity)) {
+                if item.image.is_some() && self.loaded_resolutions.get(&item.identity) == Some(size) {
+                    used.push(item.identity.persistent_key());
+                } else if self.cache.lock().unwrap().restore(item, *size) {
+                    self.loaded_resolutions.insert(item.identity.clone(), *size);
+                    changed = true;
+                } else {
+                    jobs.push(Item { image: None, ..item.clone() });
+                }
+            } else {
+                if item.image.take().is_some() { changed = true; }
+                self.loaded_resolutions.remove(&item.identity);
+            }
+        }
+        if !used.is_empty() { self.cache.lock().unwrap().touch(&used); }
+        self.request.replace_images(viewport.as_ref().map_or(0, |(size, _)| *size), jobs);
+        self.viewport = viewport;
+        changed
+    }
+
     fn poll_scan(&mut self) -> bool {
         if self.worker_stopped {
             return false;
@@ -80,6 +128,7 @@ impl Source {
         self.loading = false;
         match result {
             Ok(items) => {
+                self.cancel_images();
                 self.items = items;
                 sort_items(&mut self.items, self.sort);
                 self.status = None;
@@ -93,8 +142,10 @@ struct Commands {
     event: isize,
     stop: std::sync::atomic::AtomicBool,
     active: std::sync::atomic::AtomicBool,
+    rescan: std::sync::atomic::AtomicBool,
     images_pending: std::sync::atomic::AtomicBool,
-    priority: Mutex<Vec<String>>,
+    image_generation: std::sync::atomic::AtomicU64,
+    image_request: Mutex<Option<ImageRequest>>,
 }
 impl Commands {
     fn new() -> Result<Self, String> {
@@ -113,13 +164,32 @@ impl Commands {
             event: event as isize,
             stop: false.into(),
             active: true.into(),
+            rescan: true.into(),
             images_pending: false.into(),
-            priority: Mutex::new(Vec::new()),
+            image_generation: 0.into(),
+            image_request: Mutex::new(None),
         })
     }
     fn signal(&self) {
         unsafe {
             windows_sys::Win32::System::Threading::SetEvent(self.event as _);
+        }
+    }
+
+    fn replace_images(&self, size: i32, items: Vec<Item>) {
+        use std::sync::atomic::Ordering;
+        let mut pending = self.image_request.lock().unwrap();
+        let generation = self.image_generation.fetch_add(1, Ordering::AcqRel).wrapping_add(1);
+        *pending = (!items.is_empty()).then_some(ImageRequest { generation, size, items });
+        self.images_pending.store(pending.is_some(), Ordering::Release);
+        self.signal();
+    }
+
+    fn finish_images(&self, generation: u64) {
+        use std::sync::atomic::Ordering;
+        let _pending = self.image_request.lock().unwrap();
+        if self.image_generation.load(Ordering::Acquire) == generation {
+            self.images_pending.store(false, Ordering::Release);
         }
     }
 }
@@ -205,7 +275,10 @@ impl Drop for Watch {
 
 impl Source {
     pub(super) fn set_active(&self, active: bool) {
-        self.request.active.store(active, std::sync::atomic::Ordering::Release);
+        use std::sync::atomic::Ordering;
+        if self.request.active.swap(active, Ordering::AcqRel) != active && active {
+            self.request.rescan.store(true, Ordering::Release);
+        }
         self.request.signal();
     }
     pub(super) fn navigation_context(&self) -> String {format!("{:?}:{:?}:{:?}",self.root,self.path,self.history)}
@@ -239,20 +312,18 @@ impl Source {
                         return;
                     }
                 };
+                use std::{collections::VecDeque, sync::atomic::Ordering};
                 let mut watch = Watch::new(&root);
                 let cache = worker_cache;
+                let mut scan_failed = false;
+                let mut pending_types = VecDeque::new();
                 loop {
-                    if commands.stop.load(std::sync::atomic::Ordering::Acquire) {
-                        break;
-                    }
-                    let mut scan_failed = false;
-                    if commands.active.load(std::sync::atomic::Ordering::Acquire) {
-                        let mut jobs = Vec::new();
-                        let result = luciddesk_shell::enumerate_folder(&root)
-                            .map(|entries| {
-                                let mut cache = cache.lock().unwrap();
-                                let mut items: Vec<Item> = entries.into_iter().map(|entry| {
-                                    let mut item = Item {
+                    if commands.stop.load(Ordering::Acquire) { break; }
+                    if commands.active.load(Ordering::Acquire) {
+                        if commands.rescan.swap(false, Ordering::AcqRel) {
+                            let result = luciddesk_shell::enumerate_folder(&root)
+                                .map(|entries| {
+                                    let mut items: Vec<Item> = entries.into_iter().map(|entry| Item {
                                         details: ItemDetails {
                                             modified: modified_text(entry.modified),
                                             folder: entry.attributes.folder,
@@ -263,35 +334,41 @@ impl Source {
                                         identity: entry.identity,
                                         label: entry.display_name,
                                         image: None,
-                                    };
-                                    if !cache.restore(&mut item) { jobs.push(item.clone()); }
-                                    item
-                                }).collect();
-                                cache.retain_folder(&root, &items.iter().map(|item| item.identity.persistent_key()).collect());
-                                drop(cache);
-                                sort_items(&mut items, sort);
-                                sort_items(&mut jobs, sort);
-                                items
-                            })
-                            .map_err(|error| {
-                                crate::i18n::format("ui-cannot-read-folder-check-the-path-and-permissions-n", &[("error", format!("{}", error))])
-                            });
-                        scan_failed = result.is_err();
-                        commands.images_pending.store(!jobs.is_empty(), std::sync::atomic::Ordering::Release);
-                        if sender.send(result.clone()).is_err() {
-                            break;
-                        }
-                        wake.notify();
-                        // Send only completed image/type changes while loading. A final
-                        // snapshot also supports consumers waiting for a complete scan.
-                        if let Ok(mut items) = result {
-                            if !jobs.is_empty() {
-                                images::enrich(&mut items, jobs, &commands, &cache, &image_sender, &wake);
-                                commands.images_pending.store(false, std::sync::atomic::Ordering::Release);
-                                if commands.stop.load(std::sync::atomic::Ordering::Acquire) { return; }
-                                if sender.send(Ok(items)).is_err() { return; }
-                                wake.notify();
+                                    }).collect();
+                                    let live = items.iter().map(|item| item.identity.persistent_key()).collect();
+                                    cache.lock().unwrap().retain_folder(&root, &live);
+                                    sort_items(&mut items, sort);
+                                    items
+                                })
+                                .map_err(|error| {
+                                    crate::i18n::format("ui-cannot-read-folder-check-the-path-and-permissions-n", &[("error", error.to_string())])
+                                });
+                            scan_failed = result.is_err();
+                            pending_types.clear();
+                            if let Ok(items) = &result {
+                                pending_types.extend(items.iter().filter(|item| !item.details.folder).cloned());
                             }
+                            if sender.send(result).is_err() { break; }
+                            wake.notify();
+                        }
+                        let pending_images = commands.image_request.lock().unwrap().take();
+                        if let Some(request) = pending_images {
+                            let generation = request.generation;
+                            images::enrich(request, &commands, &cache, &image_sender, &wake);
+                            commands.finish_images(generation);
+                            wake.notify();
+                            continue;
+                        }
+                        if !pending_types.is_empty() {
+                            // Resolve types independently of thumbnails. Yield between
+                            // batches so a new viewport is served before background names.
+                            let batch = pending_types.drain(..32.min(pending_types.len())).map(|mut item| {
+                                item.details.kind = file_type(&item.identity);
+                                item
+                            }).collect();
+                            if image_sender.send(Patch::Types(batch)).is_err() { break; }
+                            wake.notify();
+                            continue;
                         }
                     }
                     use windows_sys::Win32::System::Threading::*;
@@ -305,6 +382,9 @@ impl Source {
                     );
                     if commands.stop.load(std::sync::atomic::Ordering::Acquire) {
                         break;
+                    }
+                    if result == 1 || result == windows_sys::Win32::Foundation::WAIT_TIMEOUT {
+                        commands.rescan.store(true, Ordering::Release);
                     }
                     if result == 1 {
                         if unsafe {
@@ -339,6 +419,8 @@ impl Source {
             cache,
             updates,
             images: image_updates,
+            viewport: None,
+            loaded_resolutions: HashMap::new(),
             items: Vec::new(),
             content_revision: next_content_revision(),
             status: None,
@@ -348,6 +430,7 @@ impl Source {
         })
     }
     pub fn refresh(&self) {
+        self.request.rescan.store(true, std::sync::atomic::Ordering::Release);
         self.request.signal();
     }
 }
@@ -373,7 +456,7 @@ pub(super) fn ensure(state: &mut PaneApp, id: PanelId) -> Result<(), String> {
                     Some((column.parse::<u8>().ok()?.min(3), direction == "desc"))
                 })
                 .unwrap_or((0, false));
-            let source = Source::start_with(path, state.wake.clone(), Arc::default(), sort)?;
+            let source = Source::start_with(path, state.wake.clone(), Arc::clone(&state.folder_images), sort)?;
             state.folders.insert(id, source);
         }
     } else {
@@ -384,33 +467,68 @@ pub(super) fn ensure(state: &mut PaneApp, id: PanelId) -> Result<(), String> {
 
 pub(super) fn poll(state: &mut PaneApp) -> Vec<(PanelId, ShellIdentity)> {
     let mut changed = false;
-    for source in state.folders.values_mut() {
+    let mut repaint = HashMap::<PanelId, HashMap<ShellIdentity, Arc<assets::Pixels>>>::new();
+    for (&id, source) in &mut state.folders {
         // Each update is a complete snapshot. Sort and publish only the newest
         // one when the UI was busy while several scans completed.
         changed |= source.poll_scan();
-        let mut patches = HashMap::new();
+        let generation = source.request.image_generation.load(std::sync::atomic::Ordering::Acquire);
+        let mut image_updates = HashMap::new();
+        let mut type_updates = HashMap::new();
         while let Ok(batch) = source.images.try_recv() {
-            for item in batch { patches.insert(item.identity.clone(), item); }
-        }
-        if !patches.is_empty() {
-            let mut patched = false;
-            let mut kind_changed = false;
-            for item in &mut source.items {
-                if patches.is_empty() { break; }
-                if let Some(update) = patches.remove(&item.identity) {
-                    let different_kind = item.details.kind != update.details.kind;
-                    let applied = apply_image_patch(item, update);
-                    kind_changed |= applied && different_kind;
-                    patched |= applied;
+            match batch {
+                Patch::Images(request, batch) if request == generation => {
+                    image_updates.extend(batch.into_iter().map(|item| (item.identity.clone(), item)));
+                }
+                Patch::Images(..) => {}
+                Patch::Types(batch) => {
+                    type_updates.extend(batch.into_iter().map(|item| (item.identity.clone(), item)));
                 }
             }
-            if kind_changed { source.content_revision = next_content_revision(); }
-            if kind_changed && source.sort.0 == 1 { sort_items(&mut source.items, source.sort); }
-            changed |= patched;
+        }
+        if !image_updates.is_empty() || !type_updates.is_empty() {
+            let mut kind_changed = false;
+            for item in &mut source.items {
+                if let Some(update) = type_updates.remove(&item.identity)
+                    && same_revision(item, &update) && item.details.kind != update.details.kind
+                {
+                    item.details.kind = update.details.kind;
+                    kind_changed = true;
+                }
+                if let Some(update) = image_updates.remove(&item.identity)
+                    && let Some((size, _)) = source.viewport.as_ref().filter(|(_, wanted)| wanted.contains(&item.identity))
+                    && same_revision(item, &update)
+                    && let Some(image) = update.image
+                {
+                    source.loaded_resolutions.insert(item.identity.clone(), *size);
+                    if replace_image(item, image) {
+                        repaint.entry(id).or_default().insert(
+                            item.identity.clone(), Arc::clone(item.image.as_ref().unwrap()),
+                        );
+                    }
+                }
+                if image_updates.is_empty() && type_updates.is_empty() { break; }
+            }
+            if kind_changed {
+                source.content_revision = next_content_revision();
+                if source.sort.0 == 1 { sort_items(&mut source.items, source.sort); }
+                changed = true;
+            }
         }
     }
     if changed {
         refresh_views(state);
+    } else {
+        // A thumbnail result changes paint only. Keep the view's scroll,
+        // hover, selection, and metadata snapshot in place.
+        for view in &state.views {
+            let Some(mut images) = repaint.remove(&view.id) else { continue; };
+            for item in &mut view.model.borrow_mut().items {
+                if let Some(image) = images.remove(&item.identity) { item.image = Some(image); }
+                if images.is_empty() { break; }
+            }
+            unsafe { InvalidateRect(view.window.hwnd().cast(), std::ptr::null(), 0); }
+        }
     }
     let mut renames = Vec::new();
     for view in &state.views {
@@ -429,24 +547,69 @@ pub(super) fn poll(state: &mut PaneApp) -> Vec<(PanelId, ShellIdentity)> {
             renames.push((view.id, identity));
         }
     }
-    // Re-evaluate the viewport while work arrives, including after scrolling or
-    // changing the sort order. Unseen files remain queued behind these entries.
-    for view in &state.views {
-        let Some(source) = state.folders.get(&view.id) else { continue; };
-        if !changed && !source.request.images_pending.load(std::sync::atomic::Ordering::Acquire) { continue; }
-        let model = view.model.borrow();
-        let mut bounds = RECT::default();
-        let hwnd = view.window.hwnd().cast();
-        unsafe { windows_sys::Win32::UI::WindowsAndMessaging::GetClientRect(hwnd, &raw mut bounds); }
-        let scale = unsafe { windows_sys::Win32::UI::HiDpi::GetDpiForWindow(hwnd) }.max(96) as f32 / 96.0;
-        let grid = model.grid(bounds.right as f32 / scale, bounds.bottom as f32 / scale);
-        let start = model.scroll.saturating_mul(grid.columns).min(model.items.len());
-        let count = (grid.visible_rows + 2).saturating_mul(grid.columns);
-        let priority: Vec<_> = model.items.iter().skip(start).take(count).map(|item| item.identity.persistent_key()).collect();
-        source.cache.lock().unwrap().touch(&priority);
-        *source.request.priority.lock().unwrap() = priority;
+    if changed || !renames.is_empty() {
+        for view in &state.views {
+            if let Some(source) = state.folders.get_mut(&view.id) {
+                sync_viewport(source, view);
+            }
+        }
     }
     renames
+}
+
+pub(super) fn update_viewport(state: &mut PaneApp, id: PanelId) {
+    if let Some(source) = state.folders.get_mut(&id)
+        && let Some(view) = state.views.iter().find(|view| view.id == id)
+    {
+        sync_viewport(source, view);
+    }
+}
+
+pub(super) fn deactivate(state: &mut PaneApp, id: PanelId) {
+    if let Some(source) = state.folders.get_mut(&id) {
+        source.set_active(false);
+        source.set_viewport(None);
+        if let Some(model) = state.tab_models.get_mut(&id) {
+            for item in &mut model.items { item.image = None; }
+        }
+    }
+}
+
+fn sync_viewport(source: &mut Source, view: &super::View) {
+    use windows_sys::Win32::UI::{HiDpi::GetDpiForWindow, WindowsAndMessaging::*};
+    let hwnd = view.window.hwnd().cast();
+    let mut bounds = RECT::default();
+    let visible = unsafe {
+        IsWindowVisible(hwnd) != 0 && IsIconic(hwnd) == 0 && GetClientRect(hwnd, &raw mut bounds) != 0
+    };
+    let mut model = view.model.borrow_mut();
+    let demand = if visible && !model.collapsed && !model.merge_occluded {
+        let scale = unsafe { GetDpiForWindow(hwnd) }.max(96) as f32 / 96.0;
+        let width = bounds.right as f32 / scale;
+        let height = bounds.bottom as f32 / scale;
+        let grid = model.grid(width, height);
+        let wanted = model.visible_indices(grid, grid.content_top - grid.cell_height, height + grid.cell_height)
+            .filter(|&index| {
+                let (x, y) = model.cell(grid, index);
+                x + grid.cell_width > 6.0 && x < width - 6.0
+                    && y + grid.cell_height * 2.0 > grid.content_top
+            })
+            .map(|index| model.items[index].identity.clone())
+            .collect::<HashSet<_>>();
+        (!wanted.is_empty()).then_some((assets::icon_resolution(grid.icon_size * scale), wanted))
+    } else {
+        None
+    };
+    if source.set_viewport(demand) {
+        let images: HashMap<_, _> = source.items.iter().filter_map(|item| {
+            item.image.as_ref().map(|image| (&item.identity, image))
+        }).collect();
+        for item in &mut model.items {
+            item.image = images.get(&item.identity).map(|image| Arc::clone(image));
+        }
+        drop(model);
+        unsafe { windows_sys::Win32::Graphics::Gdi::InvalidateRect(hwnd, std::ptr::null(), 0); }
+    }
 }
 
 pub(super) fn item_created(state: &mut PaneApp, id: PanelId, path: PathBuf) {
@@ -459,27 +622,20 @@ pub(super) fn item_created(state: &mut PaneApp, id: PanelId, path: PathBuf) {
     }
 }
 
-fn apply_image_patch(item: &mut Item, update: Item) -> bool {
-    // Unknown timestamps cannot establish that a delayed result still belongs
-    // to this scan. Such items receive images through the full final snapshot.
-    if item.identity != update.identity
-        || item.details.modified_time.is_none()
-        || item.details.modified_time != update.details.modified_time
-        || item.details.folder != update.details.folder
-        || item.details.size != update.details.size
-    {
+fn same_revision(item: &Item, update: &Item) -> bool {
+    item.identity == update.identity
+        && item.details.modified_time == update.details.modified_time
+        && item.details.folder == update.details.folder
+        && item.details.size == update.details.size
+}
+
+fn replace_image(item: &mut Item, image: Arc<assets::Pixels>) -> bool {
+    if item.image.as_ref().is_some_and(|old| Arc::ptr_eq(old, &image)
+        || (old.width == image.width && old.height == image.height && old.data == image.data)) {
         return false;
     }
-    let image_changed = match (&item.image, &update.image) {
-        (Some(a), Some(b)) => !Arc::ptr_eq(a, b)
-            && (a.width != b.width || a.height != b.height || a.data != b.data),
-        (None, None) => false,
-        _ => true,
-    };
-    let changed = image_changed || item.details.kind != update.details.kind;
-    if image_changed { item.image = update.image; }
-    item.details.kind = update.details.kind;
-    changed
+    item.image = Some(image);
+    true
 }
 
 pub(super) fn sort_items(items: &mut Vec<Item>, sort: (u8, bool)) {
@@ -795,3 +951,5 @@ pub(super) fn request_picker(
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod memory_bench;

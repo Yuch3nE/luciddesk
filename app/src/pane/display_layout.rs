@@ -36,6 +36,10 @@ impl Default for Layouts {
     }
 }
 impl Layouts {
+    pub(super) fn max_scale(&self) -> f32 {
+        self.monitors.iter().map(|monitor| monitor.dpi).max().unwrap_or(96) as f32 / 96.0
+    }
+
     pub(super) fn invalidate(&mut self) {
         self.next_check = Some(Instant::now());
     }

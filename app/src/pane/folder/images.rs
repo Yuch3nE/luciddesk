@@ -1,4 +1,4 @@
-//! Bounded CPU image cache shared by a mapping's parent/child folder sources.
+//! Application-wide CPU thumbnail budget and bounded viewport loading.
 use super::*;
 use std::{
     collections::{BTreeMap, HashSet, VecDeque},
@@ -6,15 +6,15 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub(super) type SharedCache = Arc<Mutex<Cache>>;
-const IMAGE_BYTES: usize = 64 * 1024 * 1024;
+pub(in crate::pane) type SharedCache = Arc<Mutex<Cache>>;
+const IMAGE_BYTES: usize = 32 * 1024 * 1024;
 const MAX_ENTRIES: usize = 4096;
 const WORKERS: usize = 3;
 
 struct Entry {
     identity: ShellIdentity,
     image: Arc<assets::Pixels>,
-    kind: String,
+    resolution: i32,
     modified_time: Option<std::time::SystemTime>,
     folder: bool,
     size: Option<u64>,
@@ -22,7 +22,7 @@ struct Entry {
     bytes: usize,
 }
 
-pub(super) struct Cache {
+pub(in crate::pane) struct Cache {
     entries: HashMap<String, Entry>,
     order: BTreeMap<u64, String>,
     clock: u64,
@@ -60,7 +60,7 @@ impl Cache {
         }
     }
 
-    pub(super) fn restore(&mut self, item: &mut Item) -> bool {
+    pub(super) fn restore(&mut self, item: &mut Item, resolution: i32) -> bool {
         let key = item.identity.persistent_key();
         let Some(entry) = self.entries.get_mut(&key) else {
             return false;
@@ -75,20 +75,20 @@ impl Cache {
             self.remove(&key);
             return false;
         }
+        if entry.resolution != resolution { return false; }
         self.order.remove(&entry.used);
         self.clock += 1;
         entry.used = self.clock;
         self.order.insert(entry.used, key);
         item.image = Some(Arc::clone(&entry.image));
-        item.details.kind.clone_from(&entry.kind);
         true
     }
 
-    pub(super) fn insert(&mut self, item: &Item) {
+    pub(super) fn insert(&mut self, item: &Item, resolution: i32) {
         let key = item.identity.persistent_key();
-        self.remove(&key);
         // Failed loads are retried, so an empty image has no reusable cache value.
         let Some(image) = &item.image else { return; };
+        self.remove(&key);
         let bytes = image.data.capacity();
         if bytes > self.limit {
             return;
@@ -107,7 +107,7 @@ impl Cache {
             Entry {
                 identity: item.identity.clone(),
                 image: Arc::clone(image),
-                kind: item.details.kind.clone(),
+                resolution,
                 modified_time: item.details.modified_time,
                 folder: item.details.folder,
                 size: item.details.size,
@@ -137,110 +137,62 @@ impl Cache {
     }
 }
 
-struct Queue {
-    order: VecDeque<Arc<str>>,
-    pending: HashMap<Arc<str>, Item>,
-}
-
-impl Queue {
-    fn new(items: Vec<Item>) -> Self {
-        let mut order = VecDeque::with_capacity(items.len());
-        let mut pending = HashMap::with_capacity(items.len());
-        for item in items {
-            let key: Arc<str> = item.identity.persistent_key().into();
-            order.push_back(Arc::clone(&key));
-            pending.insert(key, item);
-        }
-        Self { order, pending }
-    }
-    fn next(&mut self, priority: &[String]) -> Option<Item> {
-        for key in priority {
-            if let Some(item) = self.pending.remove(key.as_str()) {
-                return Some(item);
-            }
-        }
-        while let Some(key) = self.order.pop_front() {
-            if let Some(item) = self.pending.remove(&key) {
-                return Some(item);
-            }
-        }
-        None
-    }
-}
-
 /// Shell objects stay inside their worker's STA. Only pixel Arcs cross threads.
 pub(super) fn enrich(
-    items: &mut [Item],
-    jobs: Vec<Item>,
+    request: ImageRequest,
     commands: &Commands,
     cache: &SharedCache,
-    images: &mpsc::SyncSender<Vec<Item>>,
+    images: &mpsc::SyncSender<Patch>,
     wake: &wake::Wake,
 ) {
-    run(
-        jobs,
-        commands,
-        cache,
-        |item| {
-            item.details.kind = file_type(&item.identity);
-            item.image = assets::load(&item.identity, 128).ok().map(Arc::new);
-        },
+    use std::sync::atomic::Ordering;
+    let ImageRequest { generation, size, items } = request;
+    let current = || !commands.stop.load(Ordering::Acquire)
+        && commands.active.load(Ordering::Acquire)
+        && commands.image_generation.load(Ordering::Acquire) == generation;
+    load_jobs(
+        items, size, cache, current,
+        |item| item.image = assets::load(&item.identity, size).ok().map(Arc::new),
         |batch| {
-            if images.send(batch).is_ok() {
+            if current() && images.send(Patch::Images(generation, batch)).is_ok() {
                 wake.notify();
             }
         },
-        items,
     );
 }
 
-fn run(
+fn load_jobs(
     jobs: Vec<Item>,
-    commands: &Commands,
+    resolution: i32,
     cache: &SharedCache,
+    current: impl Fn() -> bool + Sync,
     load: impl Fn(&mut Item) + Sync,
     mut publish: impl FnMut(Vec<Item>),
-    items: &mut [Item],
 ) {
-    if jobs.is_empty() {
-        return;
-    }
-    let queue = Mutex::new(Queue::new(jobs));
-    let positions: HashMap<_, _> = items
-        .iter()
-        .enumerate()
-        .map(|(index, item)| (item.identity.persistent_key(), index))
-        .collect();
+    if jobs.is_empty() { return; }
+    let queue = Mutex::new(VecDeque::from(jobs));
     std::thread::scope(|scope| {
         let (sender, receiver) = mpsc::sync_channel(WORKERS * 2);
         for _ in 0..WORKERS {
             let sender = sender.clone();
             let queue = &queue;
             let load = &load;
+            let current = &current;
             scope.spawn(move || {
-                let Ok(_apartment) = ShellApartment::initialize_sta() else {
-                    return;
-                };
-                while !commands.stop.load(std::sync::atomic::Ordering::Acquire)
-                    && commands.active.load(std::sync::atomic::Ordering::Acquire) {
-                    let next = {
-                        let priority = commands.priority.lock().unwrap();
-                        queue.lock().unwrap().next(&priority)
-                    };
-                    let Some(mut item) = next else {
-                        break;
-                    };
-                    let ready = cache.lock().unwrap().restore(&mut item);
-                    if !ready {
+                let Ok(_apartment) = ShellApartment::initialize_sta() else { return; };
+                while current() {
+                    let Some(mut item) = queue.lock().unwrap().pop_front() else { break; };
+                    let restored = cache.lock().unwrap().restore(&mut item, resolution);
+                    if !restored {
                         load(&mut item);
                         if let Some(image) = item.image.take() {
                             item.image = Some(super::super::image_pool::intern(image));
                         }
-                        cache.lock().unwrap().insert(&item);
+                        if current() {
+                            cache.lock().unwrap().insert(&item, resolution);
+                        }
                     }
-                    if sender.send(item).is_err() {
-                        break;
-                    }
+                    if !current() || sender.send(item).is_err() { break; }
                 }
             });
         }
@@ -249,12 +201,7 @@ fn run(
         let mut published = Instant::now();
         loop {
             match receiver.recv_timeout(Duration::from_millis(50)) {
-                Ok(item) => {
-                    if let Some(&index) = positions.get(&item.identity.persistent_key()) {
-                        items[index] = item.clone();
-                    }
-                    batch.push(item);
-                }
+                Ok(item) => batch.push(item),
                 Err(mpsc::RecvTimeoutError::Disconnected) => break,
                 Err(mpsc::RecvTimeoutError::Timeout) => {}
             }
@@ -273,6 +220,23 @@ fn run(
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn run(jobs: Vec<Item>, commands: &Commands, cache: &SharedCache,
+        load: impl Fn(&mut Item) + Sync, mut publish: impl FnMut(Vec<Item>), items: &mut [Item],
+    ) {
+        load_jobs(jobs, 128, cache,
+            || !commands.stop.load(Ordering::Acquire) && commands.active.load(Ordering::Acquire),
+            load,
+            |batch| {
+                for update in &batch {
+                    if let Some(item) = items.iter_mut().find(|item| item.identity == update.identity) {
+                        *item = update.clone();
+                    }
+                }
+                publish(batch);
+            },
+        );
+    }
 
     fn item(name: &str) -> Item {
         Item {
@@ -305,7 +269,7 @@ mod tests {
         let mut data = Vec::with_capacity(32);
         data.resize(8, 0);
         value.image = Some(Arc::new(assets::Pixels { width: 2, height: 1, data }));
-        cache.insert(&value);
+        cache.insert(&value, 128);
         assert!(cache.entries.is_empty());
         assert_eq!(cache.bytes, 0);
     }
@@ -367,7 +331,7 @@ mod tests {
         // Another directory uses the same bounded cache between the two visits.
         let mut child = item(r"child\nested");
         load(&mut child);
-        cache.lock().unwrap().insert(&child);
+        cache.lock().unwrap().insert(&child, 128);
         for item in &mut items {
             item.image = None;
             item.details.kind.clear();
@@ -448,41 +412,24 @@ mod tests {
         for name in ["a", "b"] {
             let mut value = item(name);
             load(&mut value);
-            cache.insert(&value);
+            cache.insert(&value, 128);
         }
         cache.touch(&[item("a").identity.persistent_key()]);
         let mut value = item("c");
         load(&mut value);
-        cache.insert(&value);
+        cache.insert(&value, 128);
         assert_eq!(cache.bytes, 16);
-        assert!(cache.restore(&mut item("a")));
-        assert!(!cache.restore(&mut item("b")));
-        assert!(cache.restore(&mut item("c")));
+        assert!(cache.restore(&mut item("a"), 128));
+        assert!(!cache.restore(&mut item("b"), 128));
+        assert!(cache.restore(&mut item("c"), 128));
         let failed = item("failure");
-        cache.insert(&failed);
+        cache.insert(&failed, 128);
         // A refresh must retry extraction immediately after a transient failure.
         assert!(!cache.entries.contains_key(&item("failure").identity.persistent_key()));
-        assert!(!cache.restore(&mut item("failure")));
+        assert!(!cache.restore(&mut item("failure"), 128));
         cache.retain_folder(Path::new(r"C:\test"), &HashSet::new());
         assert_eq!(cache.bytes, 0);
         assert!(cache.entries.is_empty());
-    }
-
-    #[test]
-    fn viewport_jobs_precede_background_jobs_without_duplicates() {
-        let mut queue = Queue::new((0..1000).map(|i| item(&i.to_string())).collect());
-        for key in &queue.order {
-            let (indexed, _) = queue.pending.get_key_value(key).unwrap();
-            assert!(Arc::ptr_eq(key, indexed));
-        }
-        let key = item("900").identity.persistent_key();
-        assert_eq!(queue.next(&[key.clone()]).unwrap().label, "900");
-        assert_eq!(queue.next(&[key]).unwrap().label, "0");
-        let mut remaining = 0;
-        while queue.next(&[]).is_some() {
-            remaining += 1;
-        }
-        assert_eq!(remaining, 998);
     }
 
     #[test]

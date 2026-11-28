@@ -318,7 +318,7 @@ pub(super) fn apply(
             drop_items(&mut s, id, &source, index, &indices, location)?;
         }
         Event::Exit => windows_window::quit(),
-        Event::New => unreachable!(),
+        Event::New | Event::FolderViewport => unreachable!(),
     }
     Ok(false)
 }
