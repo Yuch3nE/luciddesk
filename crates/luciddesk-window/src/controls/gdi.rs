@@ -23,6 +23,42 @@ pub(crate) use shapes::Antialiasing;
 
 pub(crate) const POINTER_TIMER: usize = 0x4c47;
 
+pub(crate) unsafe fn paint_buffered(dc: HDC, rect: RECT, paint: impl FnOnce(HDC, RECT)) {
+    let width = rect.right - rect.left;
+    let height = rect.bottom - rect.top;
+    if width <= 0 || height <= 0 {
+        return;
+    }
+    unsafe {
+        let mem_dc = CreateCompatibleDC(dc);
+        let bitmap = if !mem_dc.is_null() {
+            CreateCompatibleBitmap(dc, width, height)
+        } else {
+            null_mut()
+        };
+        if !mem_dc.is_null() && !bitmap.is_null() {
+            let old_bitmap = SelectObject(mem_dc, bitmap);
+            let local = RECT {
+                left: 0,
+                top: 0,
+                right: width,
+                bottom: height,
+            };
+            paint(mem_dc, local);
+            BitBlt(dc, rect.left, rect.top, width, height, mem_dc, 0, 0, SRCCOPY);
+            SelectObject(mem_dc, old_bitmap);
+        } else {
+            paint(dc, rect);
+        }
+        if !bitmap.is_null() {
+            DeleteObject(bitmap);
+        }
+        if !mem_dc.is_null() {
+            DeleteDC(mem_dc);
+        }
+    }
+}
+
 pub(crate) fn pointer_feedback(hwnd: HWND, motion: &mut PointerMotion, hovered: bool, pressed: bool) -> f32 {
     let now = Instant::now();
     let (amount, playing) = motion.frame(hovered, pressed, now, animations_enabled());
@@ -438,83 +474,85 @@ unsafe fn paint_edit_scrollbar(hwnd: HWND, dc: HDC, state: &EditScrollbar) {
         let palette = Palette::for_theme(state.dark);
         let mut rect = RECT::default();
         GetClientRect(hwnd, &raw mut rect);
-        let background = CreateSolidBrush(colorref(palette.page_background));
-        FillRect(dc, &rect, background);
-        DeleteObject(background);
-        let Some(bar) = native_scrollbar(state.edit) else {
-            KillTimer(hwnd, POINTER_TIMER);
-            return;
-        };
-        let mut scroll = SCROLLINFO {
-            cbSize: size_of::<SCROLLINFO>() as u32,
-            fMask: SIF_RANGE | SIF_PAGE | SIF_POS,
-            ..Default::default()
-        };
-        if GetScrollInfo(state.edit, SB_VERT, &raw mut scroll) == 0 {
-            KillTimer(hwnd, POINTER_TIMER);
-            return;
-        }
-        let maximum = i64::from(scroll.nMax) - i64::from(scroll.nPage.saturating_sub(1));
-        if maximum <= i64::from(scroll.nMin) {
-            KillTimer(hwnd, POINTER_TIMER);
-            return;
-        }
-        let scale = GetDpiForWindow(hwnd).max(96) as f32 / 96.0;
-        let center = rect.right / 2;
-        let width = (Scrollbar::THUMB_WIDTH * scale).round() as i32;
-        let mut canvas = GdiCanvas {
-            dc,
-            scale,
-            palette: &palette,
-        };
-        let mut thumb = canvas.bounds(RECT {
-            left: center - width / 2,
-            top: bar.xyThumbTop,
-            right: center - width / 2 + width,
-            bottom: bar.xyThumbBottom,
-        });
-        if thumb.height > 0.0 {
-            let mut point = POINT::default();
-            GetCursorPos(&raw mut point);
-            let active = PtInRect(&bar.rcScrollBar, point) != 0
-                || bar.rgstate[3] & STATE_SYSTEM_PRESSED != 0;
-            let hover = pointer_feedback(hwnd, &mut state.motion.borrow_mut(), active, false);
-            let growth = Scrollbar::thumb_growth(hover);
-            thumb.x -= growth / 2.0;
-            thumb.width += growth;
-            Scrollbar::paint_thumb(&mut canvas, thumb);
-        } else {
-            KillTimer(hwnd, POINTER_TIMER);
-        }
-        let tones = [
-            (bar.rgstate[1], scroll.nPos > scroll.nMin),
-            (bar.rgstate[5], i64::from(scroll.nPos) < maximum),
-        ]
-        .map(|(native_state, can_scroll)| {
-            if !can_scroll || native_state & STATE_SYSTEM_UNAVAILABLE != 0 {
-                Tone::Disabled
-            } else if native_state & STATE_SYSTEM_PRESSED != 0 {
-                Tone::AccentInk
-            } else {
-                Tone::Ink
+        paint_buffered(dc, rect, |dc, rect| {
+            let background = CreateSolidBrush(colorref(palette.page_background));
+            FillRect(dc, &rect, background);
+            DeleteObject(background);
+            let Some(bar) = native_scrollbar(state.edit) else {
+                KillTimer(hwnd, POINTER_TIMER);
+                return;
+            };
+            let mut scroll = SCROLLINFO {
+                cbSize: size_of::<SCROLLINFO>() as u32,
+                fMask: SIF_RANGE | SIF_PAGE | SIF_POS,
+                ..Default::default()
+            };
+            if GetScrollInfo(state.edit, SB_VERT, &raw mut scroll) == 0 {
+                KillTimer(hwnd, POINTER_TIMER);
+                return;
             }
+            let maximum = i64::from(scroll.nMax) - i64::from(scroll.nPage.saturating_sub(1));
+            if maximum <= i64::from(scroll.nMin) {
+                KillTimer(hwnd, POINTER_TIMER);
+                return;
+            }
+            let scale = GetDpiForWindow(hwnd).max(96) as f32 / 96.0;
+            let center = rect.right / 2;
+            let width = (Scrollbar::THUMB_WIDTH * scale).round() as i32;
+            let mut canvas = GdiCanvas {
+                dc,
+                scale,
+                palette: &palette,
+            };
+            let mut thumb = canvas.bounds(RECT {
+                left: center - width / 2,
+                top: bar.xyThumbTop,
+                right: center - width / 2 + width,
+                bottom: bar.xyThumbBottom,
+            });
+            if thumb.height > 0.0 {
+                let mut point = POINT::default();
+                GetCursorPos(&raw mut point);
+                let active = PtInRect(&bar.rcScrollBar, point) != 0
+                    || bar.rgstate[3] & STATE_SYSTEM_PRESSED != 0;
+                let hover = pointer_feedback(hwnd, &mut state.motion.borrow_mut(), active, false);
+                let growth = Scrollbar::thumb_growth(hover);
+                thumb.x -= growth / 2.0;
+                thumb.width += growth;
+                Scrollbar::paint_thumb(&mut canvas, thumb);
+            } else {
+                KillTimer(hwnd, POINTER_TIMER);
+            }
+            let tones = [
+                (bar.rgstate[1], scroll.nPos > scroll.nMin),
+                (bar.rgstate[5], i64::from(scroll.nPos) < maximum),
+            ]
+            .map(|(native_state, can_scroll)| {
+                if !can_scroll || native_state & STATE_SYSTEM_UNAVAILABLE != 0 {
+                    Tone::Disabled
+                } else if native_state & STATE_SYSTEM_PRESSED != 0 {
+                    Tone::AccentInk
+                } else {
+                    Tone::Ink
+                }
+            });
+            let slots = [
+                RECT {
+                    bottom: bar.dxyLineButton,
+                    ..rect
+                },
+                RECT {
+                    top: rect.bottom - bar.dxyLineButton,
+                    ..rect
+                },
+            ];
+            canvas.icons(
+                style::ICON_SLOT,
+                [
+                    (slots[0], style::CHEVRON_UP, tones[0].rgb(&palette)),
+                    (slots[1], style::CHEVRON_DOWN, tones[1].rgb(&palette)),
+                ],
+            );
         });
-        let slots = [
-            RECT {
-                bottom: bar.dxyLineButton,
-                ..rect
-            },
-            RECT {
-                top: rect.bottom - bar.dxyLineButton,
-                ..rect
-            },
-        ];
-        canvas.icons(
-            style::ICON_SLOT,
-            [
-                (slots[0], style::CHEVRON_UP, tones[0].rgb(&palette)),
-                (slots[1], style::CHEVRON_DOWN, tones[1].rgb(&palette)),
-            ],
-        );
     }
 }
