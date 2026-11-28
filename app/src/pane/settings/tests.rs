@@ -2554,6 +2554,51 @@ fn about_offers_in_app_install_only_for_a_verified_release() {
 }
 
 #[test]
+fn about_keeps_the_same_cancel_button_when_confirmation_wins() {
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+
+    let directory = tempfile::tempdir().unwrap();
+    let mut child = Command::new("cmd.exe").arg("/D").stdin(Stdio::piped())
+        .stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap();
+    let input = child.stdin.take().unwrap();
+    let mut updates = crate::updates::Controller::with_running_installer(child, directory.path().to_path_buf());
+    let update_controls = |updates: &crate::updates::Controller, enabled| {
+        let mut body = layout::scene(900.0, 568.0, 5, false,
+            (PanelTheme::Dark, Backdrop::Mica), Default::default());
+        layout::about_updates(&mut body, 900.0, true, false, updates, true);
+        let cancel = body.controls.iter().find(|control| matches!(control.action, Action::CancelUpdate)).unwrap();
+        assert_eq!(cancel.enabled, enabled);
+        assert!(!body.controls.iter().any(|control| matches!(control.action,
+            Action::Update | Action::InstallUpdate | Action::ProjectLink(crate::updates::PAGE))));
+        cancel.bounds
+    };
+    let original = update_controls(&updates, true);
+
+    // The updater claims confirmation while Settings still holds the preparation stage.
+    std::fs::write(directory.path().join("status.json"), br#"{"Downloading":100}"#).unwrap();
+    std::fs::write(directory.path().join("decision"), b"").unwrap();
+    updates.cancel_install().unwrap();
+    updates.poll();
+    assert_eq!(updates.status(), crate::i18n::text("update-awaiting-confirmation"));
+    let confirming = update_controls(&updates, false);
+    assert_eq!((confirming.left, confirming.right), (original.left, original.right));
+
+    std::fs::write(directory.path().join("status.json"), br#""Applying""#).unwrap();
+    updates.poll();
+    assert_eq!(updates.status(), crate::i18n::text("update-applying"));
+    update_controls(&updates, false);
+
+    drop(input);
+    let until = Instant::now() + Duration::from_secs(5);
+    while updates.busy() {
+        assert!(Instant::now() < until, "fixture did not exit after closing its input");
+        updates.poll();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[test]
 fn desktop_connection_card_aligns_both_states_without_technical_details() {
     for locale in 0..7 {
         crate::i18n::with_locale(locale, || {

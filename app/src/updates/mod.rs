@@ -196,6 +196,13 @@ impl Controller {
             ..Self::default()
         }
     }
+
+    #[cfg(test)]
+    pub(crate) fn with_running_installer(child: std::process::Child, directory: std::path::PathBuf) -> Self {
+        let mut controller = Self::with_available_version("99.1.2");
+        controller.installer = Some(install::Running::new(child, directory));
+        controller
+    }
     pub fn can_install(&self) -> bool {
         self.available
             .as_ref()
@@ -209,9 +216,12 @@ impl Controller {
         Ok(())
     }
 
+    pub fn installer_running(&self) -> bool {
+        self.installer.is_some()
+    }
+
     pub fn can_cancel_install(&self) -> bool {
-        self.installer.as_ref().is_some_and(|installer| !installer.canceled
-            && !matches!(installer.stage, handoff::Stage::Confirming | handoff::Stage::Applying))
+        self.installer.as_ref().is_some_and(install::Running::can_cancel)
     }
 
     pub fn cancel_install(&mut self) -> Result<(), String> {
@@ -558,8 +568,7 @@ mod tests {
     fn updater_failure_keeps_the_verified_install_action_available() {
         let dir = tempfile::tempdir().unwrap();
         let child = std::process::Command::new("cmd.exe").args(["/D", "/C", "exit /B 1"]).spawn().unwrap();
-        let mut controller = Controller::with_available_version("99.1.2");
-        controller.installer = Some(install::Running::new(child, dir.path().to_path_buf()));
+        let mut controller = Controller::with_running_installer(child, dir.path().to_path_buf());
         wait(&mut controller);
         assert_eq!(controller.available_version(), Some("99.1.2"));
         assert!(controller.can_install());

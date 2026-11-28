@@ -795,7 +795,7 @@ pub(super) fn about_updates(
         if installable { Action::InstallUpdate } else { Action::ProjectLink(crate::updates::PAGE) },
     );
     let check = (crate::i18n::text("update-check"), Action::Update);
-    let mut actions = if updates.can_cancel_install() {
+    let mut actions = if updates.installer_running() {
         vec![(crate::i18n::text("dialog-cancel"), Action::CancelUpdate)]
     } else if available { vec![download, check] } else { vec![check, download] };
     if installable {
@@ -830,8 +830,10 @@ pub(super) fn about_updates(
         ],
     );
     for control in &mut s.controls {
-        if matches!(control.action, Action::Update) {
-            control.enabled = !updates.busy();
+        match control.action {
+            Action::Update => control.enabled = !updates.busy(),
+            Action::CancelUpdate => control.enabled = updates.can_cancel_install(),
+            _ => {}
         }
     }
 }

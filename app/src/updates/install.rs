@@ -3,6 +3,12 @@ use std::{fs, io, os::windows::fs::OpenOptionsExt, path::{Path, PathBuf}, proces
 
 const LEASE: &str = "launch.lock";
 
+impl Stage {
+    fn allows_cancel(self) -> bool {
+        !matches!(self, Self::Confirming | Self::Applying)
+    }
+}
+
 pub(super) struct Running {
     child: Child,
     directory: PathBuf,
@@ -20,21 +26,34 @@ impl Running {
             cleanup_run(&self.directory);
             return Ok(Some(status));
         }
-        if let Ok(bytes) = fs::read(self.directory.join(handoff::STATUS))
-            && let Ok(stage) = serde_json::from_slice(&bytes)
-        {
-            self.stage = stage;
-        }
+        self.refresh_stage();
         Ok(None)
     }
 
     pub fn cancel(&mut self) -> io::Result<()> {
-        match fs::OpenOptions::new().write(true).create_new(true).open(self.directory.join(handoff::DECISION)) {
-            Ok(_) => self.canceled = true,
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
-            Err(error) => return Err(error),
+        if handoff::claim_decision(&self.directory)? {
+            self.canceled = true;
+        } else {
+            self.refresh_stage();
         }
         Ok(())
+    }
+
+    pub(super) fn can_cancel(&self) -> bool {
+        !self.canceled && self.stage.allows_cancel()
+    }
+
+    fn refresh_stage(&mut self) {
+        if let Ok(bytes) = fs::read(self.directory.join(handoff::STATUS))
+            && let Ok(stage) = serde_json::from_slice::<Stage>(&bytes)
+            && (self.stage.allows_cancel() || !stage.allows_cancel())
+        {
+            self.stage = stage;
+        }
+        if self.can_cancel() && self.directory.join(handoff::DECISION).exists() {
+            // The updater claimed confirmation before publishing its next stage.
+            self.stage = Stage::Confirming;
+        }
     }
 }
 

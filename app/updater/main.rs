@@ -18,7 +18,7 @@ use semver::Version;
 use handoff::{Appearance, Stage};
 use std::{
     env,
-    fs::{self, File, OpenOptions},
+    fs::{self, File},
     path::{Path, PathBuf},
     process::Command,
 };
@@ -89,11 +89,11 @@ fn run(failed: &mut String) -> Result<()> {
     let update = PreparedUpdate::prepare(root, version, current, &progress);
     if progress.canceled() { return Ok(()); }
     let update = update?;
-    progress.show(Stage::Confirming);
-    if platform::message(&prompt.to_string_lossy(), MB_OKCANCEL | MB_ICONINFORMATION) != IDOK {
+    if !progress.confirm(|| {
+        platform::message(&prompt.to_string_lossy(), MB_OKCANCEL | MB_ICONINFORMATION) == IDOK
+    })? {
         return Ok(());
     }
-    if !progress.start_installation()? { return Ok(()); }
     progress.show(Stage::Applying);
     update.install(root, &original)
 }
@@ -125,13 +125,12 @@ impl Progress {
         self.0.as_ref().is_some_and(|directory| directory.join(handoff::DECISION).exists())
     }
 
-    fn start_installation(&self) -> std::io::Result<bool> {
-        let Some(directory) = &self.0 else { return Ok(true); };
-        match OpenOptions::new().write(true).create_new(true).open(directory.join(handoff::DECISION)) {
-            Ok(_) => Ok(true),
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
-            Err(error) => Err(error),
+    fn confirm(&self, prompt: impl FnOnce() -> bool) -> std::io::Result<bool> {
+        if let Some(directory) = &self.0 && !handoff::claim_decision(directory)? {
+            return Ok(false);
         }
+        self.show(Stage::Confirming);
+        Ok(prompt())
     }
 }
 
@@ -292,7 +291,7 @@ mod lifecycle_tests {
     use std::fs;
 
     #[test]
-    fn status_is_replaceable_and_cancel_cannot_win_after_installation_starts() {
+    fn cancellation_and_confirmation_are_arbitrated_before_showing_the_dialog() {
         let work = tempfile::tempdir().unwrap();
         let progress = Progress(Some(work.path().to_path_buf()));
         progress.show(Stage::Downloading(10));
@@ -300,15 +299,20 @@ mod lifecycle_tests {
         let status = fs::read(work.path().join(handoff::STATUS)).unwrap();
         assert_eq!(serde_json::from_slice::<Stage>(&status).unwrap(), Stage::Verifying);
         assert!(!progress.canceled());
-        assert!(progress.start_installation().unwrap());
-        assert!(!progress.start_installation().unwrap());
+        assert!(progress.confirm(|| {
+            let status = fs::read(work.path().join(handoff::STATUS)).unwrap();
+            assert_eq!(serde_json::from_slice::<Stage>(&status).unwrap(), Stage::Confirming);
+            assert!(!handoff::claim_decision(work.path()).unwrap(), "a late Settings click lost the claim");
+            true
+        }).unwrap());
 
         let work = tempfile::tempdir().unwrap();
         let progress = Progress(Some(work.path().to_path_buf()));
-        fs::write(work.path().join(handoff::DECISION), b"").unwrap();
+        assert!(handoff::claim_decision(work.path()).unwrap());
         assert!(progress.canceled());
-        assert!(!progress.start_installation().unwrap());
+        assert!(!progress.confirm(|| panic!("a cancel that won must prevent the dialog")).unwrap());
     }
+
     #[test]
     #[ignore = "Installs two isolated Inno fixtures through the native updater launcher"]
     fn real_installer_upgrade_preserves_files() {
