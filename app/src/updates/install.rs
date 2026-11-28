@@ -1,5 +1,39 @@
-use std::path::PathBuf;
-use std::process::{Child, Command};
+use super::handoff::{self, Appearance, Stage};
+use std::{fs, io, path::PathBuf, process::{Child, Command, ExitStatus}};
+
+pub(super) struct Running {
+    child: Child,
+    directory: PathBuf,
+    pub stage: Stage,
+    pub canceled: bool,
+}
+
+impl Running {
+    pub(super) fn new(child: Child, directory: PathBuf) -> Self {
+        Self { child, directory, stage: Stage::Preparing, canceled: false }
+    }
+
+    pub fn poll(&mut self) -> io::Result<Option<ExitStatus>> {
+        if let Some(status) = self.child.try_wait()? {
+            return Ok(Some(status));
+        }
+        if let Ok(bytes) = fs::read(self.directory.join(handoff::STATUS))
+            && let Ok(stage) = serde_json::from_slice(&bytes)
+        {
+            self.stage = stage;
+        }
+        Ok(None)
+    }
+
+    pub fn cancel(&mut self) -> io::Result<()> {
+        match fs::OpenOptions::new().write(true).create_new(true).open(self.directory.join(handoff::DECISION)) {
+            Ok(_) => self.canceled = true,
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(error),
+        }
+        Ok(())
+    }
+}
 
 pub(super) fn kind() -> Option<&'static str> {
     let key = super::signed::MODULUS;
@@ -18,11 +52,11 @@ pub(super) fn kind() -> Option<&'static str> {
     super::distribution::Distribution::detect(&dir).map(|distribution| distribution.kind())
 }
 
-pub(super) fn launch(version: &str) -> Result<Child, String> {
+pub(super) fn launch(version: &str) -> Result<Running, String> {
     stage_and_launch(version).map_err(|e| e.to_string())
 }
 
-fn stage_and_launch(version: &str) -> std::io::Result<Child> {
+fn stage_and_launch(version: &str) -> io::Result<Running> {
     let exe = std::env::current_exe()?;
     let updater = exe.with_file_name("updater.exe");
     let cache = std::env::temp_dir().join("LucidDesk-Updaters");
@@ -50,11 +84,13 @@ fn stage_and_launch(version: &str) -> std::io::Result<Child> {
             "update-restart",
             &[("version", version.into())],
         ))
-        .arg(serde_json::to_string(&(
-            crate::i18n::text("dialog-confirm"), crate::i18n::text("dialog-cancel"),
-            crate::i18n::text("ui-copy"), luciddesk_window::message_is_dark(),
-        ))?)
+        .arg(serde_json::to_string(&Appearance {
+            confirm: crate::i18n::text("dialog-confirm").into(),
+            cancel: crate::i18n::text("dialog-cancel").into(),
+            copy: crate::i18n::text("ui-copy").into(),
+            dark: luciddesk_window::message_is_dark(),
+            failed: crate::i18n::text("update-install-failed").into(),
+        })?)
         .spawn()?;
-    let _ = work.keep();
-    Ok(child)
+    Ok(Running::new(child, work.keep()))
 }

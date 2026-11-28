@@ -6,7 +6,7 @@ use serde::Deserialize;
 use std::{
     collections::HashSet,
     fs::{self, File, OpenOptions},
-    io::{self, Read, Seek},
+    io::{self, Read, Seek, Write},
     os::windows::{
         ffi::OsStrExt,
         fs::{MetadataExt, OpenOptionsExt},
@@ -121,6 +121,7 @@ pub fn extract(
     stage: &Path,
     version: &str,
     portable: bool,
+    canceled: &impl Fn() -> bool,
 ) -> Result<Vec<StagedFile>> {
     let mut zip = zip::ZipArchive::new(file)?;
     if zip.len() > 4096 {
@@ -130,6 +131,7 @@ pub fn extract(
     let mut remaining = 1024u64 * 1024 * 1024;
     let mut prefix = None;
     let mut staged_build = None;
+    let mut buffer = [0; 65536];
     for i in 0..zip.len() {
         let entry = zip.by_index(i)?;
         let name = entry.name()?.replace('\\', "/");
@@ -150,7 +152,16 @@ pub fn extract(
         fs::create_dir_all(path.parent().unwrap())?;
         let mut out = protected_file(&path, true)?;
         let size = entry.size();
-        if io::copy(&mut entry.take(size + 1), &mut out)? != size {
+        let mut entry = entry.take(size + 1);
+        let mut written = 0;
+        loop {
+            if canceled() { return Err("Update canceled".into()); }
+            let count = entry.read(&mut buffer)?;
+            if count == 0 { break; }
+            out.write_all(&buffer[..count])?;
+            written += count as u64;
+        }
+        if written != size {
             return Err("Incorrect ZIP entry size".into());
         }
         out.sync_all()?;
@@ -447,7 +458,7 @@ mod tests {
             }
             zip.finish().unwrap();
             file.rewind().unwrap();
-            let paths = extract(&mut file, &stage, "99.0.1", portable).unwrap();
+            let paths = extract(&mut file, &stage, "99.0.1", portable, &|| false).unwrap();
             fs::create_dir(root.path().join("data")).unwrap();
             fs::write(root.path().join("data/workspace.db"), b"layout").unwrap();
             let updater = root.path().join("updater.exe");
@@ -723,7 +734,7 @@ mod failure_tests {
             }
             zip.finish().unwrap();
             file.rewind().unwrap();
-            assert!(extract(&mut file, &root.path().join("new"), "99.0.1", false).is_err());
+            assert!(extract(&mut file, &root.path().join("new"), "99.0.1", false, &|| false).is_err());
             assert!(!root.path().join("outside").exists());
         }
     }

@@ -2,7 +2,6 @@
 use std::{
     ffi::c_void,
     ptr::null,
-    sync::atomic::{AtomicBool, Ordering},
 };
 use windows_sys::Win32::Networking::WinHttp::{
     WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_ACCESS_TYPE_NAMED_PROXY,
@@ -61,19 +60,20 @@ fn proxy_address(value: &str) -> Option<String> {
         .then(|| format!("{prefix}{address}"))
 }
 
-pub(super) fn get(host: &str, path: &str, cancel: &AtomicBool) -> Result<Option<Vec<u8>>, String> {
+pub(super) fn get(host: &str, path: &str, cancel: &impl Fn() -> bool) -> Result<Option<Vec<u8>>, String> {
     let mut bytes = Vec::new();
-    Ok(download(host, path, cancel, 2 * 1024 * 1024, &mut bytes)?.then_some(bytes))
+    Ok(download(host, path, cancel, 2 * 1024 * 1024, &mut bytes, |_| {})?.then_some(bytes))
 }
 
 pub(super) fn download(
     host: &str,
     path: &str,
-    cancel: &AtomicBool,
+    cancel: &impl Fn() -> bool,
     limit: u64,
     output: &mut impl std::io::Write,
+    mut progress: impl FnMut(u64),
 ) -> Result<bool, String> {
-    if cancel.load(Ordering::Relaxed) {
+    if cancel() {
         return Err("Update canceled".into());
     }
     // Honor an explicitly configured command-line proxy; otherwise use Windows proxy settings.
@@ -150,7 +150,7 @@ pub(super) fn download(
     let timeout = std::time::Duration::from_secs(600);
     let mut buffer = vec![0u8; 64 * 1024];
     loop {
-        if cancel.load(Ordering::Relaxed) {
+        if cancel() {
             return Err("Update canceled".into());
         }
         let mut read = 0u32;
@@ -170,6 +170,7 @@ pub(super) fn download(
         output
             .write_all(&buffer[..read as usize])
             .map_err(|e| e.to_string())?;
+        progress(total);
     }
     Ok(true)
 }

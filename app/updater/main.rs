@@ -2,6 +2,8 @@
 
 #[path = "../src/updates/distribution.rs"]
 mod distribution;
+#[path = "../src/updates/handoff.rs"]
+mod handoff;
 #[path = "../src/updates/http.rs"]
 mod http;
 mod package;
@@ -13,9 +15,10 @@ mod release;
 mod signed;
 
 use semver::Version;
+use handoff::{Appearance, Stage};
 use std::{
     env,
-    fs::File,
+    fs::{self, File, OpenOptions},
     path::{Path, PathBuf},
     process::Command,
 };
@@ -34,13 +37,14 @@ enum ApplyFailure {
 type ApplyResult = std::result::Result<(), ApplyFailure>;
 
 fn main() {
-    if let Err(error) = run() {
-        platform::message(&error.to_string(), MB_ICONERROR);
+    let mut failed = "The update failed.".to_owned();
+    if let Err(error) = run(&mut failed) {
+        platform::message(&format!("{failed}\n\n{error}"), MB_ICONERROR);
         std::process::exit(1);
     }
 }
 
-fn run() -> Result<()> {
+fn run(failed: &mut String) -> Result<()> {
     let args: Vec<_> = env::args_os().skip(1).collect();
     if args.len() == 1 && args[0] == "--version" {
         println!("updater {}", env!("CARGO_PKG_VERSION"));
@@ -49,11 +53,22 @@ fn run() -> Result<()> {
     let [pid, version, prompt, appearance @ ..] = args.as_slice() else {
         return Err("Start the updater from Settings → About in LucidDesk.".into());
     };
+    let mut progress = Progress(None);
     if let [appearance] = appearance {
-        let (ok, cancel, copy, dark): (String, String, String, bool) =
-            serde_json::from_str(appearance.to_str().ok_or("Invalid dialog settings")?)?;
-        luciddesk_window::set_message_labels(&ok, &cancel, &copy);
-        luciddesk_window::set_message_theme(Some(dark));
+        let json = appearance.to_str().ok_or("Invalid dialog settings")?;
+        let appearance = match serde_json::from_str::<Appearance>(json) {
+            Ok(appearance) => {
+                progress = Progress::staged();
+                appearance
+            }
+            Err(_) => {
+                let (confirm, cancel, copy, dark) = serde_json::from_str(json)?;
+                Appearance { confirm, cancel, copy, dark, failed: failed.clone() }
+            }
+        };
+        *failed = appearance.failed;
+        luciddesk_window::set_message_labels(&appearance.confirm, &appearance.cancel, &appearance.copy);
+        luciddesk_window::set_message_theme(Some(appearance.dark));
     } else if !appearance.is_empty() {
         return Err("Unexpected updater arguments".into());
     }
@@ -71,11 +86,53 @@ fn run() -> Result<()> {
         .exe
         .parent()
         .ok_or("Missing installation directory")?;
-    let update = PreparedUpdate::prepare(root, version, current)?;
+    let update = PreparedUpdate::prepare(root, version, current, &progress);
+    if progress.canceled() { return Ok(()); }
+    let update = update?;
+    progress.show(Stage::Confirming);
     if platform::message(&prompt.to_string_lossy(), MB_OKCANCEL | MB_ICONINFORMATION) != IDOK {
         return Ok(());
     }
+    if !progress.start_installation()? { return Ok(()); }
+    progress.show(Stage::Applying);
     update.install(root, &original)
+}
+
+struct Progress(Option<PathBuf>);
+
+impl Progress {
+    fn staged() -> Self {
+        let directory = env::current_exe().ok().and_then(|exe| exe.parent().map(Path::to_path_buf));
+        let cache = env::temp_dir().join("LucidDesk-Updaters").canonicalize().ok();
+        Self(directory.filter(|directory| {
+            cache.is_some()
+                && directory.parent().and_then(|p| p.canonicalize().ok()) == cache
+                && directory.file_name().is_some_and(|name| name.to_string_lossy().starts_with("run-"))
+                && distribution::no_links(directory).is_ok()
+        }))
+    }
+
+    fn show(&self, stage: Stage) {
+        if let Some(directory) = &self.0 && let Ok(bytes) = serde_json::to_vec(&stage) {
+            let next = directory.join(handoff::NEXT_STATUS);
+            if fs::write(&next, bytes).is_ok() {
+                let _ = fs::rename(next, directory.join(handoff::STATUS));
+            }
+        }
+    }
+
+    fn canceled(&self) -> bool {
+        self.0.as_ref().is_some_and(|directory| directory.join(handoff::DECISION).exists())
+    }
+
+    fn start_installation(&self) -> std::io::Result<bool> {
+        let Some(directory) = &self.0 else { return Ok(true); };
+        match OpenOptions::new().write(true).create_new(true).open(directory.join(handoff::DECISION)) {
+            Ok(_) => Ok(true),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+            Err(error) => Err(error),
+        }
+    }
 }
 
 enum PreparedPayload {
@@ -93,7 +150,7 @@ struct PreparedUpdate {
 }
 
 impl PreparedUpdate {
-    fn prepare(root: &Path, version: &str, current: &str) -> Result<Self> {
+    fn prepare(root: &Path, version: &str, current: &str, progress: &Progress) -> Result<Self> {
         check_pending_recovery(root)?;
         let build = package::build(root)?;
         let distribution = distribution::Distribution::detect(root)
@@ -115,18 +172,22 @@ impl PreparedUpdate {
             .prefix(distribution::UPDATE_WORK_PREFIX)
             .tempdir_in(parent)?;
         let archive = work.path().join(archive_name);
-        let mut verified_archive = release::fetch(version, distribution.kind(), &archive)?;
+        let canceled = || progress.canceled();
+        let mut verified_archive = release::fetch(version, distribution.kind(), &archive, &canceled,
+            |stage| progress.show(stage))?;
         let payload = match distribution {
             distribution::Distribution::Inno(scope) => PreparedPayload::Inno {
                 setup: archive,
                 scope,
             },
             _ => {
+                progress.show(Stage::Extracting);
                 let files = package::extract(
                     &mut verified_archive,
                     &work.path().join("new"),
                     version,
                     portable,
+                    &canceled,
                 )?;
                 package::check_targets(
                     root,
@@ -229,6 +290,25 @@ fn apply_zip(
 mod lifecycle_tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn status_is_replaceable_and_cancel_cannot_win_after_installation_starts() {
+        let work = tempfile::tempdir().unwrap();
+        let progress = Progress(Some(work.path().to_path_buf()));
+        progress.show(Stage::Downloading(10));
+        progress.show(Stage::Verifying);
+        let status = fs::read(work.path().join(handoff::STATUS)).unwrap();
+        assert_eq!(serde_json::from_slice::<Stage>(&status).unwrap(), Stage::Verifying);
+        assert!(!progress.canceled());
+        assert!(progress.start_installation().unwrap());
+        assert!(!progress.start_installation().unwrap());
+
+        let work = tempfile::tempdir().unwrap();
+        let progress = Progress(Some(work.path().to_path_buf()));
+        fs::write(work.path().join(handoff::DECISION), b"").unwrap();
+        assert!(progress.canceled());
+        assert!(!progress.start_installation().unwrap());
+    }
     #[test]
     #[ignore = "Installs two isolated Inno fixtures through the native updater launcher"]
     fn real_installer_upgrade_preserves_files() {
@@ -283,7 +363,7 @@ mod lifecycle_tests {
         let version = env!("CARGO_PKG_VERSION");
         let portable = env::var("LUCIDDESK_TEST_PORTABLE").unwrap() == "true";
         let mut archive = fs::File::open(&zip).unwrap();
-        package::extract(&mut archive, &root, version, portable).unwrap();
+        package::extract(&mut archive, &root, version, portable, &|| false).unwrap();
         let data = if portable {
             root.join("data")
         } else {
@@ -324,7 +404,7 @@ mod lifecycle_tests {
             .unwrap();
         let mut archive = fs::File::open(zip).unwrap();
         let files =
-            package::extract(&mut archive, &work.path().join("new"), version, portable).unwrap();
+            package::extract(&mut archive, &work.path().join("new"), version, portable, &|| false).unwrap();
         let build = package::build(&root).unwrap();
         package::check_targets(
             &root,

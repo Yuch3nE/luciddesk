@@ -1,5 +1,6 @@
 //! Background release checks and user-initiated package updates.
 mod http;
+mod handoff;
 mod install;
 mod distribution;
 pub(crate) mod probe;
@@ -123,7 +124,7 @@ impl Drop for Work {
 
 #[derive(Default)]
 pub struct Controller {
-    installer: Option<std::process::Child>,
+    installer: Option<install::Running>,
     work: Option<Work>,
     available: Option<AvailableRelease>,
     checked: bool,
@@ -205,9 +206,31 @@ impl Controller {
         }
         Ok(())
     }
+
+    pub fn can_cancel_install(&self) -> bool {
+        self.installer.as_ref().is_some_and(|installer| !installer.canceled
+            && !matches!(installer.stage, handoff::Stage::Confirming | handoff::Stage::Applying))
+    }
+
+    pub fn cancel_install(&mut self) -> Result<(), String> {
+        if self.can_cancel_install() && let Some(installer) = &mut self.installer {
+            installer.cancel().map_err(|error| error.to_string())?;
+        }
+        Ok(())
+    }
+
     pub fn status(&self) -> String {
-        if self.installer.is_some() {
-            return i18n::text("update-preparing").into();
+        if let Some(installer) = &self.installer {
+            use handoff::Stage;
+            if installer.canceled { return i18n::text("update-canceling").into(); }
+            return match installer.stage {
+                Stage::Preparing => i18n::text("update-preparing").into(),
+                Stage::Downloading(percent) => i18n::format("update-downloading", &[("percent", percent.to_string())]),
+                Stage::Verifying => i18n::text("update-verifying").into(),
+                Stage::Extracting => i18n::text("update-extracting").into(),
+                Stage::Confirming => i18n::text("update-awaiting-confirmation").into(),
+                Stage::Applying => i18n::text("update-applying").into(),
+            };
         }
         if self.busy() {
             return i18n::text("update-checking").into();
@@ -239,18 +262,19 @@ impl Controller {
 
     fn check_with_mode(&mut self, automatic: bool, now: Instant) -> Result<(), String> {
         self.start(automatic, now, |cancel| {
+            let canceled = || cancel.load(Ordering::Relaxed);
             let current = env!("CARGO_PKG_VERSION");
             let version = if let Some(bytes) = http::get(
                 "github.com",
                 "/Yuch3nE/luciddesk/releases/latest/download/version.json",
-                &cancel,
+                &canceled,
             )? {
                 parse_manifest(&bytes, current)?
             } else {
                 let bytes = http::get(
                     "api.github.com",
                     "/repos/Yuch3nE/luciddesk/releases/latest",
-                    &cancel,
+                    &canceled,
                 )?
                 .ok_or("No published release")?;
                 parse_release(&bytes, current)?
@@ -258,7 +282,7 @@ impl Controller {
             Ok(version.map(|version| {
                 let install = install::kind().map_or(InstallAvailability::Manual, |kind| {
                     InstallAvailability::from_signed_check(signed::find_asset(
-                        &version, kind, &cancel,
+                        &version, kind, &canceled,
                     ))
                 });
                 AvailableRelease { version, install }
@@ -299,7 +323,7 @@ impl Controller {
 
     fn poll_at(&mut self, now: Instant) {
         if let Some(child) = &mut self.installer {
-            match child.try_wait() {
+            match child.poll() {
                 Ok(None) => return,
                 Ok(Some(status)) => {
                     self.installer = None;
@@ -530,9 +554,10 @@ mod tests {
 
     #[test]
     fn updater_failure_keeps_the_verified_install_action_available() {
+        let dir = tempfile::tempdir().unwrap();
         let child = std::process::Command::new("cmd.exe").args(["/D", "/C", "exit /B 1"]).spawn().unwrap();
         let mut controller = Controller::with_available_version("99.1.2");
-        controller.installer = Some(child);
+        controller.installer = Some(install::Running::new(child, dir.path().to_path_buf()));
         wait(&mut controller);
         assert_eq!(controller.available_version(), Some("99.1.2"));
         assert!(controller.can_install());

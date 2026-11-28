@@ -1,5 +1,5 @@
 use crate::{
-    Result, http,
+    Result, handoff::Stage, http,
     signed::{self, Asset},
 };
 use ring::digest;
@@ -8,29 +8,38 @@ use std::{
     io::{Read, Seek},
     os::windows::fs::OpenOptionsExt,
     path::Path,
-    sync::atomic::AtomicBool,
 };
 
-pub fn fetch(version: &str, kind: &str, destination: &Path) -> Result<File> {
-    let cancel = AtomicBool::new(false);
-    let (base, asset) = signed::find_asset(version, kind, &cancel)?
+pub fn fetch(version: &str, kind: &str, destination: &Path, canceled: &impl Fn() -> bool,
+    mut progress: impl FnMut(Stage)) -> Result<File> {
+    let (base, asset) = signed::find_asset(version, kind, canceled)?
         .ok_or("Missing signed update feed. Use the release page to update manually.")?;
     {
         let mut file = File::create_new(destination)?;
+        let mut percent = 0;
+        progress(Stage::Downloading(percent));
         if !http::download(
             "github.com",
             &format!("{base}/{}", asset.name),
-            &cancel,
+            canceled,
             asset.size,
             &mut file,
+            |bytes| {
+                let next = (bytes * 100 / asset.size) as u8;
+                if next != percent {
+                    percent = next;
+                    progress(Stage::Downloading(next));
+                }
+            },
         )? {
             return Err("Missing release asset".into());
         }
     }
-    verified_file(destination, &asset)
+    progress(Stage::Verifying);
+    verified_file(destination, &asset, canceled)
 }
 
-fn verified_file(destination: &Path, asset: &Asset) -> Result<File> {
+fn verified_file(destination: &Path, asset: &Asset, canceled: &impl Fn() -> bool) -> Result<File> {
     // Hold this read-only share through extraction or installation, including the confirmation dialog.
     let mut file = OpenOptions::new()
         .read(true)
@@ -39,6 +48,7 @@ fn verified_file(destination: &Path, asset: &Asset) -> Result<File> {
     let mut hash = digest::Context::new(&digest::SHA256);
     let mut buffer = [0; 65536];
     loop {
+        if canceled() { return Err("Update canceled".into()); }
         let count = file.read(&mut buffer)?;
         if count == 0 {
             break;
@@ -71,7 +81,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         for kind in ["green", "portable", "installed"] {
             let destination = dir.path().join(format!("{kind}.download"));
-            let mut file = fetch(&version, kind, &destination)
+            let mut file = fetch(&version, kind, &destination, &|| false, |_| {})
                 .unwrap_or_else(|error| panic!("Production release {version}, {kind}: {error}"));
             if kind == "installed" {
                 let mut magic = [0; 2];
@@ -83,6 +93,7 @@ mod tests {
                     &dir.path().join(kind),
                     &version,
                     kind == "portable",
+                    &|| false,
                 )
                 .unwrap();
             }
@@ -126,11 +137,11 @@ mod tests {
         }
         let green = asset(&feed, &key, "99.0.1", "green").unwrap();
         let archive = dir.path().join(&green.name);
-        let verified = verified_file(&archive, &green).unwrap();
+        let verified = verified_file(&archive, &green, &|| false).unwrap();
         assert!(std::fs::write(&archive, [4, 5, 6]).is_err());
         drop(verified);
         std::fs::write(&archive, [4, 5, 6]).unwrap();
-        assert!(verified_file(&archive, &green).is_err());
+        assert!(verified_file(&archive, &green, &|| false).is_err());
         assert!(asset(&feed, &key, "99.0.2", "green").is_err());
         let mut changed: serde_json::Value = serde_json::from_slice(&feed).unwrap();
         changed["payload"] = STANDARD.encode(b"{}").into();

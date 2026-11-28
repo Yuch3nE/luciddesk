@@ -1,7 +1,7 @@
 use base64::{Engine, engine::general_purpose::STANDARD};
 use ring::signature;
 use serde::Deserialize;
-use std::{collections::HashMap, sync::atomic::AtomicBool};
+use std::collections::HashMap;
 
 pub(super) type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -67,7 +67,7 @@ pub(super) fn asset(bytes: &[u8], modulus: &str, version: &str, kind: &str) -> R
 pub(super) fn find_asset(
     version: &str,
     kind: &str,
-    cancel: &AtomicBool,
+    cancel: &impl Fn() -> bool,
 ) -> Result<Option<(String, Asset)>> {
     find_asset_with(version, kind, MODULUS, |path| {
         super::http::get("github.com", path, cancel)

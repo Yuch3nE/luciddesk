@@ -795,7 +795,9 @@ pub(super) fn about_updates(
         if installable { Action::InstallUpdate } else { Action::ProjectLink(crate::updates::PAGE) },
     );
     let check = (crate::i18n::text("update-check"), Action::Update);
-    let mut actions = if available { vec![download, check] } else { vec![check, download] };
+    let mut actions = if updates.can_cancel_install() {
+        vec![(crate::i18n::text("dialog-cancel"), Action::CancelUpdate)]
+    } else if available { vec![download, check] } else { vec![check, download] };
     if installable {
         actions.push((crate::i18n::text("update-open-page"), Action::ProjectLink(crate::updates::PAGE)));
     }

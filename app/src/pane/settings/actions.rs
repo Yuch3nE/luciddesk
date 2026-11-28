@@ -329,6 +329,14 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
                 invalidate = true;
             }
         }
+        Action::CancelUpdate => {
+            let result = context.updates.borrow_mut().cancel_install();
+            if let Err(error) = result {
+                window::error_for(hwnd, &error);
+            }
+            state.borrow().wake.notify();
+            invalidate = true;
+        }
         Action::AutoCheckUpdates(enabled) => {
             let result = state.borrow().store.save_preference("auto_check_updates", &enabled.to_string());
             match result {

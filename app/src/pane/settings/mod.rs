@@ -85,6 +85,7 @@ enum Action {
     CopyDiagnostics,
     Update,
     InstallUpdate,
+    CancelUpdate,
     AutoCheckUpdates(bool),
     Window(u32),
     Page(usize),
