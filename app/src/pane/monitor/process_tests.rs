@@ -6,6 +6,17 @@ use windows_sys::Win32::{
 };
 
 #[test]
+fn renderer_shutdown_waits_for_termination() {
+    let mut child = Command::new("cmd.exe")
+        .arg("/D").stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null())
+        .spawn().unwrap();
+    // An open input pipe keeps the command interpreter alive until it is terminated.
+    let _input = child.stdin.take().unwrap();
+    finish_renderer(&mut child, None, Duration::ZERO);
+    assert!(child.try_wait().unwrap().is_some());
+}
+
+#[test]
 fn controller_retries_commands_after_another_window_releases_app_state() {
     let _sta = crate::pane::test_support::apartment();
     let state = Rc::new(RefCell::new(crate::pane::tests::test_state()));

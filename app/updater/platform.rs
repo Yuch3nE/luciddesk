@@ -73,21 +73,39 @@ impl Original {
     }
     pub fn close(&self) -> Result<()> {
         unsafe {
-            let hwnd = FindWindowW(
-                windows_sys::w!("windows-window.Window"),
-                windows_sys::w!("LucidDesk Tray"),
-            );
-            let mut owner = 0;
-            GetWindowThreadProcessId(hwnd, &mut owner);
-            if owner != self.pid
-                || WaitForSingleObject(self.process.as_raw_handle(), 0) != WAIT_TIMEOUT
-                || PostMessageW(hwnd, WM_CLOSE, 0, 0) == 0
-                || WaitForSingleObject(self.process.as_raw_handle(), 20000) != WAIT_OBJECT_0
-            {
-                return Err("LucidDesk could not be closed safely".into());
+            let process = self.process.as_raw_handle();
+            match WaitForSingleObject(process, 0) {
+                WAIT_OBJECT_0 => return Ok(()),
+                WAIT_TIMEOUT => {}
+                _ => return Err(io::Error::last_os_error().into()),
+            }
+            let hwnd = tray_window(self.pid);
+            let timeout = if !hwnd.is_null() && PostMessageW(hwnd, WM_CLOSE, 0, 0) != 0 {
+                20_000
+            } else {
+                // The tray can be destroyed while its owner is already shutting down.
+                2_000
+            };
+            match WaitForSingleObject(process, timeout) {
+                WAIT_OBJECT_0 => Ok(()),
+                WAIT_TIMEOUT => Err("LucidDesk could not be closed safely".into()),
+                _ => Err(io::Error::last_os_error().into()),
             }
         }
-        Ok(())
+    }
+}
+
+fn tray_window(pid: u32) -> HWND {
+    let mut hwnd = null_mut();
+    loop {
+        hwnd = unsafe {
+            FindWindowExW(null_mut(), hwnd, windows_sys::w!("windows-window.Window"),
+                windows_sys::w!("LucidDesk Tray"))
+        };
+        if hwnd.is_null() { return hwnd; }
+        let mut owner = 0;
+        unsafe { GetWindowThreadProcessId(hwnd, &raw mut owner); }
+        if owner == pid { return hwnd; }
     }
 }
 pub fn gate(name: &str) -> Result<OwnedHandle> {
@@ -180,6 +198,19 @@ pub fn setup(path: &Path, root: &Path, scope: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_application_that_exits_before_close_is_already_closed() {
+        use std::os::windows::io::AsHandle;
+        let mut child = std::process::Command::new("cmd.exe").args(["/D", "/C", "exit /B 0"]).spawn().unwrap();
+        let original = Original {
+            process: child.as_handle().try_clone_to_owned().unwrap(),
+            pid: child.id(),
+            exe: PathBuf::new(),
+        };
+        child.wait().unwrap();
+        original.close().unwrap();
+    }
 
     #[test]
     fn installation_gate_excludes_other_updaters_of_the_same_directory() {

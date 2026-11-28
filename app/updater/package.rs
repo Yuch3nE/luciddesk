@@ -14,7 +14,7 @@ use std::{
     path::Path,
 };
 use windows_sys::Win32::{
-    Foundation::{GENERIC_READ, GENERIC_WRITE},
+    Foundation::{ERROR_LOCK_VIOLATION, ERROR_SHARING_VIOLATION, GENERIC_READ, GENERIC_WRITE},
     Storage::FileSystem::{
         DELETE, FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_OPEN_REPARSE_POINT, FILE_RENAME_INFO,
         FILE_SHARE_READ, FileRenameInfo, MOVEFILE_WRITE_THROUGH, MoveFileExW,
@@ -280,6 +280,24 @@ impl Applied<'_> {
     }
 }
 
+fn retry_application_file<T>(relative: &str, mut operation: impl FnMut() -> io::Result<T>) -> io::Result<T> {
+    if relative != "luciddesk.exe" { return operation(); }
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        let result = operation();
+        if std::time::Instant::now() >= deadline
+            || !result.as_ref().is_err_and(|error| {
+                error.raw_os_error().is_some_and(|code| {
+                    matches!(code as u32, ERROR_SHARING_VIOLATION | ERROR_LOCK_VIOLATION)
+                })
+            })
+        {
+            return result;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
 pub fn replace(root: &Path, work: &Path, files: &[StagedFile], build: &Build) -> ApplyResult {
     let backup = work.join(UPDATE_BACKUP);
     let stage = work.join("new");
@@ -296,11 +314,11 @@ pub fn replace(root: &Path, work: &Path, files: &[StagedFile], build: &Build) ->
             no_links(&target)?;
             fs::create_dir_all(target.parent().unwrap())?;
             let previous = if owns_target(rel, build) {
-                match protected_file(&target, false) {
+                match retry_application_file(rel, || protected_file(&target, false)) {
                     Ok(previous) => {
                         let saved = backup.join(rel);
                         fs::create_dir_all(saved.parent().unwrap())?;
-                        move_protected(&previous, &saved)?;
+                        retry_application_file(rel, || move_protected(&previous, &saved))?;
                         Some(previous)
                     }
                     Err(error) if error.kind() == io::ErrorKind::NotFound => None,
@@ -320,7 +338,7 @@ pub fn replace(root: &Path, work: &Path, files: &[StagedFile], build: &Build) ->
             if let Some(previous) = &entry.previous {
                 previous.sync_all()?;
             }
-            move_protected(&file.handle, &target)
+            retry_application_file(rel, || move_protected(&file.handle, &target))
                 .map_err(|error| format!("Could not update {}: {error}", target.display()))?;
             entry.installed = true;
             file.handle.sync_all()?;
@@ -457,6 +475,22 @@ mod failure_tests {
                 handle: protected_file(&work.join("new").join(relative), false).unwrap(),
             })
             .collect()
+    }
+
+    #[test]
+    fn application_file_can_be_reopened_after_a_transient_sharing_conflict() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("luciddesk.exe");
+        fs::write(&path, b"app").unwrap();
+        let lock = fs::OpenOptions::new().read(true).share_mode(FILE_SHARE_READ).open(&path).unwrap();
+        assert_eq!(protected_file(&path, false).unwrap_err().raw_os_error(), Some(ERROR_SHARING_VIOLATION as i32));
+        let owner = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            drop(lock);
+        });
+        let reopened = retry_application_file("luciddesk.exe", || protected_file(&path, false));
+        owner.join().unwrap();
+        assert!(reopened.is_ok());
     }
 
     #[test]

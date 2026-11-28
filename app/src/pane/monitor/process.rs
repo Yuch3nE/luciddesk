@@ -216,41 +216,46 @@ fn own_renderer(child: &Child) -> Result<OwnedHandle, String> {
 fn reap(mut child: Child, job: Option<OwnedHandle>, reader: Option<std::thread::JoinHandle<()>>,
     grace: std::time::Duration) -> std::io::Result<std::thread::JoinHandle<()>> {
     std::thread::Builder::new().name("monitor-cleanup".into()).spawn(move || {
-        let deadline = std::time::Instant::now() + grace;
-        loop {
-            match child.try_wait() {
-                Ok(Some(status)) => {
-                    if !status.success() {
-                        luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Error,
-                            "monitor.process", "Monitor process exited: {status}");
-                    }
-                    break;
-                }
-                Ok(None) if std::time::Instant::now() < deadline => {
-                    std::thread::sleep(std::time::Duration::from_millis(25));
-                }
-                result => {
-                    luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Warn,
-                        "monitor.process", "Monitor shutdown exceeded grace period or failed: {result:?}");
-                    // Only this owned, stateless renderer is terminated.
-                    let _ = child.kill();
-                    break;
-                }
-            }
-        }
-        // Also guarantees cleanup if the parent exits before this thread runs.
-        drop(job);
+        finish_renderer(&mut child, job, grace);
         if let Some(reader) = reader {
             // A broken pipe or blocked decoder must not extend the deadline.
             if reader.is_finished() { let _ = reader.join(); }
         }
     })
 }
+
+fn finish_renderer(child: &mut Child, job: Option<OwnedHandle>, grace: std::time::Duration) {
+    use windows_sys::Win32::{Foundation::WAIT_OBJECT_0, System::Threading::WaitForSingleObject};
+    let handle = child.as_raw_handle();
+    if unsafe { WaitForSingleObject(handle, grace.as_millis() as u32) } == WAIT_OBJECT_0 {
+        if let Ok(Some(status)) = child.try_wait() && !status.success() {
+            luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Error,
+                "monitor.process", "Monitor process exited: {status}");
+        }
+        return;
+    }
+    // Only the owned renderer is terminated. Wait for Windows to release its image.
+    let _ = child.kill();
+    drop(job);
+    if unsafe { WaitForSingleObject(handle, 1_000) } != WAIT_OBJECT_0 {
+        luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Warn,
+            "monitor.process", "Monitor renderer did not exit before shutdown");
+    }
+}
 #[derive(Default)]
 pub(in crate::pane) struct Manager {
     process: Option<Process>,
 }
 impl Manager {
+    pub(in crate::pane) fn shutdown(mut self) {
+        if let Some(mut process) = self.process.take() {
+            process.input.take();
+            if let Some(mut child) = process.child.take() {
+                finish_renderer(&mut child, process.job.take(), std::time::Duration::from_secs(2));
+            }
+        }
+    }
+
     pub(in crate::pane) fn windows(&self) -> Vec<windows_sys::Win32::Foundation::HWND> {
         self.process
             .iter()
