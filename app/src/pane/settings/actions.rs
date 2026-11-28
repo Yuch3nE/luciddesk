@@ -308,29 +308,26 @@ pub(super) fn execute(context: Context<'_>, c: &Control) -> bool {
                 Err(error) => window::error_for(hwnd, &error.to_string()),
             }
         }
-        Action::Update => {
+        Action::Update | Action::InstallUpdate => {
             if !context.updates.borrow().busy() {
-                let result = context.updates.borrow_mut().check();
-                if let Err(error) = result {
-                    window::error_for(hwnd, &error);
-                }
-                state.borrow().wake.notify();
+                let installing = matches!(c.action, Action::InstallUpdate);
                 if state.borrow().runtime.is_none()
-                    && context.updates.borrow().busy()
                     && unsafe { SetTimer(hwnd, UPDATE_TIMER, 200, None) } == 0
                 {
-                    context.updates.borrow_mut().cancel();
-                    window::error_for(hwnd, crate::i18n::text("update-failed"));
+                    window::error_for(hwnd, crate::i18n::text(if installing { "update-install-failed" } else { "update-failed" }));
+                } else {
+                    let result = if installing {
+                        context.updates.borrow_mut().install()
+                    } else {
+                        context.updates.borrow_mut().check()
+                    };
+                    if let Err(error) = result {
+                        window::error_for(hwnd, &error);
+                    }
+                    state.borrow().wake.notify();
                 }
                 invalidate = true;
             }
-        }
-        Action::InstallUpdate => {
-            if let Err(error) = context.updates.borrow_mut().install() {
-                window::error_for(hwnd, &error);
-            }
-            state.borrow().wake.notify();
-            invalidate = true;
         }
         Action::AutoCheckUpdates(enabled) => {
             let result = state.borrow().store.save_preference("auto_check_updates", &enabled.to_string());

@@ -1312,6 +1312,7 @@ desktop-gesture-description = Double-click an empty desktop area to hide all ico
 update-installed-version = Installed version { $version }
 update-install = Download and update
 update-preparing = Preparing update…
+update-install-failed = The update failed.
 update-manifest-unavailable = In-app update verification failed
 update-recovery-required = The last update was interrupted. Restore the program files from a complete ZIP and keep your user data. After restoring the files, move the recovery folder out of the application folder and restart. Recovery folder — { $folder }
 update-restart = Version { $version } has been verified. Close LucidDesk, install the update and reopen it now?

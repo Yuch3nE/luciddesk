@@ -1312,6 +1312,7 @@ desktop-gesture-description = Doppelklicken Sie auf eine freie Desktopfläche, u
 update-installed-version = Installierte Version { $version }
 update-install = Update installieren
 update-preparing = Update wird vorbereitet…
+update-install-failed = Das Update ist fehlgeschlagen.
 update-manifest-unavailable = Prüfung des integrierten Updates fehlgeschlagen
 update-recovery-required = Das letzte Update wurde unterbrochen. Stellen Sie die Programmdateien aus einem vollständigen ZIP-Archiv wieder her und behalten Sie Ihre Benutzerdaten. Verschieben Sie danach den Wiederherstellungsordner aus dem Anwendungsordner und starten Sie die Anwendung erneut. Wiederherstellungsordner — { $folder }
 update-restart = Version { $version } wurde geprüft. LucidDesk jetzt schließen, aktualisieren und neu starten?

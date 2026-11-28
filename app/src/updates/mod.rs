@@ -162,16 +162,11 @@ impl Controller {
         }
     }
 
-    pub fn cancel(&mut self) {
-        self.work = None;
-        self.automatic = false;
-    }
-
     pub fn busy(&self) -> bool {
         self.work.is_some() || self.installer.is_some()
     }
     pub fn available_version(&self) -> Option<&str> {
-        if self.busy() || self.error.is_some() {
+        if self.busy() {
             None
         } else {
             self.available
@@ -206,6 +201,7 @@ impl Controller {
     pub fn install(&mut self) -> Result<(), String> {
         if let Some(version) = self.available_version().filter(|_| self.can_install()) {
             self.installer = Some(install::launch(version)?);
+            self.error = None;
         }
         Ok(())
     }
@@ -308,12 +304,14 @@ impl Controller {
                 Ok(Some(status)) => {
                     self.installer = None;
                     if !status.success() {
-                        self.error = Some(status.to_string());
+                        luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Warn,
+                            "updates", "Updater exited: {status}");
                     }
                 }
                 Err(error) => {
-                    self.error = Some(error.to_string());
                     self.installer = None;
+                    luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Warn,
+                        "updates", "Could not poll the updater: {error}");
                 }
             }
         }
@@ -528,6 +526,17 @@ mod tests {
         let cancel = controller.work.as_ref().unwrap().cancel.clone();
         drop(controller);
         assert!(cancel.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn updater_failure_keeps_the_verified_install_action_available() {
+        let child = std::process::Command::new("cmd.exe").args(["/D", "/C", "exit /B 1"]).spawn().unwrap();
+        let mut controller = Controller::with_available_version("99.1.2");
+        controller.installer = Some(child);
+        wait(&mut controller);
+        assert_eq!(controller.available_version(), Some("99.1.2"));
+        assert!(controller.can_install());
+        assert!(controller.error.is_none());
     }
 
     #[test]
