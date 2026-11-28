@@ -247,9 +247,15 @@ pub(in crate::pane) struct Manager {
     process: Option<Process>,
 }
 impl Manager {
-    pub(in crate::pane) fn shutdown(mut self) {
-        if let Some(mut process) = self.process.take() {
+    pub(in crate::pane) fn begin_shutdown(&mut self) {
+        if let Some(process) = &mut self.process {
             process.input.take();
+        }
+    }
+
+    pub(in crate::pane) fn shutdown(mut self) {
+        self.begin_shutdown();
+        if let Some(mut process) = self.process.take() {
             if let Some(mut child) = process.child.take() {
                 finish_renderer(&mut child, process.job.take(), std::time::Duration::from_secs(2));
             }

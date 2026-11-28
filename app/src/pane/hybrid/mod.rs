@@ -305,7 +305,8 @@ pub fn run(path: &Path, title: Option<String>) -> Result<(), String> {
         luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Error, "desktop.visibility", "Shutdown restore: {error}");
     }
     crate::pane::render_debug::render_trace(format_args!("shutdown: stop supervisor"));
-    let monitors = std::mem::take(&mut state.borrow_mut().monitors);
+    let mut monitors = std::mem::take(&mut state.borrow_mut().monitors);
+    monitors.begin_shutdown();
     drop(control);
     drop(supervisor);
     drop(tray);
