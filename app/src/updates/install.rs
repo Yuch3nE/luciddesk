@@ -1,5 +1,7 @@
 use super::handoff::{self, Appearance, Stage};
-use std::{fs, io, path::PathBuf, process::{Child, Command, ExitStatus}};
+use std::{fs, io, os::windows::fs::OpenOptionsExt, path::{Path, PathBuf}, process::{Child, Command, ExitStatus}};
+
+const LEASE: &str = "launch.lock";
 
 pub(super) struct Running {
     child: Child,
@@ -15,6 +17,7 @@ impl Running {
 
     pub fn poll(&mut self) -> io::Result<Option<ExitStatus>> {
         if let Some(status) = self.child.try_wait()? {
+            cleanup_run(&self.directory);
             return Ok(Some(status));
         }
         if let Ok(bytes) = fs::read(self.directory.join(handoff::STATUS))
@@ -33,6 +36,58 @@ impl Running {
         }
         Ok(())
     }
+}
+
+fn cache() -> PathBuf {
+    std::env::temp_dir().join("LucidDesk-Updaters")
+}
+
+fn cleanup_run(directory: &Path) {
+    if super::distribution::no_links(directory).is_err() { return; }
+    let lease_path = directory.join(LEASE);
+    let lease = match fs::OpenOptions::new().read(true).write(true).share_mode(0).open(&lease_path) {
+        Ok(handle) => Some(handle),
+        Err(error) if error.kind() == io::ErrorKind::NotFound
+            && fs::metadata(directory).and_then(|meta| meta.modified()).ok()
+                .and_then(|time| time.elapsed().ok()).is_some_and(|age| age.as_secs() >= 60) => None,
+        Err(_) => return,
+    };
+    match fs::remove_file(directory.join("updater.exe")) {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(_) => return,
+    }
+    for name in [handoff::STATUS, handoff::NEXT_STATUS, handoff::DECISION] {
+        let _ = fs::remove_file(directory.join(name));
+    }
+    drop(lease);
+    let _ = fs::remove_file(lease_path);
+    let _ = fs::remove_dir(directory);
+}
+
+fn cleanup(cache: &Path) -> bool {
+    if super::distribution::no_links(cache).is_err() { return false; }
+    let Ok(entries) = fs::read_dir(cache) else { return false; };
+    let mut pending = false;
+    for entry in entries.flatten() {
+        if entry.file_name().to_string_lossy().starts_with("run-")
+            && entry.file_type().is_ok_and(|kind| kind.is_dir())
+        {
+            cleanup_run(&entry.path());
+            pending |= entry.path().exists();
+        }
+    }
+    pending
+}
+
+pub(crate) fn cleanup_after_start() {
+    let cache = cache();
+    let _ = std::thread::Builder::new().name("updater-cleanup".into()).spawn(move || {
+        for delay in [0, 2, 8, 50] {
+            std::thread::sleep(std::time::Duration::from_secs(delay));
+            if !cleanup(&cache) { break; }
+        }
+    });
 }
 
 pub(super) fn kind() -> Option<&'static str> {
@@ -59,22 +114,13 @@ pub(super) fn launch(version: &str) -> Result<Running, String> {
 fn stage_and_launch(version: &str) -> io::Result<Running> {
     let exe = std::env::current_exe()?;
     let updater = exe.with_file_name("updater.exe");
-    let cache = std::env::temp_dir().join("LucidDesk-Updaters");
+    let cache = cache();
     super::distribution::no_links(&cache)?;
     std::fs::create_dir_all(&cache)?;
-    // A running image cannot be deleted on Windows. Remove only our previous
-    // image and its empty directory; concurrent or unrelated files stay intact.
-    for entry in std::fs::read_dir(&cache)?.flatten() {
-        let dir = entry.path();
-        if entry.file_name().to_string_lossy().starts_with("run-")
-            && entry.file_type()?.is_dir()
-            && super::distribution::no_links(&dir).is_ok()
-        {
-            let _ = std::fs::remove_file(dir.join("updater.exe"));
-            let _ = std::fs::remove_dir(dir);
-        }
-    }
+    cleanup(&cache);
     let work = tempfile::Builder::new().prefix("run-").tempdir_in(&cache)?;
+    let lease = fs::OpenOptions::new().write(true).create_new(true).share_mode(0)
+        .open(work.path().join(LEASE))?;
     let image = work.path().join("updater.exe");
     std::fs::copy(updater, &image)?;
     let child = Command::new(&image)
@@ -92,5 +138,31 @@ fn stage_and_launch(version: &str) -> io::Result<Running> {
             failed: crate::i18n::text("update-install-failed").into(),
         })?)
         .spawn()?;
+    drop(lease);
     Ok(Running::new(child, work.keep()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn staged_cleanup_respects_the_lease_and_leaves_unrelated_files() {
+        let cache = tempfile::tempdir().unwrap();
+        let run = cache.path().join("run-fixture");
+        fs::create_dir(&run).unwrap();
+        let lease = fs::OpenOptions::new().write(true).create_new(true).share_mode(0)
+            .open(run.join(LEASE)).unwrap();
+        fs::write(run.join("updater.exe"), b"fixture").unwrap();
+        fs::write(run.join(handoff::STATUS), b"fixture").unwrap();
+        fs::write(run.join("note.txt"), b"user data").unwrap();
+        assert!(cleanup(cache.path()));
+        assert!(run.join("updater.exe").is_file());
+
+        drop(lease);
+        cleanup(cache.path());
+        assert!(!run.join("updater.exe").exists());
+        assert!(!run.join(handoff::STATUS).exists());
+        assert_eq!(fs::read(run.join("note.txt")).unwrap(), b"user data");
+    }
 }

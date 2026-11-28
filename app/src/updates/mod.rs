@@ -20,6 +20,8 @@ const CHECK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 const FIRST_CHECK_DELAY: Duration = Duration::from_secs(45);
 const FAILED_CHECK_INTERVAL: Duration = Duration::from_secs(20 * 60);
 
+pub(crate) use install::cleanup_after_start;
+
 pub(crate) fn check_recovery(root: &std::path::Path) -> Result<(), String> {
     if let Some(work) = distribution::interrupted_update(root).map_err(|error| error.to_string())? {
         return Err(i18n::format(
