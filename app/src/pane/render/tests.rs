@@ -607,22 +607,47 @@ fn viewport_layout_matches_full_measurement_across_sizes_and_scroll_positions() 
 }
 
 #[test]
-fn selection_backgrounds_release_old_sizes_and_deselected_textures() {
+fn vector_selection_keeps_neutral_state_colors_through_resize_and_dpi_changes() {
     let _sta = crate::pane::test_support::apartment();
     let mut model = sample_model();
     model.list_view = true;
-    model.selection.insert(0);
     let device = windows_canvas::GpuDevice::new_warp().unwrap();
     let mut renderer = Renderer::new().unwrap();
-    let bitmap = canvas::Offscreen::new(&device, 640, 240).unwrap();
-    for width in [320, 480, 640, 400] {
-        renderer.paint(&bitmap.target, width, 240, 1.0, &model).unwrap();
-        assert_eq!(renderer.states.len(), 1);
+    let bitmap = canvas::Offscreen::new(&device, 960, 480).unwrap();
+    for (width, scale) in [(320, 1.0), (480, 1.25), (960, 2.0), (400, 1.0)] {
+        let grid = model.grid(width as f32 / scale, 480.0 / scale);
+        let bounds = model.selection_bounds(grid, 0, scale);
+        let x = ((bounds.x + bounds.width * 0.75) * scale) as usize;
+        let y = ((bounds.y + bounds.height * 0.5) * scale) as usize;
+        let at = (y * 960 + x) * 4;
+        let mut draw = |model: &GroupModel| {
+            renderer.paint(&bitmap.target, width, 480, scale, model).unwrap();
+            let pixel: [u8; 4] = bitmap.pixels().unwrap()[at..at + 4].try_into().unwrap();
+            pixel
+        };
+        model.selection.clear();
+        model.hovered_item = None;
+        model.focused = false;
+        let background = draw(&model);
+        for (focused, selected, hovered, alpha) in [
+            (false, false, true, 26.0),
+            (false, true, false, 43.0),
+            (true, true, false, 54.0),
+            (true, true, true, 61.0),
+        ] {
+            model.focused = focused;
+            model.hovered_item = hovered.then_some(0);
+            if selected { model.selection.insert(0); }
+            for (actual, base) in draw(&model).into_iter().zip(background) {
+                let expected = (f32::from(base) + (255.0 - f32::from(base)) * alpha / 255.0).round() as u8;
+                assert!(actual.abs_diff(expected) <= 1, "width={width} scale={scale} alpha={alpha}: {actual} vs {expected}");
+            }
+        }
+        model.selection.clear();
+        model.hovered_item = None;
+        model.focused = false;
+        assert_eq!(draw(&model), background);
     }
-    model.selection.clear();
-    model.hovered_item = None;
-    renderer.paint(&bitmap.target, 400, 240, 1.0, &model).unwrap();
-    assert!(renderer.states.is_empty());
 }
 
 #[test]

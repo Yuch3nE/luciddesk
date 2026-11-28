@@ -5,6 +5,39 @@ use std::time::Instant;
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
 #[test]
+#[ignore = "Manual offscreen benchmark; timings are not CI assertions"]
+fn rendering_hot_paths_latency() {
+    let _sta = crate::pane::test_support::apartment();
+    let device = windows_canvas::GpuDevice::new().unwrap();
+    let surface = crate::pane::canvas::Offscreen::new(&device, 1200, 600).unwrap();
+    let mut renderer = Renderer::new().unwrap();
+    let mut model = crate::pane::tests::test_model("📁 Projects ✨ LucidDesk");
+    model.items = (0..32).map(|i| crate::pane::Item {
+        details: Default::default(),
+        identity: luciddesk_core::ShellIdentity::Namespace { parsing_name: format!("bench:{i}") },
+        label: format!("Project document {i} · 项目资料"), image: None,
+    }).collect();
+    model.list_view = true;
+    model.selection.insert(1);
+    for scenario in ["selection_resize", "emoji_list", "emoji_tabs_list"] {
+        if scenario == "emoji_tabs_list" {
+            model.tabs = ["📁 Projects", "✨ Documents", "Archive"].into_iter().enumerate()
+                .map(|(i, title)| (luciddesk_core::PanelId::new(i as u64 + 1), title.into())).collect();
+            model.active_tab = luciddesk_core::PanelId::new(1);
+        }
+        let mut times = Vec::with_capacity(360);
+        for frame in 0..384 {
+            let width = if scenario == "selection_resize" { 900 + frame % 221 } else { 1000 };
+            let start = Instant::now();
+            renderer.paint(&surface.target, width, 600, 1.25, &model).unwrap();
+            if frame >= 24 { times.push(start.elapsed().as_micros()); }
+        }
+        times.sort_unstable();
+        println!("{scenario} p50_us={} p95_us={}", times[180], times[342]);
+    }
+}
+
+#[test]
 #[ignore = "Manual GPU benchmark; timings are not CI assertions"]
 fn warm_pane_draw_latency() {
     let _sta = crate::pane::test_support::apartment();

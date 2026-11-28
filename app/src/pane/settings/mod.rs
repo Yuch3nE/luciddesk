@@ -145,7 +145,7 @@ struct Scene {
     scroll_offset: f32,
     text: Vec<(Rect, String, usize)>,
     cards: Vec<Rect>,
-    segment_tracks: Vec<Rect>,
+    segment_tracks: Vec<SegmentTrack>,
     status_pills: Vec<(Rect, bool)>,
     specimen_boxes: Vec<Rect>,
     section_headers: Vec<SectionHeader>,
@@ -162,6 +162,11 @@ struct Scene {
     previews: Vec<(Rect, Backdrop)>,
     app_icon: Option<Rect>,
     caption_icon: Option<Rect>,
+}
+
+struct SegmentTrack {
+    bounds: Rect,
+    members: std::ops::Range<usize>,
 }
 
 impl Scene {

@@ -63,6 +63,7 @@ struct TitleLayout {
     width_pixels: f32,
     scale: f32,
     layout: windows_canvas::TextLayout,
+    prepared: Option<(canvas::ColorLayout, f32)>,
 }
 
 pub struct Renderer {
@@ -85,11 +86,10 @@ pub struct Renderer {
     icons: windows_canvas::TextFormat,
     navigation_icons: windows_canvas::TextFormat,
     target: Option<(u32, u32, Option<canvas::Offscreen>, ID2D1DeviceContext)>,
-    brushes: std::cell::RefCell<canvas::Brushes<9>>,
+    brushes: std::cell::RefCell<canvas::Brushes<13>>,
     images: HashMap<usize, ImageBitmap>,
     #[cfg(test)]
     image_uploads: usize,
-    states: HashMap<(u32, u32, u32, i32), windows_canvas::Bitmap>,
     buttons: Highlights<usize>,
     tabs: Highlights<luciddesk_core::PanelId>,
     items: Highlights<luciddesk_core::ShellIdentity>,
@@ -343,7 +343,6 @@ impl Renderer {
             images: HashMap::new(),
             #[cfg(test)]
             image_uploads: 0,
-            states: HashMap::new(),
         })
     }
 
@@ -362,7 +361,6 @@ impl Renderer {
             let target = bitmap.target.clone();
             self.target = Some((width, height, Some(bitmap), target));
             self.images.clear();
-            self.states.clear();
         }
         Ok(())
     }
@@ -410,7 +408,6 @@ impl Renderer {
             .is_none_or(|(_, _, bitmap, old)| bitmap.is_some() || old != target)
         {
             self.images.clear();
-            self.states.clear();
         }
         self.target = Some((width, height, None, target.clone()));
         let height_dip = height as f32 / scale;
@@ -474,6 +471,7 @@ impl Renderer {
                 width_pixels: 0.0,
                 scale,
                 layout,
+                prepared: None,
             });
         }
         let cached = self.title_layout.as_mut().unwrap();
@@ -491,6 +489,7 @@ impl Renderer {
         {
             if cached.width_pixels != pixels || cached.scale != scale {
                 cached.layout.set_max_size(pixels / scale, HEADER);
+                cached.prepared = None;
             }
             cached.width_pixels = pixels;
             cached.scale = scale;
@@ -526,10 +525,9 @@ impl Renderer {
             self.menu_shortcut = fresh.menu_shortcut;
             self.column_label_widths = fresh.column_label_widths;
             self.title_layout = None;
-            self.states.clear();
+            self.frame_cache.borrow_mut().clear_text();
         }
 
-        let mut live_states = HashSet::new();
         let now = std::time::Instant::now();
         let mut playing = false;
         let w = width as f32 / scale;
@@ -541,6 +539,18 @@ impl Renderer {
         let show_icon = model.folder.is_some() && title_space >= 42.0;
         let icon_width = if model.folder.is_some() { 24.0 } else { 0.0 };
         let title = self.layout_title(&model.title, (title_space - icon_width).max(1.0), scale)?;
+        let prepared_title = if model.tabs.len() < 2 && model.merge_preview.is_empty() {
+            let cached = self.title_layout.as_mut().unwrap();
+            if cached.prepared.is_none() {
+                cached.prepared = Some((
+                    canvas::ColorLayout::new(&cached.text, &cached.layout, scale)?,
+                    canvas::text_ink_center_offset(&cached.layout)?,
+                ));
+            }
+            cached.prepared.as_ref()
+        } else {
+            None
+        };
         let group_left =
             ((title_left + (title_space - title.max_size().0 - icon_width).max(0.0) / 2.0) * scale)
                 .floor()
@@ -578,6 +588,10 @@ impl Renderer {
                     selection,
                     hover,
                     inactive,
+                    item_hover,
+                    item_selected,
+                    item_inactive,
+                    item_hot_selected,
                 ] = canvas_result(
                     brushes.get(
                         context,
@@ -613,6 +627,11 @@ impl Renderer {
                             ColorF::new(0.55, 0.75, 1.0, 0.25),
                             ColorF::new(0.7, 0.85, 1.0, 0.12),
                             ColorF::new(0.75, 0.8, 0.85, 0.16),
+                            // Keep the original premultiplied bitmap's interior alpha.
+                            ColorF::new(1.0, 1.0, 1.0, 26.0 / 255.0),
+                            ColorF::new(1.0, 1.0, 1.0, 54.0 / 255.0),
+                            ColorF::new(1.0, 1.0, 1.0, 43.0 / 255.0),
+                            ColorF::new(1.0, 1.0, 1.0, 61.0 / 255.0),
                         ],
                     ),
                 )?;
@@ -647,14 +666,8 @@ impl Renderer {
                             white,
                         );
                     }
-                    if model.tabs.len() < 2 && model.merge_preview.is_empty() {
-                        target.clipped_color_layout(
-                            &model.title,
-                            &title,
-                            group_left + icon_width,
-                            canvas::text_ink_center_offset(&title)?,
-                            white,
-                        )?;
+                    if let Some((layout, offset)) = prepared_title {
+                        target.draw_color_layout(layout, group_left + icon_width, *offset, white)?;
                     }
                     for button in 0..if !model.merge_preview.is_empty() {
                         0
@@ -993,68 +1006,27 @@ impl Renderer {
                         let feedback = self.items.sample(&item.identity, model.hovered_item == Some(index), false,
                             model.selection.contains(&index), now, animate && self.marquee.is_none());
                         playing |= feedback.playing;
-                        let hot_selection = if model.focused { feedback.hover } else { 0.0 };
-                        let selected_ink = if model.focused { selection } else { inactive };
-                        for (state, amount, brush) in [
-                            (2, feedback.hover * (1.0 - feedback.selected), hover),
-                            (if model.focused { 3 } else { 5 }, feedback.selected * (1.0 - hot_selection), selected_ink),
-                            (6, feedback.selected * hot_selection, selected_ink),
-                        ] {
-                            if amount <= 0.0 { continue; }
+                        if feedback.hover > 0.0 || feedback.selected > 0.0 {
                             let bounds = model.selection_bounds(grid, index, scale);
-                            let selection_height = bounds.height;
-                            let selection_width = bounds.width;
-                            let selection_x = bounds.x;
-                            let key = (
-                                (selection_width * scale).round() as u32,
-                                (selection_height * scale).round() as u32,
-                                (96.0 * scale).round() as u32,
-                                state,
-                            );
-                            live_states.insert(key);
-                            if !self.states.contains_key(&key)
-                                && let Some(pixels) =
-                                    super::theme::selection(key.0, key.1, key.2, key.3)
-                            {
-                                let bitmap = canvas_result(target.create_bitmap(
-                                    &pixels.data,
-                                    key.0,
-                                    key.1,
-                                ))?;
-                                if self.states.len() >= 64 {
-                                    if let Some(old) = self.states.keys().next().copied() {
-                                        self.states.remove(&old);
-                                    }
-                                }
-                                self.states.insert(key, bitmap);
-                            }
-                            if let Some(bitmap) = self.states.get(&key) {
-                                target.draw_bitmap(
-                                    bitmap,
-                                    &Rect::from_xywh(
-                                        selection_x,
-                                        bounds.y,
-                                        selection_width,
-                                        selection_height,
-                                    ),
-                                    amount,
-                                );
+                            let rect = Rect::from_xywh(bounds.x, bounds.y, bounds.width, bounds.height);
+                            let width = (bounds.width * scale).round();
+                            let height = (bounds.height * scale).round();
+                            // Preserve the old square fallback for very large selections.
+                            let fallback = !(1.0..=4096.0).contains(&width) || !(1.0..=4096.0).contains(&height);
+                            let radius = if fallback { 0.0 } else { 1.0_f32.max((96.0 * scale).round() / 96.0) / scale };
+                            let shape = RoundedRect { rect, radius_x: radius, radius_y: radius };
+                            let hot = if model.focused { feedback.hover } else { 0.0 };
+                            let (normal, hot_brush) = if fallback {
+                                let brush = if model.focused { selection } else { inactive };
+                                (brush, brush)
                             } else {
-                                target.fill_highlight(
-                                    &RoundedRect {
-                                        rect: Rect::from_xywh(
-                                            selection_x,
-                                            bounds.y,
-                                            selection_width,
-                                            selection_height,
-                                        ),
-                                        radius_x: 0.0,
-                                        radius_y: 0.0,
-                                    },
-                                    brush,
-                                    amount,
-                                );
-                            }
+                                let normal = if model.focused { item_selected } else { item_inactive };
+                                (normal, item_hot_selected)
+                            };
+                            target.fill_highlight(&shape, if fallback { hover } else { item_hover },
+                                feedback.hover * (1.0 - feedback.selected));
+                            target.fill_highlight(&shape, normal, feedback.selected * (1.0 - hot));
+                            target.fill_highlight(&shape, hot_brush, feedback.selected * hot);
                         }
                         if let Some(image) = &item.image {
                             let key = Arc::as_ptr(image) as usize;
@@ -1126,7 +1098,7 @@ impl Renderer {
                                     continue;
                                 }
                                 let inset = if column == 0 { 0.0 } else { 8.0 };
-                                target.clipped_text(
+                                target.clipped_cached_text(
                                     text,
                                     if column == 3 {
                                         &self.menu_shortcut
@@ -1263,11 +1235,7 @@ impl Renderer {
                     let marker = canvas_result(target.cached_solid_brush(ColorF::new(1.0, 0.0, 1.0, 1.0)))?;
                     target.fill_rect(&Rect::from_xywh(10.0, 45.0, 30.0, 25.0), &*marker);
                 }
-                let result = target.finish();
-                // Retain only backgrounds used by this frame, including after resize,
-                // DPI changes, deselection, or collapsing the content.
-                self.states.retain(|key, _| live_states.contains(key));
-                result
+                target.finish()
             })?;
         }
         self.buttons.finish_frame();

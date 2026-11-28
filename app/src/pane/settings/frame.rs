@@ -47,7 +47,7 @@ pub(super) fn with_named_titlebar(
         bounds.bottom += TITLE_HEIGHT;
     }
     for r in scene.cards.iter_mut().chain(&mut scene.separators)
-        .chain(&mut scene.segment_tracks)
+        .chain(scene.segment_tracks.iter_mut().map(|track| &mut track.bounds))
         .chain(scene.status_pills.iter_mut().map(|(bounds, _)| bounds))
         .chain(&mut scene.specimen_boxes)
         .chain(scene.section_headers.iter_mut().map(|header| &mut header.bounds))

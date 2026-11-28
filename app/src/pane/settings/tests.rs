@@ -1,6 +1,39 @@
 use super::*;
 
 #[test]
+#[ignore = "Manual offscreen benchmark; timings are not CI assertions"]
+fn rendering_hot_paths_latency() {
+    let _sta = crate::pane::test_support::apartment();
+    let device = windows_canvas::GpuDevice::new().unwrap();
+    let surface = canvas::Offscreen::new(&device, 1000, 700).unwrap();
+    let painter = Painter::new().unwrap();
+    let frames = (0..24).map(|step| {
+        let mut scene = Scene::empty(Backdrop::Mica, 24.0, 48.0);
+        let mut form = SettingsForm::continuation(&mut scene, 800.0, 48.0);
+        for _ in 0..24 {
+            form.toggle("Show panels", "Keep organized desktop items visible.", true, Action::Page(1));
+            form.choices("Layout", "Choose how the panel displays its items.", vec![
+                ("Grid", Action::Page(1), true),
+                ("List", Action::Page(2), false),
+            ]);
+        }
+        let mut scene = with_titlebar(scene, 800.0, false);
+        scene.scroll_to(800.0, 560.0, &mut (step as f32 * 31.0));
+        scene
+    }).collect::<Vec<_>>();
+    let toggles = HashMap::new();
+    let mut times = Vec::with_capacity(360);
+    for frame in 0..384 {
+        let start = std::time::Instant::now();
+        painter.paint(&surface.target, &frames[frame % frames.len()], 800.0, 560.0, 1.25,
+            true, true, None, None, &toggles).unwrap();
+        if frame >= 24 { times.push(start.elapsed().as_micros()); }
+    }
+    times.sort_unstable();
+    println!("settings_scroll p50_us={} p95_us={}", times[180], times[342]);
+}
+
+#[test]
 fn reorder_uses_icon_fonts_and_preserves_enabled_actions() {
     use luciddesk_window::control_style::{ARROW_DOWN, ARROW_UP};
 

@@ -8,6 +8,37 @@ use widgets::{InlineControl, Tone};
 const WINDOW_BRUSH_COUNT: usize = 9;
 const WIDGET_BRUSH_COUNT: usize = Tone::ALL.len();
 
+struct PaintViewport<'a, 'b> {
+    pass: &'a canvas::DrawPass<'b>,
+    bounds: Option<Rect>,
+    clip: RefCell<Option<ContentClip<'a, 'b>>>,
+}
+
+impl PaintViewport<'_, '_> {
+    fn clear(&self) {
+        self.clip.borrow_mut().take();
+    }
+
+    fn show(&self, bounds: &Rect, clipped: bool, bleed: f32) -> bool {
+        let viewport = self.bounds.filter(|_| clipped);
+        if viewport.is_some_and(|viewport| {
+            bounds.bottom + bleed <= viewport.top || bounds.top - bleed >= viewport.bottom
+                || bounds.right + bleed <= viewport.left || bounds.left - bleed >= viewport.right
+        }) {
+            return false;
+        }
+        // Keep one clip across consecutive content draws, retaining their paint order
+        // when a fixed element or the font-list frame must draw outside it.
+        let mut clip = self.clip.borrow_mut();
+        match (viewport, clip.is_some()) {
+            (Some(viewport), false) => *clip = Some(ContentClip::rect(self.pass, &viewport)),
+            (None, true) => *clip = None,
+            _ => {}
+        }
+        true
+    }
+}
+
 struct WidgetCanvas<'a, 'b> {
     pass: &'a canvas::DrawPass<'b>,
     painter: &'a Painter,
@@ -70,19 +101,18 @@ impl widgets::Canvas for WidgetCanvas<'_, '_> {
             _ => 1.0,
         };
         let shape = Self::frame(bounds, radius);
-        let _fade = self.pass.opacity_layer(&shape.rect, opacity);
-        self.pass.fill_rounded_rect(&shape, self.brushes[tone as usize]);
+        self.pass.fill_highlight(&shape, self.brushes[tone as usize], opacity);
     }
 
     fn fill_rgb(&mut self, bounds: widgets::Bounds, radius: f32, [r, g, b]: [f32; 3]) -> Result<(), Self::Error> {
-        let brush = canvas_result(self.pass.create_solid_brush(ColorF { r, g, b, a: 1.0 }))?;
-        self.pass.fill_rounded_rect(&Self::frame(bounds, radius), &brush);
+        let brush = canvas_result(self.pass.cached_solid_brush(ColorF { r, g, b, a: 1.0 }))?;
+        self.pass.fill_rounded_rect(&Self::frame(bounds, radius), brush.as_ref());
         Ok(())
     }
 
     fn fill_rgba(&mut self, bounds: widgets::Bounds, radius: f32, rgba: [f32; 4]) {
-        if let Ok(brush) = self.pass.create_solid_brush(Self::color(rgba)) {
-            self.pass.fill_rounded_rect(&Self::frame(bounds, radius), &brush);
+        if let Ok(brush) = self.pass.cached_solid_brush(Self::color(rgba)) {
+            self.pass.fill_rounded_rect(&Self::frame(bounds, radius), brush.as_ref());
         }
     }
 
@@ -97,14 +127,14 @@ impl widgets::Canvas for WidgetCanvas<'_, '_> {
         thickness: f32,
         [r, g, b]: [f32; 3],
     ) -> Result<(), Self::Error> {
-        let brush = canvas_result(self.pass.create_solid_brush(ColorF { r, g, b, a: 1.0 }))?;
-        self.pass.draw_rounded_rect(&Self::inset_frame(bounds, radius, thickness), &brush, thickness);
+        let brush = canvas_result(self.pass.cached_solid_brush(ColorF { r, g, b, a: 1.0 }))?;
+        self.pass.draw_rounded_rect(&Self::inset_frame(bounds, radius, thickness), brush.as_ref(), thickness);
         Ok(())
     }
 
     fn stroke_rgba(&mut self, bounds: widgets::Bounds, radius: f32, thickness: f32, rgba: [f32; 4]) {
-        if let Ok(brush) = self.pass.create_solid_brush(Self::color(rgba)) {
-            self.pass.draw_rounded_rect(&Self::inset_frame(bounds, radius, thickness), &brush, thickness);
+        if let Ok(brush) = self.pass.cached_solid_brush(Self::color(rgba)) {
+            self.pass.draw_rounded_rect(&Self::inset_frame(bounds, radius, thickness), brush.as_ref(), thickness);
         }
     }
 
@@ -117,30 +147,30 @@ impl widgets::Canvas for WidgetCanvas<'_, '_> {
         press: f32,
     ) {
         let gradient = self.palette.elevation_gradient(kind, hover, press);
+        let stable = kind == style::ElevationKind::TextField
+            || (matches!(hover, 0.0 | 1.0) && matches!(press, 0.0 | 1.0));
         self.pass.draw_elevation_border(
             &Self::frame(bounds, radius),
-            Self::color(gradient.top),
-            Self::color(gradient.mid),
-            Self::color(gradient.bottom),
-            gradient.stop,
+            gradient,
+            stable,
             1.0,
         );
     }
 
     fn fill_circle(&mut self, cx: f32, cy: f32, radius: f32, rgba: [f32; 4]) {
-        if let Ok(brush) = self.pass.create_solid_brush(Self::color(rgba)) {
+        if let Ok(brush) = self.pass.cached_solid_brush(Self::color(rgba)) {
             self.pass.fill_ellipse(
                 &Ellipse { center: Vector2 { x: cx, y: cy }, radius_x: radius, radius_y: radius },
-                &brush,
+                brush.as_ref(),
             );
         }
     }
 
     fn stroke_circle(&mut self, cx: f32, cy: f32, radius: f32, thickness: f32, rgba: [f32; 4]) {
-        if let Ok(brush) = self.pass.create_solid_brush(Self::color(rgba)) {
+        if let Ok(brush) = self.pass.cached_solid_brush(Self::color(rgba)) {
             self.pass.draw_ellipse(
                 &Ellipse { center: Vector2 { x: cx, y: cy }, radius_x: radius, radius_y: radius },
-                &brush,
+                brush.as_ref(),
                 thickness,
             );
         }
@@ -168,9 +198,9 @@ impl widgets::Canvas for WidgetCanvas<'_, '_> {
         let mut bounds = Rect::from_xywh(bounds.x, bounds.y, bounds.width, bounds.height);
         let brush = self.brushes[tone as usize];
         match alignment {
-            widgets::Alignment::Center => self.pass.clipped_text(label, &self.painter.button_format, &bounds, brush),
-            widgets::Alignment::SelectedCenter => self.pass.clipped_text(label, &self.painter.selected_button_format, &bounds, brush),
-            widgets::Alignment::Badge => self.pass.clipped_text(label, &self.painter.formats[Tokens::TITLE_BADGE], &bounds, brush),
+            widgets::Alignment::Center => self.pass.clipped_cached_text(label, &self.painter.button_format, &bounds, brush),
+            widgets::Alignment::SelectedCenter => self.pass.clipped_cached_text(label, &self.painter.selected_button_format, &bounds, brush),
+            widgets::Alignment::Badge => self.pass.clipped_cached_text(label, &self.painter.formats[Tokens::TITLE_BADGE], &bounds, brush),
             widgets::Alignment::Leading => {
                 let format = if let Some((format, width)) = self.leading_text {
                     bounds.right = (bounds.right - width).max(bounds.left + 1.0);
@@ -180,7 +210,7 @@ impl widgets::Canvas for WidgetCanvas<'_, '_> {
                 } else {
                     &self.painter.formats[Tokens::CONTROL_TEXT]
                 };
-                self.pass.clipped_text(label, format, &bounds, brush);
+                self.pass.clipped_cached_text(label, format, &bounds, brush);
             }
             widgets::Alignment::Icon => {
                 let format = &self.painter.formats[4];
@@ -195,8 +225,9 @@ impl widgets::Canvas for WidgetCanvas<'_, '_> {
                     self.pass.rotated_icon(glyph, format, &bounds, brush, progress * length);
                 } else {
                     let opacity = if label == style::CHECK_MARK { self.motion.check.unwrap_or(1.0) } else { 1.0 };
-                    let _fade = self.pass.opacity_layer(&bounds, opacity);
-                    self.pass.clipped_icon(label, format, &bounds, brush);
+                    canvas::with_brush_opacity(brush, opacity, || {
+                        self.pass.clipped_icon(label, format, &bounds, brush);
+                    });
                 }
             }
             widgets::Alignment::ActionIcon => {
@@ -213,7 +244,7 @@ impl widgets::Canvas for WidgetCanvas<'_, '_> {
                 };
                 self.pass.clipped_icon(label, &self.painter.formats[5], &bounds, brush);
             }
-            widgets::Alignment::Supporting => self.pass.clipped_text(label, &self.painter.formats[6], &bounds, brush),
+            widgets::Alignment::Supporting => self.pass.clipped_cached_text(label, &self.painter.formats[6], &bounds, brush),
         }
     }
 
@@ -223,10 +254,11 @@ struct CachedPreview {
     context: ID2D1DeviceContext,
     material: Backdrop,
     dark: bool,
-    bitmap: windows_canvas::Bitmap,
+    brush: canvas::BitmapBrush,
 }
 
 pub(super) struct Painter {
+    frame_cache: RefCell<canvas::FrameCache>,
     preview: RefCell<Option<CachedPreview>>,
     brushes: RefCell<super::super::canvas::Brushes<{ WINDOW_BRUSH_COUNT + WIDGET_BRUSH_COUNT }>>,
     icon_bitmap: RefCell<Option<(ID2D1DeviceContext, windows_canvas::Bitmap)>>,
@@ -316,6 +348,7 @@ impl Painter {
         let selected_nav_format = control_format(windows_canvas::TextAlignment::Leading, FontWeight(600))?;
         let new_group_format = control_format(windows_canvas::TextAlignment::Leading, DestinationChange::NEW_GROUP_WEIGHT)?;
         Ok(Self {
+            frame_cache: Default::default(),
             preview: RefCell::new(None),
             brushes: Default::default(),
             icon_bitmap: RefCell::new(None),
@@ -370,7 +403,7 @@ impl Painter {
                 self.preview.borrow_mut().take();
             }
             let mut brushes = self.brushes.borrow_mut();
-            super::super::canvas::draw(t, scale, |t| {
+            canvas::draw_cached(t, scale, &self.frame_cache, |t| {
                 let color = |v: u32| ColorF {
                     r: ((v >> 16) & 255) as f32 / 255.0,
                     g: ((v >> 8) & 255) as f32 / 255.0,
@@ -507,8 +540,7 @@ impl Painter {
                         label,
                     );
                 }
-                let paint_app_icon = |bounds: &Rect, content: bool| -> windows::core::Result<()> {
-                    let _clip = ContentClip::new(&t, s, content);
+                let paint_app_icon = |bounds: &Rect| -> windows::core::Result<()> {
                     let mut cached = self.icon_bitmap.borrow_mut();
                     if cached.as_ref().is_none_or(|(old, _)| old != context) {
                         *cached = None;
@@ -529,13 +561,13 @@ impl Painter {
                     t.draw_bitmap(&cached.as_ref().unwrap().1, bounds, 1.0);
                     Ok(())
                 };
-                let in_segment_track = |control: &Control, track: &Rect| {
-                    matches!(control.kind, ControlKind::Segment)
-                        && control.bounds.left >= track.left
-                        && control.bounds.right <= track.right
-                        && control.bounds.top >= track.top
-                        && control.bounds.bottom <= track.bottom
+                let fixed_list = s.fixed_list();
+                let clip_item = |bounds: &Rect| bounds.left >= s.content_left && !fixed_list;
+                let clip_control = |control: &Control| {
+                    control.bounds.left >= s.content_left && !Scene::fixed_control(control)
+                        && (!fixed_list || Scene::list_row(control))
                 };
+                let clip_text = |bounds: &Rect, size: usize| size != Tokens::CAPTION_TEXT && clip_item(bounds);
                 let pressed_slider_y = s.controls.iter().enumerate().find_map(|(idx, c)| {
                     (matches!(c.kind, ControlKind::Slider(_))
                         && motion.controls.get(&idx).is_some_and(|m| m.press > 0.01))
@@ -547,14 +579,6 @@ impl Painter {
                 let mut grip_canvas = WidgetCanvas { ..widget_canvas };
                 let paint_control = |i: usize, c: &Control, raised: bool| -> windows::core::Result<()> {
                     let _navigation_clip = matches!(c.kind, ControlKind::Navigation(_)).then(|| ContentClip::navigation(&t, s));
-                    if s.fixed_list() && Scene::list_row(c) && s.viewport.is_some_and(|v| c.bounds.bottom <= v.top || c.bounds.top >= v.bottom) { return Ok(()); }
-                    let _clip = ContentClip::new(
-                        &t,
-                        s,
-                        c.bounds.left >= s.content_left
-                            && !Scene::fixed_control(c)
-                            && (!s.fixed_list() || Scene::list_row(c)),
-                    );
                     let transition = s.rule_transition(i, |row| &row.controls);
                     let _row_clip = transition.map(row_clip);
                     let _row_opacity = transition.and_then(row_opacity);
@@ -601,7 +625,8 @@ impl Painter {
                     }
                     if matches!(c.kind, ControlKind::Segment) {
                         let select_amount = animation.selection.unwrap_or(f32::from(u8::from(c.selected && c.enabled)));
-                        let tracked = s.segment_tracks.iter().any(|track| in_segment_track(c, track));
+                        let track = s.segment_tracks.partition_point(|track| track.members.end <= i);
+                        let tracked = s.segment_tracks.get(track).is_some_and(|track| track.members.contains(&i));
                         widgets::SegmentedTrack::paint_item(
                             &mut widget_canvas,
                             bounds,
@@ -834,7 +859,7 @@ impl Painter {
                         if c.selected {
                             t.draw_rounded_rect(&rr, accent, 2.0);
                         }
-                        let chip = canvas_result(t.create_solid_brush(color(value)))?;
+                        let chip = canvas_result(t.cached_solid_brush(color(value)))?;
                         let inset = if state.enabled {
                             (4.0 - 0.8 * hover_amount + 0.8 * animation.press).clamp(2.8, 5.2)
                         } else {
@@ -850,19 +875,19 @@ impl Painter {
                             radius_x: 3.5,
                             radius_y: 3.5,
                         };
-                        t.fill_rounded_rect(&chip_rect, &chip);
-                        let swatch_edge = canvas_result(t.create_solid_brush(
+                        t.fill_rounded_rect(&chip_rect, chip.as_ref());
+                        let swatch_edge = canvas_result(t.cached_solid_brush(
                             WidgetCanvas::color(palette.neutral(if dark { 0.16 } else { 0.15 })),
                         ))?;
-                        t.draw_rounded_rect(&chip_rect, &swatch_edge, 1.0);
+                        t.draw_rounded_rect(&chip_rect, swatch_edge.as_ref(), 1.0);
                         if c.selected {
                             let luma = 0.2126 * ((value >> 16) & 255) as f32
                                 + 0.7152 * ((value >> 8) & 255) as f32
                                 + 0.0722 * (value & 255) as f32;
-                            let mark = canvas_result(t.create_solid_brush(color(
+                            let mark = canvas_result(t.cached_solid_brush(color(
                                 if luma > 155.0 { 0x1b222c } else { 0xffffff },
                             )))?;
-                            t.clipped_icon(style::CHECK_MARK, &self.formats[4], &chip_rect.rect, &mark);
+                            t.clipped_icon(style::CHECK_MARK, &self.formats[4], &chip_rect.rect, mark.as_ref());
                         }
                     }
                     if material {
@@ -879,16 +904,16 @@ impl Painter {
                             Action::Change(Event::Material(Backdrop::Solid { color, .. })) => color,
                             _ => 0x7e718d,
                         };
-                        let swatch = canvas_result(t.create_solid_brush(color(tint)))?;
+                        let swatch = canvas_result(t.cached_solid_brush(color(tint)))?;
                         t.fill_rounded_rect(
                             &RoundedRect {
                                 rect: inner,
                                 radius_x: 5.0,
                                 radius_y: 5.0,
                             },
-                            &swatch,
+                            swatch.as_ref(),
                         );
-                        let glass = canvas_result(t.create_solid_brush(ColorF {
+                        let glass = canvas_result(t.cached_solid_brush(ColorF {
                             a: if matches!(
                                 c.action,
                                 Action::Change(Event::Material(Backdrop::Acrylic))
@@ -911,7 +936,7 @@ impl Painter {
                                 radius_x: 5.0,
                                 radius_y: 5.0,
                             },
-                            &glass,
+                            glass.as_ref(),
                         );
                         let center_x = (preview.left + preview.right) * 0.5;
                         t.fill_rounded_rect(
@@ -940,7 +965,7 @@ impl Painter {
                             &Rect::from_xywh(r.left + 15.0, r.bottom - 33.0, 16.0, 30.0),
                             if c.selected { accent } else { muted },
                         );
-                        t.clipped_text(
+                        t.clipped_cached_text(
                             &c.label,
                             &self.formats[1],
                             &Rect::from_xywh(
@@ -955,20 +980,20 @@ impl Painter {
                         let caption_hover = animation.hover.unwrap_or(f32::from(u8::from(hover == Some(i))));
                         let is_close = matches!(c.action, Action::Window(SC_CLOSE));
                         if caption_hover > 0.0 {
-                            let _fade = t.opacity_layer(&c.bounds, caption_hover);
                             if is_close {
-                                let close_red = canvas_result(t.create_solid_brush(color(0xc42b1c)))?;
-                                t.fill_rect(&c.bounds, &close_red);
+                                let close_red = canvas_result(t.cached_solid_brush(ColorF {
+                                    a: caption_hover,
+                                    ..color(0xc42b1c)
+                                }))?;
+                                t.fill_rect(&c.bounds, close_red.as_ref());
                             } else {
-                                t.fill_rect(&c.bounds, hovered);
+                                canvas::with_brush_opacity(hovered, caption_hover, || t.fill_rect(&c.bounds, hovered));
                             }
                         }
-                        let white = canvas_result(t.create_solid_brush(color(0xffffff)))?;
-                        let brush = if is_close && caption_hover > 0.35 {
-                            &white
-                        } else {
-                            ink
-                        };
+                        let white = (is_close && caption_hover > 0.35)
+                            .then(|| canvas_result(t.cached_solid_brush(color(0xffffff))))
+                            .transpose()?;
+                        let brush = white.as_deref().unwrap_or(ink);
                         if let Action::Window(command) = c.action {
                             let glyph = match command {
                                 SC_MINIMIZE => "\u{e921}",
@@ -980,7 +1005,7 @@ impl Painter {
                             t.clipped_icon(glyph, &self.formats[Tokens::CAPTION_ICON], &c.bounds, brush);
                         }
                     } else if !c.label.is_empty() {
-                        t.clipped_text(
+                        t.clipped_cached_text(
                             &c.label,
                             &self.button_format,
                             &c.bounds,
@@ -991,7 +1016,6 @@ impl Painter {
                 };
                 let paint_text = |index: usize, (r, text, size): &(Rect, String, usize)| {
                     let _navigation_clip = s.navigation_text.contains(&index).then(|| ContentClip::navigation(&t, s));
-                    let _clip = ContentClip::new(&t, s, *size != Tokens::CAPTION_TEXT && r.left >= s.content_left && !s.fixed_list());
                     let _disclosure = s.disclosure_text_clip(index).map(|clip| ContentClip::rect(&t, clip));
                     let transition = s.rule_transition(index, |row| &row.text);
                     let _row_clip = transition.map(row_clip);
@@ -1012,7 +1036,7 @@ impl Painter {
                     }
                     let slider_active = *size == Tokens::VALUE_TEXT
                         && pressed_slider_y.is_some_and(|cy| ((r.top + r.bottom) * 0.5 - cy).abs() < 20.0);
-                    t.clipped_text(
+                    t.clipped_cached_text(
                         text,
                         &self.formats[*size],
                         r,
@@ -1029,7 +1053,6 @@ impl Painter {
                     );
                 };
                 let mut paint_grip = |index: Option<usize>, row: &RuleRow| {
-                    let _clip = ContentClip::new(&t, s, true);
                     let transition = s.rule_transition(row.controls.start, |row| &row.controls);
                     let _row_clip = transition.map(row_clip);
                     let _row_opacity = transition.and_then(row_opacity);
@@ -1051,10 +1074,11 @@ impl Painter {
 
                 // Paint titlebar chrome, sidebar navigation, and top tabs outside the content entrance layer.
                 if let Some(bounds) = &s.caption_icon {
-                    paint_app_icon(bounds, false)?;
+                    paint_app_icon(bounds)?;
                 }
                 for (index, control) in s.controls.iter().enumerate() {
                     if matches!(control.kind, ControlKind::Navigation(_) | ControlKind::Tab(_) | ControlKind::Caption) {
+                        let _clip = ContentClip::new(&t, s, clip_control(control));
                         paint_control(index, control, false)?;
                     }
                 }
@@ -1067,6 +1091,7 @@ impl Painter {
                 }
                 for (index, text) in s.text.iter().enumerate() {
                     if s.navigation_text.contains(&index) || text.2 == Tokens::CAPTION_TEXT {
+                        let _clip = ContentClip::new(&t, s, clip_text(&text.0, text.2));
                         paint_text(index, text);
                     }
                 }
@@ -1083,9 +1108,11 @@ impl Painter {
                     let _enter_clip = enter.map(|_| ContentClip::rect(&t, &sheet_bounds));
                     let _enter_fade = enter.and_then(|(_, opacity)| t.opacity_layer(&sheet_bounds, opacity));
                     let _enter_shift = enter.and_then(|(dy, _)| t.translated(0.0, dy));
+                    let viewport = PaintViewport { pass: &t, bounds: s.viewport, clip: RefCell::default() };
+                    let show_item = |bounds: &Rect| viewport.show(bounds, clip_item(bounds), 2.0);
 
                     for r in &s.cards {
-                        let _clip = ContentClip::new(&t, s, r.left >= s.content_left && !s.fixed_list());
+                        if !show_item(r) { continue; }
                         let rr = RoundedRect {
                             rect: *r,
                             radius_x: Tokens::CARD_RADIUS,
@@ -1094,7 +1121,8 @@ impl Painter {
                         t.fill_rounded_rect(&rr, card);
                         t.draw_rounded_rect(&rr, card_border, 1.0);
                     }
-                    if s.fixed_list() && let Some(r) = s.viewport {
+                    if fixed_list && let Some(r) = s.viewport {
+                        viewport.clear();
                         t.fill_rounded_rect(&RoundedRect {
                             rect: r,
                             radius_x: Tokens::CARD_RADIUS,
@@ -1102,7 +1130,7 @@ impl Painter {
                         }, card);
                     }
                     for r in &s.specimen_boxes {
-                        let _clip = ContentClip::new(&t, s, r.left >= s.content_left && !s.fixed_list());
+                        if !show_item(r) { continue; }
                         let rr = RoundedRect {
                             rect: *r,
                             radius_x: Style::RADIUS,
@@ -1112,37 +1140,27 @@ impl Painter {
                         t.draw_rounded_rect(&rr, divider, 1.0);
                     }
                     for (r, good) in &s.status_pills {
-                        let _clip = ContentClip::new(&t, s, r.left >= s.content_left && !s.fixed_list());
+                        if !show_item(r) { continue; }
                         widgets::StatusPill::paint(&mut WidgetCanvas { ..widget_canvas }, components::widget_bounds(*r), *good);
                     }
-                    for (track_index, r) in s.segment_tracks.iter().enumerate() {
-                        let _clip = ContentClip::new(&t, s, r.left >= s.content_left && !s.fixed_list());
+                    for (track_index, track) in s.segment_tracks.iter().enumerate() {
+                        let r = &track.bounds;
+                        if !show_item(r) { continue; }
                         let mut canvas = WidgetCanvas { ..widget_canvas };
                         widgets::SegmentedTrack::paint_track(&mut canvas, components::widget_bounds(*r));
-                        let mut members: Vec<usize> = s
-                            .controls
-                            .iter()
-                            .enumerate()
-                            .filter(|(_, c)| in_segment_track(c, r))
-                            .map(|(idx, _)| idx)
-                            .collect();
-                        members.sort_by(|&a, &b| s.controls[a].bounds.left.total_cmp(&s.controls[b].bounds.left));
                         let is_highlighted = |idx: usize| {
                             s.controls[idx].selected
                                 || hover == Some(idx)
                                 || motion.controls.get(&idx).and_then(|m| m.hover).is_some_and(|v| v > 0.25)
                         };
-                        for pair in members.windows(2) {
-                            let (a, b) = (pair[0], pair[1]);
+                        for (a, b) in track.members.clone().zip(track.members.clone().skip(1)) {
                             if !is_highlighted(a) && !is_highlighted(b) {
                                 let x = (s.controls[a].bounds.right + s.controls[b].bounds.left) * 0.5 - 0.5;
                                 let cy = (r.top + r.bottom) * 0.5;
                                 widgets::SegmentedTrack::paint_divider(&mut canvas, x, cy);
                             }
                         }
-                        let selected_idx = members
-                            .iter()
-                            .copied()
+                        let selected_idx = track.members.clone()
                             .find(|&idx| s.controls[idx].selected && s.controls[idx].enabled);
                         if let Some(pill) = motion
                             .segment_pills
@@ -1162,7 +1180,7 @@ impl Painter {
                         }
                     }
                     for (index, r) in s.separators.iter().enumerate() {
-                        let _clip = ContentClip::new(&t, s, r.left >= s.content_left && !s.fixed_list());
+                        if !show_item(r) { continue; }
                         let _disclosure = s.disclosure_separator_clip(index).map(|clip| ContentClip::rect(&t, clip));
                         let transition = s.rule_transition(index, |row| &row.separators);
                         let _row_clip = transition.map(row_clip);
@@ -1170,30 +1188,30 @@ impl Painter {
                         t.fill_rect(r, divider);
                     }
                     for header in &s.section_headers {
-                        let _clip = ContentClip::new(&t, s, true);
+                        if !viewport.show(&header.bounds, true, 0.0) { continue; }
                         let [icon, title, summary] = header.cells();
                         let accent_ink = brush(Tone::AccentInk);
                         t.clipped_icon(header.icon, &self.formats[4], &icon, accent_ink);
-                        t.clipped_text(&header.title, &self.formats[Tokens::GROUP_TITLE], &title, accent_ink);
-                        t.clipped_text(&header.summary, &self.formats[Tokens::SECONDARY_VALUE], &summary, muted);
+                        t.clipped_cached_text(&header.title, &self.formats[Tokens::GROUP_TITLE], &title, accent_ink);
+                        t.clipped_cached_text(&header.summary, &self.formats[Tokens::SECONDARY_VALUE], &summary, muted);
                     }
                     for change in &s.destination_changes {
-                        let _clip = ContentClip::new(&t, s, true);
+                        if !viewport.show(&change.bounds, true, 0.0) { continue; }
                         let [_, arrow, _] = change.cells();
                         for ((bounds, destination), (format, color)) in change.destinations().into_iter()
                             .zip([(&self.formats[Tokens::CONTROL_TEXT], ink), (&self.new_group_format, brush(Tone::AccentInk))])
                         {
                             let [group, rule] = destination.cells(bounds);
-                            t.clipped_text(&destination.group, format, &group, color);
-                            t.clipped_text(&destination.rule, &self.formats[0], &rule, muted);
+                            t.clipped_cached_text(&destination.group, format, &group, color);
+                            t.clipped_cached_text(&destination.rule, &self.formats[0], &rule, muted);
                         }
                         t.clipped_icon(style::CHEVRON_RIGHT, &self.formats[4], &arrow, muted);
                     }
-                    if let Some(bounds) = &s.app_icon {
-                        paint_app_icon(bounds, true)?;
+                    if let Some(bounds) = &s.app_icon && viewport.show(bounds, true, 0.0) {
+                        paint_app_icon(bounds)?;
                     }
                     for (r, material) in &s.previews {
-                        let _clip = ContentClip::new(&t, s, r.left >= s.content_left && !s.fixed_list());
+                        if !show_item(r) { continue; }
                         // Keep only the current image. Theme, strength, custom color or
                         // device/context changes invalidate it; hover and scroll do not.
                         let mut cached = self.preview.borrow_mut();
@@ -1203,12 +1221,12 @@ impl Painter {
                                 || cached.dark != dark
                         }) {
                             let pixels = preview::pixels(*material, dark);
-                            let bitmap = canvas_result(t.create_bitmap(&pixels, 400, 240))?;
+                            let brush = t.bitmap_brush(&pixels, 400, 240)?;
                             *cached = Some(CachedPreview {
                                 context: context.clone(),
                                 material: *material,
                                 dark,
-                                bitmap,
+                                brush,
                             });
                         }
                         let preview_frame = RoundedRect {
@@ -1216,10 +1234,7 @@ impl Painter {
                             radius_x: Style::RADIUS,
                             radius_y: Style::RADIUS,
                         };
-                        {
-                            let _round = t.rounded_clip(&preview_frame);
-                            t.draw_bitmap(&cached.as_ref().unwrap().bitmap, r, 1.0);
-                        }
+                        t.fill_bitmap_rounded_rect(&preview_frame, &cached.as_ref().unwrap().brush);
                         drop(cached);
                         let stroke = 1.0 / scale;
                         let inset = stroke * 0.5;
@@ -1239,7 +1254,7 @@ impl Painter {
                         );
                         let panel = Rect::from_xywh(r.left + 10.0, r.top + 10.0, 180.0, 100.0);
                         let preview_edge = canvas_result(
-                            t.create_solid_brush(super::super::theme::panel_border(*material)),
+                            t.cached_solid_brush(super::super::theme::panel_border(*material)),
                         )?;
                         let contrast = super::super::theme::panel_contrast(
                             *material,
@@ -1247,14 +1262,14 @@ impl Painter {
                             luciddesk_core::PanelText::Auto,
                             true,
                         );
-                        let preview_ink = canvas_result(t.create_solid_brush(color(
+                        let preview_ink = canvas_result(t.cached_solid_brush(color(
                             if contrast.light_text { 0xf4f5f7 } else { 0x1b222c },
                         )))?;
-                        let preview_muted = canvas_result(t.create_solid_brush(ColorF {
+                        let preview_muted = canvas_result(t.cached_solid_brush(ColorF {
                             a: if contrast.light_text { 0.45 } else { 0.35 },
                             ..color(if contrast.light_text { 0xffffff } else { 0x1b222c })
                         }))?;
-                        let preview_accent = canvas_result(t.create_solid_brush(color(
+                        let preview_accent = canvas_result(t.cached_solid_brush(color(
                             if contrast.light_text { 0x76b9ed } else { 0x0067c0 },
                         )))?;
                         t.draw_rounded_rect(
@@ -1268,37 +1283,38 @@ impl Painter {
                                 radius_x: (4.0 - inset).max(0.0),
                                 radius_y: (4.0 - inset).max(0.0),
                             },
-                            &preview_edge,
+                            preview_edge.as_ref(),
                             stroke,
                         );
                         t.fill_rounded_rect(&RoundedRect {
                             rect: Rect::from_xywh(panel.left, panel.top + 28.0, 180.0, 0.75),
                             radius_x: 0.0, radius_y: 0.0,
-                        }, &preview_edge);
-                        t.clipped_text(
+                        }, preview_edge.as_ref());
+                        t.clipped_cached_text(
                             crate::i18n::text("ui-desktop-panel"),
                             &self.formats[0],
                             &Rect::from_xywh(panel.left + 14.0, panel.top + 2.0, 152.0, 24.0),
-                            &preview_ink,
+                            preview_ink.as_ref(),
                         );
                         for i in 0..3 {
                             let left = panel.left + 18.0 + i as f32 * 52.0;
                             let glyph = if i < 2 { style::FOLDER } else { style::DOCUMENT };
                             t.clipped_icon(glyph, &self.formats[5],
-                                &Rect::from_xywh(left, panel.top + 39.0, 28.0, 32.0), &preview_accent);
+                                &Rect::from_xywh(left, panel.top + 39.0, 28.0, 32.0), preview_accent.as_ref());
                             t.fill_rounded_rect(
                                 &RoundedRect {
                                     rect: Rect::from_xywh(left - 2.0, panel.top + 77.0, 32.0, 3.0),
                                     radius_x: 1.5,
                                     radius_y: 1.5,
                                 },
-                                &preview_muted,
+                                preview_muted.as_ref(),
                             );
                         }
                     }
                     for (index, control) in s.controls.iter().enumerate() {
                         if !Scene::fixed_control(control)
                             && floating.is_none_or(|row| !row.controls.contains(&index))
+                            && viewport.show(&control.bounds, clip_control(control), if fixed_list { 0.0 } else { 2.0 })
                         {
                             paint_control(index, control, false)?;
                         }
@@ -1307,6 +1323,7 @@ impl Painter {
                         if !s.navigation_text.contains(&index)
                             && text.2 != Tokens::CAPTION_TEXT
                             && floating.is_none_or(|row| !row.text.contains(&index))
+                            && viewport.show(&text.0, clip_text(&text.0, text.2), 2.0)
                         {
                             paint_text(index, text);
                         }
@@ -1314,16 +1331,17 @@ impl Painter {
                     let leaving_grip = s.rule_transitions.iter().find(|row| row.leaving && row.grip);
                     if s.rule_rows.len() > 1 || leaving_grip.is_some() {
                         for (index, row) in s.rule_rows.iter().enumerate() {
-                            if s.floating_rule != Some(index) {
+                            if s.floating_rule != Some(index) && viewport.show(&row.grip(), true, 2.0) {
                                 paint_grip(Some(index), row);
                             }
                         }
                     }
-                    if let Some(row) = leaving_grip {
+                    if let Some(row) = leaving_grip && viewport.show(&row.row.grip(), true, 2.0) {
                         paint_grip(None, &row.row);
                     }
-                    if let (Some(index), Some(row)) = (s.floating_rule, floating) {
-                        let _clip = ContentClip::new(&t, s, true);
+                    if let (Some(index), Some(row)) = (s.floating_rule, floating)
+                        && viewport.show(&row.visual_bounds(), true, 2.0)
+                    {
                         let surface = RoundedRect { rect: row.visual_bounds(), radius_x: Style::RADIUS, radius_y: Style::RADIUS };
                         t.fill_rounded_rect(&surface, brush(Tone::Selection));
                         t.draw_rounded_rect(&surface, accent, 1.0);
@@ -1335,12 +1353,12 @@ impl Painter {
                         }
                         paint_grip(Some(index), row);
                     }
-                    if let Some(bounds) = &s.activity {
-                        let _clip = ContentClip::new(&t, s, true);
+                    if let Some(bounds) = &s.activity && viewport.show(bounds, true, 2.0) {
                         let angle = motion.activity.unwrap_or(0.0);
                         t.rotated_icon(widgets::motion::ACTIVITY_GLYPH, &self.formats[5], bounds, accent, angle);
                     }
-                    if s.fixed_list() && let Some(r) = s.viewport {
+                    if fixed_list && let Some(r) = s.viewport {
+                        viewport.clear();
                         t.draw_rounded_rect(&RoundedRect { rect: r, radius_x: Tokens::CARD_RADIUS, radius_y: Tokens::CARD_RADIUS }, card_border, 1.0);
                     }
                 }
@@ -1357,9 +1375,9 @@ impl Painter {
                     let growth = widgets::Scrollbar::thumb_growth(hover);
                     thumb.x -= growth;
                     thumb.width += growth;
-                    let rect = Rect::from_xywh(thumb.x, thumb.y, thumb.width, thumb.height);
-                    let _fade = t.opacity_layer(&rect, 0.36 + 0.32 * hover);
-                    widgets::Scrollbar::paint_thumb(&mut WidgetCanvas { ..widget_canvas }, thumb);
+                    canvas::with_brush_opacity(brush(Tone::ScrollThumb), 0.36 + 0.32 * hover, || {
+                        widgets::Scrollbar::paint_thumb(&mut WidgetCanvas { ..widget_canvas }, thumb);
+                    });
                 };
                 if let Some(bar) = s.scrollbar() {
                     paint_scrollbar(bar, 0);

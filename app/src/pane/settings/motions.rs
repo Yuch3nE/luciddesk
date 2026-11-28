@@ -414,25 +414,12 @@ impl InterfaceMotion {
         }
 
         // Sliding horizontal pill for each segmented control track.
-        let mut active_tracks = Vec::new();
         for (track_index, track) in scene.segment_tracks.iter().enumerate() {
-            let mut count = 0usize;
-            let mut selected_rect = None;
-            for control in &scene.controls {
-                if matches!(control.kind, ControlKind::Segment)
-                    && control.bounds.left >= track.left
-                    && control.bounds.right <= track.right
-                    && control.bounds.top >= track.top
-                    && control.bounds.bottom <= track.bottom
-                {
-                    count += 1;
-                    if control.selected {
-                        selected_rect = Some(control.bounds);
-                    }
-                }
-            }
-            if let Some(bounds) = selected_rect {
-                let target = (bounds.left - track.left, bounds.right - bounds.left);
+            let members = &scene.controls[track.members.clone()];
+            if let Some(selected) = members.iter().rfind(|control| control.selected) {
+                let count = members.len();
+                let bounds = selected.bounds;
+                let target = (bounds.left - track.bounds.left, bounds.right - bounds.left);
                 let entry = self
                     .segment_tracks
                     .entry(track_index)
@@ -445,16 +432,15 @@ impl InterfaceMotion {
                 frame.segment_pills.insert(
                     track_index,
                     Rect::from_xywh(
-                        track.left + offset_x,
+                        track.bounds.left + offset_x,
                         bounds.top,
                         width,
                         bounds.bottom - bounds.top,
                     ),
                 );
-                active_tracks.push(track_index);
             }
         }
-        self.segment_tracks.retain(|index, _| active_tracks.contains(index));
+        self.segment_tracks.retain(|index, _| frame.segment_pills.contains_key(index));
         if let Some(index) = scene.rule_grip_hover
             && self.grip.as_ref().is_none_or(|(old, _)| *old != index)
         {
@@ -666,7 +652,7 @@ mod tests {
             false,
         );
         let track = Rect::from_xywh(220.0, 120.0, 206.0, 32.0);
-        scene.segment_tracks.push(track);
+        scene.segment_tracks.push(super::SegmentTrack { bounds: track, members: 2..4 });
         scene.control(
             ControlKind::Segment,
             Rect::from_xywh(223.0, 123.0, 100.0, 26.0),

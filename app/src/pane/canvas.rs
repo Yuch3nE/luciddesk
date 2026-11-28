@@ -1,5 +1,6 @@
 //! Canvas draw-pass lifetime, clipping and the few native operations absent from Canvas 0.100.
 use super::native_graphics::{canvas_result, native_interface};
+use luciddesk_window::control_style::ElevationGradient;
 use windows::Win32::Graphics::Direct2D::{
     Common::D2D_RECT_F, D2D1_ANTIALIAS_MODE_ALIASED, D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE,
     ID2D1DeviceContext, ID2D1Image,
@@ -83,12 +84,17 @@ pub fn apply_fallback(format: &c::TextFormat) -> Result<()> {
 
 pub struct DrawPass<'a> {
     cache: Option<&'a std::cell::RefCell<FrameCache>>,
-    brush_slot: std::cell::Cell<usize>,
     session: c::DrawingSession<'a>,
     native: ID2D1DeviceContext,
     active: bool,
     scale: f32,
     clips: std::cell::Cell<usize>,
+}
+
+pub(super) struct BitmapBrush {
+    brush: windows::Win32::Graphics::Direct2D::ID2D1BitmapBrush1,
+    width: u32,
+    height: u32,
 }
 
 pub(super) struct OpacityLayer<'a>(&'a ID2D1DeviceContext);
@@ -172,7 +178,6 @@ fn draw_inner<T>(
     let session = c::DrawingSession::from_borrowed_context(target, c::Matrix3x2::identity());
     paint(DrawPass {
         cache,
-        brush_slot: std::cell::Cell::new(0),
         session,
         native,
         active: true,
@@ -190,10 +195,7 @@ impl<'a> std::ops::Deref for DrawPass<'a> {
 
 impl DrawPass<'_> {
     pub(super) fn fill_highlight(&self, shape: &c::RoundedRect, brush: &c::Brush, amount: f32) {
-        if amount > 0.0 {
-            let _fade = self.opacity_layer(&shape.rect, amount);
-            self.fill_rounded_rect(shape, brush);
-        }
+        with_brush_opacity(brush, amount, || self.fill_rounded_rect(shape, brush));
     }
 
     pub(super) fn opacity_layer(&self, bounds: &c::Rect, opacity: f32) -> Option<OpacityLayer<'_>> {
@@ -211,58 +213,77 @@ impl DrawPass<'_> {
         Some(OpacityLayer(&self.native))
     }
 
-    pub(super) fn rounded_clip(&self, shape: &c::RoundedRect) -> Option<OpacityLayer<'_>> {
+    pub(super) fn bitmap_brush(
+        &self, pixels: &[u8], width: u32, height: u32,
+    ) -> Result<BitmapBrush> {
         use windows::Win32::Graphics::Direct2D::{
-            D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, D2D1_LAYER_PARAMETERS1, D2D1_ROUNDED_RECT,
-            ID2D1Geometry, ID2D1Layer,
+            Common::{D2D_SIZE_U, D2D1_ALPHA_MODE_PREMULTIPLIED, D2D1_PIXEL_FORMAT},
+            D2D1_BITMAP_BRUSH_PROPERTIES1, D2D1_BITMAP_PROPERTIES1, D2D1_INTERPOLATION_MODE_LINEAR,
         };
-        let factory = unsafe { self.native.GetFactory().ok()? };
-        let rect = D2D_RECT_F {
-            left: shape.rect.left,
-            top: shape.rect.top,
-            right: shape.rect.right,
-            bottom: shape.rect.bottom,
-        };
-        let geometry: ID2D1Geometry = unsafe {
-            factory
-                .CreateRoundedRectangleGeometry(&D2D1_ROUNDED_RECT {
-                    rect,
-                    radiusX: shape.radius_x,
-                    radiusY: shape.radius_y,
-                })
-                .ok()?
-                .into()
-        };
-        let mut parameters = D2D1_LAYER_PARAMETERS1 {
-            contentBounds: rect,
-            geometricMask: std::mem::ManuallyDrop::new(Some(geometry)),
-            maskAntialiasMode: D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
-            maskTransform: windows_numerics::Matrix3x2 { M11: 1.0, M22: 1.0, ..Default::default() },
-            opacity: 1.0,
+        use windows::Win32::{Foundation::E_INVALIDARG, Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM};
+        let invalid = || windows::core::Error::from_hresult(E_INVALIDARG);
+        let pitch = width.checked_mul(4).ok_or_else(invalid)?;
+        if width == 0 || height == 0 || (pitch as usize).checked_mul(height as usize) != Some(pixels.len()) {
+            return Err(invalid());
+        }
+        let bitmap_properties = D2D1_BITMAP_PROPERTIES1 {
+            pixelFormat: D2D1_PIXEL_FORMAT {
+                format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED,
+            },
+            dpiX: 96.0,
+            dpiY: 96.0,
             ..Default::default()
         };
-        unsafe {
-            self.native.PushLayer(&parameters, None::<&ID2D1Layer>);
-            std::mem::ManuallyDrop::drop(&mut parameters.geometricMask);
+        let brush_properties = D2D1_BITMAP_BRUSH_PROPERTIES1 {
+            interpolationMode: D2D1_INTERPOLATION_MODE_LINEAR,
+            ..Default::default()
+        };
+        let brush = unsafe {
+            let bitmap = self.native.CreateBitmap(
+                D2D_SIZE_U { width, height }, Some(pixels.as_ptr().cast()), pitch, &bitmap_properties,
+            )?;
+            self.native.CreateBitmapBrush(&bitmap, Some(&brush_properties), None)?
+        };
+        Ok(BitmapBrush { brush, width, height })
+    }
+
+    pub(super) fn fill_bitmap_rounded_rect(
+        &self,
+        shape: &c::RoundedRect,
+        brush: &BitmapBrush,
+    ) {
+        use windows::Win32::Graphics::Direct2D::D2D1_ROUNDED_RECT;
+        let c::Rect { left, top, right, bottom } = shape.rect;
+        if right <= left || bottom <= top {
+            return;
         }
-        Some(OpacityLayer(&self.native))
+        let transform = windows_numerics::Matrix3x2 {
+            M11: (right - left) / brush.width as f32,
+            M22: (bottom - top) / brush.height as f32,
+            M31: left,
+            M32: top,
+            ..Default::default()
+        };
+        let rounded = D2D1_ROUNDED_RECT {
+            rect: D2D_RECT_F { left, top, right, bottom },
+            radiusX: shape.radius_x,
+            radiusY: shape.radius_y,
+        };
+        unsafe {
+            brush.brush.SetTransform(&transform);
+            self.native.FillRoundedRectangle(&rounded, &*brush.brush);
+        }
     }
 
     pub(super) fn draw_elevation_border(
         &self,
         shape: &c::RoundedRect,
-        top: c::ColorF,
-        mid: c::ColorF,
-        bottom: c::ColorF,
-        stop_pos: f32,
+        stops: ElevationGradient,
+        stable: bool,
         thickness: f32,
     ) {
-        use windows::Win32::Graphics::Direct2D::{
-            Common::{D2D1_COLOR_F, D2D1_GRADIENT_STOP, D2D_RECT_F},
-            D2D1_EXTEND_MODE_CLAMP, D2D1_GAMMA_2_2, D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES,
-            D2D1_ROUNDED_RECT, ID2D1Brush, ID2D1RenderTarget,
-        };
-        let to_d2d = |c: c::ColorF| D2D1_COLOR_F { r: c.r, g: c.g, b: c.b, a: c.a };
+        use windows::Win32::Graphics::Direct2D::D2D1_ROUNDED_RECT;
         let inset = thickness * 0.5;
         let rect = D2D_RECT_F {
             left: shape.rect.left + inset,
@@ -273,34 +294,20 @@ impl DrawPass<'_> {
         if rect.right <= rect.left || rect.bottom <= rect.top {
             return;
         }
-        let stops = [
-            D2D1_GRADIENT_STOP { position: 0.0, color: to_d2d(top) },
-            D2D1_GRADIENT_STOP { position: stop_pos.clamp(0.05, 0.95), color: to_d2d(mid) },
-            D2D1_GRADIENT_STOP { position: 1.0, color: to_d2d(bottom) },
-        ];
+        let gradient = match self.cache.filter(|_| stable) {
+            Some(cache) => cache.borrow_mut().gradient(&self.native, stops),
+            None => create_elevation_gradient(&self.native, stops),
+        };
+        let Ok(gradient) = gradient else { return; };
         unsafe {
-            let Ok(collection) = ID2D1RenderTarget::CreateGradientStopCollection(
-                &self.native,
-                &stops,
-                D2D1_GAMMA_2_2,
-                D2D1_EXTEND_MODE_CLAMP,
-            ) else {
-                return;
-            };
-            let props = D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES {
-                startPoint: windows_numerics::Vector2::new(rect.left, rect.top),
-                endPoint: windows_numerics::Vector2::new(rect.left, rect.bottom),
-            };
-            let Ok(gradient) = self.native.CreateLinearGradientBrush(&props, None, &collection) else {
-                return;
-            };
-            let brush: ID2D1Brush = gradient.into();
+            gradient.SetStartPoint(windows_numerics::Vector2::new(rect.left, rect.top));
+            gradient.SetEndPoint(windows_numerics::Vector2::new(rect.left, rect.bottom));
             let rounded = D2D1_ROUNDED_RECT {
                 rect,
                 radiusX: (shape.radius_x - inset).max(0.0),
                 radiusY: (shape.radius_y - inset).max(0.0),
             };
-            self.native.DrawRoundedRectangle(&rounded, &brush, thickness, None);
+            self.native.DrawRoundedRectangle(&rounded, &*gradient, thickness, None);
         }
     }
 
@@ -348,10 +355,8 @@ impl DrawPass<'_> {
     }
 
     pub fn cached_solid_brush(&self, color: c::ColorF) -> canvas_core::Result<std::rc::Rc<c::Brush>> {
-        let slot = self.brush_slot.get();
-        self.brush_slot.set(slot + 1);
         match self.cache {
-            Some(cache) => cache.borrow_mut().brush(&self.session, slot, color),
+            Some(cache) => cache.borrow_mut().brush(&self.session, color),
             None => self.session.create_solid_brush(color).map(std::rc::Rc::new),
         }
     }
@@ -360,186 +365,60 @@ impl DrawPass<'_> {
         self.native.as_raw()
     }
 
-    /// Title-only color-font drawing; other pane text keeps its existing rendering.
-    pub fn clipped_color_layout(
-        &self,
-        text: &str,
-        layout: &c::TextLayout,
-        x: f32,
-        y: f32,
-        brush: &c::Brush,
+    pub(super) fn draw_color_layout(
+        &self, prepared: &ColorLayout, x: f32, y: f32, brush: &c::Brush,
     ) -> Result<()> {
         use c::Paint;
         use windows::Win32::Graphics::{
-            Direct2D::{
-                D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT, D2D1_DRAW_TEXT_OPTIONS_NONE, ID2D1Brush,
-            },
-            DirectWrite::{
-                DWRITE_CLUSTER_METRICS, DWRITE_FACTORY_TYPE_SHARED, DWRITE_HIT_TEST_METRICS,
-                DWRITE_LINE_METRICS, DWRITE_LINE_SPACING_METHOD_UNIFORM, DWriteCreateFactory,
-                IDWriteFactory, IDWriteTextLayout,
-            },
+            Direct2D::{D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT, D2D1_DRAW_TEXT_OPTIONS_NONE, ID2D1Brush},
+            DirectWrite::IDWriteTextLayout,
         };
-        let native_layout: IDWriteTextLayout = native_interface(layout.raw())?;
-        let text_options = if super::interface_flags::TITLE_EMOJI.get() {
+        let layout: IDWriteTextLayout = native_interface(prepared.layout.raw())?;
+        let brush: ID2D1Brush = native_interface(brush.as_raw_brush())?;
+        let options = if super::interface_flags::TITLE_EMOJI.get() {
             D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT
         } else {
             D2D1_DRAW_TEXT_OPTIONS_NONE
         };
-        let native_brush: ID2D1Brush = native_interface(brush.as_raw_brush())?;
-        let metrics = layout.metrics();
-        self.push_clip(&c::Rect::from_xywh(
-            x,
-            y,
-            metrics.layout_width,
-            metrics.layout_height,
-        ));
-        unsafe {
-            // Plain titles need no UTF-16 buffers, cluster metrics or emoji probes.
-            if !text.chars().any(emoji_character) {
-                self.native.DrawTextLayout(
-                    windows_numerics::Vector2::new(x, y),
-                    &native_layout,
-                    &native_brush,
-                    text_options,
-                );
+        let draw = |y| unsafe {
+            self.native.DrawTextLayout(windows_numerics::Vector2::new(x, y), &layout, &brush, options);
+        };
+        let (width, height) = prepared.size;
+        self.push_clip(&c::Rect::from_xywh(x, y, width, height));
+        if prepared.spans.is_empty() {
+            draw(y);
+        } else {
+            for &(left, right, offset) in &prepared.spans {
+                self.push_clip(&c::Rect::from_xywh(x + left, y, right - left, height));
+                draw(y - offset);
                 self.pop_clip();
-                return Ok(());
             }
-            // Keep shaping and trimming in one layout. Only move complete emoji
-            // clusters, including joined sequences, within their original columns.
-            let wide: Vec<_> = text.encode_utf16().collect();
-            let mut clusters = vec![DWRITE_CLUSTER_METRICS::default(); wide.len()];
-            let mut count = 0;
-            native_layout.GetClusterMetrics(Some(&mut clusters), &raw mut count)?;
-            let mut plain = Vec::new();
-            let mut at = 0;
-            let mut has_emoji = false;
-            for cluster in &clusters[..count as usize] {
-                let end = at + cluster.length as usize;
-                if emoji_cluster(&wide[at..end]) {
-                    has_emoji = true;
-                } else {
-                    plain.extend_from_slice(&wide[at..end]);
-                }
-                at = end;
-            }
-            if !has_emoji {
-                self.native.DrawTextLayout(
-                    windows_numerics::Vector2::new(x, y),
-                    &native_layout,
-                    &native_brush,
-                    text_options,
-                );
-                self.pop_clip();
-                return Ok(());
-            }
-            let factory: IDWriteFactory = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED)?;
-            let mut line = [DWRITE_LINE_METRICS::default(); 1];
-            let mut lines = 0;
-            native_layout.GetLineMetrics(Some(&mut line), &raw mut lines)?;
-            let ink_center = |text: &[u16]| -> Result<f32> {
-                let probe = factory.CreateTextLayout(
-                    text,
-                    &native_layout,
-                    1_000_000.0,
-                    metrics.layout_height,
-                )?;
-                // Keep the original mixed-font baseline when measuring each run.
-                probe.SetLineSpacing(
-                    DWRITE_LINE_SPACING_METHOD_UNIFORM,
-                    line[0].height,
-                    line[0].baseline,
-                )?;
-                let ink = probe.GetOverhangMetrics()?;
-                Ok((metrics.layout_height + ink.bottom - ink.top) * 0.5)
-            };
-            let reference = if plain
-                .iter()
-                .all(|ch| matches!(*ch, 9 | 10 | 13 | 32 | 0x200d | 0xfe0e | 0xfe0f))
-            {
-                None
-            } else {
-                Some(ink_center(&plain)?)
-            };
-            let mut position = 0usize;
-            let mut ranges = Vec::new();
-            for cluster in &clusters[..count as usize] {
-                let end = position + cluster.length as usize;
-                if emoji_cluster(&wide[position..end]) {
-                    let mut hit = [DWRITE_HIT_TEST_METRICS::default(); 2];
-                    let mut hits = 0;
-                    native_layout.HitTestTextRange(
-                        position as u32,
-                        u32::from(cluster.length),
-                        0.0,
-                        0.0,
-                        Some(&mut hit),
-                        &raw mut hits,
-                    )?;
-                    for bounds in &hit[..hits as usize] {
-                        if bounds.isText.as_bool() && bounds.width > 0.0 {
-                            let left = bounds.left.clamp(0.0, metrics.layout_width);
-                            let right =
-                                (bounds.left + bounds.width).clamp(left, metrics.layout_width);
-                            let offset = if let Some(reference) = reference {
-                                ink_center(&wide[position..end])? - reference
-                            } else {
-                                0.0
-                            };
-                            ranges.push((left, right, offset));
-                        }
-                    }
-                }
-                position = end;
-            }
-            ranges.sort_by(|a, b| a.0.total_cmp(&b.0));
-            let mut left = 0.0;
-            let scale = self.scale;
-            let paint = |left: f32, right: f32, offset: f32| {
-                if right <= left {
-                    return;
-                }
-                self.push_clip(&c::Rect::from_xywh(
-                    x + left,
-                    y,
-                    right - left,
-                    metrics.layout_height,
-                ));
-                self.native.DrawTextLayout(
-                    windows_numerics::Vector2::new(x, y - offset),
-                    &native_layout,
-                    &native_brush,
-                    text_options,
-                );
-                self.pop_clip();
-            };
-            for (start, end, offset) in ranges {
-                paint(left, start, 0.0);
-                // Align visible glyph centers, snapped to physical pixels.
-                paint(start.max(left), end, (offset * scale).round() / scale);
-                left = left.max(end);
-            }
-            paint(left, metrics.layout_width, 0.0);
         }
         self.pop_clip();
         Ok(())
     }
 
-    pub fn clipped_color_text(
-        &self,
-        text: &str,
-        format: &c::TextFormat,
-        bounds: &c::Rect,
-        brush: &c::Brush,
+    #[cfg(test)]
+    pub(super) fn clipped_color_layout(
+        &self, text: &str, layout: &c::TextLayout, x: f32, y: f32, brush: &c::Brush,
     ) -> Result<()> {
-        let layout = canvas_result(c::TextLayout::new(
-            text,
-            format,
-            bounds.right - bounds.left,
-            bounds.bottom - bounds.top,
-        ))?;
-        self.clipped_color_layout(text, &layout, bounds.left, bounds.top, brush)
+        self.draw_color_layout(&ColorLayout::new(text, layout, self.scale)?, x, y, brush)
+    }
+
+    pub(super) fn clipped_color_text(
+        &self, text: &str, format: &c::TextFormat, bounds: &c::Rect, brush: &c::Brush,
+    ) -> Result<()> {
+        let size = (bounds.width(), bounds.height());
+        if text.is_empty() || size.0 <= 0.0 || size.1 <= 0.0 {
+            return Ok(());
+        }
+        if let Some(cache) = self.cache {
+            let prepared = cache.borrow_mut().color_text(text, format, size)?;
+            return self.draw_color_layout(&prepared, bounds.left, bounds.top, brush);
+        }
+        let layout = canvas_result(c::TextLayout::new(text, format, size.0, size.1))?;
+        let prepared = ColorLayout::new(text, &layout, self.scale)?;
+        self.draw_color_layout(&prepared, bounds.left, bounds.top, brush)
     }
 
     /// Center the visible glyph, not the font's line box. MDL2's em-square
@@ -605,6 +484,25 @@ impl DrawPass<'_> {
         self.session.draw_text(text, format, bounds, brush);
         self.pop_clip();
     }
+
+    pub(super) fn clipped_cached_text(
+        &self, text: &str, format: &c::TextFormat, bounds: &c::Rect, brush: &c::Brush,
+    ) {
+        let size = (bounds.width(), bounds.height());
+        if text.is_empty() || size.0 <= 0.0 || size.1 <= 0.0 {
+            return;
+        }
+        let layout = self.cache.and_then(|cache| {
+            cache.borrow_mut().text_layout(text, format, size).ok()
+        });
+        if let Some(layout) = layout {
+            self.push_clip(bounds);
+            self.session.draw_text_layout(c::Vector2::new(bounds.left, bounds.top), &layout, brush);
+            self.pop_clip();
+        } else {
+            self.clipped_text(text, format, bounds, brush);
+        }
+    }
     pub fn clipped_layout(&self, layout: &c::TextLayout, x: f32, y: f32, brush: &c::Brush) {
         let metrics = layout.metrics();
         self.push_clip(&c::Rect::from_xywh(
@@ -642,6 +540,186 @@ impl DrawPass<'_> {
         }
         self.active = false;
         unsafe { self.native.EndDraw(None, None) }
+    }
+}
+
+/// DirectWrite shaping plus the clipped spans needed to center mixed emoji ink.
+pub(super) struct ColorLayout {
+    layout: c::TextLayout,
+    size: (f32, f32),
+    spans: Vec<(f32, f32, f32)>,
+}
+
+impl ColorLayout {
+    pub(super) fn new(text: &str, layout: &c::TextLayout, scale: f32) -> Result<Self> {
+        use windows::Win32::Graphics::DirectWrite::{
+            DWRITE_CLUSTER_METRICS, DWRITE_FACTORY_TYPE_SHARED, DWRITE_HIT_TEST_METRICS,
+            DWRITE_LINE_METRICS, DWRITE_LINE_SPACING_METHOD_UNIFORM, DWriteCreateFactory,
+            IDWriteFactory, IDWriteTextLayout,
+        };
+
+        let size = layout.max_size();
+        let mut prepared = Self { layout: layout.clone(), size, spans: Vec::new() };
+        if !text.chars().any(emoji_character) {
+            return Ok(prepared);
+        }
+
+        let native_layout: IDWriteTextLayout = native_interface(layout.raw())?;
+        let (width, height) = size;
+        let ranges = unsafe {
+            // Keep shaping and trimming in one layout. Only move complete emoji
+            // clusters, including joined sequences, within their original columns.
+            let wide: Vec<_> = text.encode_utf16().collect();
+            let mut clusters = vec![DWRITE_CLUSTER_METRICS::default(); wide.len()];
+            let mut count = 0;
+            native_layout.GetClusterMetrics(Some(&mut clusters), &raw mut count)?;
+            let mut plain = Vec::new();
+            let mut at = 0;
+            let mut has_emoji = false;
+            for cluster in &clusters[..count as usize] {
+                let end = at + cluster.length as usize;
+                if emoji_cluster(&wide[at..end]) {
+                    has_emoji = true;
+                } else {
+                    plain.extend_from_slice(&wide[at..end]);
+                }
+                at = end;
+            }
+            if !has_emoji { return Ok(prepared); }
+            let factory: IDWriteFactory = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED)?;
+            let mut line = [DWRITE_LINE_METRICS::default(); 1];
+            let mut lines = 0;
+            native_layout.GetLineMetrics(Some(&mut line), &raw mut lines)?;
+            let ink_center = |text: &[u16]| -> Result<f32> {
+                let probe = factory.CreateTextLayout(
+                    text,
+                    &native_layout,
+                    1_000_000.0,
+                    height,
+                )?;
+                // Keep the original mixed-font baseline when measuring each run.
+                probe.SetLineSpacing(
+                    DWRITE_LINE_SPACING_METHOD_UNIFORM,
+                    line[0].height,
+                    line[0].baseline,
+                )?;
+                let ink = probe.GetOverhangMetrics()?;
+                Ok((height + ink.bottom - ink.top) * 0.5)
+            };
+            let reference = if plain
+                .iter()
+                .all(|ch| matches!(*ch, 9 | 10 | 13 | 32 | 0x200d | 0xfe0e | 0xfe0f))
+            {
+                None
+            } else {
+                Some(ink_center(&plain)?)
+            };
+            let mut position = 0usize;
+            let mut ranges = Vec::new();
+            for cluster in &clusters[..count as usize] {
+                let end = position + cluster.length as usize;
+                if emoji_cluster(&wide[position..end]) {
+                    let mut hit = [DWRITE_HIT_TEST_METRICS::default(); 2];
+                    let mut hits = 0;
+                    native_layout.HitTestTextRange(
+                        position as u32,
+                        u32::from(cluster.length),
+                        0.0,
+                        0.0,
+                        Some(&mut hit),
+                        &raw mut hits,
+                    )?;
+                    for bounds in &hit[..hits as usize] {
+                        if bounds.isText.as_bool() && bounds.width > 0.0 {
+                            let left = bounds.left.clamp(0.0, width);
+                            let right =
+                                (bounds.left + bounds.width).clamp(left, width);
+                            let offset = if let Some(reference) = reference {
+                                ink_center(&wide[position..end])? - reference
+                            } else {
+                                0.0
+                            };
+                            ranges.push((left, right, offset));
+                        }
+                    }
+                }
+                position = end;
+            }
+            ranges.sort_by(|a, b| a.0.total_cmp(&b.0));
+            ranges
+        };
+
+        let mut left = 0.0;
+        let mut add_span = |start, end, offset| {
+            if end <= start { return; }
+            if let Some((_, last_end, last_offset)) = prepared.spans.last_mut()
+                && *last_end == start && *last_offset == offset
+            {
+                *last_end = end;
+            } else {
+                prepared.spans.push((start, end, offset));
+            }
+        };
+        for (start, end, offset) in ranges {
+            add_span(left, start, 0.0);
+            // Align visible glyph centers, snapped to physical pixels.
+            add_span(start.max(left), end, (offset * scale).round() / scale);
+            left = left.max(end);
+        }
+        add_span(left, width, 0.0);
+        if prepared.spans.as_slice() == [(0.0, width, 0.0)] {
+            prepared.spans.clear();
+        }
+        Ok(prepared)
+    }
+}
+
+struct BrushOpacityGuard {
+    native: windows::Win32::Graphics::Direct2D::ID2D1Brush,
+    previous: f32,
+}
+
+impl Drop for BrushOpacityGuard {
+    fn drop(&mut self) {
+        unsafe { self.native.SetOpacity(self.previous) };
+    }
+}
+
+/// Fade one primitive while preserving the palette brush for its next draw.
+pub(super) fn with_brush_opacity(brush: &c::Brush, amount: f32, draw: impl FnOnce()) {
+    use c::Paint;
+    use windows::Win32::Graphics::Direct2D::ID2D1Brush;
+    if amount >= 1.0 {
+        draw();
+    } else if amount > 0.0
+        && let Ok(native) = native_interface::<ID2D1Brush>(brush.as_raw_brush())
+    {
+        let previous = unsafe { native.GetOpacity() };
+        unsafe { native.SetOpacity(previous * amount) };
+        let _restore = BrushOpacityGuard { native, previous };
+        draw();
+    }
+}
+
+fn create_elevation_gradient(
+    context: &ID2D1DeviceContext,
+    stops: ElevationGradient,
+) -> Result<windows::Win32::Graphics::Direct2D::ID2D1LinearGradientBrush> {
+    use windows::Win32::Graphics::Direct2D::{
+        Common::{D2D1_COLOR_F, D2D1_GRADIENT_STOP}, D2D1_EXTEND_MODE_CLAMP, D2D1_GAMMA_2_2,
+        D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES, ID2D1RenderTarget,
+    };
+    let stop = |position, [r, g, b, a]: [f32; 4]| D2D1_GRADIENT_STOP { position, color: D2D1_COLOR_F { r, g, b, a } };
+    let stops = [stop(0.0, stops.top), stop(stops.stop.clamp(0.05, 0.95), stops.mid), stop(1.0, stops.bottom)];
+    unsafe {
+        let collection = ID2D1RenderTarget::CreateGradientStopCollection(
+            context, &stops, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP,
+        )?;
+        let properties = D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES {
+            startPoint: windows_numerics::Vector2::new(0.0, 0.0),
+            endPoint: windows_numerics::Vector2::new(0.0, 1.0),
+        };
+        context.CreateLinearGradientBrush(&properties, None, &collection)
     }
 }
 
@@ -911,6 +989,73 @@ mod tests {
                     assert_eq!(pixel[3], 0, "text escaped the clipping rectangle");
                 }
             }
+        }
+    }
+
+    #[test]
+    fn primitive_fade_matches_layer_alpha_and_restores_the_brush() {
+        let _sta = crate::pane::test_support::apartment();
+        let device = c::GpuDevice::new_warp().unwrap();
+        let surface = Offscreen::new(&device, 96, 64).unwrap();
+        let render = |layered| {
+            draw(&surface.target, 1.25, |pass| {
+                pass.clear(c::ColorF::new(0.0, 0.0, 0.0, 0.0));
+                let ink = canvas_result(pass.create_solid_brush(c::ColorF::new(0.25, 0.5, 1.0, 0.5)))?;
+                let shape = c::RoundedRect {
+                    rect: c::Rect::from_xywh(8.0, 8.0, 24.0, 24.0), radius_x: 6.0, radius_y: 6.0,
+                };
+                if layered {
+                    let _fade = pass.opacity_layer(&shape.rect, 0.5);
+                    pass.fill_rounded_rect(&shape, &ink);
+                } else {
+                    pass.fill_highlight(&shape, &ink, 0.5);
+                }
+                pass.fill_rect(&c::Rect::from_xywh(40.0, 8.0, 24.0, 24.0), &ink);
+                pass.finish()
+            }).unwrap();
+            surface.pixels().unwrap()
+        };
+        let old = render(true);
+        let new = render(false);
+        let center = |x: usize| (25 * 96 + x) * 4 + 3;
+        assert_eq!(new[center(25)], 64);
+        assert_eq!(new[center(60)], 128);
+        assert!(new.iter().zip(old).all(|(a, b)| a.abs_diff(b) <= 1));
+    }
+
+    #[test]
+    fn rounded_bitmap_brush_preserves_the_preview_mapping() {
+        let _sta = crate::pane::test_support::apartment();
+        let device = c::GpuDevice::new_warp().unwrap();
+        let surface = Offscreen::new(&device, 96, 80).unwrap();
+        let pixels: Vec<u8> = (0..12).flat_map(|y| {
+            (0..16).flat_map(move |x| [x * 12, y * 16, 96, 255])
+        }).collect();
+        let shape = c::RoundedRect {
+            rect: c::Rect::from_xywh(8.0, 8.0, 48.0, 36.0),
+            radius_x: 8.0,
+            radius_y: 8.0,
+        };
+        let render = |rounded| {
+            draw(&surface.target, 1.25, |pass| {
+                pass.clear(c::ColorF::default());
+                if rounded {
+                    let brush = pass.bitmap_brush(&pixels, 16, 12)?;
+                    pass.fill_bitmap_rounded_rect(&shape, &brush);
+                } else {
+                    let bitmap = canvas_result(pass.create_bitmap(&pixels, 16, 12))?;
+                    pass.draw_bitmap(&bitmap, &shape.rect, 1.0);
+                }
+                pass.finish()
+            }).unwrap();
+            surface.pixels().unwrap()
+        };
+        let original = render(false);
+        let rounded = render(true);
+        assert_eq!(rounded[(10 * 96 + 10) * 4 + 3], 0);
+        for y in 20_usize..45 {
+            let interior = (y * 96 + 20) * 4..(y * 96 + 60) * 4;
+            assert!(rounded[interior.clone()].iter().zip(&original[interior]).all(|(a, b)| a.abs_diff(*b) <= 1));
         }
     }
 }

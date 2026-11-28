@@ -839,7 +839,7 @@ impl<'a> SettingsForm<'a> {
             return;
         }
         let r = self.card(title, description, needed);
-        self.scene.segment_tracks.push(r);
+        let first = self.scene.controls.len();
         let inner_width = r.right - r.left - 2.0 * track_pad;
         let count = choices.len();
         let width = (inner_width - segment_gap * count.saturating_sub(1) as f32) / count as f32;
@@ -857,6 +857,10 @@ impl<'a> SettingsForm<'a> {
                 selected,
             );
         }
+        self.scene.segment_tracks.push(SegmentTrack {
+            bounds: r,
+            members: first..self.scene.controls.len(),
+        });
     }
     pub fn slider(
         &mut self,
@@ -1083,7 +1087,7 @@ impl Scene {
             if *style != Tokens::CAPTION_TEXT { translate(r); }
         }
         for r in self.cards.iter_mut().chain(&mut self.separators)
-            .chain(&mut self.segment_tracks)
+            .chain(self.segment_tracks.iter_mut().map(|track| &mut track.bounds))
             .chain(self.status_pills.iter_mut().map(|(bounds, _)| bounds))
             .chain(&mut self.specimen_boxes)
             .chain(self.section_headers.iter_mut().map(|header| &mut header.bounds))

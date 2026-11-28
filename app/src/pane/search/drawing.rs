@@ -72,7 +72,10 @@ mod tests {
     }
 }
 impl Drawing {
-    pub(super) fn clear_icons(&mut self) { self.file_icons.clear(); }
+    pub(super) fn clear_icons(&mut self) {
+        self.file_icons.clear();
+        self.frame_cache.borrow_mut().clear_text();
+    }
     pub(super) fn new(hwnd: HWND) -> Result<Self, String> {
         use windows_canvas::{ParagraphAlignment, TextFormat, WordWrapping};
         let name = TextFormat::new(&crate::pane::fonts::family(), 14.0)
@@ -163,6 +166,7 @@ impl Drawing {
             self.placeholder = placeholder;
             self.family = family;
             self.language = crate::i18n::language();
+            self.frame_cache.borrow_mut().clear_text();
         }
 
         use windows_canvas::{ColorF, Rect, RoundedRect};
@@ -327,13 +331,10 @@ impl Drawing {
                                 feedback.hover,
                                 if hot && pointer_down { 1.0 } else { 0.0 },
                             );
-                            let to_color = |[r, g, b, a]: [f32; 4]| ColorF::new(r, g, b, a);
                             target.draw_elevation_border(
                                 &shape,
-                                to_color(grad.top),
-                                to_color(grad.mid),
-                                to_color(grad.bottom),
-                                grad.stop,
+                                grad,
+                                matches!(feedback.hover, 0.0 | 1.0),
                                 1.0,
                             );
                             target.clipped_text(
@@ -412,13 +413,13 @@ impl Drawing {
                         target.clipped_icon(if entry.folder { "\u{e8b7}" } else { "\u{e8a5}" },
                             &self.icon, &slot, if entry.folder {folder_icon} else {accent});
                     }
-                    target.clipped_text(
+                    target.clipped_cached_text(
                         &name,
                         &self.name,
                         &Rect::from_xywh(50.0, y + 2.0, (w - 50.0 - if w >= 400.0 { 82.0 } else { 48.0 }).max(0.0), 22.0),
                         if state.replacing { dim } else { text },
                     );
-                    target.clipped_text(
+                    target.clipped_cached_text(
                         &path,
                         &self.path,
                         &Rect::from_xywh(50.0, y + 24.0, (w - 50.0 - if w >= 400.0 { 82.0 } else { 48.0 }).max(0.0), 18.0),
