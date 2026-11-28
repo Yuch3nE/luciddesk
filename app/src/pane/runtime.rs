@@ -331,6 +331,8 @@ fn next_work(s: &PaneApp, reveal: &show_hotkey::Registration) -> Option<u32> {
         .chain(maintenance)
         .chain(desktop_toggle::next_work().map(|delay| now + delay))
         .chain(runtime.filter(|r| r.updates.borrow().busy()).map(|_| now + Duration::from_millis(200)))
+        .chain(runtime.filter(|r| !r.updates.borrow().busy()).and_then(|r|
+            r.updates.borrow().automatic_deadline(crate::updates::automatic_enabled(&s.store))))
         .chain(reconnect)
         .chain(hybrid::rename_transaction::recovery_deadline(s))
         .chain(runtime.and_then(|r| r.layouts.deadline()))

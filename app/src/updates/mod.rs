@@ -12,9 +12,12 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     mpsc,
 };
+use std::time::{Duration, Instant};
 
 pub const PAGE: &str = "https://github.com/Yuch3nE/luciddesk/releases/latest";
-const CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+const CHECK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+const FIRST_CHECK_DELAY: Duration = Duration::from_secs(45);
+const FAILED_CHECK_INTERVAL: Duration = Duration::from_secs(20 * 60);
 
 pub(crate) fn check_recovery(root: &std::path::Path) -> Result<(), String> {
     if let Some(work) = distribution::interrupted_update(root).map_err(|error| error.to_string())? {
@@ -125,30 +128,31 @@ pub struct Controller {
     available: Option<AvailableRelease>,
     checked: bool,
     error: Option<String>,
-    last_attempt: Option<std::time::Instant>,
+    first_check: Option<Instant>,
+    last_attempt: Option<Instant>,
+    retry_soon: bool,
     automatic: bool,
 }
 impl Controller {
     /// Poll from the runtime, independently of the settings window's lifetime.
     /// Results only update the status shown in Settings -> About.
-    pub fn maintain(&mut self, enabled: bool, now: std::time::Instant) {
+    pub fn maintain(&mut self, enabled: bool, now: Instant) {
+        self.first_check.get_or_insert(now + FIRST_CHECK_DELAY);
         self.set_automatic_enabled(enabled);
-        self.poll();
+        self.poll_at(now);
         if self.automatic_due(enabled, now) {
-            if let Err(error) = self.check() {
-                self.error = Some(error);
-            }
-            self.last_attempt = Some(now);
-            self.automatic = self.busy();
+            let _ = self.check_with_mode(true, now);
         }
     }
 
-    fn automatic_due(&self, enabled: bool, now: std::time::Instant) -> bool {
-        enabled
-            && !self.busy()
-            && self
-                .last_attempt
-                .is_none_or(|last| now.saturating_duration_since(last) >= CHECK_INTERVAL)
+    pub(crate) fn automatic_deadline(&self, enabled: bool) -> Option<Instant> {
+        if !enabled || self.busy() { return None; }
+        self.last_attempt.map(|last| last + if self.retry_soon { FAILED_CHECK_INTERVAL } else { CHECK_INTERVAL })
+            .or(self.first_check)
+    }
+
+    fn automatic_due(&self, enabled: bool, now: Instant) -> bool {
+        self.automatic_deadline(enabled).is_some_and(|due| due <= now)
     }
 
     pub fn set_automatic_enabled(&mut self, enabled: bool) {
@@ -234,7 +238,11 @@ impl Controller {
         .into()
     }
     pub fn check(&mut self) -> Result<(), String> {
-        self.start(|cancel| {
+        self.check_with_mode(false, Instant::now())
+    }
+
+    fn check_with_mode(&mut self, automatic: bool, now: Instant) -> Result<(), String> {
+        self.start(automatic, now, |cancel| {
             let current = env!("CARGO_PKG_VERSION");
             let version = if let Some(bytes) = http::get(
                 "github.com",
@@ -263,16 +271,16 @@ impl Controller {
     }
     fn start(
         &mut self,
+        automatic: bool,
+        now: Instant,
         job: impl FnOnce(Arc<AtomicBool>) -> CheckResult + Send + 'static,
     ) -> Result<(), String> {
         if self.busy() {
             return Ok(());
         }
-        self.last_attempt = Some(std::time::Instant::now());
-        self.automatic = false;
-        self.available = None;
-        self.checked = false;
-        self.error = None;
+        self.last_attempt = Some(now);
+        self.automatic = automatic;
+        if !automatic { self.error = None; }
         let (sender, receiver) = mpsc::channel();
         let cancel = Arc::new(AtomicBool::new(false));
         let worker_cancel = Arc::clone(&cancel);
@@ -282,13 +290,18 @@ impl Controller {
                 let _ = sender.send(job(worker_cancel));
             })
             .map_err(|e| {
-                self.error = Some(e.to_string());
+                self.check_failed(automatic, e.to_string());
+                self.automatic = false;
                 e.to_string()
             })?;
         self.work = Some(Work { receiver, cancel });
         Ok(())
     }
     pub fn poll(&mut self) {
+        self.poll_at(Instant::now());
+    }
+
+    fn poll_at(&mut self, now: Instant) {
         if let Some(child) = &mut self.installer {
             match child.try_wait() {
                 Ok(None) => return,
@@ -307,18 +320,42 @@ impl Controller {
         let Some(work) = &self.work else {
             return;
         };
-        match work.receiver.try_recv() {
+        let result = match work.receiver.try_recv() {
             Err(mpsc::TryRecvError::Empty) => return,
             Err(mpsc::TryRecvError::Disconnected) => {
-                self.error = Some("Update check worker stopped".into());
+                Err("Update check worker stopped".into())
             }
-            Ok(Ok(available)) => {
+            Ok(result) => result,
+        };
+        self.work = None;
+        self.last_attempt = Some(now);
+        let automatic = std::mem::take(&mut self.automatic);
+        match result {
+            Ok(mut available) => {
+                self.retry_soon = false;
+                if automatic && let Some(release) = &mut available
+                    && let InstallAvailability::Failed(error) = &release.install
+                {
+                    self.check_failed(true, error.clone());
+                    if self.available.is_some() { return; }
+                    release.install = InstallAvailability::Manual;
+                }
                 self.available = available;
                 self.checked = true;
+                self.error = None;
             }
-            Ok(Err(error)) => self.error = Some(error),
+            Err(error) => self.check_failed(automatic, error),
         }
-        self.work = None;
+    }
+
+    fn check_failed(&mut self, automatic: bool, error: String) {
+        self.retry_soon = true;
+        if automatic {
+            luciddesk_diagnostics::emit!(luciddesk_diagnostics::Level::Warn,
+                "updates", "Automatic update check: {error}");
+        } else {
+            self.error = Some(error);
+        }
     }
 }
 
@@ -332,7 +369,8 @@ mod tests {
         assert!(!controller.automatic_due(false, now));
         controller.maintain(false, now);
         assert!(!controller.busy());
-        assert!(controller.automatic_due(true, now));
+        assert!(!controller.automatic_due(true, now));
+        assert!(controller.automatic_due(true, now + FIRST_CHECK_DELAY));
         controller.last_attempt = Some(now);
         assert!(!controller.automatic_due(
             true,
@@ -399,12 +437,12 @@ mod tests {
                 assert_eq!(controller.status(), i18n::format("update-available", &[("version", version.into())]));
             }
         }
-        controller.available = None;
         completed(&mut controller, Err("offline".into()), true, now);
         controller.maintain(true, now);
-        assert_eq!(controller.error.as_deref(), Some("offline"));
-        assert!(!controller.automatic_due(true, now));
-        controller.error = None;
+        assert!(controller.error.is_none());
+        assert_eq!(controller.available_version(), Some("1.1.0"));
+        assert!(!controller.automatic_due(true, now + FAILED_CHECK_INTERVAL - Duration::from_secs(1)));
+        assert!(controller.automatic_due(true, now + FAILED_CHECK_INTERVAL));
         completed(&mut controller, Ok(None), true, now);
         controller.maintain(true, now);
         assert_eq!(controller.status(), i18n::text("update-current"));
@@ -468,12 +506,12 @@ mod tests {
     #[test]
     fn check_failure_can_be_retried_and_close_cancels_work() {
         let mut controller = Controller::default();
-        controller.start(|_| Err("offline".into())).unwrap();
+        controller.start(false, Instant::now(), |_| Err("offline".into())).unwrap();
         wait(&mut controller);
         assert_eq!(controller.error.as_deref(), Some("offline"));
         assert!(!controller.checked);
         controller
-            .start(|_| {
+            .start(false, Instant::now(), |_| {
                 Ok(Some(AvailableRelease {
                     version: "0.15.0".into(),
                     install: InstallAvailability::Manual,
@@ -486,7 +524,7 @@ mod tests {
         controller.install().unwrap();
         assert!(controller.installer.is_none());
         assert!(controller.error.is_none());
-        controller.start(|_| Ok(None)).unwrap();
+        controller.start(false, Instant::now(), |_| Ok(None)).unwrap();
         let cancel = controller.work.as_ref().unwrap().cancel.clone();
         drop(controller);
         assert!(cancel.load(Ordering::Relaxed));
