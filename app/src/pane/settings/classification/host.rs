@@ -174,12 +174,17 @@ pub(super) fn show(state: &Rc<RefCell<PaneApp>>, tab: Tab) -> Result<(), String>
                 }
                 WM_PAINT => organizer.paint(&state, hwnd, scale),
                 WM_SETTINGCHANGE => {
+                    if let Some(surface) = &organizer.surface { surface.effects_changed(); }
                     if !scrollbar::animations_enabled() {
                         organizer.finish_animations(hwnd);
                     }
                     redraw(hwnd);
                 }
-                WM_THEMECHANGED => redraw(hwnd),
+                WM_THEMECHANGED | WM_POWERBROADCAST | composition::SYSTEM_EFFECTS_CHANGED => {
+                    if let Some(surface) = &organizer.surface { surface.effects_changed(); }
+                    redraw(hwnd);
+                    if msg == WM_POWERBROADCAST { return Some(1); }
+                }
                 WM_SIZE => {
                     organizer.clear_hover();
                     redraw(hwnd);

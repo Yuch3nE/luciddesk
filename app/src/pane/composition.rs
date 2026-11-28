@@ -12,6 +12,9 @@ use windows_canvas::{GpuDevice, ID2D1DeviceContext, SwapChain};
 mod recovery;
 pub(super) use recovery::PaintRecovery;
 
+pub(super) const SYSTEM_EFFECTS_CHANGED: u32 =
+    windows_sys::Win32::UI::WindowsAndMessaging::WM_APP + 205;
+
 pub struct Surface {
     retry_at: std::cell::Cell<Option<std::time::Instant>>,
     hwnd: HWND,
@@ -280,6 +283,12 @@ impl Surface {
             unsafe {
                 let _ = set_attribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &value);
             }
+        }
+    }
+
+    pub(super) fn effects_changed(&self) {
+        if let Some(acrylic) = &self.acrylic {
+            acrylic.effects_changed();
         }
     }
 

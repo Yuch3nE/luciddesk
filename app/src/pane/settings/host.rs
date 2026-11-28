@@ -401,12 +401,14 @@ pub(super) fn show_at(state: &Rc<RefCell<PaneApp>>, id: PanelId, initial_page: u
                 }
                 return Some(0);
             }
-            if matches!(msg, WM_SETTINGCHANGE | WM_THEMECHANGED | WM_POWERBROADCAST) {
+            if matches!(msg, WM_SETTINGCHANGE | WM_THEMECHANGED | WM_POWERBROADCAST | composition::SYSTEM_EFFECTS_CHANGED) {
+                if let Some(surface) = &surface { surface.effects_changed(); }
                 if matches!(msg, WM_SETTINGCHANGE | WM_THEMECHANGED) {
                     resolved_theme = None;
                     scene_key = None;
                 }
                 unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
+                if msg == composition::SYSTEM_EFFECTS_CHANGED { return Some(0); }
             }
             if msg == WM_DPICHANGED {
                 let _ = crate::app_icon::apply(hwnd);

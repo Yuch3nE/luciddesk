@@ -995,6 +995,11 @@ pub(super) fn create(
             }) { return Some(0); }
             if msg == control::MESSAGE {control::receive(hwnd,&mut state,&control_mailbox);return Some(0);}
             match msg {
+                WM_SETTINGCHANGE | WM_THEMECHANGED | WM_POWERBROADCAST | super::composition::SYSTEM_EFFECTS_CHANGED => {
+                    if let Some(drawing) = &drawing { drawing.surface.effects_changed(); }
+                    invalidate(hwnd);
+                    return Some(isize::from(msg == WM_POWERBROADCAST));
+                }
                 WM_NCCALCSIZE | WM_ERASEBKGND => return Some(0),
                 WM_DESTROY => {
                     control::remove(hwnd);

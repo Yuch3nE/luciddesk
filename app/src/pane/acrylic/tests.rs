@@ -2,6 +2,24 @@ use super::*;
 use luciddesk_core::Backdrop;
 
 #[test]
+fn effects_policy_is_queried_once_until_invalidated() {
+    let _sta = crate::pane::test_support::apartment();
+    let window = windows_window::Window::new("System effects policy")
+        .style(windows_sys::Win32::UI::WindowsAndMessaging::WS_POPUP)
+        .ex_style(windows_sys::Win32::UI::WindowsAndMessaging::WS_EX_NOREDIRECTIONBITMAP)
+        .create().unwrap();
+    let acrylic = Acrylic::new_with_opacity(HWND(window.hwnd().cast()), 1.0).unwrap();
+    acrylic.effects_override.set(None);
+    let enabled = acrylic.effects_enabled();
+    for _ in 0..8 { assert_eq!(acrylic.effects_enabled(), enabled); }
+    assert_eq!(acrylic.effects_queries.get(), 1);
+    acrylic.effects_changed();
+    let _ = acrylic.effects_enabled();
+    let _ = acrylic.effects_enabled();
+    assert_eq!(acrylic.effects_queries.get(), 2);
+}
+
+#[test]
 fn diagnostic_bypass_never_enables_host_or_wallpaper_backdrops() {
     let _sta = crate::pane::test_support::apartment();
     let window = windows_window::Window::new("Backdrop isolation")

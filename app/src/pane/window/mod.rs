@@ -592,11 +592,13 @@ where
                     }
                     None
                 }
-                WM_POWERBROADCAST => {
+                WM_POWERBROADCAST | super::composition::SYSTEM_EFFECTS_CHANGED => {
+                    if let Some(surface) = &surface { surface.effects_changed(); }
                     invalidate(hwnd);
                     Some(1)
                 }
                 WM_SETTINGCHANGE | WM_THEMECHANGED | WM_FONTCHANGE => {
+                    if let Some(surface) = &surface { surface.effects_changed(); }
                     super::assets::invalidate_font();
                     scrollbar_animated = super::scrollbar::animations_enabled();
                     {

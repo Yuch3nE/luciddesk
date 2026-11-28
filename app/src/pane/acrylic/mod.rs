@@ -43,8 +43,12 @@ pub struct Acrylic {
     hwnd: HWND,
     _power_notification: PowerNotification,
     ui_settings: Option<windows::UI::ViewManagement::UISettings>,
+    effects_notification: Option<i64>,
+    effects_cache: std::cell::Cell<Option<bool>>,
     #[cfg(test)]
     effects_override: std::cell::Cell<Option<bool>>,
+    #[cfg(test)]
+    effects_queries: std::cell::Cell<usize>,
     disable_backdrop: bool,
     material_brush: RefCell<Option<(bool, windows::UI::Composition::CompositionBrush)>>,
     host_backdrop: RefCell<Option<host::HostBackdrop>>,
@@ -63,6 +67,14 @@ pub struct Acrylic {
     material_initialized: std::cell::Cell<bool>,
     rounded_clip: Option<(CompositionRoundedRectangleGeometry, (u32, u32, f32))>,
     content: Option<windows::UI::Composition::SpriteVisual>,
+}
+
+impl Drop for Acrylic {
+    fn drop(&mut self) {
+        if let (Some(settings), Some(cookie)) = (&self.ui_settings, self.effects_notification) {
+            let _ = settings.RemoveAdvancedEffectsEnabledChanged(cookie);
+        }
+    }
 }
 
 impl Acrylic {
@@ -110,6 +122,18 @@ impl Acrylic {
         root.Children()?.InsertAtBottom(&backdrop)?;
         root.Children()?.InsertAtTop(&tint)?;
         target.SetRoot(&root)?;
+        let ui_settings = windows::UI::ViewManagement::UISettings::new().ok();
+        let window = hwnd.0 as usize;
+        let effects_notification = ui_settings.as_ref().and_then(|settings| {
+            settings.AdvancedEffectsEnabledChanged(&windows::Foundation::TypedEventHandler::new(move |_, _| {
+                unsafe {
+                    windows_sys::Win32::UI::WindowsAndMessaging::PostMessageW(
+                        window as _, super::composition::SYSTEM_EFFECTS_CHANGED, 0, 0,
+                    );
+                }
+                Ok(())
+            })).ok()
+        });
         Ok(Self {
             hwnd,
             _power_notification: PowerNotification(unsafe {
@@ -119,11 +143,15 @@ impl Acrylic {
                     windows_sys::Win32::UI::WindowsAndMessaging::DEVICE_NOTIFY_WINDOW_HANDLE,
                 )
             }),
-            ui_settings: windows::UI::ViewManagement::UISettings::new().ok(),
+            ui_settings,
+            effects_notification,
+            effects_cache: std::cell::Cell::new(None),
             #[cfg(test)]
             // Rendering tests control policy explicitly, independent of the
             // test machine's current transparency or battery-saver setting.
             effects_override: std::cell::Cell::new(Some(true)),
+            #[cfg(test)]
+            effects_queries: std::cell::Cell::new(0),
             disable_backdrop: crate::pane::render_debug::disable_backdrop(),
             material_brush: RefCell::new(None),
             host_backdrop: RefCell::new(None),
@@ -185,6 +213,11 @@ impl Acrylic {
         if let Some(enabled) = self.effects_override.get() {
             return enabled;
         }
+        if let Some(enabled) = self.effects_cache.get() {
+            return enabled;
+        }
+        #[cfg(test)]
+        self.effects_queries.set(self.effects_queries.get() + 1);
         let advanced = self.ui_settings.as_ref()
             .and_then(|settings| settings.AdvancedEffectsEnabled().ok())
             .unwrap_or(true);
@@ -193,7 +226,13 @@ impl Acrylic {
             windows_sys::Win32::System::Power::GetSystemPowerStatus(&raw mut power) != 0
                 && power.SystemStatusFlag == 1
         };
-        advanced && !saver
+        let enabled = advanced && !saver;
+        self.effects_cache.set(Some(enabled));
+        enabled
+    }
+
+    pub(super) fn effects_changed(&self) {
+        self.effects_cache.set(None);
     }
 
     #[cfg(test)]

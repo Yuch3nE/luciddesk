@@ -477,6 +477,11 @@ fn show_level(
             }
             let mut activate = None;
             match message {
+                WM_SETTINGCHANGE | WM_THEMECHANGED | WM_POWERBROADCAST | super::composition::SYSTEM_EFFECTS_CHANGED => {
+                    if let Some(surface) = &surface { surface.effects_changed(); }
+                    unsafe { InvalidateRect(hwnd, std::ptr::null(), 0); }
+                    return Some(isize::from(message == WM_POWERBROADCAST));
+                }
                 WM_ERASEBKGND | WM_NCCALCSIZE => return Some(0),
                 WM_DESTROY | WM_CLOSE => {
                     done_handler.set(true);
@@ -499,10 +504,10 @@ fn show_level(
                                 if fade_finished { 1.0 } else { 0.0 },
                             )?;
                             value.theme(windows::Win32::Foundation::HWND(hwnd), dark);
-                            value.material(windows::Win32::Foundation::HWND(hwnd), backdrop)?;
                             surface = Some(value);
                         }
                         let value = surface.as_mut().unwrap();
+                        value.material(windows::Win32::Foundation::HWND(hwnd), backdrop)?;
                         let Some(target) = value.try_begin_frame(width as u32, height as u32)?
                         else {
                             return Ok(());
